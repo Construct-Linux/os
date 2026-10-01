@@ -9,6 +9,12 @@ vars:
   APKO: cgr.dev/chainguard/apko@sha256:730ae486fc77b0cc7326cdd66fb2bb3e093f9fd14b101af603fe714786752ab3
   WOLFI: --repository-append https://packages.wolfi.dev/os --keyring-append https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
   LOCAL: --repository-append /work/packages --keyring-append /work/melange.rsa.pub
+  AMI: ../spin-ami
+  # The kernel's pins and fragments are spin-ami's, read from its checkout.
+  KERNEL_ARGS:
+    sh: >-
+      echo -f kernel/Dockerfile --build-context ami-kernel=../spin-ami/kernel
+      $(cd ../spin-ami && go tool versions args debian debian-snapshot kernel)
   UID:
     sh: id -u
 
@@ -42,6 +48,25 @@ tasks:
         index --signing-key melange.rsa -o packages/x86_64/APKINDEX.new.tar.gz packages/x86_64/*.apk
         && docker run --rm -v {{.ROOT_DIR}}:/work -w /work cgr.dev/chainguard/wolfi-base sh -c
         "mv packages/x86_64/APKINDEX.new.tar.gz packages/x86_64/APKINDEX.tar.gz && chown -R {{.UID}}:{{.UID}} packages .cache/out/{{.NAME}} .cache/logs"'
+
+  kernel:config:
+    desc: Merge and assert the desktop kernel's configuration, without compiling it.
+    cmds:
+      - docker build --target build-base {{.KERNEL_ARGS}} .
+
+  kernel:
+    desc: Build the desktop kernel and its signed modules into _output/kernel and _output/modules.
+    cmds:
+      - mkdir -p _output
+      - docker build --target kernel --output type=local,dest=_output {{.KERNEL_ARGS}} --build-arg KERNEL_NPROC=$(nproc) .
+
+  firmware:
+    desc: Take the desktop's firmware out of spin-ami's pinned linux-firmware into _output/firmware.
+    cmds:
+      - mkdir -p _output
+      - >-
+        docker build -f firmware/Dockerfile --target firmware --output type=local,dest=_output
+        $(cd {{.AMI}} && go tool versions args wolfi-base linux-firmware intel-microcode) .
 
   gap:
     desc: How far Wolfi is from each desktop profile.
