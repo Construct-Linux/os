@@ -128,6 +128,11 @@ func test(args []string) error {
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
 	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
+	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files
+	// (drift gtk4), which a Flatpak reads through the image's read-only override. The marker is
+	// the dark styles' media query, which only the Orchis fork's light gtk.css carries.
+	gtk4, err := g.run(`f=/var/home/spin/.config/gtk-4.0/gtk.css; test -f "$f" && ! test -L "$f" && sudo -u spin XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c 'grep -c "prefers-color-scheme" "$HOME/.config/gtk-4.0/gtk.css"' 2>&1`, "")
+	r.add("gtk4 theme in flatpak", err == nil && strings.TrimSpace(lastLine(gtk4)) != "0", "Chrome's sandbox reads the copied gtk.css: "+lastLine(gtk4))
 
 	want := map[string]bool{}
 	for _, n := range strings.Split(*only, ",") {
