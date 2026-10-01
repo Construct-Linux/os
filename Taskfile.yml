@@ -58,7 +58,7 @@ tasks:
     desc: Build the desktop kernel and its signed modules into _output/kernel and _output/modules.
     cmds:
       - mkdir -p _output
-      - docker build --target kernel --output type=local,dest=_output {{.KERNEL_ARGS}} --build-arg KERNEL_NPROC=$(nproc) .
+      - docker build --target kernel --output type=local,dest=_output {{.KERNEL_ARGS}} --build-arg KERNEL_NPROC={{.NPROC | default "8"}} .
 
   firmware:
     desc: Take the desktop's firmware out of spin-ami's pinned linux-firmware into _output/firmware.
