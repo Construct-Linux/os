@@ -1,0 +1,35 @@
+package:
+  name: py3-python-gettext
+  version: "5.0"
+  epoch: 0
+  description: Python implementation of gettext's msgfmt
+  copyright:
+    - license: BSD-2-Clause
+  dependencies:
+    provides:
+      # Wolfi names a module's package py3.13-<pypi name>; dependents ask for that.
+      - py3.13-python-gettext=${{package.full-version}}
+    runtime:
+      - python-3.13
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - python-3.13
+      - py3.13-gpep517
+      - py3.13-installer
+      - py3.13-setuptools
+      - py3.13-wheel
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://files.pythonhosted.org/packages/source/p/python-gettext/python-gettext-${{package.version}}.tar.gz
+      expected-sha256: 869af1ea45e3dab6180557259824c2a62f1800e1286226af912431fe75c5084c
+
+  - runs: |
+      python3.13 -m gpep517 build-wheel --wheel-dir .dist --output-fd 1
+      python3.13 -m installer -d "${{targets.destdir}}" .dist/*.whl
+      # The unit tests ship inside the module; nothing imports them at run time.
+      rm -rf "${{targets.destdir}}"/usr/lib/python3.13/site-packages/pythongettext/tests
