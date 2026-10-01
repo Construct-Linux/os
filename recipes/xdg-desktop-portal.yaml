@@ -1,0 +1,56 @@
+package:
+  name: xdg-desktop-portal
+  version: 1.22.1
+  epoch: 0
+  description: Desktop integration portal
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      # Image and sound validation run inside a bubblewrap sandbox.
+      - bubblewrap
+      - fuse3
+
+environment:
+  contents:
+    packages:
+      - bubblewrap
+      - build-base
+      - busybox
+      - fontconfig-dev
+      - fuse3-dev
+      - gdk-pixbuf-dev
+      - geoclue-dev
+      - gettext-dev
+      - glib-dev
+      - gst-plugins-base-dev
+      - gstreamer-dev
+      - json-glib-dev
+      - libgudev-dev
+      - meson
+      - ninja
+      - pipewire-dev
+      - python-3.13
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/flatpak/xdg-desktop-portal/releases/download/${{package.version}}/xdg-desktop-portal-${{package.version}}.tar.xz
+      expected-sha256: d4879ddb3d65ff1a8f19187497e6f13dc5d267bcac404a5d501218be355753d3
+
+  # flatpak-interfaces off: flatpak does not ship on the desktop.
+  - uses: meson/configure
+    with:
+      opts: -Dsystemd=enabled -Dgeoclue=enabled -Dgudev=enabled -Dflatpak-interfaces=disabled -Ddocumentation=disabled -Dman-pages=disabled -Dtests=disabled -Dinstalled-tests=false -Dsandboxed-image-validation=enabled -Dsandboxed-sound-validation=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: xdg-desktop-portal-dev
+    pipeline:
+      - uses: split/dev
