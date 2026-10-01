@@ -1,0 +1,51 @@
+package:
+  name: gtksourceview5
+  version: 5.22.0
+  epoch: 0
+  description: A text widget adding syntax highlighting and more to GNOME
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - fribidi-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - libxml2-dev
+      - libxslt
+      - meson
+      - ninja
+      - pcre2-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gtksourceview/${{vars.series}}/gtksourceview-${{package.version}}.tar.xz
+      expected-sha256: 3ebce33c781e65590a450ecd3ffade480d8e3135b52ee996f1620d6c7dffbbff
+
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=enabled -Dvapi=false -Ddocumentation=false -Dbuild-testsuite=false -Dinstall-tests=false -Dsysprof=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "5.22"
+
+subpackages:
+  - name: gtksourceview5-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: gtksourceview5-lang
+    pipeline:
+      - uses: split/locales
