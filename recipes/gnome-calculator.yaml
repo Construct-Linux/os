@@ -1,0 +1,72 @@
+package:
+  name: gnome-calculator
+  version: "51.0"
+  epoch: 0
+  description: Calculator for solving mathematical equations
+  copyright:
+    - license: GPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gmp-dev
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - gtksourceview5-dev
+      - itstool
+      - libadwaita-dev
+      - libgee-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - meson
+      - mpc-dev
+      - mpfr-dev
+      - ninja
+      - vala
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-calculator/${{vars.series}}/gnome-calculator-${{package.version}}.tar.xz
+      expected-sha256: 5bfb4c53eec61feb6c03faf85218804e87413ecb647e08fde6379bf2b1839190
+
+  # The app is written in Vala, but our libadwaita and gtksourceview5 ship no vapi, and the
+  # libsoup-3.0.vapi bundled with vala predates Session.send_and_splice: generate all three from
+  # their GIR with the upstream metadata (recipes/gnome-calculator/) into the build root only.
+  - runs: |
+      md=gnome-calculator
+      vapigen --library libsoup-3.0 --pkg gio-2.0 --metadatadir $md -d /usr/share/vala-0.56/vapi /usr/share/gir-1.0/Soup-3.0.gir
+      vapidir=/usr/share/vala/vapi
+      mkdir -p $vapidir
+      vapigen --library libadwaita-1 --pkg gio-2.0 --pkg gtk4 --metadatadir $md -d $vapidir /usr/share/gir-1.0/Adw-1.gir
+      printf 'gio-2.0\ngtk4\n' > $vapidir/libadwaita-1.deps
+      vapigen --library gtksourceview-5 --pkg gdk-pixbuf-2.0 --pkg gio-2.0 --pkg gtk4 --pkg pango --pkg cairo --metadatadir $md -d $vapidir /usr/share/gir-1.0/GtkSource-5.gir
+      printf 'gdk-pixbuf-2.0\ngio-2.0\ngtk4\npango\ncairo\n' > $vapidir/gtksourceview-5.deps
+
+  - uses: meson/configure
+    with:
+      opts: -Ddoc=false -Dui-tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-calculator-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: gnome-calculator-lang
+    pipeline:
+      - uses: split/locales
