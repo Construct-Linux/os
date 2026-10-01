@@ -1,0 +1,42 @@
+package:
+  name: libxmlb
+  version: 0.3.29
+  epoch: 0
+  description: Library to help create and query binary XML blobs
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - meson
+      - ninja
+      - xz-dev
+      - zstd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/hughsie/libxmlb/archive/refs/tags/${{package.version}}.tar.gz
+      expected-sha256: b5efb78fc8033672826532e0e81e159dd3b01be7e8c3616e2dfefefc66d28ed6
+
+  # xb-tool is a debugging CLI nothing in the session uses.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dgtkdoc=false -Dtests=false -Dstemmer=false -Dcli=false -Dlzma=enabled -Dzstd=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libxmlb-dev
+    pipeline:
+      - uses: split/dev
