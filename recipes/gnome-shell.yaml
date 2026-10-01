@@ -1,0 +1,104 @@
+package:
+  name: gnome-shell
+  version: "51.0"
+  epoch: 0
+  description: GNOME Shell, the core user interface of the GNOME desktop
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - accountsservice
+      - adwaita-fonts
+      - adwaita-icon-theme
+      - desktop-file-utils
+      - gjs
+      - gnome-bluetooth
+      - gnome-session
+      - gnome-settings-daemon
+      - gsettings-desktop-schemas
+      - gst-plugins-good
+      - gstreamer
+      - ibus
+      - librsvg
+      - mutter
+      - networkmanager
+      - pipewire
+      - tecla
+      - upower
+
+environment:
+  contents:
+    packages:
+      - alsa-lib-dev
+      - at-spi2-core-dev
+      - build-base
+      - busybox
+      - cairo-dev
+      - evolution-data-server-dev
+      - gcr4-dev
+      - gdk-pixbuf-dev
+      - gettext
+      - gjs
+      - gjs-dev
+      - glib-dev
+      - glib-gir
+      - glycin-2-dev
+      - gnome-autoar-dev
+      - gnome-bluetooth-dev
+      - gnome-desktop-dev
+      - gobject-introspection-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-4-dev
+      - ibus-dev
+      - json-glib-dev
+      - libcanberra-dev
+      - libnma-dev
+      - librsvg-dev
+      - libsecret-dev
+      - libsoup3-dev
+      - libx11-dev
+      - libxext-dev
+      - libxfixes-dev
+      - libxml2-dev
+      - mesa-dev
+      - meson
+      - mutter-dev
+      - networkmanager-dev
+      - ninja
+      # libcamel needs NSS at link time; the evolution-data-server package does not depend on it
+      - libnspr
+      - libnss
+      - pango-dev
+      - pipewire-dev
+      - polkit-dev
+      - pulseaudio-dev
+      - python-3.13
+      - sassc
+      - startup-notification-dev
+      - systemd-dev
+      - tecla
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-shell/${{vars.series}}/gnome-shell-${{package.version}}.tar.xz
+      expected-sha256: 2179bab13af353427065096af8bf3d30da7b86e0c516e5ba86a14998af9575f6
+
+  # portal_helper off: the captive-portal login window is a WebKitGTK browser, not shipped
+  - uses: meson/configure
+    with:
+      opts: -Dsystemd=true -Dnetworkmanager=true -Dcamera_monitor=true -Dextensions_tool=true -Dportal_helper=false -Dman=false -Dgtk_doc=false -Dtests=false -Dextensions-tool:bash_completion=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-shell-lang
+    pipeline:
+      - uses: split/locales
