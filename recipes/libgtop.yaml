@@ -1,0 +1,49 @@
+package:
+  name: libgtop
+  version: 2.41.3
+  epoch: 0
+  description: GNOME top library
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - intltool
+      - linux-headers
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libgtop/${{vars.series}}/libgtop-${{package.version}}.tar.xz
+      expected-sha256: 775676df958e2ea2452f7568f28b2ea581063d312773dd5c0b7624c1b9b2da8c
+
+  # X is only used by the xauth-based remote server, which a local session never needs.
+  - uses: autoconf/configure
+    with:
+      opts: --enable-introspection=yes --disable-gtk-doc --disable-static --without-examples --without-x
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  # The setuid server only serves platforms without /proc; on Linux the library reads /proc itself.
+  - runs: |
+      rm -rf ${{targets.destdir}}/usr/libexec ${{targets.destdir}}/usr/share/info
+      rm -f ${{targets.destdir}}/usr/lib/*.la
+
+  - uses: strip
+
+vars:
+  series: "2.41"
+
+subpackages:
+  - name: libgtop-dev
+    pipeline:
+      - uses: split/dev
