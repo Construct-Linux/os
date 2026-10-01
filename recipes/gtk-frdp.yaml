@@ -1,0 +1,54 @@
+package:
+  name: gtk-frdp
+  # Upstream tags no release since 2019 (v3.37.1); master's meson version is 0.2.0, and its
+  # July 2026 commits move the session onto FreeRDP 3's non-deprecated API (AuthenticateEx,
+  # settings getters) that freerdp-3 3.32 warns about.
+  version: 0.2.0_git20260724
+  epoch: 0
+  description: RDP viewer widget for GTK
+  copyright:
+    - license: LGPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - freerdp-3-dev
+      - fuse3-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-3-dev
+      - meson
+      - ninja
+      # Vala is a project language and the vapi is generated unconditionally; it is only a
+      # build tool, nothing installed links to it.
+      - vala
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.gnome.org/GNOME/gtk-frdp.git
+      branch: master
+      expected-commit: 83854a24e31d1c07519f6e4393fe280d3b59e080
+
+  - uses: meson/configure
+    with:
+      opts: -Dexamples=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: gtk-frdp-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - freerdp-3-dev
+        - fuse3-dev
+        - gtk-3-dev
