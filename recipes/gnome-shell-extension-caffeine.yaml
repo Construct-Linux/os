@@ -1,0 +1,47 @@
+package:
+  name: gnome-shell-extension-caffeine
+  # Tag v60 lacks GNOME Shell 51 in metadata.json; the pinned master commit adds it.
+  version: 60_git20260831
+  epoch: 0
+  description: GNOME Shell extension that disables the screensaver and auto suspend
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gnome-shell
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - gettext
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/eonpatapon/gnome-shell-extension-caffeine
+      branch: master
+      expected-commit: 7f5f2d37f4d266c562b51041107962b8e1ec0fa6
+
+  # Installed by hand instead of the Makefile's gnome-extensions zip: the schema goes system-wide
+  # because the image compiles /usr/share/glib-2.0/schemas at build, and the catalogs go to
+  # /usr/share/locale (the shell binds the domain there when the extension has no locale/ dir)
+  # so split/locales can carry them.
+  - runs: |
+      uuid=caffeine@patapon.info
+      dest="${{targets.destdir}}/usr/share/gnome-shell/extensions/$uuid"
+      mkdir -p "$dest" "${{targets.destdir}}/usr/share/glib-2.0/schemas"
+      cp -r $uuid/extension.js $uuid/prefs.js $uuid/mprisMediaPlayer2.js $uuid/metadata.json \
+        $uuid/preferences $uuid/icons "$dest"/
+      install -m644 $uuid/schemas/*.gschema.xml "${{targets.destdir}}/usr/share/glib-2.0/schemas/"
+      domain=$(sed -n 's/.*"gettext-domain": *"\([^"]*\)".*/\1/p' $uuid/metadata.json)
+      for po in $uuid/locale/*.po; do
+        lang=$(basename "$po" .po)
+        mkdir -p "${{targets.destdir}}/usr/share/locale/$lang/LC_MESSAGES"
+        msgfmt -o "${{targets.destdir}}/usr/share/locale/$lang/LC_MESSAGES/$domain.mo" "$po"
+      done
+
+subpackages:
+  - name: gnome-shell-extension-caffeine-lang
+    pipeline:
+      - uses: split/locales
