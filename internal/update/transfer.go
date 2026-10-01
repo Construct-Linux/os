@@ -1,14 +1,15 @@
 package update
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
-
-	"github.com/ulikunitz/xz"
+	"os/exec"
+	"strings"
 
 	"github.com/spin-stack/spindrift/internal/gpt"
 )
@@ -37,21 +38,36 @@ func writePartition(ctx context.Context, disk Disk, p gpt.Partition, a Artifact,
 	}
 	defer func() { _ = body.Close() }() // read to its end or given up on
 	h := sha256.New()
-	compressed := io.TeeReader(body, h)
-	xr, err := xz.NewReader(compressed)
+	// xz(1), with liblzma's threads: a release is compressed in blocks (xz -T0), which it
+	// decompresses in parallel. Go's pure xz reader took 7m43s for a 1.4 GB root that xz -T0
+	// decompresses in 3s.
+	xz := exec.CommandContext(ctx, "xz", "--decompress", "--stdout", "--threads=0")
+	xz.Stdin = io.TeeReader(body, h)
+	var stderr bytes.Buffer
+	xz.Stderr = &stderr
+	out, err := xz.StdoutPipe()
 	if err != nil {
-		return fmt.Errorf("update: %s is not xz: %w", a.Name, err)
+		return err
+	}
+	if err := xz.Start(); err != nil {
+		return fmt.Errorf("update: decompressing %s: %w", a.Name, err)
 	}
 	limit := p.Size()
-	n, err := io.Copy(io.NewOffsetWriter(disk, p.Offset()), io.LimitReader(xr, limit+1)) // mutate-exempt: any bound past the limit reads enough to find a longer image
-	if err != nil {
-		return fmt.Errorf("update: writing %s: %w", a.Name, err)
+	n, copyErr := io.Copy(io.NewOffsetWriter(disk, p.Offset()), io.LimitReader(out, limit+1)) // mutate-exempt: any bound past the limit reads enough to find a longer image
+	if copyErr != nil || n > limit {
+		_ = xz.Process.Kill()
 	}
-	if n > limit {
+	xzErr := xz.Wait()
+	switch {
+	case copyErr != nil:
+		return fmt.Errorf("update: writing %s: %w", a.Name, copyErr)
+	case n > limit:
 		return fmt.Errorf("update: %s decompresses to more than the %d bytes its partition holds", a.Name, limit)
+	case xzErr != nil:
+		return fmt.Errorf("update: %s is not xz that decompresses: %w: %s", a.Name, xzErr, strings.TrimSpace(stderr.String()))
 	}
-	// What follows the xz stream - padding, or anything else - is in the digest too.
-	if _, err := io.Copy(io.Discard, compressed); err != nil {
+	// Whatever xz left unread is in the digest too.
+	if _, err := io.Copy(h, body); err != nil {
 		return fmt.Errorf("update: reading %s: %w", a.Name, err)
 	}
 	if got := hex.EncodeToString(h.Sum(nil)); got != a.SHA256 {
