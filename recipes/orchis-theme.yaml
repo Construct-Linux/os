@@ -1,7 +1,7 @@
 package:
   name: orchis-theme
-  version: "20260707"
-  epoch: 0
+  version: "20260914"
+  epoch: 1
   description: Orchis GTK and GNOME Shell theme (blue and teal, light and dark)
   copyright:
     - license: GPL-3.0-only
@@ -16,23 +16,19 @@ environment:
       - sassc
 
 pipeline:
+  # The gnome-shell-51 branch of a fork, on upstream's master: Shell 51 only, and what 49-51
+  # changed in the shell's widgets that upstream's newest stylesheet (48) leaves unstyled.
   - uses: git-checkout
     with:
-      repository: https://github.com/vinceliuice/Orchis-theme
-      tag: ${{vars.tag}}
-      expected-commit: 29975e38624ec93d8e460f8ea17129bcb68c05ef
+      repository: https://github.com/aledbf/Orchis-theme
+      branch: gnome-shell-51
+      expected-commit: e682b297f798affdd13e1bb68b561055f6850473
 
-  # install.sh marks the GTK 4 styles for GNOME >= 47 (libadwaita's accent colours) only when it
-  # finds a gnome-shell binary to ask; the build has none and the image runs 51.
-  - runs: |
-      sed -i "s/^\$gnome_version: 'old';/\$gnome_version: 'new';/" src/_sass/_tweaks.scss
-      grep -q "^\$gnome_version: 'new';" src/_sass/_tweaks.scss
-
-  # --shell 48 pins the newest shell stylesheet upstream ships instead of probing the build host.
-  # No -l (it links into a home directory) and no -g (the login screen keeps GNOME's look).
+  # No -l (it links into a home directory; the image links libadwaita per user) and no -g (the
+  # login screen keeps GNOME's look).
   - runs: |
       mkdir -p ${{targets.destdir}}/usr/share/themes
-      ./install.sh -d ${{targets.destdir}}/usr/share/themes -t default teal -c light dark -s standard --shell 48
+      ./install.sh -d ${{targets.destdir}}/usr/share/themes -t default teal -c light dark -s standard
       test -f ${{targets.destdir}}/usr/share/themes/Orchis-Teal-Dark/gnome-shell/gnome-shell.css
 
   # Cinnamon, Xfwm4, Metacity and Plank styles serve desktops the image does not ship.
@@ -40,6 +36,3 @@ pipeline:
       cd ${{targets.destdir}}/usr/share/themes
       rm -r Orchis-*-hdpi Orchis-*-xhdpi
       for t in Orchis-*; do rm -r $t/cinnamon $t/xfwm4 $t/metacity-1 $t/plank; done
-
-vars:
-  tag: 2026-07-07
