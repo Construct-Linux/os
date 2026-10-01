@@ -1,0 +1,71 @@
+package:
+  name: showtime
+  version: "50.0"
+  epoch: 0
+  description: Watch without distraction
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    # A Python app: melange derives nothing from its imports, so the interpreter, PyGObject and
+    # every typelib and GStreamer element it loads are declared here. Alpine's py3-gettext and
+    # py3-cryptography are not: nothing in the 50.0 sources imports them.
+    runtime:
+      - python-3.13
+      - py3.13-gobject3
+      - glib-gir
+      - graphene
+      - gtk-4
+      - libadwaita
+      - gstreamer
+      # GstAudio and GstPbutils typelibs, playbin and glsinkbin.
+      - gst-plugins-base
+      # GstPlay typelib, plus the AV1 (dav1d) decoder.
+      - gst-plugins-bad
+      # The PipeWire/Pulse sink, Matroska/MP4 demuxers and VP8/VP9.
+      - gst-plugins-good
+      # gtk4paintablesink: without it the app refuses to open a video.
+      - gst-plugins-rs
+      # H.264/HEVC decoding, which most video files need.
+      - gst-libav
+
+environment:
+  contents:
+    packages:
+      - blueprint-compiler-dev
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gtk-4-dev
+      - libadwaita-dev
+      - meson
+      - ninja
+      - python-3.13
+      - py3.13-gobject3
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/showtime/${{vars.series}}/showtime-${{package.version}}.tar.xz
+      expected-sha256: 4399c9fa7f61e5984242e279acd1519beec246b98a676d44a4b2ab94e9eecb01
+
+  # Wolfi's python-3.13 provides python3.13, not python3: the launcher's shebang names the
+  # interpreter its runtime dependency installs.
+  - uses: meson/configure
+    with:
+      opts: -Dpython_exec=/usr/bin/python3.13
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+vars:
+  # No GNOME 51 release exists; 50 is the newest series.
+  series: "50"
+
+subpackages:
+  - name: showtime-lang
+    pipeline:
+      - uses: split/locales
