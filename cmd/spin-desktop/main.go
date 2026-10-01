@@ -1,10 +1,10 @@
-// Command spin-desktop is what the desktop's own root runs to change its version:
+// Command spin-desktop is what the desktop's own root runs besides systemd-sysupdate, which writes
+// its updates (usr/lib/sysupdate.d):
 //
-//	spin-desktop update     [--from DIR] [--esp DIR]            write a newer release into the other slot
-//	spin-desktop boot-check                                     reboot a counted boot that did not come up
 //	spin-desktop install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
+//	spin-desktop boot-check                                     reboot a counted boot that did not come up
 //
-// The release is a directory - an update stick's partition, mounted read-only - and is checked
+// install's release is a directory - a stick's spin-update partition, mounted read-only - checked
 // against the public key the root carries (internal/update's KeyringPath) before anything is
 // written.
 package main
@@ -32,9 +32,8 @@ import (
 )
 
 const usage = `usage:
-  spin-desktop update     [--from DIR] [--esp DIR] [--keyring FILE]
-  spin-desktop boot-check
-  spin-desktop install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE]`
+  spin-desktop install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--loader FILE]
+  spin-desktop boot-check`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -45,8 +44,6 @@ func main() {
 	}
 	var err error
 	switch os.Args[1] {
-	case "update":
-		err = updateCmd(ctx, os.Args[2:])
 	case "boot-check":
 		err = update.BootCheck(ctx, systemctl{}, update.Vars(update.EFIVars), journal())
 	case "install":
@@ -62,81 +59,6 @@ func main() {
 
 // defaultKeyring is the public key the running root trusts releases by.
 var defaultKeyring = "/" + update.KeyringPath
-
-func updateCmd(ctx context.Context, args []string) error {
-	fl := flag.NewFlagSet("update", flag.ExitOnError)
-	from := fl.String("from", update.DefaultSource, "the release, or a directory of releases: an update stick's partition, mounted")
-	esp := fl.String("esp", "", "where the ESP the machine booted from is mounted (default: mount it, for this run)")
-	keyring := fl.String("keyring", defaultKeyring, "the public key releases are checked against")
-	_ = fl.Parse(args)
-
-	keys, err := update.ReadKeyring(*keyring)
-	if err != nil {
-		return err
-	}
-	var root syscall.Stat_t
-	if err := syscall.Stat("/", &root); err != nil {
-		return err
-	}
-	espDir := *esp
-	if espDir == "" {
-		dir, unmount, err := mountBootedESP(ctx, "/sys", root.Dev)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = unmount() }()
-		espDir = dir
-	}
-	res, err := update.Run(ctx, update.Options{
-		Keys: keys, OSRelease: "/usr/lib/os-release", Source: *from,
-		Sys: "/sys", Root: root.Dev, OpenDisk: openDisk, ESP: espDir, Log: journal(),
-	})
-	if err != nil {
-		return err
-	}
-	switch {
-	case res.Written != "":
-		fmt.Printf("wrote %s: the next boot starts it, and falls back to this one if it does not come up\n", res.Written)
-	case res.Pending != "":
-		fmt.Printf("%s is written and waiting: the next boot starts it\n", res.Pending)
-	default:
-		fmt.Println("nothing newer than this machine runs")
-	}
-	return nil
-}
-
-// mountBootedESP mounts, for one run, the ESP of the disk the running root is on - the desktop
-// mounts none at boot - and answers where and how to unmount it.
-func mountBootedESP(ctx context.Context, sys string, dev uint64) (string, func() error, error) {
-	r, err := update.FindRoot(sys, dev)
-	if err != nil {
-		return "", nil, err
-	}
-	f, err := os.Open(r.Disk)
-	if err != nil {
-		return "", nil, err
-	}
-	table, err := gpt.Read(f)
-	_ = f.Close()
-	if err != nil {
-		return "", nil, fmt.Errorf("%s: %w", r.Disk, err)
-	}
-	n := 0
-	for i, p := range table.Partitions {
-		if p.Type == gpt.TypeESP {
-			n = i + 1
-			break
-		}
-	}
-	if n == 0 {
-		return "", nil, fmt.Errorf("%s has no ESP", r.Disk)
-	}
-	part, err := update.PartitionDevice(sys, filepath.Base(r.Disk), n)
-	if err != nil {
-		return "", nil, err
-	}
-	return mountVFAT(ctx, part)
-}
 
 // mountVFAT mounts the FAT file system at dev under /run, and answers where and how to unmount it.
 func mountVFAT(ctx context.Context, dev string) (string, func() error, error) {

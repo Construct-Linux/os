@@ -28,7 +28,7 @@ const ImageID = "spin-desktop"
 // detached OpenPGP signature of that list (gpg --detach-sign) by the key the machine's root trusts.
 const (
 	SumsFile      = "SHA256SUMS"
-	SignatureFile = "SHA256SUMS.sig"
+	SignatureFile = "SHA256SUMS.gpg"
 )
 
 // KeyringPath is where the root carries the public key a release's signature is checked against,
@@ -42,7 +42,7 @@ const KeyringPath = "usr/share/spin-desktop/release.pgp"
 // to count three tries of on the ESP.
 func Names(version, root, verity string) (rootFile, verityFile, uki string) {
 	prefix := ImageID + "_" + version
-	return prefix + "_" + root + ".root.raw", prefix + "_" + verity + ".verity.raw", prefix + ".efi"
+	return prefix + "_" + root + ".root.raw.xz", prefix + "_" + verity + ".verity.raw.xz", prefix + ".efi"
 }
 
 // ParseKeyring is the public keys in raw, armored (gpg --armor --export) or binary (gpg --export).
@@ -188,8 +188,8 @@ const (
 )
 
 var (
-	rootName   = regexp.MustCompile(`^` + ImageID + `_` + versionPattern + `_` + uuidPattern + `\.root\.raw$`)
-	verityName = regexp.MustCompile(`^` + ImageID + `_` + versionPattern + `_` + uuidPattern + `\.verity\.raw$`)
+	rootName   = regexp.MustCompile(`^` + ImageID + `_` + versionPattern + `_` + uuidPattern + `\.root\.raw\.xz$`)
+	verityName = regexp.MustCompile(`^` + ImageID + `_` + versionPattern + `_` + uuidPattern + `\.verity\.raw\.xz$`)
 	ukiName    = regexp.MustCompile(`^` + ImageID + `_` + versionPattern + `\.efi$`)
 )
 
@@ -238,14 +238,4 @@ func Find(sums map[string]string) (Release, error) {
 		r.Version = v
 	}
 	return r, nil
-}
-
-// ImageVersion is the IMAGE_VERSION an os-release says: the version a root is.
-func ImageVersion(osRelease string) (string, error) {
-	for l := range strings.Lines(osRelease) {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(l), "IMAGE_VERSION="); ok && v != "" {
-			return strings.Trim(v, `"`), nil
-		}
-	}
-	return "", errors.New("update: the root's os-release has no IMAGE_VERSION")
 }

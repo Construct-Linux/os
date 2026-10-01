@@ -4,18 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"os"
-	"path/filepath"
-	"strconv"
+
+	"github.com/ulikunitz/xz"
 
 	"github.com/spin-stack/spin-desktop/internal/gpt"
 )
 
-// Disk is the disk the slots are on, open to be read and written: the running root's.
+// Disk is the disk an install writes, open to be read and written.
 type Disk interface {
 	gpt.Disk
 	Sync() error
@@ -28,89 +26,38 @@ type Fetch func(ctx context.Context, name string) (io.ReadCloser, int64, error)
 // maxImage is the most a kernel image may be: the ESP holds two, and is 512 MiB.
 const maxImage = 200 << 20
 
-// Write writes r into target, a slot of disk that is not the booted one, and r's kernel image into
-// the ESP at esp beside the booted one's, for systemd-boot to try Tries times - what
-// systemd-sysupdate's three transfers of a slot's root, its hash tree and its kernel image do, in
-// its order, so that a write cut off anywhere leaves a machine that boots what it booted before:
-//
-//  1. every kernel image but the booted version's is removed, the target's old version's among
-//     them: nothing boots the slot while it is written, and the ESP keeps two versions at most;
-//  2. the target's partitions are labelled Empty;
-//  3. the root and the hash tree are written into them, each checked against its digest in the
-//     release as it is read - one that is not is a slot left Empty;
-//  4. the partitions are given the version's label and the UUIDs the root hash gives them, which
-//     the kernel image's command line names;
-//  5. the kernel image is written beside the booted one's under a name systemd-boot does not read,
-//     checked against its digest and held to naming the slot it boots, and renamed to
-//     <ImageID>_<version>+<Tries>.efi: only then does systemd-boot see it, and boot it first.
-func Write(ctx context.Context, disk Disk, esp string, target Slot, booted string, r Release, fetch Fetch) error {
-	if err := removeImages(esp, booted); err != nil {
-		return err
-	}
-	for _, p := range []gpt.Partition{target.Root, target.Verity} {
-		if err := gpt.Rename(disk, p.UUID, p.UUID, Empty); err != nil {
-			return err
-		}
-	}
-	if err := disk.Sync(); err != nil {
-		return err
-	}
-	for _, w := range []struct {
-		part gpt.Partition
-		file Artifact
-	}{{target.Root, r.Root}, {target.Verity, r.Verity}} {
-		if err := writePartition(ctx, disk, w.part, w.file, fetch); err != nil {
-			return err
-		}
-	}
-	if err := disk.Sync(); err != nil {
-		return err
-	}
-	label := ImageID + "_" + r.Version
-	for _, w := range []struct {
-		part gpt.Partition
-		file Artifact
-	}{{target.Root, r.Root}, {target.Verity, r.Verity}} {
-		if err := gpt.Rename(disk, w.part.UUID, w.file.UUID, label); err != nil {
-			return err
-		}
-	}
-	if err := disk.Sync(); err != nil {
-		return err
-	}
-	return writeImage(ctx, esp, r, fetch)
-}
-
-// removeImages removes from the ESP at esp every kernel image of bare metal's but booted's.
-func removeImages(esp, booted string) error {
-	images, err := Images(esp)
-	if err != nil {
-		return err
-	}
-	for _, i := range images {
-		if i.Version == booted {
-			continue
-		}
-		if err := os.Remove(filepath.Join(esp, Linux, i.Name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return err
-		}
-	}
-	return syncDir(filepath.Join(esp, Linux))
-}
-
-// writePartition writes the release's file a into the partition p of disk.
+// writePartition writes the release's file a - an xz-compressed partition image - into the
+// partition p of disk, decompressed: the compressed bytes as read hash to a's digest, and what they
+// decompress to fits p. Bytes are written before the digest is known, so a caller leaves the
+// partition labelled Empty until this returns nil: what it wrote is nothing that boots otherwise.
 func writePartition(ctx context.Context, disk Disk, p gpt.Partition, a Artifact, fetch Fetch) error {
-	body, size, err := fetch(ctx, a.Name)
+	body, _, err := fetch(ctx, a.Name)
 	if err != nil {
 		return err
 	}
 	defer func() { _ = body.Close() }() // read to its end or given up on
-	// A length the server says is refused before a byte is written; one it does not say, as it
-	// goes.
-	if size > p.Size() {
-		return fmt.Errorf("update: %s is %d bytes, and its partition holds %d", a.Name, size, p.Size())
+	h := sha256.New()
+	compressed := io.TeeReader(body, h)
+	xr, err := xz.NewReader(compressed)
+	if err != nil {
+		return fmt.Errorf("update: %s is not xz: %w", a.Name, err)
 	}
-	return copyChecked(io.NewOffsetWriter(disk, p.Offset()), body, p.Size(), a)
+	limit := p.Size()
+	n, err := io.Copy(io.NewOffsetWriter(disk, p.Offset()), io.LimitReader(xr, limit+1)) // mutate-exempt: any bound past the limit reads enough to find a longer image
+	if err != nil {
+		return fmt.Errorf("update: writing %s: %w", a.Name, err)
+	}
+	if n > limit {
+		return fmt.Errorf("update: %s decompresses to more than the %d bytes its partition holds", a.Name, limit)
+	}
+	// What follows the xz stream - padding, or anything else - is in the digest too.
+	if _, err := io.Copy(io.Discard, compressed); err != nil {
+		return fmt.Errorf("update: reading %s: %w", a.Name, err)
+	}
+	if got := hex.EncodeToString(h.Sum(nil)); got != a.SHA256 {
+		return fmt.Errorf("update: %s is %s, and %s says %s", a.Name, got, SumsFile, a.SHA256)
+	}
+	return nil
 }
 
 // copyChecked copies body, the release's file a, into w: no more than limit bytes, and what it
@@ -128,25 +75,6 @@ func copyChecked(w io.Writer, body io.Reader, limit int64, a Artifact) error {
 		return fmt.Errorf("update: %s is %s, and %s says %s", a.Name, got, SumsFile, a.SHA256)
 	}
 	return nil
-}
-
-// writeImage writes the release's kernel image into the ESP at esp, counted, as Write says.
-func writeImage(ctx context.Context, esp string, r Release, fetch Fetch) error {
-	dir := filepath.Join(esp, Linux)
-	partial := filepath.Join(dir, "."+r.UKI.Name+".partial")
-	if err := download(ctx, fetch, r.UKI, partial); err != nil {
-		_ = os.Remove(partial)
-		return err
-	}
-	if err := checkImage(partial, r.Version, r.Root.UUID, r.Verity.UUID); err != nil {
-		_ = os.Remove(partial)
-		return err
-	}
-	counted := ImageID + "_" + r.Version + "+" + strconv.Itoa(Tries) + ".efi"
-	if err := os.Rename(partial, filepath.Join(dir, counted)); err != nil { // mutate-exempt: a rename that worked is synced or not, which only a power cut tells apart
-		return err
-	}
-	return syncDir(dir)
 }
 
 // download writes the release's file a to path, synced: no more than a kernel image may be, and

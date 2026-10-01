@@ -6,133 +6,22 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log/slog"
 	"os"
 	"path/filepath"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-
-	"github.com/spin-stack/spin-desktop/internal/gpt"
 )
 
-// System is what an update and a boot check ask of the machine's systemd: whether a unit is
-// active, and the reboot.
+// System is what a boot check asks of the machine's systemd: whether a unit is active, and the
+// reboot.
 type System interface {
 	Active(ctx context.Context, unit string) (bool, error)
 	Reboot(ctx context.Context) error
 }
 
-// DefaultSource is where an update stick's release is mounted for spin-desktop update to read.
+// DefaultSource is where a stick's release is mounted (spin-desktop-update@, systemd-sysupdate's
+// file:// source), which install reads by default.
 const DefaultSource = "/run/spin-desktop/update"
-
-// Options is where an update reads and writes on a machine.
-type Options struct {
-	// Keys are what a release's signature is checked against; OSRelease the running root's
-	// os-release, whose IMAGE_VERSION is the booted version.
-	Keys      openpgp.KeyRing
-	OSRelease string
-	// Source is the directory a release is read from: one release, or a directory of them.
-	Source string
-	// Root is the running root's device, which FindRoot finds under Sys; OpenDisk opens the disk
-	// it answers, to be read and written.
-	Sys      string
-	Root     uint64
-	OpenDisk func(path string) (Disk, error)
-	// ESP is where the ESP the machine booted from is mounted.
-	ESP string
-	Log *slog.Logger
-}
-
-// ErrOlder is a release older than the version the machine runs: never written. Updates come on
-// sticks a person carries; an old one plugged in is not a way back - the boot menu is.
-var ErrOlder = errors.New("update: the release is older than this machine")
-
-// Result is what an update did: the version it wrote, if it wrote one, and the version a reboot
-// moves the machine to, if any.
-type Result struct {
-	Written, Pending string
-}
-
-// Run is one look at the source: the newest release there, its signature checked, written into the
-// slot the machine did not boot when it is newer than both the booted one and the one there, its
-// kernel image counted beside the booted one's. It never reboots: the person does, when they will,
-// and systemd-boot falls back from a version that does not come up.
-func Run(ctx context.Context, o Options) (Result, error) {
-	booted, err := imageVersion(o.OSRelease)
-	if err != nil {
-		return Result{}, err
-	}
-	r, fetch, err := Newest(ctx, o.Source, o.Keys)
-	if err != nil {
-		return Result{}, err
-	}
-	dev, err := FindRoot(o.Sys, o.Root)
-	if err != nil {
-		return Result{}, err
-	}
-	disk, err := o.OpenDisk(dev.Disk)
-	if err != nil {
-		return Result{}, err
-	}
-	if closer, ok := disk.(io.Closer); ok {
-		defer func() { _ = closer.Close() }() // every write is synced where it is made
-	}
-	table, err := gpt.Read(disk)
-	if err != nil {
-		return Result{}, fmt.Errorf("update: %s: %w", dev.Disk, err)
-	}
-	slots, err := Slots(table)
-	if err != nil {
-		return Result{}, err
-	}
-	bootedSlot, err := Booted(slots, dev.Starts, booted)
-	if err != nil {
-		return Result{}, err
-	}
-	var res Result
-	log := o.Log.With("running", booted, "release", r.Version)
-	switch c := Compare(r.Version, booted); {
-	case c < 0:
-		return Result{}, fmt.Errorf("%w: refusing %s, which is older than %s, the version it runs", ErrOlder, r.Version, booted)
-	case c == 0:
-		log.Info("this machine runs the release")
-	case holds(slots, r.Version):
-		log.Info("the release is written already")
-	default:
-		target, err := Target(slots, bootedSlot)
-		if err != nil {
-			return Result{}, err
-		}
-		log.Info("writing the release", "slot", target.Root.UUID, "was", target.Label)
-		if err := Write(ctx, disk, o.ESP, target, booted, r, fetch); err != nil {
-			return Result{}, err
-		}
-		if table, err = gpt.Read(disk); err != nil {
-			return Result{}, err
-		}
-		if slots, err = Slots(table); err != nil {
-			return Result{}, err
-		}
-		res.Written = r.Version
-		log.Info("written: systemd-boot tries it at the next boot, and falls back to this one if it does not come up", "tries", Tries)
-	}
-	images, err := Images(o.ESP)
-	if err != nil {
-		return Result{}, err
-	}
-	res.Pending = Pending(slots, images, booted)
-	return res, nil
-}
-
-// holds is whether one of slots holds version.
-func holds(slots []Slot, version string) bool {
-	for _, s := range slots {
-		if s.Version == version {
-			return true
-		}
-	}
-	return false
-}
 
 // Size limits of what is read before its signature is checked.
 const (
@@ -240,15 +129,6 @@ func readSmall(ctx context.Context, fetch Fetch, name string, limit int64) ([]by
 		return nil, fmt.Errorf("update: %s is more than %d bytes", name, limit)
 	}
 	return raw, nil
-}
-
-// imageVersion is the IMAGE_VERSION the os-release at path says.
-func imageVersion(path string) (string, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return "", err
-	}
-	return ImageVersion(string(raw))
 }
 
 // ReadKeyring is the keyring at path, which the root carries at KeyringPath.

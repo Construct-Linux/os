@@ -168,7 +168,7 @@ func TestAReleaseIsThreeFilesOfOneVersion(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got.Version != v1 || got.Root.UUID != root || got.Verity.UUID != verity || got.UKI.UUID != "" ||
-		got.Root.Name != ImageID+"_"+v1+"_"+root+".root.raw" || got.UKI.Name != ImageID+"_"+v1+".efi" ||
+		got.Root.Name != ImageID+"_"+v1+"_"+root+".root.raw.xz" || got.UKI.Name != ImageID+"_"+v1+".efi" ||
 		!strings.HasPrefix(got.Verity.SHA256, "2") {
 		t.Errorf("the release is %+v", got)
 	}
@@ -195,16 +195,6 @@ func TestAReleaseIsThreeFilesOfOneVersion(t *testing.T) {
 		if got, err := Find(m); err == nil {
 			t.Errorf("a list with %s was the release %+v", name, got)
 		}
-	}
-}
-
-// An os-release names its version once; one that does not is no root an update can reason about.
-func TestTheBootedVersionIsTheOSReleases(t *testing.T) {
-	if v, err := ImageVersion("NAME=x\nIMAGE_VERSION=\"20261001.134321\"\n"); err != nil || v != "20261001.134321" {
-		t.Errorf("read %q, %v", v, err)
-	}
-	if _, err := ImageVersion("NAME=x\n"); err == nil {
-		t.Error("an os-release with no version was read")
 	}
 }
 

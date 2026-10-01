@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
@@ -99,8 +100,9 @@ type InstallOptions struct {
 }
 
 // Install lays the desktop on o.Disk: everything on it is gone. The release under o.Source -
-// checked against o.Keys before anything is written - goes into slot A through the same checked
-// copy an update uses, slot B is left for the first update, the ESP gets systemd-boot and the
+// checked against o.Keys before anything is written - goes into slot A, decompressed and held to
+// its digests, labelled with its version only once both are; slot B is left Empty for
+// systemd-sysupdate's first update, the ESP gets systemd-boot and the
 // release's kernel image, blessed - a fresh install is known good, there is nothing to fall back
 // to - /var is made empty, and the firmware boots the disk first. It answers the table written.
 func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
@@ -120,8 +122,15 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if closer, ok := d.(io.Closer); ok {
 		defer func() { _ = closer.Close() }() // every write is synced where it is made
 	}
+	// Slot A is Empty until what it holds is checked: a copy cut off or refused leaves a disk with
+	// nothing that boots, not a slot a label vouches for.
+	writing := table
+	writing.Partitions = slices.Clone(table.Partitions)
+	for _, i := range []int{1, 2} {
+		writing.Partitions[i].Name = Empty
+	}
 	log.Info("writing the partition table")
-	if err := gpt.Write(d, o.Disk.Size, table); err != nil {
+	if err := gpt.Write(d, o.Disk.Size, writing); err != nil {
 		return gpt.Table{}, err
 	}
 	if err := d.Sync(); err != nil {
@@ -133,6 +142,14 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	}{{table.Partitions[1], r.Root}, {table.Partitions[2], r.Verity}} {
 		log.Info("writing slot A", "file", w.file.Name)
 		if err := writePartition(ctx, d, w.part, w.file, fetch); err != nil {
+			return gpt.Table{}, err
+		}
+	}
+	if err := d.Sync(); err != nil {
+		return gpt.Table{}, err
+	}
+	for _, p := range table.Partitions[1:3] {
+		if err := gpt.Rename(d, p.UUID, p.UUID, p.Name); err != nil {
 			return gpt.Table{}, err
 		}
 	}
@@ -183,7 +200,7 @@ const loaderConf = "timeout 3\neditor no\n"
 
 // layESP puts on the ESP mounted at dir systemd-boot - at systemd's path, which the boot entry
 // starts, and the removable one, which firmware boots without an entry - its configuration, and
-// r's kernel image, blessed, checked as an update checks it.
+// r's kernel image, blessed, held to its digest and to naming slot A.
 func layESP(ctx context.Context, dir, loader string, r Release, fetch Fetch) error {
 	boot, err := os.ReadFile(loader)
 	if err != nil {

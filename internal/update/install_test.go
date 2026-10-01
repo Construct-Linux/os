@@ -70,7 +70,7 @@ func (in *installer) options(t *testing.T, source string, size int64) InstallOpt
 	}
 }
 
-// An install lays the disk out as an update reads it - an ESP, slot A holding the release under the
+// An install lays the disk out as systemd-sysupdate's transfers read it - an ESP, slot A holding the release under the
 // UUIDs and label its files name, slot B empty, /var - writes the release's root and hash tree into
 // slot A, makes the ESP and /var, gives the ESP systemd-boot and the kernel image blessed, and makes
 // the firmware boot the disk first.
@@ -99,10 +99,6 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 	if read.Partitions[1].UUID != newRoot || read.Partitions[2].UUID != newVerity {
 		t.Errorf("slot A's UUIDs are %s and %s", read.Partitions[1].UUID, read.Partitions[2].UUID)
 	}
-	slots, err := Slots(read)
-	if err != nil || len(slots) != 2 || slots[0].Version != "20261001.134321" || slots[1].Version != "" {
-		t.Errorf("the slots are %+v, %v", slots, err)
-	}
 	slotA := make([]byte, len(body))
 	_, err = in.disk.ReadAt(slotA, read.Partitions[1].Offset())
 	must(t, err)
@@ -117,8 +113,8 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 			t.Errorf("the ESP lacks %s", f)
 		}
 	}
-	if images, _ := Images(in.esp); len(images) != 1 || images[0].Counted {
-		t.Errorf("the ESP's kernel images are %+v, not one blessed", images)
+	if images, _ := os.ReadDir(filepath.Join(in.esp, Linux)); len(images) != 1 || images[0].Name() != label+".efi" {
+		t.Errorf("the ESP's kernel images are %v, not %s.efi alone, blessed", images, label)
 	}
 	order, err := in.vars.Read("BootOrder", Global)
 	if err != nil || len(order) != 2 || binary.LittleEndian.Uint16(order) != 0 {
@@ -154,6 +150,30 @@ func TestAnInstallOfAnotherKeysReleaseWritesNothing(t *testing.T) {
 	must(t, err)
 	if !bytes.Equal(head, make([]byte, len(head))) || len(in.ran) != 0 {
 		t.Error("the disk was written")
+	}
+}
+
+// A root whose published bytes are not what SHA256SUMS says - changed after it was signed - is a
+// slot A left Empty: nothing boots it, and no kernel image is laid.
+func TestAnInstallOfAChangedRootLeavesSlotAEmpty(t *testing.T) {
+	in := newInstaller(t, installSize)
+	dir, _ := release(t, "20261001.134321", newRoot, newVerity, signer(), 0xb)
+	roots, _ := filepath.Glob(filepath.Join(dir, "*.root.raw.xz"))
+	f, err := os.OpenFile(roots[0], os.O_WRONLY, 0)
+	must(t, err)
+	_, err = f.WriteAt([]byte{0xff}, 100)
+	must(t, err)
+	must(t, f.Close())
+	if _, err := Install(t.Context(), in.options(t, dir, installSize)); err == nil {
+		t.Fatal("a changed root was installed")
+	}
+	read, err := gpt.Read(in.disk)
+	must(t, err)
+	if read.Partitions[1].Name != Empty || read.Partitions[2].Name != Empty {
+		t.Errorf("slot A is labelled %q and %q", read.Partitions[1].Name, read.Partitions[2].Name)
+	}
+	if _, err := os.Stat(filepath.Join(in.esp, Linux)); err == nil {
+		t.Error("a kernel image was laid")
 	}
 }
 
