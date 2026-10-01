@@ -1,0 +1,75 @@
+package:
+  name: gnome-connections
+  version: "51.0"
+  epoch: 0
+  description: Remote desktop client (VNC and RDP) for GNOME
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      - gtk-frdp
+      - gtk-vnc
+      - libhandy1
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-3-dev
+      # The unversioned libgtk-frdp-0.2.so (its only library name) ships in gtk-frdp, not -dev.
+      - gtk-frdp
+      - gtk-frdp-dev
+      - gtk-vnc-dev
+      # The help pages are built unconditionally (no option); itstool translates them.
+      - itstool
+      - libhandy1-dev
+      - libsecret-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - pulseaudio-dev
+      # The app itself is written in Vala.
+      - vala
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-connections/${{vars.series}}/gnome-connections-${{package.version}}.tar.xz
+      expected-sha256: e3a73728cf30f1e542aed3aa4f18a342e09349b97fe01dfaef86e1603e53af3c
+
+  # libhandy1 and gtk-vnc are built without Vala bindings; the app is Vala, so it gets its
+  # vapis generated here from their GIRs.
+  - runs: |
+      mkdir -p vapi
+      printf 'gio-2.0\ngobject-2.0\n' > vapi/gvnc-1.0.deps
+      printf 'gvnc-1.0\n' > vapi/gvncpulse-1.0.deps
+      printf 'gvnc-1.0\ngtk+-3.0\n' > vapi/gtk-vnc-2.0.deps
+      printf 'gtk+-3.0\n' > vapi/libhandy-1.deps
+      vapigen --library gvnc-1.0 --pkg gio-2.0 --pkg gobject-2.0 -d vapi /usr/share/gir-1.0/GVnc-1.0.gir
+      vapigen --library gvncpulse-1.0 --vapidir vapi --pkg gvnc-1.0 -d vapi /usr/share/gir-1.0/GVncPulse-1.0.gir
+      vapigen --library gtk-vnc-2.0 --vapidir vapi --pkg gvnc-1.0 --pkg gtk+-3.0 -d vapi /usr/share/gir-1.0/GtkVnc-2.0.gir
+      vapigen --library libhandy-1 --pkg gtk+-3.0 -d vapi /usr/share/gir-1.0/Handy-1.gir
+
+  # SPICE support is detected, not optioned: Wolfi has no spice-gtk client, so it stays off.
+  - uses: meson/configure
+    with:
+      opts: -Dvala_args=--vapidir=$(pwd)/vapi
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-connections-lang
+    pipeline:
+      - uses: split/locales
