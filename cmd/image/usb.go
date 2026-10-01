@@ -103,14 +103,21 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
 	}
+	// The root and its tree compressed - what is downloaded, and what GitHub takes (2 GB a file
+	// at most); systemd-import and spin-desktop install decompress them as they write.
 	files := map[string]string{
-		label + "_" + v.rootUUID + ".root.raw": v.rootImg,
-		label + "_" + v.vUUID + ".verity.raw":  v.treeImg,
-		label + ".efi":                         filepath.Join(esp, "EFI", "Linux", label+".efi"),
+		label + "_" + v.rootUUID + ".root.raw.xz": v.rootImg,
+		label + "_" + v.vUUID + ".verity.raw.xz":  v.treeImg,
+		label + ".efi":                            filepath.Join(esp, "EFI", "Linux", label+".efi"),
 	}
 	names := make([]string, 0, len(files))
 	for name, src := range files {
-		if err := os.Link(src, filepath.Join(dir, name)); err != nil {
+		dst := filepath.Join(dir, name)
+		if strings.HasSuffix(name, ".xz") {
+			if err := run("sh", "-c", "xz -T0 -6 -c "+shellQuote(src)+" > "+shellQuote(dst)); err != nil {
+				return "", err
+			}
+		} else if err := os.Link(src, dst); err != nil {
 			return "", err
 		}
 		names = append(names, name)
@@ -152,16 +159,17 @@ func usbDisk(args []string) error {
 		return fmt.Errorf("%s is not signed: %w", rel, err)
 	}
 	label := "spin-desktop_" + *version
-	v := verity{}
-	matches, _ := filepath.Glob(filepath.Join(rel, label+"_*.root.raw"))
-	vm, _ := filepath.Glob(filepath.Join(rel, label+"_*.verity.raw"))
+	stage := filepath.Join(out, "usb")
+	// The stick boots the uncompressed root and tree the build left in its stage; the release
+	// names the partition UUIDs they take.
+	v := verity{rootImg: filepath.Join(stage, "root.img"), treeImg: filepath.Join(stage, "root.verity")}
+	matches, _ := filepath.Glob(filepath.Join(rel, label+"_*.root.raw.xz"))
+	vm, _ := filepath.Glob(filepath.Join(rel, label+"_*.verity.raw.xz"))
 	if len(matches) != 1 || len(vm) != 1 {
 		return fmt.Errorf("%s has no single root and verity", rel)
 	}
-	v.rootImg, v.treeImg = matches[0], vm[0]
-	v.rootUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(matches[0]), label+"_"), ".root.raw")
-	v.vUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(vm[0]), label+"_"), ".verity.raw")
-	stage := filepath.Join(out, "usb")
+	v.rootUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(matches[0]), label+"_"), ".root.raw.xz")
+	v.vUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(vm[0]), label+"_"), ".verity.raw.xz")
 	disk := filepath.Join(stage, "disk.raw")
 	_ = os.Remove(disk)
 	if err := repart(stage, disk, label, v, rel); err != nil {
