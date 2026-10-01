@@ -1,0 +1,167 @@
+package:
+  name: mesa
+  version: "26.2.3"
+  # Replaces Wolfi's mesa 26.2.3 (epoch 1), which has no Intel drivers (iris, crocus, anv).
+  epoch: 2
+  description: Mesa DRI OpenGL library
+  copyright:
+    - license: MIT AND SGI-B-2.0 AND BSL-1.0
+  dependencies:
+    runtime:
+      - libglvnd
+      - wayland-protocols
+
+vars:
+  llvm-version: 22
+  python-version: "3.13"
+  # Drivers keep Wolfi's DRI path so libva and Xwayland find them where Wolfi's builds look.
+  dri-driverdir: /usr/lib/xorg/modules/dri
+  # LLVMSPIRVLib is built here and linked statically into mesa_clc, a build-time tool only.
+  spirv-prefix: /home/build/_spirv
+
+environment:
+  contents:
+    packages:
+      - bison
+      - build-base
+      - busybox
+      - ca-certificates-bundle
+      - clang-${{vars.llvm-version}}
+      - cmake
+      - elfutils-dev
+      - expat-dev
+      - findutils
+      - flex
+      - gettext
+      - glslang
+      - glslang-dev
+      - libdisplay-info-dev
+      - libdrm-dev
+      - libglvnd-dev
+      - libva-dev
+      - libx11-dev
+      - libxcb-dev
+      - libxdamage-dev
+      - libxext-dev
+      - libxfixes-dev
+      - libxml2-dev
+      - libxrandr-dev
+      - libxrender-dev
+      - libxshmfence-dev
+      - libxxf86vm-dev
+      - llvm-${{vars.llvm-version}}
+      - llvm-${{vars.llvm-version}}-dev
+      - meson
+      - ninja
+      - py${{vars.python-version}}-mako
+      - py${{vars.python-version}}-markupsafe
+      - py${{vars.python-version}}-packaging
+      - py${{vars.python-version}}-ply
+      - py${{vars.python-version}}-pycparser
+      - py${{vars.python-version}}-pyyaml
+      - python-${{vars.python-version}}
+      - spirv-headers
+      - spirv-tools-dev
+      - systemd-dev
+      - wayland-dev
+      - wayland-protocols
+      - xorgproto
+      - zlib-dev
+      - zstd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://mesa.freedesktop.org/archive/mesa-${{package.version}}.tar.xz
+      expected-sha256: 1628058a8d2c0615975de5a15ab7bbb9638c50000b5bed9456ff423ea034a81f
+
+  # iris, crocus and anv compile their OpenCL kernels with mesa_clc, which needs LLVMSPIRVLib;
+  # Wolfi has no SPIRV-LLVM-Translator. Its major.minor must match LLVM's.
+  - uses: git-checkout
+    with:
+      repository: https://github.com/KhronosGroup/SPIRV-LLVM-Translator
+      tag: v22.1.7
+      expected-commit: b4c9189bcba7ed9a1189d6a2c27edc3d9a3d5277
+      destination: _translator
+
+  - runs: |
+      cmake -S _translator -B _translator/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{vars.spirv-prefix}} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DLLVM_DIR=/usr/lib/llvm-${{vars.llvm-version}}/lib/cmake/llvm -DLLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR=/usr -DLLVM_SPIRV_INCLUDE_TESTS=OFF
+      ninja -C _translator/build install
+
+  # Gallium: Wolfi's set for x86 (v3d and vc4 are Raspberry Pi only) plus Intel iris and crocus.
+  # Vulkan: anv, radv and lavapipe; intel_hasvk (pre-Skylake) and nouveau (needs Rust) are off.
+  # rusticl is off: it needs libclc and Rust bindgen, and the desktop has no OpenCL user.
+  - runs: |
+      export CFLAGS="$CFLAGS -O2 -g1"
+      export CXXFLAGS="$CXXFLAGS -O2 -g1"
+      export PKG_CONFIG_PATH="${{vars.spirv-prefix}}/lib/pkgconfig${PKG_CONFIG_PATH:+:$PKG_CONFIG_PATH}"
+      meson setup output . --prefix=/usr --libdir=lib --buildtype=plain -Ddri-drivers-path=${{vars.dri-driverdir}} -Dgallium-drivers=iris,crocus,radeonsi,r600,r300,nouveau,llvmpipe,softpipe,virgl,zink -Dvulkan-drivers=intel,amd,swrast -Dvulkan-layers=device-select,overlay -Dintel-rt=enabled -Dplatforms=x11,wayland -Dllvm=enabled -Dshared-llvm=enabled -Dglvnd=enabled -Dgbm=enabled -Dglx=dri -Dopengl=true -Dgles1=enabled -Dgles2=enabled -Degl=enabled -Dgallium-extra-hud=true -Dgallium-va=enabled -Dgallium-rusticl=false -Dvideo-codecs=h264dec,h264enc,h265dec,h265enc -Dexpat=enabled -Dzstd=enabled -Dshader-cache=enabled -Dxmlconfig=enabled -Dbuild-tests=false -Db_ndebug=true -Db_lto=false
+      meson configure --no-pager output
+      meson compile -C output
+      DESTDIR="${{targets.destdir}}" meson install --no-rebuild -C output
+
+  # wayland-protocols owns its spec files.
+  - runs: |
+      rm -rf "${{targets.destdir}}/usr/share/wayland-protocols"
+
+  - uses: strip
+
+data:
+  - name: libs
+    items:
+      egl: libEGL_mesa
+      glx: libGLX_mesa
+      gbm: libgbm
+      libgallium: libgallium-${{package.version}}
+
+  - name: transitive
+    items:
+      gl: ""
+      gles: ""
+
+  - name: vulkan
+    items:
+      intel: intel
+      ati: radeon
+      swrast: lvp
+
+subpackages:
+  - range: libs
+    name: mesa-${{range.key}}
+    description: mesa ${{range.key}}
+    dependencies:
+      runtime:
+        - libglvnd
+        - mesa-libgallium
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/${{range.value}}.so* ${{targets.subpkgdir}}/usr/lib
+
+  - range: vulkan
+    name: mesa-vulkan-${{range.key}}
+    description: Mesa Vulkan driver (${{range.value}})
+    dependencies:
+      runtime:
+        - mesa
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib ${{targets.subpkgdir}}/usr/share/vulkan/icd.d
+          mv ${{targets.destdir}}/usr/lib/libvulkan_${{range.value}}*.so ${{targets.subpkgdir}}/usr/lib/
+          mv ${{targets.destdir}}/usr/share/vulkan/icd.d/${{range.value}}_icd.*.json ${{targets.subpkgdir}}/usr/share/vulkan/icd.d/
+
+  - range: transitive
+    name: mesa-${{range.key}}
+    description: meta package providing mesa ${{range.key}} transitive dependencies
+    dependencies:
+      runtime:
+        - mesa
+        - mesa-glx
+
+  - name: mesa-dev
+    description: mesa dev
+    dependencies:
+      runtime:
+        - libglvnd-dev
+    pipeline:
+      - uses: split/dev
