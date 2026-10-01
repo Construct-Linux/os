@@ -1,0 +1,110 @@
+package:
+  name: mutter
+  version: "51.0"
+  epoch: 0
+  description: Wayland display server and window manager behind GNOME Shell
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gnome-settings-daemon
+      - gsettings-desktop-schemas
+      - xkeyboard-config
+      - xwayland
+
+environment:
+  contents:
+    packages:
+      - at-spi2-core-dev
+      - build-base
+      - busybox
+      - cairo-dev
+      - colord-dev
+      - fribidi-dev
+      - gettext
+      - glib-dev
+      - glib-gir
+      - gnome-desktop-dev
+      - gnome-settings-daemon-dev
+      - gobject-introspection-dev
+      - graphene-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-4-dev
+      - harfbuzz-dev
+      - json-glib-dev
+      - lcms2-dev
+      - libcanberra-dev
+      - libdisplay-info-dev
+      - libdrm-dev
+      - libei-dev
+      - libgudev-dev
+      - libice-dev
+      - libinput-dev
+      - libsm-dev
+      - libwacom-dev
+      - libx11-dev
+      - libxau-dev
+      - libxcb-dev
+      - libxcomposite-dev
+      - libxcursor-dev
+      - libxcvt
+      - libxdamage-dev
+      - libxext-dev
+      - libxfixes-dev
+      - libxi-dev
+      - libxinerama-dev
+      - libxkbcommon-dev
+      - libxkbfile-dev
+      - libxrandr-dev
+      - libxtst-dev
+      - mesa-dev
+      - meson
+      - ninja
+      - pango-dev
+      - pipewire-dev
+      - pixman-dev
+      - python-3.13
+      - startup-notification-dev
+      - systemd-dev
+      - wayland-dev
+      - wayland-protocols-dev
+      - xkeyboard-config-dev
+      - xwayland
+      - xwayland-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/mutter/${{vars.series}}/mutter-${{package.version}}.tar.xz
+      expected-sha256: 5d28f3ae225692428fcafb96500d673f34328b698b86960c9c1460d0b1d983b3
+
+  # The man pages are built unconditionally and need rst2man (docutils).
+  - runs: sed -i "/subdir('doc\/man')/d" meson.build
+
+  # profiler off: needs sysprof, which is not shipped
+  # devkit off: the Mutter Development Kit is a developer tool, not part of the session
+  # bash_completion off: needs register-python-argcomplete for a developer CLI
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dremote_desktop=true -Dxwayland=true -Dlibwacom=true -Dsound_player=true -Dstartup_notification=true -Dprofiler=false -Ddevkit=disabled -Dbash_completion=false -Ddocs=false -Dtests=disabled -Dcogl_tests=false -Dclutter_tests=false -Dmutter_tests=false -Dinstalled_tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: mutter-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - mutter
+
+  - name: mutter-lang
+    pipeline:
+      - uses: split/locales
