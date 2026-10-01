@@ -1,0 +1,76 @@
+package:
+  name: flatpak
+  version: 1.18.4
+  epoch: 0
+  description: Application deployment framework for desktop apps
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - bubblewrap
+      - fuse3
+      - xdg-dbus-proxy
+
+environment:
+  contents:
+    packages:
+      - appstream-dev
+      - bison
+      - bubblewrap
+      - build-base
+      - busybox
+      - curl-dev
+      - dconf-dev
+      - fuse3
+      - fuse3-dev
+      - gdk-pixbuf-dev
+      - gettext
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gpgme-dev
+      - json-glib-dev
+      - libarchive-dev
+      - libcap-dev
+      - libseccomp-dev
+      - libxau-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - ostree-dev
+      - polkit-dev
+      - py3.13-pyparsing
+      - python-3.13
+      - systemd-dev
+      - wayland-dev
+      - wayland-protocols-dev
+      - xdg-dbus-proxy
+      - zstd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/flatpak/flatpak/releases/download/${{package.version}}/flatpak-${{package.version}}.tar.xz
+      expected-sha256: b899a7a00c48d2c626cb8ec33fe556720b376c25805d7222430c0fdca4c6ac8d
+
+  # bwrap and xdg-dbus-proxy come from packages, not the bundled subprojects.
+  # malcontent (parental controls) and SELinux have no user on this image.
+  # Man pages and docbook docs need xsltproc/xmlto stylesheets.
+  - uses: meson/configure
+    with:
+      opts: -Dsystem_bubblewrap=/usr/bin/bwrap -Dsystem_dbus_proxy=/usr/bin/xdg-dbus-proxy -Dsystem_fusermount=/usr/bin/fusermount3 -Ddbus_config_dir=/usr/share/dbus-1/system.d -Dsystemd=enabled -Dgir=enabled -Ddconf=enabled -Dlibzstd=enabled -Dwayland_security_context=enabled -Dmalcontent=disabled -Dselinux_module=disabled -Dman=disabled -Ddocbook_docs=disabled -Dgtkdoc=disabled -Dtests=false -Dinstalled_tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: flatpak-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: flatpak-lang
+    pipeline:
+      - uses: split/locales
