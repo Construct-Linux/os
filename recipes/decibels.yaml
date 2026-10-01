@@ -1,0 +1,66 @@
+package:
+  name: decibels
+  version: 49.6.1
+  epoch: 0
+  description: Play audio files
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    # A GJS app: melange derives nothing from its gi:// imports, so every typelib it loads
+    # is declared here.
+    runtime:
+      - gjs
+      - glib-gir
+      - graphene
+      - gtk-4
+      - libadwaita
+      - gstreamer
+      # GstAudio and GstPbutils typelibs, plus the playbin and the Ogg/Vorbis/Opus decoders.
+      - gst-plugins-base
+      # GstPlay typelib.
+      - gst-plugins-bad
+      # The PipeWire/Pulse sink, FLAC, WAV and MP3 (mpg123) playback.
+      - gst-plugins-good
+
+environment:
+  contents:
+    packages:
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - gjs-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - meson
+      - ninja
+      - typescript
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/decibels/${{vars.series}}/decibels-${{package.version}}.tar.xz
+      expected-sha256: 9a67ba14df23517c849fcfdea764c73a241e59055299b125e98aeab2a7801ad5
+
+  # Wolfi's TypeScript is 7, which rejects the node10 resolution and baseUrl this tsconfig uses
+  # and needs rootDir to keep the src/ output layout meson installs from.
+  - uses: patch
+    with:
+      patches: decibels/typescript-7.patch
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+vars:
+  # No GNOME 51 release exists; 49 is the newest series.
+  series: "49"
+
+subpackages:
+  - name: decibels-lang
+    pipeline:
+      - uses: split/locales

@@ -1,0 +1,22 @@
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -8,14 +8,14 @@
+     "allowJs": true,
+     "checkJs": true,
+     "outDir": "_build/tsc-out",
++    "rootDir": "./src",
+     "strict": true,
+-    "moduleResolution": "node",
+-    "baseUrl": ".",
++    "moduleResolution": "bundler",
+     "paths": {
+       "*": [
+-        "*",
+-        "types",
+-        "gi-types"
++        "./*",
++        "./types",
++        "./gi-types"
+       ]
+     },
+     "typeRoots": [
