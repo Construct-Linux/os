@@ -4,8 +4,15 @@ A GNOME desktop on [Wolfi](https://github.com/wolfi-dev), built and verified lik
 (spin-ami): one image, read-only and checked block by block, updated as a whole into a second
 slot, and rolled back by itself when a new version does not come up.
 
-- **GNOME 51** on Wayland, with the core apps (Files, Terminal, Settings, Text Editor, Calculator,
-  Image Viewer, System Monitor, Disks), Firefox, and Flatpak with Flathub (Chrome).
+- **GNOME 51** on Wayland, with GNOME's core apps (Files, Text Editor, Calendar, Maps, Software,
+  Papers, ...), Ptyxis, Firefox, and Flatpak with Flathub (Chrome).
+- **Its own look**: Orchis (teal, dark) for the shell, GTK 3 and libadwaita apps alike, following
+  the light/dark switch; Tela icons; Bibata's cursor. A top bar with the clock and indicators on
+  the right, and a small centred dock (Dash to Panel). Extensions: AppIndicator, Clipboard
+  Indicator, Just Perfection, Caffeine, Vitals, Tiling Shell.
+- **Built for GNOME 51, fixed where it is not**: the theme, the icons, the cursor and six of the
+  extensions come from forks with a `gnome-51` branch - upstream's issues triaged against this
+  stack, one commit per fix - and each recipe pins its commit and names the fixes it takes.
 - **What Wolfi lacks is built here**: about 110 melange recipes in `recipes/` - the GNOME stack,
   and Wolfi packages rebuilt where Wolfi's fall short (mesa with Intel's drivers and Vulkan,
   PipeWire with Bluetooth audio, systemd-sysupdate, ...).
@@ -38,8 +45,9 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
 
 ## Test it
 
-`task test` drives the desktop in QEMU (every app, Settings, audio, Docker, failed units, core
-dumps, with screenshots); `task test:usb` does the same booted from a USB stick by UEFI;
+`task test` drives the desktop in QEMU (every app, Settings, the shell's own views and the lock
+screen, each extension's state, audio, Docker, failed units, core dumps, the shell's log, with a
+screenshot of each); `task test:usb` does the same booted from a USB stick by UEFI;
 `task test:lifecycle` installs onto an NVMe disk, refuses forged updates, updates from a URL and
 rolls back from a broken release. `AGENTS.md` says what each change needs.
 
