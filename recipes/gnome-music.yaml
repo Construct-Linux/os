@@ -1,0 +1,84 @@
+package:
+  name: gnome-music
+  version: "50.0"
+  epoch: 0
+  description: Play and organize your music collection
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    # A Python app: melange derives nothing from its gi imports, so the interpreter, PyGObject
+    # and every typelib it loads are declared here.
+    runtime:
+      - python-3.13
+      - py3.13-gobject3
+      # PyGObject's cairo foreign struct support, used when GTK hands Python a cairo context.
+      - py3.13-cairo
+      - glib-gir
+      - gdk-pixbuf
+      - graphene
+      - pango
+      - gtk-4
+      - libadwaita
+      - libsoup3
+      - libmediaart
+      - grilo
+      # The local-files and Tracker sources Music browses through Grilo.
+      - grilo-plugins
+      # Tracker/Tsparql typelibs; localsearch is the indexer that finds the music.
+      - tinysparql
+      - localsearch
+      - gstreamer
+      # GstAudio and GstPbutils typelibs, plus playbin and the Ogg/Vorbis/Opus decoders.
+      - gst-plugins-base
+      # The PipeWire/Pulse sink, FLAC, WAV and MP3 (mpg123) playback.
+      - gst-plugins-good
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - grilo-dev
+      - grilo-plugins-dev
+      - gtk-4-dev
+      - itstool
+      - libadwaita-dev
+      - libmediaart-dev
+      - libsoup3-dev
+      - meson
+      - ninja
+      - pango-dev
+      - py3.13-gobject3-dev
+      - python-3.13
+      - tinysparql-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-music/${{vars.series}}/gnome-music-${{package.version}}.tar.xz
+      expected-sha256: c72890ca7e5809cefeb876b01199f8b197146b5c25e9d5745301a284c0f3cdaa
+
+  # Wolfi's py3.13-cairo ships no py3cairo.pc and Music never builds against pycairo, so the
+  # pkg-config check goes. The yelp help is docs and has no option, so its subdir goes too.
+  - uses: patch
+    with:
+      patches: gnome-music/meson.patch
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+vars:
+  # No GNOME 51 release exists; 50 is the newest series.
+  series: "50"
+
+subpackages:
+  - name: gnome-music-lang
+    pipeline:
+      - uses: split/locales
