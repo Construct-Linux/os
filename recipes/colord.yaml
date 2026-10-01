@@ -1,0 +1,55 @@
+package:
+  name: colord
+  version: 1.4.8
+  epoch: 0
+  description: System daemon for managing color devices
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - lcms2-dev
+      - libgudev-dev
+      - libgusb-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - sqlite-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://www.freedesktop.org/software/colord/releases/colord-${{package.version}}.tar.xz
+      expected-sha256: 21500bd68975312a7f0f3ce6019d9f75f42aacaa75ca7115ec720b5445406896
+
+  # The post-install chown to the colord user fails in the build root, where
+  # that user does not exist; systemd-tmpfiles sets the owner at boot instead.
+  - runs: |
+      sed -i '/^if \[ `id -u` = 0 \]/,/^fi/d' meson_post_install.sh
+
+  # argyllcms_sensor off: ArgyllCMS is not packaged; sane off: no scanners;
+  # bash_completion off: no interactive colormgr use in the session
+  - uses: meson/configure
+    with:
+      opts: -Dsystemd=true -Dudev_rules=true -Ddaemon_user=colord -Dintrospection=true -Dvapi=false -Dargyllcms_sensor=false -Dsane=false -Dbash_completion=false -Dprint_profiles=false -Dsession_example=false -Dtests=false -Dinstalled_tests=false -Dman=false -Ddocs=false
+
+  # cd-create-profile stamps the bundled ICC profiles with SOURCE_DATE_EPOCH
+  # and rejects melange's 0; the release date keeps the build reproducible.
+  - runs: |
+      SOURCE_DATE_EPOCH=1750687597 meson compile -C output
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: colord-dev
+    pipeline:
+      - uses: split/dev
