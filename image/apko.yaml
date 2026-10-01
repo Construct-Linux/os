@@ -14,6 +14,9 @@ contents:
     - systemd-init
     - systemd-logind-service
     - systemd-timesyncd
+    - systemd-userdb
+    - shared-mime-info
+    - fontconfig
     - udev
     - dbus
     - kmod

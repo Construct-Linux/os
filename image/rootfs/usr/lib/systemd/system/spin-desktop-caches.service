@@ -1,0 +1,20 @@
+# The caches packages' install triggers would write, which apko does not run: GSettings' compiled
+# schemas, fontconfig's, the icon themes' and the MIME database. E2 writes them at boot into the
+# root; an image with a read-only /usr builds them at image time instead.
+[Unit]
+Description=Desktop caches packages leave to their triggers
+DefaultDependencies=no
+After=local-fs.target
+Before=display-manager.service systemd-user-sessions.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/glib-compile-schemas /usr/share/glib-2.0/schemas
+ExecStart=-/usr/bin/fc-cache -s
+ExecStart=-/usr/bin/update-mime-database /usr/share/mime
+ExecStart=-/usr/bin/gtk4-update-icon-cache -q -t -f /usr/share/icons/hicolor
+ExecStart=-/usr/bin/gtk4-update-icon-cache -q -t -f /usr/share/icons/Adwaita
+
+[Install]
+WantedBy=sysinit.target

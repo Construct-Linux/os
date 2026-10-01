@@ -1,11 +1,17 @@
 package:
   name: mutter
   version: "51.0"
-  epoch: 0
+  epoch: 1
   description: Wayland display server and window manager behind GNOME Shell
   copyright:
     - license: GPL-2.0-or-later
   dependencies:
+    # clutter, cogl and mtk live in /usr/lib/mutter-51, where melange does not look for libraries
+    # to provide; gnome-shell links them and depends on these names.
+    provides:
+      - so:libmutter-clutter-51.so.0=0
+      - so:libmutter-cogl-51.so.0=0
+      - so:libmutter-mtk-51.so.0=0
     runtime:
       - gnome-settings-daemon
       - gsettings-desktop-schemas

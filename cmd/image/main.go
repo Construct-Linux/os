@@ -158,6 +158,7 @@ func disk(args []string) error {
 		dirLayer{dir: "image/rootfs"},
 		links{
 			"etc/systemd/system/default.target":                                                   "/usr/lib/systemd/system/graphical.target",
+			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service":                 "/usr/lib/systemd/system/spin-desktop-caches.service",
 			"etc/systemd/system/display-manager.service":                                          "/usr/lib/systemd/system/gdm.service",
 			"etc/systemd/system/multi-user.target.wants/NetworkManager.service":                   "/usr/lib/systemd/system/NetworkManager.service",
 			"etc/systemd/system/dbus-org.freedesktop.nm-dispatcher.service":                       "/usr/lib/systemd/system/NetworkManager-dispatcher.service",
