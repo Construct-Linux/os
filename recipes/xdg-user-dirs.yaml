@@ -1,0 +1,38 @@
+package:
+  name: xdg-user-dirs
+  version: "0.20"
+  epoch: 0
+  description: Manage user directories like ~/Desktop and ~/Music
+  copyright:
+    - license: MIT AND GPL-2.0-only
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext-dev
+      - meson
+      - ninja
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://user-dirs.freedesktop.org/releases/xdg-user-dirs-${{package.version}}.tar.xz
+      expected-sha256: b8e34286278f4fef3e1bfe9685c395ccc0eb50c14d3a2fb4953dd00fbfd3af39
+
+  - uses: meson/configure
+    with:
+      opts: -Ddocs=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: xdg-user-dirs-lang
+    pipeline:
+      - uses: split/locales
