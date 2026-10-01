@@ -1,0 +1,20 @@
+# Spin Desktop's look, the defaults every user starts from; each person changes them in Settings
+# or Tweaks, in their own dconf database. Orchis for the shell and GTK 3; libadwaita apps keep
+# their own style and follow the teal accent - forcing a theme onto them breaks with each release.
+
+[org/gnome/desktop/interface]
+gtk-theme='Orchis-Teal-Dark'
+icon-theme='Tela-dark'
+cursor-theme='Bibata-Modern-Classic'
+accent-color='teal'
+color-scheme='prefer-dark'
+
+[org/gnome/shell/extensions/user-theme]
+name='Orchis-Teal-Dark'
+
+# The set a developer keeps on: the shell theme, tray icons, clipboard history, the panel's
+# tweaks, staying awake, system monitors, tiling, and a taskbar. Workspace Indicator, Removable
+# Drive Menu and Night Theme Switcher are installed, off: the last turns libadwaita light by day
+# while the shell and GTK 3 stay on Orchis's dark theme.
+[org/gnome/shell]
+enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com']
