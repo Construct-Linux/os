@@ -1,0 +1,65 @@
+package:
+  name: gnome-desktop
+  version: "51.0"
+  epoch: 0
+  description: GNOME desktop core libraries
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      # the thumbnailer sandbox runs under bwrap
+      - bubblewrap
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - fontconfig-dev
+      - gdk-pixbuf-dev
+      - gettext
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-4-dev
+      - iso-codes-dev
+      - itstool
+      - libseccomp-dev
+      - libxkbcommon-dev
+      - libxml2-utils
+      - meson
+      - ninja
+      - qrencode-dev
+      - systemd-dev
+      - xkeyboard-config-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-desktop/${{vars.series}}/gnome-desktop-${{package.version}}.tar.xz
+      expected-sha256: 9ebeb9f1769d3c310caeadd921ab34c8f264b92937740518b3bc859a579a6912
+
+  # legacy_library off: the GTK3 libgnome-desktop-3 has no consumer in the GNOME 51 session
+  # desktop_docs/debug_tools off: help pages and debug binaries are not shipped
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dudev=enabled -Dsystemd=enabled -Dbuild_gtk4=true -Dqr=enabled -Dlegacy_library=false -Ddesktop_docs=false -Ddebug_tools=false -Dgtk_doc=false -Dinstalled_tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-desktop-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - gnome-desktop
+        - gsettings-desktop-schemas-dev
