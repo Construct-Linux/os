@@ -1,0 +1,37 @@
+systemd-sysupdate as a standalone binary, linked statically against systemd's
+own libraries the way systemd-repart.standalone is.
+
+Wolfi's systemd is built with -Dsysupdate=disabled, so spin-desktop builds
+systemd-sysupdate on its own. Upstream v261.3 has no systemd-sysupdate.standalone
+target; the normal target links libsystemd-shared-261.so, which would tie the
+package to the exact build of Wolfi's systemd. The standalone one carries what
+it needs and only takes the system libraries it names.
+
+diff --git a/src/sysupdate/meson.build b/src/sysupdate/meson.build
+index da554dd..09f6e4a 100644
+--- a/src/sysupdate/meson.build
++++ b/src/sysupdate/meson.build
+@@ -32,6 +32,23 @@ executables += [
+                         libopenssl_cflags,
+                 ],
+         },
++        executable_template + {
++                'name' : 'systemd-sysupdate.standalone',
++                'public' : true,
++                'conditions' : ['ENABLE_SYSUPDATE'],
++                'sources' : systemd_sysupdate_sources,
++                'objects' : ['systemd-sysupdate'],
++                'link_with' : [
++                        libc_wrapper_static,
++                        libbasic_static,
++                        libshared_static,
++                        libsystemd_static,
++                ],
++                'dependencies' : [
++                        libfdisk_cflags,
++                        libopenssl_cflags,
++                ],
++        },
+         libexec_template + {
+                 'name' : 'systemd-sysupdated',
+                 'dbus' : true,

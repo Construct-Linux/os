@@ -1,0 +1,99 @@
+package:
+  name: systemd-sysupdate
+  version: "261.3"
+  epoch: 0
+  description: systemd-sysupdate, standalone, for the systemd Wolfi builds without it
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      # It writes each transfer by running systemd-import (local sources) or systemd-pull (URL
+      # sources), which Wolfi ships in systemd-container.
+      - systemd-container
+      # systemd-pull checks a URL source's SHA256SUMS.gpg by running gpg.
+      - gpg
+
+vars:
+  llvm-version: 22
+  python-version: 3.13
+
+# Wolfi's systemd build environment, so the configure below takes the same decisions it does.
+environment:
+  contents:
+    packages:
+      - acl-dev
+      - audit-dev
+      - bpftool
+      - build-base
+      - busybox
+      - ca-certificates-bundle
+      - clang-${{vars.llvm-version}}
+      - coreutils
+      - cryptsetup-dev
+      - curl-dev
+      - dbus-dev
+      - findutils
+      - glibc-2.44-dev
+      - gperf
+      - kmod-dev
+      - libarchive-dev
+      - libbpf-dev
+      - libcap-dev
+      - libgcrypt-dev
+      - libgpg-error-dev
+      - libidn2-dev
+      - libmicrohttpd-dev
+      - libseccomp-dev
+      - libselinux-dev
+      - linux-headers
+      - linux-pam-dev
+      - llvm-${{vars.llvm-version}}
+      - meson
+      - nftables-dev
+      - ninja
+      - openssl-dev
+      - pcre2-dev
+      - py${{vars.python-version}}-jinja2
+      - py${{vars.python-version}}-pefile
+      - py${{vars.python-version}}-pyelftools
+      - python-${{vars.python-version}}
+      - util-linux-dev
+      - xz-dev
+      - zlib-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/systemd/systemd
+      tag: v${{package.version}}
+      expected-commit: 3255daee1572366b74fe92f002a3d60ecbb27103
+
+  # libaudit-comm-limit.patch is Wolfi's (wolfi-dev/os systemd/), kept so the tree is the one
+  # Wolfi's systemd is built from; standalone.patch adds the target built below.
+  - uses: patch
+    with:
+      patches: systemd-sysupdate/libaudit-comm-limit.patch systemd-sysupdate/standalone.patch
+
+  # Wolfi's options, with sysupdate on (Wolfi turns it off) and the standalone binaries, which
+  # link systemd's own libraries statically: the binary does not depend on the exact build of
+  # Wolfi's libsystemd-shared.
+  - uses: meson/configure
+    with:
+      opts: -Dmode=release -Dvmspawn=enabled -Dinstall-tests=false -Dstandalone-binaries=true -Dsplit-bin=false -Ddefault-dnssec=no -Dsysupdate=enabled -Dsysupdated=disabled -Dukify=true -Dman=disabled -Dhtml=disabled -Dtests=false
+
+  # Only the one binary: the rest of systemd is Wolfi's.
+  - runs: meson compile -C output systemd-sysupdate.standalone
+
+  # The units are plain files, installed as meson would and not enabled.
+  - runs: |
+      install -Dm755 output/systemd-sysupdate.standalone ${{targets.destdir}}/usr/lib/systemd/systemd-sysupdate
+      for u in systemd-sysupdate.service systemd-sysupdate.timer systemd-sysupdate-reboot.service systemd-sysupdate-reboot.timer; do
+        install -Dm644 units/$u ${{targets.destdir}}/usr/lib/systemd/system/$u
+      done
+      if readelf -d ${{targets.destdir}}/usr/lib/systemd/systemd-sysupdate | grep -q libsystemd-shared; then
+        echo "systemd-sysupdate links libsystemd-shared" >&2
+        exit 1
+      fi
+      ${{targets.destdir}}/usr/lib/systemd/systemd-sysupdate --version | grep -q '^systemd 261 '
+
+  - uses: strip
