@@ -44,7 +44,6 @@ var apps = []app{
 	{"org.gnome.Showtime.desktop", 30 * time.Second},
 	{"org.gnome.Decibels.desktop", 30 * time.Second},
 	{"org.gnome.Music.desktop", 30 * time.Second},
-	{"org.gnome.Snapshot.desktop", 30 * time.Second},
 	{"org.gnome.clocks.desktop", 20 * time.Second},
 	{"org.gnome.Weather.desktop", 30 * time.Second},
 	{"org.gnome.Characters.desktop", 20 * time.Second},
@@ -59,6 +58,8 @@ var apps = []app{
 	{"org.gnome.Calendar.desktop", 30 * time.Second},
 	{"firefox.desktop", 60 * time.Second},
 	{"com.google.Chrome.desktop", 60 * time.Second},
+	// Last: it asks for the camera, a shell dialog over whatever opens after it.
+	{"org.gnome.Snapshot.desktop", 30 * time.Second},
 }
 
 // panels are Settings' pages a person reaches first; each is opened by name and screenshotted.
@@ -131,8 +132,14 @@ func test(args []string) error {
 		}
 		ok, detail := g.runApp(a)
 		r.add(a.id, ok, detail)
+		// A window exists before it is drawn: Software loads its catalogue, Calendar its sources,
+		// Maps its tiles. The screenshot is what a person sees a few seconds in.
+		time.Sleep(5 * time.Second)
 		r.shot(v, strings.TrimSuffix(a.id, ".desktop"))
 		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, a.id))
+		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
+		// app and would cover every screenshot after it.
+		_, _ = g.eval(`Main.layoutManager.modalDialogGroup.get_children().forEach(d => d.close?.()); true`)
 		time.Sleep(2 * time.Second)
 	}
 	for _, p := range panels {
