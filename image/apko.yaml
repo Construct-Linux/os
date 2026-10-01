@@ -111,6 +111,22 @@ contents:
     - loupe
     - gnome-disk-utility
     - gnome-system-monitor
+    # GNOME 51's core apps (gnome-build-meta's meta-gnome-core-apps), but those that need
+    # WebKitGTK (Web, Help) or SANE (Document Scanner), and Console (Ptyxis is the terminal).
+    - showtime
+    - decibels
+    - gnome-music
+    - snapshot
+    - gnome-clocks
+    - gnome-weather
+    - gnome-characters
+    - gnome-font-viewer
+    - baobab
+    - gnome-logs
+    - gnome-contacts
+    - gnome-maps
+    - gnome-connections
+    - gnome-software
     - flatpak
     # sched_ext schedulers (kernel/desktop.config's SCHED_CLASS_EXT).
     - scx
