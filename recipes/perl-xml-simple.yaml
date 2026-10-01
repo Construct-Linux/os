@@ -1,0 +1,35 @@
+package:
+  name: perl-xml-simple
+  version: "2.25"
+  epoch: 0
+  description: Simple XML parser for Perl
+  copyright:
+    - license: Artistic-1.0-Perl OR GPL-1.0-or-later
+  dependencies:
+    runtime:
+      - perl-xml-parser
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - perl
+      - perl-xml-parser
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://cpan.metacpan.org/authors/id/G/GR/GRANTM/XML-Simple-${{package.version}}.tar.gz
+      expected-sha256: 531fddaebea2416743eb5c4fdfab028f502123d9a220405a4100e68fc480dbf8
+
+  - uses: perl/make
+
+  - runs: make DESTDIR="${{targets.destdir}}" install
+
+  # Man pages are not shipped in this minimal build.
+  - runs: rm -rf "${{targets.destdir}}"/usr/share/man
+
+  - uses: perl/cleanup
+
+  - uses: strip
