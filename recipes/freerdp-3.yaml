@@ -1,0 +1,68 @@
+package:
+  name: freerdp-3
+  version: "3.32.1"
+  # Replaces Wolfi's freerdp-3 3.32.1 (epoch 0), whose libraries pull X11, Wayland, CUPS, ALSA,
+  # FUSE, libusb and FFmpeg's swscale into the image. gtk-frdp only needs the client libraries:
+  # it draws the session itself and opens no audio, printer, drive or USB redirection.
+  epoch: 1
+  description: FreeRDP client libraries
+  copyright:
+    - license: Apache-2.0
+  dependencies:
+    provides:
+      - freerdp=${{package.full-version}}
+    runtime:
+      - freerdp-3-libs
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cairo-dev
+      - cmake
+      - ninja
+      - openh264-dev
+      - openssl-dev
+      - zlib-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/FreeRDP/FreeRDP
+      tag: ${{package.version}}
+      expected-commit: bf217a504e54cc719880c228e82353382cd7d4fa
+
+  # No client binaries (SDL, X11, Wayland), server, shadow or proxy: gtk-frdp embeds the client
+  # libraries. FFmpeg and swscale off: cairo (already in the image for GTK) scales surfaces a
+  # server maps to a scaled output, and OpenH264 (Wolfi) decodes H.264 for the graphics pipeline,
+  # which gtk-frdp turns on when the build reports WITH_GFX_H264. Audio (ALSA, Pulse, Opus, GSM),
+  # CUPS, PC/SC, PKCS#11, FUSE and libusb redirection off: gtk-frdp opens none of those channels,
+  # and does its own FUSE file clipboard. Kerberos off: NLA authenticates with NTLM. JSON off with
+  # Azure AD login, which gtk-frdp has no flow for. Unicode conversion built in rather than ICU.
+  # systemd off: winpr sets its journald flag in a subdirectory scope its config.h never sees,
+  # so the journal appender is not compiled in and libsystemd would only be linked, unused.
+  - uses: cmake/configure
+    with:
+      opts: -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=OFF -DWITH_MANPAGES=OFF -DWITH_SAMPLE=OFF -DWITH_CCACHE=OFF -DWITH_CLIENT=OFF -DWITH_CLIENT_SDL=OFF -DWITH_X11=OFF -DWITH_WAYLAND=OFF -DWITH_SERVER=OFF -DWITH_SHADOW=OFF -DWITH_PROXY=OFF -DWITH_PLATFORM_SERVER=OFF -DWITH_WINPR_TOOLS=OFF -DWITH_FFMPEG=OFF -DWITH_SWSCALE=OFF -DWITH_CAIRO=ON -DWITH_OPENH264=ON -DWITH_ALSA=OFF -DWITH_PULSE=OFF -DWITH_OSS=OFF -DWITH_OPUS=OFF -DWITH_GSM=OFF -DWITH_FDK_AAC=OFF -DWITH_CUPS=OFF -DWITH_PCSC=OFF -DWITH_SMARTCARD_PCSC=OFF -DWITH_PKCS11=OFF -DWITH_FUSE=OFF -DCHANNEL_URBDRC=OFF -DWITH_KRB5=OFF -DWITH_JSON_DISABLED=ON -DWITH_AAD=OFF -DWITH_CJSON=OFF -DWITH_URIPARSER=OFF -DWITH_UNICODE_BUILTIN=ON -DWITH_TIMEZONE_ICU=OFF -DWITH_SYSTEMD=OFF
+
+  - uses: cmake/build
+
+  - uses: cmake/install
+
+  - uses: strip
+
+subpackages:
+  - name: freerdp-3-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - freerdp-3
+
+  - name: freerdp-3-libs
+    description: FreeRDP client libraries
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr
+          mv ${{targets.destdir}}/usr/lib ${{targets.subpkgdir}}/usr/
