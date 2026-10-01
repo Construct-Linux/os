@@ -1,0 +1,63 @@
+package:
+  name: papers
+  version: "51.0"
+  epoch: 0
+  description: GNOME document viewer
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - appstream
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - exempi-dev
+      - gdk-pixbuf-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - libarchive-dev
+      - libsecret-dev
+      - libspelling-dev
+      - meson
+      - ninja
+      - poppler-dev
+      - poppler-glib
+      - rust
+      - tiff-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/papers/${{vars.series}}/papers-${{package.version}}.tar.xz
+      expected-sha256: 4b8caf527d85f7eabc63ebe9d2320e0490653c2e138b88fbf42e6f41dd3e451c
+
+  # nautilus is not in the desktop; djvu (djvulibre) and PostScript are formats left out to keep
+  # the image small; sysprof is not shipped; docs and tests are not part of the image.
+  - uses: meson/configure
+    with:
+      opts: -Dnautilus=false -Ddjvu=disabled -Dcomics=enabled -Dtiff=enabled -Dpdf=enabled -Dintrospection=enabled -Dsysprof=disabled -Dtests=false -Dfile_tests=false -Ddocumentation=false -Duser_doc=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: papers-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: papers-lang
+    pipeline:
+      - uses: split/locales
