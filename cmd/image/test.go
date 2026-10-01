@@ -111,6 +111,8 @@ func test(args []string) error {
 	for _, e := range g.extensions() {
 		r.add("extension "+e.uuid, e.ok(), e.detail())
 	}
+	ok, detail := g.notifications()
+	r.add("notifications", ok, detail)
 	if res, err := g.run(`getent hosts dl.flathub.org`, ""); err == nil && strings.TrimSpace(res) != "" {
 		r.add("dns", true, oneLine(res))
 	} else {
@@ -121,7 +123,7 @@ func test(args []string) error {
 	dock, err := g.run(`sudo -u spin docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
-	ok, detail := g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)
+	ok, detail = g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 
 	want := map[string]bool{}
@@ -585,4 +587,23 @@ func (g *guest) extensions() []extension {
 		}
 	}
 	return out
+}
+
+// notifications fails a login that greets the user with a notification: a fresh account on a
+// fresh image has nothing to be told, so one there is a component announcing itself (Dash to
+// Panel's "has been updated" did, on every first login).
+func (g *guest) notifications() (bool, string) {
+	raw, err := g.eval(`JSON.stringify(Main.messageTray.getSources().flatMap(s => s.notifications.map(n => s.title + ": " + n.title)))`)
+	if err != nil {
+		return false, err.Error()
+	}
+	var inner string
+	var titles []string
+	if json.Unmarshal([]byte(raw), &inner) != nil || json.Unmarshal([]byte(inner), &titles) != nil {
+		return false, "unreadable: " + raw
+	}
+	if len(titles) > 0 {
+		return false, strings.Join(titles, "; ")
+	}
+	return true, "none at login"
 }
