@@ -1,0 +1,55 @@
+package:
+  name: baobab
+  version: "50.0"
+  epoch: 0
+  description: Disk usage analyzer for GNOME
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext-dev
+      - glib-dev
+      # vapigen resolves the gir includes of Adw-1 (Gio, cairo, freetype2)
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - meson
+      - ninja
+      - python-3.13
+      # baobab is written in Vala: the compiler is needed, not bindings
+      - vala
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/baobab/${{vars.series}}/baobab-${{package.version}}.tar.xz
+      expected-sha256: 573c84f15f5f963a440500f6f43412c928ac2335f6b69dcb58f1a1fe5201024b
+
+  # The yelp help has no meson option; dropping the subdir keeps docs out.
+  - runs: sed -i "/^subdir('help')/d" meson.build
+
+  # Our libadwaita ships its gir but no vapi (vala off there), and baobab
+  # is Vala: generate the binding from the gir for this build only.
+  - runs: |
+      mkdir -p vapi
+      vapigen --library libadwaita-1 --pkg gio-2.0 --pkg gtk4 --directory vapi /usr/share/gir-1.0/Adw-1.gir
+      printf 'gio-2.0\ngtk4\n' > vapi/libadwaita-1.deps
+
+  - uses: meson/configure
+    with:
+      opts: -Dvala_args=--vapidir=$(pwd)/vapi
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "50"
+
