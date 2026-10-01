@@ -1,0 +1,55 @@
+package:
+  name: libblockdev
+  version: 3.4.0
+  epoch: 0
+  description: Library for manipulating block devices
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      # configure's header checks call GNU mktemp --tmpdir.
+      - coreutils
+      - cryptsetup-dev
+      - e2fsprogs-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - keyutils-dev
+      - kmod-dev
+      - libbytesize-dev
+      - libnss-dev
+      - libnvme-dev
+      - lvm2-dev
+      - parted-dev
+      - systemd-dev
+      - util-linux-dev
+      - volume_key-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/storaged-project/libblockdev/releases/download/${{package.version}}/libblockdev-${{package.version}}.tar.gz
+      expected-sha256: 65ef9a37babd44b85b8ff9b273f90f9f7d5f8ff7b0c76a8edb69240325fd83f4
+
+  # udisks needs crypto, fs, loop, mdraid, nvme, part and swap. LVM,
+  # btrfs, multipath, NVDIMM and SMART are server/storage-admin features
+  # with no user on a desktop VM; Python bindings and the CLI tools are
+  # only for scripting.
+  - uses: autoconf/configure
+    with:
+      opts: --without-python3 --without-gtk-doc --without-tools --without-s390 --without-btrfs --without-dm --without-lvm --without-lvm_dbus --without-mpath --without-nvdimm --without-smart --without-smartmontools --disable-tests
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: libblockdev-dev
+    pipeline:
+      - uses: split/dev
