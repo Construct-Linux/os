@@ -1,0 +1,37 @@
+package:
+  name: simdutf
+  version: 9.1.0
+  epoch: 0
+  description: Unicode validation and transcoding at billions of characters per second
+  copyright:
+    - license: Apache-2.0 OR MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cmake
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/simdutf/simdutf/archive/v${{package.version}}/simdutf-${{package.version}}.tar.gz
+      expected-sha256: 24e3510a4c95a9e6eb0fb4a27eea650d13773231cbd8b564ed9670aa5484d193
+
+  # Tools (sutf, fastbase64) are not needed by the desktop and pull dependencies over the network via CPM.
+  - uses: cmake/configure
+    with:
+      opts: -DBUILD_SHARED_LIBS=ON -DSIMDUTF_CXX_STANDARD=20 -DSIMDUTF_TESTS=OFF -DSIMDUTF_BENCHMARKS=OFF -DSIMDUTF_TOOLS=OFF
+
+  - uses: cmake/build
+
+  - uses: cmake/install
+
+  - uses: strip
+
+subpackages:
+  - name: simdutf-dev
+    pipeline:
+      - uses: split/dev
