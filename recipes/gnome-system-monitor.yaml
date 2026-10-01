@@ -1,0 +1,56 @@
+package:
+  name: gnome-system-monitor
+  version: "51.0"
+  epoch: 0
+  description: GNOME system monitor
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      # pins the 1.16 ABI; otherwise the solver picks cairomm 1.19 for libcairomm-1.16.so.1 and conflicts with cairomm-1.16-dev
+      - cairomm-1.16
+      - cairomm-1.16-dev
+      - desktop-file-utils
+      - glib-dev
+      - glibmm-dev
+      - gtk-4-dev
+      - gtkmm4-dev
+      - itstool
+      - libadwaita-dev
+      - libgtop-dev
+      - librsvg-dev
+      - libxml2-utils
+      - meson
+      - ninja
+      - pangomm-dev
+      # itstool (yelp help, no option to skip it) runs under /usr/bin/python3
+      - python-3.13
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-system-monitor/${{vars.series}}/gnome-system-monitor-${{package.version}}.tar.xz
+      expected-sha256: 8887b03427230ac0816d4b0c801ce6628ad1fc9139ed3072914e9faa881ba868
+
+  - uses: meson/configure
+    with:
+      opts: -Dsystemd=true -Ddevelopment=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-system-monitor-lang
+    pipeline:
+      - uses: split/locales
