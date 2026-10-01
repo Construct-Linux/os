@@ -1,0 +1,43 @@
+package:
+  name: dconf
+  version: "51.0"
+  epoch: 0
+  description: Low-level configuration system, the GSettings backend
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - glib-dev
+      - meson
+      - ninja
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/dconf/${{vars.series}}/dconf-${{package.version}}.tar.xz
+      expected-sha256: e65c1b7867f836faad9f9ee04acf5c5a6cae2bbc784833fe093207e0cb590248
+
+  # bash_completion off: nothing in the session needs it and it would pull bash-completion in.
+  - uses: meson/configure
+    with:
+      opts: -Dman=false -Dgtk_doc=false -Dvapi=false -Dbash_completion=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: dconf-dev
+    pipeline:
+      - uses: split/dev
