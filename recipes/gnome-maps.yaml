@@ -1,0 +1,76 @@
+package:
+  name: gnome-maps
+  version: "51.1"
+  epoch: 0
+  description: Map application for GNOME
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    # A GJS app: melange derives nothing from its gi:// imports, so every typelib it loads
+    # is listed by hand (libgnome-maps itself links shumate, rest, librsvg, json-glib, libxml2).
+    runtime:
+      - gdk-pixbuf
+      - geoclue
+      - geocode-glib
+      - gjs
+      - glib-gir
+      - graphene
+      - gtk-4
+      - libadwaita
+      - libgweather4
+      - libportal
+      - libsecret
+      - libshumate
+      - libsoup3
+      - pango
+      - rest1
+
+environment:
+  contents:
+    packages:
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext-dev
+      - geoclue-dev
+      - geocode-glib-dev
+      - gjs-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - json-glib-dev
+      - libadwaita-dev
+      - libgweather4-dev
+      - libportal-dev
+      - librsvg-dev
+      - libshumate-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - python3
+      - rest1-dev
+      - sqlite-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-maps/${{vars.series}}/gnome-maps-${{package.version}}.tar.xz
+      expected-sha256: bae1be7db6766b33ab55f9b3e9acb6a1bbd89e72fedfa12e972a3f75178570e6
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-maps-lang
+    pipeline:
+      - uses: split/locales
