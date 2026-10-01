@@ -1,0 +1,35 @@
+package:
+  name: xdg-dbus-proxy
+  version: 0.1.9
+  epoch: 0
+  description: Filtering proxy for D-Bus connections
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - dbus
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/flatpak/xdg-dbus-proxy/releases/download/${{package.version}}/xdg-dbus-proxy-${{package.version}}.tar.xz
+      expected-sha256: 5450dda586ec3bb3ca709d311e845487883faa3b09cf562608d7e84f4311dced
+
+  - uses: meson/configure
+    with:
+      opts: -Dman=disabled -Dtests=false -Dinstalled_tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
