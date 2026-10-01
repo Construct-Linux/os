@@ -1,0 +1,44 @@
+package:
+  name: tela-icon-theme
+  version: 2026.07.07
+  epoch: 0
+  description: Tela flat icon theme (Tela, Tela-dark, Tela-light)
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    # index.theme inherits from these; an icon Tela lacks falls back to them.
+    runtime:
+      - adwaita-icon-theme
+      - hicolor-icon-theme
+
+environment:
+  contents:
+    packages:
+      - bash
+      - busybox
+      # install.sh links the variants with ln -sr, which busybox's ln lacks.
+      - coreutils
+      # install.sh ends on it; without it the script's exit status fails the build.
+      - gtk-3-update-icon-cache
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/vinceliuice/Tela-icon-theme
+      tag: ${{vars.tag}}
+      expected-commit: 4f560eccd0acc9c192f31077c2b3202422cb24fb
+
+  # Only the standard folder colour: the image names Tela/Tela-dark/Tela-light and
+  # each further colour is another full copy of the theme.
+  - runs: |
+      mkdir -p "${{targets.destdir}}"/usr/share/icons
+      bash ./install.sh -d "${{targets.destdir}}"/usr/share/icons standard
+      for t in Tela Tela-dark Tela-light; do
+        test -f "${{targets.destdir}}/usr/share/icons/$t/index.theme"
+      done
+      # The read-only root's icon caches are baked by the image build; a cache shipped
+      # here would be overwritten there anyway.
+      rm -f "${{targets.destdir}}"/usr/share/icons/*/icon-theme.cache
+
+vars:
+  tag: 2026-07-07
