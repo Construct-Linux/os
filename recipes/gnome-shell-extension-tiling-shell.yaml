@@ -3,7 +3,7 @@ package:
   # 18.0 is not released yet: the maintainer added GNOME 51 on the v18.0 branch (RC), and the
   # 18.0-candidate tag predates fixes on it. _rc keeps the final 18.0 sorting above this.
   version: "18.0_rc20260919"
-  epoch: 0
+  epoch: 1
   description: Tiling window management for GNOME Shell (tilingshell@ferrarodomenico.com)
   copyright:
     # package.json says GPL v2; the LICENSE file is GPL-3.0.
@@ -36,10 +36,12 @@ pipeline:
     with:
       patches: gnome-shell-extension-tiling-shell/gnome-51-backend.patch
 
-  # TypeScript transpiled by esbuild; upstream ships no lockfile, so npm resolves the
-  # devDependencies' ranges at build time (network is available, as cargo has it for loupe).
+  # TypeScript transpiled by esbuild. Upstream ships no lockfile, so the recipe carries one
+  # (npm install --package-lock-only at the pinned commit, patch applied): npm ci installs exactly
+  # those versions, each checked against its integrity hash, or fails.
   - runs: |
-      npm install --no-audit --no-fund
+      cp gnome-shell-extension-tiling-shell/package-lock.json .
+      npm ci --no-audit --no-fund
       node esbuild.mjs
       glib-compile-resources --sourcedir=./gresources --target=./dist/resources.gresource ./gresources/resources.gresource.xml
 
