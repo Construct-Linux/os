@@ -7,6 +7,7 @@
 //	image disk  [-size 12G]                     _output/rootfs.tar ... -> _output/disk.raw
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
+//	image usb   [-test]                         the USB stick's disk, in build/tools as root (cmd/image/usb.go)
 //	image check                                 every ELF's NEEDED libraries are in the root
 package main
 
@@ -46,6 +47,10 @@ func main() {
 		err = boot(os.Args[2:])
 	case "test":
 		err = test(os.Args[2:])
+	case "usb":
+		err = usb(os.Args[2:])
+	case "theme":
+		err = plymouthTheme()
 	case "check":
 		err = check(filepath.Join(out, "root.tar"))
 	default:
@@ -119,8 +124,12 @@ func (l dirLayer) walk(fn func(*tar.Header, io.Reader) error) error {
 		if err != nil {
 			return err
 		}
-		// Everything in the root is root's, whoever built it.
+		// Everything in the root is root's, whoever built it, and writable by root alone: the
+		// checkout's modes carry its umask.
 		h.Uid, h.Gid, h.Uname, h.Gname = 0, 0, "", ""
+		if h.Typeflag != tar.TypeSymlink {
+			h.Mode &^= 0o022
+		}
 		h.Name = clean(path.Join(l.prefix, filepath.ToSlash(rel)))
 		if !info.Mode().IsRegular() {
 			return fn(h, nil)
@@ -150,22 +159,39 @@ func (l links) walk(fn func(*tar.Header, io.Reader) error) error {
 	return nil
 }
 
+// initDir holds cmd/spin-init, built for the root as a layer of its own.
+var initDir = filepath.Join(out, "spin-init")
+
+// buildInit builds cmd/spin-init, static, at /usr/lib/spin-desktop/init in initDir. The USB
+// disk's kernel runs it as the first process (init=); the ext4 test disk boots systemd directly.
+func buildInit() error {
+	dst := filepath.Join(initDir, "usr/lib/spin-desktop/init")
+	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", dst, "./cmd/spin-init")
+	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOAMD64=v3")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	return cmd.Run()
+}
+
 func clean(name string) string {
 	return strings.TrimPrefix(path.Clean("/"+name), "/")
 }
 
-func disk(args []string) error {
-	fl := flag.NewFlagSet("disk", flag.ExitOnError)
-	size := fl.String("size", "12G", "the ext4 image's size")
-	test := fl.Bool("test", false, "add image/test/rootfs: what lets cmd/image test drive the session")
-	_ = fl.Parse(args)
-
+// rootLayers is what the root is made of, in the order it is laid down; test adds what lets
+// cmd/image test drive the session.
+func rootLayers(test bool) []layer {
 	layers := []layer{
 		tarLayer{file: filepath.Join(out, "rootfs.tar")},
 		dirLayer{dir: filepath.Join(out, "modules")},
 		tarLayer{file: filepath.Join(out, "firmware", "firmware.tar"), prefix: "usr/lib/firmware"},
 		dirLayer{dir: "image/rootfs"},
+		dirLayer{dir: themeDir},
+		dirLayer{dir: initDir},
 		links{
+			"home": "var/home",
+			// Names are resolved by systemd-resolved, which NetworkManager hands each link's DNS to:
+			// systemd's tmpfiles points /etc/resolv.conf at its stub.
+			"etc/systemd/system/multi-user.target.wants/systemd-resolved.service": "/usr/lib/systemd/system/systemd-resolved.service",
+			"etc/systemd/system/dbus-org.freedesktop.resolve1.service":            "/usr/lib/systemd/system/systemd-resolved.service",
 			"etc/systemd/system/default.target":                                   "/usr/lib/systemd/system/graphical.target",
 			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service": "/usr/lib/systemd/system/spin-desktop-caches.service",
 			"etc/localtime": "/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
@@ -192,9 +218,25 @@ func disk(args []string) error {
 			"etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service": "/dev/null",
 		},
 	}
-	if *test {
+	if test {
 		layers = append(layers, dirLayer{dir: "image/test/rootfs"})
 	}
+	return layers
+}
+
+func disk(args []string) error {
+	fl := flag.NewFlagSet("disk", flag.ExitOnError)
+	size := fl.String("size", "12G", "the ext4 image's size")
+	test := fl.Bool("test", false, "add image/test/rootfs: what lets cmd/image test drive the session")
+	_ = fl.Parse(args)
+
+	if err := plymouthTheme(); err != nil {
+		return err
+	}
+	if err := buildInit(); err != nil {
+		return err
+	}
+	layers := rootLayers(*test)
 	merged := filepath.Join(out, "root.tar")
 	if err := merge(layers, merged); err != nil {
 		return err
@@ -220,8 +262,12 @@ func merge(layers []layer, dst string) error {
 	for i, l := range layers {
 		if err := l.walk(func(h *tar.Header, _ io.Reader) error {
 			owner[h.Name] = i
+			// A directory keeps the first layer's header: the package that made it decides its
+			// owner and mode, not an overlay that puts a file in it.
 			if h.Typeflag == tar.TypeDir {
-				dirHdr[h.Name] = *h
+				if _, ok := dirHdr[h.Name]; !ok {
+					dirHdr[h.Name] = *h
+				}
 			} else {
 				delete(dirHdr, h.Name)
 			}
@@ -316,29 +362,48 @@ type vm struct {
 // vsockCID is the guest's vsock address: the harness reaches its sshd as vsock/<cid>.
 const vsockCID = 4207
 
-// start boots the disk. With a public key, the guest gets it as root's authorized key by
-// credential (systemd's provision.conf) and a vsock device for systemd-ssh-generator's sshd.
-func start(mem, pubkey string) (*vm, error) {
+// start boots the disk. With a public key, the guest gets a vsock device for
+// systemd-ssh-generator's sshd and the key as ssh.ephemeral-authorized_keys-all, the credential
+// that sshd's generated unit authorises - for this boot only, written nowhere on the disk.
+func start(mem, pubkey string) (*vm, error) { return startDisk(mem, pubkey, false) }
+
+// startDisk boots _output/disk.raw with the kernel given directly, or with stick the USB disk
+// (_output/usb/disk.raw) as a machine boots it: UEFI firmware, the image on a USB stick of 32 GB,
+// of which the first boot makes /var.
+func startDisk(mem, pubkey string, stick bool) (*vm, error) {
 	qmp := filepath.Join(out, "qmp.sock")
 	_ = os.Remove(qmp)
-	args := []string{
-		"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", mem,
-		"-kernel", filepath.Join(out, "kernel", "bzImage"),
-		"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
-		"-drive", "file=" + filepath.Join(out, "disk.raw") + ",if=virtio,format=raw",
+	args := []string{"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", mem}
+	if stick {
+		boot, err := stickBoot()
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, boot...)
+	} else {
+		args = append(args,
+			"-kernel", filepath.Join(out, "kernel", "bzImage"),
+			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
+			"-drive", "file="+filepath.Join(out, "disk.raw")+",if=virtio,format=raw")
+	}
+	args = append(args,
 		"-device", "virtio-vga", "-display", "none", "-vnc", "127.0.0.1:7",
 		"-device", "virtio-net-pci,netdev=n0", "-netdev", "user,id=n0",
-		"-device", "qemu-xhci", "-device", "usb-tablet",
+		"-device", "qemu-xhci,id=xhci", "-device", "usb-tablet",
 		// An HDA card, so the sound stack - the kernel's driver, PipeWire, WirePlumber - has a
 		// device to find; its output goes nowhere.
 		"-audiodev", "none,id=snd0", "-device", "ich9-intel-hda", "-device", "hda-duplex,audiodev=snd0",
-		"-serial", "file:" + filepath.Join(out, "serial.log"),
-		"-qmp", "unix:" + qmp + ",server,nowait",
+		"-serial", "file:"+filepath.Join(out, "serial.log"),
+		"-qmp", "unix:"+qmp+",server,nowait",
+	)
+	if stick {
+		// After the xHCI controller it plugs into.
+		args = append(args, "-device", "usb-storage,bus=xhci.0,drive=stick,removable=on,bootindex=0")
 	}
 	if pubkey != "" {
 		args = append(args,
 			"-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", vsockCID),
-			"-smbios", "type=11,value=io.systemd.credential:ssh.authorized_keys.root="+strings.TrimSpace(pubkey))
+			"-smbios", "type=11,value=io.systemd.credential:ssh.ephemeral-authorized_keys-all="+strings.TrimSpace(pubkey))
 	}
 	cmd := exec.Command("qemu-system-x86_64", args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
@@ -346,6 +411,28 @@ func start(mem, pubkey string) (*vm, error) {
 		return nil, err
 	}
 	return &vm{cmd: cmd, qmp: qmp, cid: vsockCID}, nil
+}
+
+// stickBoot is UEFI firmware with its own variable store, and the USB disk as a 32 GB stick: a
+// copy, so every boot is a first boot, sparse past the image for /var.
+func stickBoot() ([]string, error) {
+	dir := filepath.Join(out, "usb")
+	stick, vars := filepath.Join(dir, "stick.raw"), filepath.Join(dir, "OVMF_VARS.fd")
+	for _, c := range [][]string{
+		{"cp", "--sparse=always", filepath.Join(dir, "disk.raw"), stick},
+		{"truncate", "-s", "32G", stick},
+		{"cp", "/usr/share/OVMF/OVMF_VARS_4M.fd", vars},
+	} {
+		if out, err := exec.Command(c[0], c[1:]...).CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("%s: %w: %s", c[0], err, out)
+		}
+	}
+	return []string{
+		"-machine", "q35",
+		"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
+		"-drive", "if=pflash,format=raw,file=" + vars,
+		"-drive", "if=none,id=stick,format=raw,file=" + stick,
+	}, nil
 }
 
 func (v *vm) screenshot(file string) error {

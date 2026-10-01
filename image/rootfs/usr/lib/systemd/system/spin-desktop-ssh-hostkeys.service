@@ -1,15 +1,17 @@
-# The host keys systemd-ssh-generator's sshd needs, made on the first boot and kept: nothing in
-# the image carries them, so every machine has its own.
+# The host keys systemd-ssh-generator's sshd needs, made on the first boot in /var and kept:
+# nothing in the image carries them, so every machine has its own.
 [Unit]
 Description=SSH host keys
 DefaultDependencies=no
-After=local-fs.target
+RequiresMountsFor=/var/lib/sshd
+After=local-fs.target systemd-tmpfiles-setup.service
 Before=sockets.target sshd-vsock.socket sshd-unix-local.socket
-ConditionPathExists=!/etc/ssh/ssh_host_ed25519_key
+ConditionPathExists=!/var/lib/sshd/ssh_host_ed25519_key
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/ssh-keygen -A
+ExecStart=/usr/bin/ssh-keygen -q -N "" -t ed25519 -f /var/lib/sshd/ssh_host_ed25519_key
+ExecStart=/usr/bin/ssh-keygen -q -N "" -t rsa -b 3072 -f /var/lib/sshd/ssh_host_rsa_key
 
 [Install]
 WantedBy=sysinit.target

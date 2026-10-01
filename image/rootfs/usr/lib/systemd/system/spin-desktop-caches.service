@@ -1,10 +1,11 @@
 # The caches packages' install triggers would write, which apko does not run: GSettings' compiled
 # schemas, fontconfig's, the icon themes' and the MIME database. E2 writes them at boot into the
-# root; an image with a read-only /usr builds them at image time instead.
+# root; on the read-only root of the USB disk cmd/image usb has made them already.
 [Unit]
 Description=Desktop caches packages leave to their triggers
 DefaultDependencies=no
 After=local-fs.target
+ConditionPathIsReadWrite=/usr
 Before=display-manager.service systemd-user-sessions.service
 
 [Service]

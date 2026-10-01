@@ -12,6 +12,7 @@ contents:
     - ca-certificates-bundle
     - systemd
     - systemd-init
+    - systemd-boot
     - systemd-logind-service
     - systemd-timesyncd
     - systemd-userdb

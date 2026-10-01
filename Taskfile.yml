@@ -93,6 +93,23 @@ tasks:
     cmds:
       - go run ./cmd/image boot {{.CLI_ARGS}}
 
+  usb:
+    desc: "The USB stick's disk, _output/usb/disk.raw: ESP + UKI, EROFS root under dm-verity, /var made at first boot (task usb -- -test for the harness's)."
+    cmds:
+      - docker build -q -t spin-desktop-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
+      - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
+      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/lib/spin-desktop/init ./cmd/spin-init
+      - >-
+        docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
+        '_output/bin/image usb {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/root.tar; exit $rc'
+
+  test:usb:
+    desc: Build the USB disk with the test layer and run the harness on it, booted by UEFI from a USB stick.
+    cmds:
+      - task: usb
+        vars: {CLI_ARGS: -test}
+      - go run ./cmd/image test -usb {{.CLI_ARGS}}
+
   gap:
     desc: How far Wolfi is from each desktop profile.
     cmds:

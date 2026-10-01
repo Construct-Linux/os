@@ -52,6 +52,7 @@ func test(args []string) error {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
 	only := fl.String("only", "", "comma-separated scenario names (app ids or panel:<name>); all by default")
 	mem := fl.String("m", "6G", "memory")
+	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	_ = fl.Parse(args)
 
 	dir := filepath.Join(out, "test")
@@ -63,7 +64,7 @@ func test(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, err := start(*mem, pub)
+	v, err := startDisk(*mem, pub, *stick)
 	if err != nil {
 		return err
 	}
@@ -89,8 +90,16 @@ func test(args []string) error {
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
 	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched))
-	dock, err := g.run(`sudo -u spin docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1 | tail -1`, "")
-	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), oneLine(dock))
+	if res, err := g.run(`getent hosts dl.flathub.org`, ""); err == nil && strings.TrimSpace(res) != "" {
+		r.add("dns", true, oneLine(res))
+	} else {
+		diag, _ := g.run(`ls -l /etc/resolv.conf; echo ---; cat /etc/resolv.conf; echo ---; ls -l /run/NetworkManager/ 2>&1; cat /run/NetworkManager/resolv.conf 2>&1; echo ---; systemctl is-active systemd-resolved; resolvectl status 2>&1 | head -20; echo ---; NetworkManager --print-config 2>/dev/null | grep -A3 -i '^\[main\]'; nmcli dev show 2>&1 | grep -i dns`, "")
+		_ = os.WriteFile(filepath.Join(dir, "dns.txt"), []byte(diag), 0o644)
+		r.add("dns", false, "no answer for dl.flathub.org; see dns.txt")
+	}
+	dock, err := g.run(`sudo -u spin docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
+	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
+	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
 	ok, detail := g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 
@@ -323,6 +332,13 @@ func (r *report) write(g *guest) error {
 	dumps, _ := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $NF}' | sort | uniq -c`, "")
 	errs, _ := g.run(`journalctl -b -p err --no-pager -o short-monotonic`, "")
 	r.add("system units", strings.TrimSpace(failed) == "", "failed: "+oneLine(failed))
+	// Each failed unit's own log, while the machine that has it is still up.
+	units := filepath.Join(r.dir, "units")
+	for _, u := range strings.Fields(failed) {
+		log, _ := g.run("journalctl -b --no-pager -n 60 -u "+u, "")
+		_ = os.MkdirAll(units, 0o755)
+		_ = os.WriteFile(filepath.Join(units, u+".log"), []byte(log), 0o644)
+	}
 	r.add("user units", strings.TrimSpace(userFailed) == "", "failed: "+oneLine(userFailed))
 	r.add("core dumps", strings.TrimSpace(dumps) == "", oneLine(dumps))
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
@@ -345,6 +361,11 @@ func (r *report) write(g *guest) error {
 		return fmt.Errorf("%d checks failed", bad)
 	}
 	return nil
+}
+
+func lastLine(s string) string {
+	lines := strings.Split(strings.TrimSpace(s), "\n")
+	return lines[len(lines)-1]
 }
 
 func oneLine(s string) string {
