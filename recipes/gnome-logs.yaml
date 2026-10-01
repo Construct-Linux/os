@@ -1,0 +1,58 @@
+package:
+  # GNOME 51 has no gnome-logs release; 50.0 is the newest and builds against gtk-4 4.24 and
+  # libadwaita 1.10.
+  name: gnome-logs
+  version: "50.0"
+  epoch: 0
+  description: GNOME viewer for the systemd journal
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      # Its GSettings keys reference org.gnome.desktop.interface; nothing links against the
+      # schemas, so melange derives no dependency on them.
+      - gsettings-desktop-schemas
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext-dev
+      - glib-dev
+      - gsettings-desktop-schemas
+      - gtk-4-dev
+      - libadwaita-dev
+      - meson
+      - ninja
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-logs/${{vars.series}}/gnome-logs-${{package.version}}.tar.xz
+      expected-sha256: b466c6660155521ba8135339c6df080a0e071a46f9911b99172b21f9e2dfd808
+
+  # The user help is docs and the tests a self-test; neither has an option, so their subdirs go.
+  - runs: |
+      sed -i "/^subdir('help')/d; /^subdir('tests')/d" meson.build
+      grep -q "subdir('help')\|subdir('tests')" meson.build && exit 1 || true
+
+  - uses: meson/configure
+    with:
+      opts: -Dman=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "50"
+
+subpackages:
+  - name: gnome-logs-lang
+    pipeline:
+      - uses: split/locales
