@@ -1,0 +1,56 @@
+package:
+  name: loupe
+  version: "51.0"
+  epoch: 0
+  description: GNOME image viewer
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      # The glycin crate decodes through the out-of-process loaders glycin-2 ships.
+      - glycin-2
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext-dev
+      - glib-dev
+      - gtk-4-dev
+      - lcms2-dev
+      - libadwaita-dev
+      - libgweather4-dev
+      - libseccomp-dev
+      - meson
+      - ninja
+      - rust
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/loupe/${{vars.series}}/loupe-${{package.version}}.tar.xz
+      expected-sha256: 13fa9990565ef917902f777cfce091ab60adb8a114a9f6cca274dfc5c0aae661
+
+  # The user help is docs; it has no option, so its subdir goes.
+  - runs: sed -i "/^subdir('help')/d" meson.build
+
+  # GNOME runs on Wayland here; the X11 feature only adds gdk4-x11 paths.
+  - uses: meson/configure
+    with:
+      opts: -Dprofile=release -Dx11=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: loupe-lang
+    pipeline:
+      - uses: split/locales
