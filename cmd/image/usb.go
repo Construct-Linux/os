@@ -97,7 +97,9 @@ func releaseDir(version string) string { return filepath.Join(out, "release", ve
 // is made. internal/update reads it by these names.
 func writeRelease(version, esp, label string, v verity) (string, error) {
 	dir := releaseDir(version)
-	if err := os.RemoveAll(dir); err != nil {
+	// One release at a time: every reader takes the newest (task usb signs it, usb-disk lays it,
+	// test:lifecycle copies each version out), and at 2 GB a build, keeping them filled the disk.
+	if err := os.RemoveAll(filepath.Dir(dir)); err != nil {
 		return "", err
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
