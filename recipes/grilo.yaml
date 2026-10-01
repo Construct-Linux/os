@@ -1,0 +1,52 @@
+package:
+  name: grilo
+  version: 0.3.19
+  epoch: 0
+  description: GNOME media discovery framework
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - python3
+      - totem-pl-parser-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/grilo/${{vars.series}}/grilo-${{package.version}}.tar.xz
+      expected-sha256: 0869c81d19ab139c667d79567c14ddcb6cb5cbfc0108d04cade287eb29536706
+
+  # The test UI is a GTK 3 developer tool (and the only liboauth user); no app launches it.
+  - uses: meson/configure
+    with:
+      opts: -Denable-introspection=true -Denable-vala=false -Denable-gtk-doc=false -Denable-test-ui=false -Denable-grl-net=true -Denable-grl-pls=true -Dsoup3=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "0.3"
+
+subpackages:
+  - name: grilo-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: grilo-lang
+    pipeline:
+      - uses: split/locales
