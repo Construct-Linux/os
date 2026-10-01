@@ -1,0 +1,44 @@
+package:
+  name: rtkit
+  version: "0.14"
+  epoch: 0
+  description: D-Bus system service that enables real time scheduling on request
+  copyright:
+    - license: GPL-3.0-only AND MIT
+  dependencies:
+    runtime:
+      - dbus
+      - polkit
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - libcap-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - systemd-dev
+      # xxd compiles the introspection XML into the daemon
+      - vim
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/pipewire/rtkit/-/archive/v${{package.version}}/rtkit-v${{package.version}}.tar.gz
+      expected-sha256: 55dd379b11f52b81655e2dc676de9d602d050cb0beb18ef01f0f65569f0a5e59
+
+  - uses: meson/configure
+    with:
+      opts: --sbindir=bin -Dlibsystemd=enabled -Dinstalled_tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # the man page is installed unconditionally; docs stay out of the image
+  - runs: rm -rf ${{targets.destdir}}/usr/share/man
+
+  - uses: strip
