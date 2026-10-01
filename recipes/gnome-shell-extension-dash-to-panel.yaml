@@ -1,0 +1,31 @@
+package:
+  name: gnome-shell-extension-dash-to-panel
+  version: "74"
+  epoch: 0
+  description: GNOME Shell extension that merges the dash into the top panel
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gnome-shell
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - glib
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/home-sweet-gnome/dash-to-panel
+      tag: v${{package.version}}
+      expected-commit: db578c4f0061686609ed0bd1422967dfee2554d6
+
+  # A DESTDIR install is the system one: the schema goes to /usr/share/glib-2.0/schemas, compiled
+  # with the image, and no gschemas.compiled stays in the extension directory. VERSION keeps the
+  # Makefile from calling git for the version.
+  - runs: |
+      make install DESTDIR=${{targets.destdir}} VERSION=${{package.version}}
