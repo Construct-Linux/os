@@ -1,0 +1,35 @@
+package:
+  name: icon-naming-utils
+  version: 0.8.90
+  epoch: 0
+  description: Maps Tango icon names to the legacy names used by GNOME and KDE
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - perl
+      - perl-xml-simple
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - perl
+      - perl-xml-simple
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: http://tango.freedesktop.org/releases/icon-naming-utils-${{package.version}}.tar.bz2
+      expected-sha512: 7b2e3aa4c7a4857d3c190fb12d69d665bf63596a84735adddf7e67bc5e6b493eccd0b914bc32776934f04720c7071d6de35d55452ffd4966d7dbd8360907f727
+
+  - uses: autoconf/configure
+    with:
+      opts: --libexecdir=/usr/lib/icon-naming-utils
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: chmod +x "${{targets.destdir}}"/usr/lib/icon-naming-utils/icon-name-mapping
