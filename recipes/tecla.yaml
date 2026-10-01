@@ -1,0 +1,43 @@
+package:
+  name: tecla
+  version: "51.0"
+  epoch: 0
+  description: Keyboard layout viewer for the GNOME desktop
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext-dev
+      - glib-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - libxkbcommon-dev
+      - meson
+      - ninja
+      - wayland-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/tecla/${{vars.series}}/tecla-${{package.version}}.tar.xz
+      expected-sha256: ddf1a8555044171d0d84b580d6d541c3c621ae77996f6bc5edde598de2f8625b
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: tecla-dev
+    pipeline:
+      - uses: split/dev
