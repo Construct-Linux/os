@@ -1,0 +1,74 @@
+package:
+  name: gvfs
+  version: 1.62.0
+  epoch: 0
+  description: Backends for the gio framework in GLib
+  copyright:
+    - license: LGPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gsettings-desktop-schemas
+      # gvfsd-fuse mounts through fusermount3; the unmount dialog lists
+      # blocking processes with lsof; the sftp backend runs ssh.
+      - fuse3
+      - lsof
+      - openssh-client
+
+environment:
+  contents:
+    packages:
+      - avahi-dev
+      - build-base
+      - busybox
+      - dbus-dev
+      - fuse3-dev
+      - gcr4-dev
+      - gettext
+      - glib-dev
+      - gnome-online-accounts-dev
+      - gsettings-desktop-schemas-dev
+      - libcap-dev
+      - libgcrypt-dev
+      - libgudev-dev
+      - libsecret-dev
+      - libsoup3-dev
+      - libusb-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - samba-dev
+      - systemd-dev
+      - udisks2-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gvfs/${{vars.series}}/gvfs-${{package.version}}.tar.xz
+      expected-sha256: dd8e6c255fd3bed5eeb190b59027c88b38e63c1be0932ddce9cfeb48f3c43d0f
+
+  # afc, gphoto2, mtp, cdda, nfs and bluray serve phones, cameras and
+  # optical media a desktop VM never sees (their libraries are not in
+  # Wolfi either); onedrive needs msgraph, not in Wolfi. The private
+  # libexecdir keeps the many gvfsd-* helpers out of /usr/libexec.
+  - uses: meson/configure
+    with:
+      opts: --libexecdir=/usr/libexec/gvfs -Dsystemduserunitdir=/usr/lib/systemd/user -Dtmpfilesdir=/usr/lib/tmpfiles.d -Dafc=false -Dgphoto2=false -Dmtp=false -Dcdda=false -Dnfs=false -Dbluray=false -Donedrive=false -Dman=false -Dunit_tests=false -Dinstalled_tests=false -Ddevel_utils=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "1.62"
+
+subpackages:
+  - name: gvfs-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: gvfs-lang
+    pipeline:
+      - uses: split/locales
