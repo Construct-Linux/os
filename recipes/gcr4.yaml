@@ -1,0 +1,54 @@
+package:
+  name: gcr4
+  version: 4.4.1
+  epoch: 0
+  description: Library for bits of crypto UI and parsing
+  copyright:
+    - license: LGPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - libgcrypt-dev
+      - libsecret-dev
+      - libxslt
+      - meson
+      - ninja
+      - openssh-client
+      - p11-kit-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gcr/${{vars.series}}/gcr-${{package.version}}.tar.xz
+      expected-sha256: c4442c15d4330f17a1f5194df08c576877af68412ab2521446a93bd5e24c931b
+
+  # vapi off: nothing in the session is written in Vala.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dvapi=false -Dgtk4=true -Dgtk_doc=false -Dgpg_path=/usr/bin/gpg -Dcrypto=libgcrypt -Dssh_agent=true -Dsystemd=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "4.4"
+
+subpackages:
+  - name: gcr4-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: gcr4-lang
+    pipeline:
+      - uses: split/locales
