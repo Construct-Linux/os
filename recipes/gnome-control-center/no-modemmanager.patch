@@ -1,0 +1,265 @@
+--- a/meson.build
++++ b/meson.build
+@@ -347,24 +347,27 @@
+ config_h.set('HAVE_SSH_SOCKET_ACTIVATION', ssh_socket_activation,
+              description: 'Whether SSH socket activation is enabled')
+ 
++enable_wwan = host_is_linux and get_option('wwan')
+ if host_is_linux
+-  # ModemManager
+-  mm_dep =  dependency('mm-glib', version: '>= 0.7')
+   # NetworkManager
+   network_manager_deps = [
+     dependency('libnm', version: '>= 1.52.0'),
+     dependency('libnma-gtk4', version: '>= 1.10.2'),
+     gnome_qr_gtk_dep,
+-    mm_dep,
+   ]
+ endif
++if enable_wwan
++  # ModemManager
++  mm_dep =  dependency('mm-glib', version: '>= 0.7')
++  network_manager_deps += mm_dep
++endif
+ config_h.set('BUILD_NETWORK', host_is_linux,
+              description: 'Define to 1 to build the Network panel')
+ config_h.set('HAVE_NETWORK_MANAGER', host_is_linux,
+              description: 'Define to 1 if NetworkManager is available')
+-config_h.set('BUILD_WWAN', host_is_linux,
++config_h.set('BUILD_WWAN', enable_wwan,
+              description: 'Define to 1 to build the WWan panel')
+-config_h.set('HAVE_WWAN', host_is_linux,
++config_h.set('HAVE_WWAN', enable_wwan,
+              description: 'Define to 1 if WWan is available')
+ 
+ if host_is_linux_not_s390
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -1,6 +1,7 @@
+ option('deprecated-declarations', type: 'feature', value: 'disabled', description: 'build with deprecated declaration warnings')
+ option('documentation', type: 'boolean', value: false, description: 'build documentation')
+ option('location-services', type: 'feature', value: 'enabled', description: 'build with location services')
++option('wwan', type: 'boolean', value: true, description: 'build the Mobile Network panel and ModemManager support')
+ option('ibus', type: 'boolean', value: true, description: 'build with IBus support')
+ option('privileged_group', type: 'string', value: 'wheel', description: 'name of group that has elevated permissions')
+ option('snap', type: 'boolean', value: true, description: 'build with Snap support')
+--- a/panels/applications/meson.build
++++ b/panels/applications/meson.build
+@@ -62,7 +62,7 @@
+ 
+ deps = common_deps + [keyboard_shortcuts_dep]
+ 
+-if host_is_linux
++if enable_wwan
+   deps += mm_dep
+ endif
+ 
+--- a/panels/meson.build
++++ b/panels/meson.build
+@@ -22,9 +22,12 @@
+   'system',
+   'universal-access',
+   'wellbeing',
+-  'wwan',
+ ]
+ 
++if enable_wwan
++  panels += ['wwan']
++endif
++
+ if host_is_linux
+   panels += ['network']
+ endif
+--- a/panels/network/cc-network-panel.c
++++ b/panels/network/cc-network-panel.c
+@@ -43,7 +43,9 @@
+ #include "connection-editor/net-connection-editor.h"
+ #include "network-dialogs.h"
+ 
++#ifdef HAVE_WWAN
+ #include <libmm-glib.h>
++#endif
+ 
+ typedef enum {
+     OPERATION_NULL,
+@@ -61,7 +63,9 @@
+     GHashTable *nm_device_to_device;
+ 
+     NMClient *client;
++#ifdef HAVE_WWAN
+     MMManager *modem_manager;
++#endif
+     gboolean updating_device;
+ 
+     /* widgets */
+@@ -199,7 +203,9 @@
+     CcNetworkPanel *self = CC_NETWORK_PANEL (object);
+ 
+     g_clear_object (&self->client);
++#ifdef HAVE_WWAN
+     g_clear_object (&self->modem_manager);
++#endif
+ 
+     g_clear_pointer (&self->bluetooth_devices, g_ptr_array_unref);
+     g_clear_pointer (&self->ethernet_devices, g_ptr_array_unref);
+@@ -350,6 +356,7 @@
+     gtk_widget_set_visible (self->container_bluetooth, self->bluetooth_devices->len > 0);
+ }
+ 
++#ifdef HAVE_WWAN
+ static gboolean
+ wwan_panel_supports_modem (GDBusObject *object)
+ {
+@@ -370,6 +377,7 @@
+ 
+     return capability & supported_capabilities;
+ }
++#endif
+ 
+ static void
+ panel_add_device (CcNetworkPanel *self, NMDevice *device)
+@@ -398,6 +406,7 @@
+         g_hash_table_insert (self->nm_device_to_device, device, device_ethernet);
+         break;
+     case NM_DEVICE_TYPE_MODEM:
++#ifdef HAVE_WWAN
+         if (g_str_has_prefix (nm_device_get_udi (device), "/org/freedesktop/ModemManager1/Modem/")) {
+             if (self->modem_manager == NULL) {
+                 g_warning ("Cannot grab information for modem at %s: No ModemManager support",
+@@ -416,6 +425,7 @@
+             if (wwan_panel_supports_modem (modem_object))
+                 return;
+         }
++#endif
+ 
+         device_mobile = net_device_mobile_new (self->client, device, modem_object);
+         gtk_box_append (GTK_BOX (self->box_wired), GTK_WIDGET (device_mobile));
+@@ -734,6 +744,7 @@
+     g_signal_connect_object (self->client, "device-added", G_CALLBACK (device_added_cb), self, G_CONNECT_SWAPPED);
+     g_signal_connect_object (self->client, "device-removed", G_CALLBACK (device_removed_cb), self, G_CONNECT_SWAPPED);
+ 
++#ifdef HAVE_WWAN
+     /* Setup ModemManager client */
+     system_bus = g_bus_get_sync (G_BUS_TYPE_SYSTEM, NULL, &error);
+     if (system_bus == NULL) {
+@@ -743,6 +754,7 @@
+         if (self->modem_manager == NULL)
+             g_warning ("Error connecting to ModemManager: %s", error->message);
+     }
++#endif
+ 
+     /* add remote settings such as VPN settings as virtual devices */
+     g_signal_connect_object (self->client, NM_CLIENT_CONNECTION_ADDED, G_CALLBACK (add_connection), self,
+--- a/panels/network/cc-wifi-hotspot-dialog.c
++++ b/panels/network/cc-wifi-hotspot-dialog.c
+@@ -27,7 +27,9 @@
+ 
+ #include <config.h>
+ #include <glib/gi18n.h>
++#ifdef HAVE_WWAN
+ #include <libmm-glib.h>
++#endif
+ 
+ #include "cc-network-resources.h"
+ #include "cc-wifi-hotspot-dialog.h"
+--- a/panels/network/net-device-mobile.c
++++ b/panels/network/net-device-mobile.c
+@@ -26,7 +26,9 @@
+ #include <glib/gi18n.h>
+ 
+ #include <NetworkManager.h>
++#ifdef HAVE_WWAN
+ #include <libmm-glib.h>
++#endif
+ #include <nma-mobile-providers.h>
+ 
+ #include "net-device-mobile.h"
+@@ -72,7 +74,9 @@
+     GDBusProxy *cdma_proxy;
+ 
+     /* New MM >= 0.7 support */
++#ifdef HAVE_WWAN
+     MMObject *mm_object;
++#endif
+ 
+     NMAMobileProvidersDatabase *mpd;
+ };
+@@ -196,6 +200,7 @@
+ {
+     const gchar *equipment_id = NULL;
+ 
++#ifdef HAVE_WWAN
+     if (self->mm_object != NULL) {
+         MMModem *modem;
+ 
+@@ -207,7 +212,9 @@
+         if (equipment_id != NULL) {
+             g_debug ("[%s] Equipment ID set to '%s'", mm_object_get_path (self->mm_object), equipment_id);
+         }
+-    } else {
++    } else
++#endif
++    {
+         /* Assume old MM handling */
+         equipment_id = g_object_get_data (G_OBJECT (self), "ControlCenter::EquipmentIdentifier");
+     }
+@@ -258,6 +265,7 @@
+ {
+     g_autofree gchar *operator_name = NULL;
+ 
++#ifdef HAVE_WWAN
+     if (self->mm_object != NULL) {
+         MMModem3gpp *modem_3gpp;
+         MMModemCdma *modem_cdma;
+@@ -291,7 +299,9 @@
+             g_debug ("[%s] Operator name set to '%s'", mm_object_get_path (self->mm_object), operator_name);
+         }
+ 
+-    } else {
++    } else
++#endif
++    {
+         const gchar *gsm;
+         const gchar *cdma;
+ 
+@@ -645,11 +655,13 @@
+                        device_mobile_get_serving_system_cb, self);
+ }
+ 
++#ifdef HAVE_WWAN
+ static void
+ operator_name_updated (NetDeviceMobile *self)
+ {
+     device_mobile_refresh_operator_name (self);
+ }
++#endif
+ 
+ static void
+ net_device_mobile_dispose (GObject *object)
+@@ -664,7 +676,9 @@
+     g_clear_object (&self->cancellable);
+     g_clear_object (&self->gsm_proxy);
+     g_clear_object (&self->cdma_proxy);
++#ifdef HAVE_WWAN
+     g_clear_object (&self->mm_object);
++#endif
+     g_clear_object (&self->mpd);
+ 
+     G_OBJECT_CLASS (net_device_mobile_parent_class)->dispose (object);
+@@ -733,6 +747,7 @@
+     g_signal_connect_object (device, "state-changed", G_CALLBACK (nm_device_mobile_refresh_ui), self,
+                              G_CONNECT_SWAPPED);
+ 
++#ifdef HAVE_WWAN
+     if (modem != NULL) {
+         MMModem3gpp *modem_3gpp;
+ 
+@@ -750,6 +765,8 @@
+         }
+     }
+ 
++#endif
++
+     caps = nm_device_modem_get_current_capabilities (NM_DEVICE_MODEM (device));
+ 
+     /* Only load proxies if we have broadband modems of the OLD ModemManager interface */

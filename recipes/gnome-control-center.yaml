@@ -1,0 +1,96 @@
+package:
+  name: gnome-control-center
+  version: "51.0"
+  epoch: 0
+  description: GNOME control center
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      # D-Bus services the Users, Color and Keyboard panels call into
+      - accountsservice
+      - colord
+      - setxkbmap
+
+environment:
+  contents:
+    packages:
+      - accountsservice-dev
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - cairo-dev
+      - colord-dev
+      - colord-gtk-dev
+      - cups-dev
+      - fontconfig-dev
+      - gcr4-dev
+      - gdk-pixbuf-dev
+      - gettext
+      - glib-dev
+      # blueprint-compiler loads the GLib/Gtk typelibs at build time
+      - glib-gir
+      - gnome-bluetooth-dev
+      - gnome-desktop-dev
+      - gnome-online-accounts-dev
+      - gnome-settings-daemon-dev
+      - gnutls-dev
+      - gsettings-desktop-schemas-dev
+      - gsound-dev
+      - gtk-4-dev
+      - ibus-dev
+      - json-glib-dev
+      - krb5-dev
+      - libadwaita-dev
+      - libepoxy-dev
+      - libgtop-dev
+      - libgudev-dev
+      - libnma-dev
+      - libpwquality-dev
+      - libsecret-dev
+      - libwacom-dev
+      - libxml2-dev
+      - libxml2-utils
+      - meson
+      - networkmanager-dev
+      - ninja
+      - polkit-dev
+      - pulseaudio-dev
+      - tecla-dev
+      - udisks2-dev
+      - upower-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-control-center/${{vars.series}}/gnome-control-center-${{package.version}}.tar.xz
+      expected-sha256: c8ca5b6a0ae44fd0d64aac5aa3b79a83c2445095b159a9d13d1c9cc172ac4fb9
+
+  # ModemManager is not part of this desktop; upstream requires it on Linux for the Mobile Network
+  # panel, so the patch makes that panel optional and leaves modems in the Network panel on NM data.
+  - uses: patch
+    with:
+      patches: gnome-control-center/no-modemmanager.patch
+
+  # snap off: no snapd; malcontent off: parental controls are not shipped; location-services stays
+  # on through geoclue. smbclient (SMB printers) is optional and left out.
+  - uses: meson/configure
+    with:
+      opts: -Dwwan=false -Dsnap=false -Dmalcontent=false -Dibus=true -Dlocation-services=enabled -Ddocumentation=false -Dtests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-control-center-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - gnome-control-center
