@@ -29,7 +29,8 @@ tasks:
         --out-dir packages --apk-cache-dir .cache/apk
         > .cache/logs/{{.CLI_ARGS}}.log 2>&1
         || { tail -20 .cache/logs/{{.CLI_ARGS}}.log; exit 1; }
-      - docker run --rm -v {{.ROOT_DIR}}:/work {{.MELANGE}} -c 'true' 2>/dev/null || sudo -n chown -R $(id -u):$(id -g) packages .cache 2>/dev/null || true
+      # melange runs as root; hand its output back.
+      - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown -R $(id -u):$(id -g) /work/packages /work/.cache
 
   gap:
     desc: How far Wolfi is from each desktop profile.
