@@ -1,0 +1,49 @@
+package:
+  name: blueprint-compiler
+  version: 0.22.2
+  epoch: 0
+  description: Markup language for GTK user interfaces
+  copyright:
+    - license: LGPL-3.0-or-later
+  dependencies:
+    runtime:
+      # the module lands in python3.13 site-packages; Wolfi's py3-gobject3 is built for 3.13
+      - python-3.13
+      - py3.13-gobject3
+      - gobject-introspection-dev
+      - gtk-4
+      - libadwaita
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - meson
+      - ninja
+      - python-3.13
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/blueprint-compiler/${{vars.series}}/blueprint-compiler-${{package.version}}.tar.xz
+      expected-sha256: 231d72efbac931c235ac3e022fe94982095c20d88721d9a8dcf60152f2017e07
+
+  - uses: meson/configure
+    with:
+      opts: -Ddocs=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+vars:
+  series: "0.22"
+
+subpackages:
+  - name: blueprint-compiler-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - blueprint-compiler
