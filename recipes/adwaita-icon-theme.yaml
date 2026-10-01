@@ -1,0 +1,38 @@
+package:
+  name: adwaita-icon-theme
+  version: "51.0"
+  epoch: 0
+  description: Adwaita icon theme
+  copyright:
+    - license: LGPL-3.0-or-later OR CC-BY-SA-3.0
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - gtk-3-update-icon-cache
+      - meson
+      - ninja
+      - python3
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/adwaita-icon-theme/${{vars.series}}/adwaita-icon-theme-${{package.version}}.tar.xz
+      expected-sha256: ba561cf3c96305a47179fa5605856ad695c9238ea07f7093aebd9ba80c4e323b
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: adwaita-icon-theme-dev
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/share
+          mv "${{targets.destdir}}"/usr/share/pkgconfig "${{targets.subpkgdir}}"/usr/share/
