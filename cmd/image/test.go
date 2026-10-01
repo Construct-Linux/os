@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -107,6 +108,9 @@ func test(args []string) error {
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
 	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched))
+	for _, e := range g.extensions() {
+		r.add("extension "+e.uuid, e.ok(), e.detail())
+	}
 	if res, err := g.run(`getent hosts dl.flathub.org`, ""); err == nil && strings.TrimSpace(res) != "" {
 		r.add("dns", true, oneLine(res))
 	} else {
@@ -232,7 +236,8 @@ func (g *guest) eval(js string) (string, error) {
 	i, j := strings.Index(outs, "'"), strings.LastIndex(outs, "'")
 	val := ""
 	if i >= 0 && j > i {
-		val = outs[i+1 : j]
+		// gdbus prints the string as GVariant text, which escapes backslashes and quotes.
+		val = strings.NewReplacer(`\\`, `\`, `\'`, `'`).Replace(outs[i+1 : j])
 	}
 	if !ok {
 		return val, fmt.Errorf("eval: %s", outs)
@@ -512,4 +517,72 @@ func runIn(args []string) error {
 	outs, err := g.run(strings.Join(fl.Args(), " "), "")
 	fmt.Print(outs)
 	return err
+}
+
+// extension is one GNOME Shell extension the session enables, as the shell's extension manager
+// sees it.
+type extension struct {
+	uuid, err string
+	state     int // ExtensionState: 1 active, 3 error, 4 out of date (misc/extensionUtils.js)
+	found     bool
+}
+
+func (e extension) ok() bool { return e.found && e.state == 1 }
+
+func (e extension) detail() string {
+	switch {
+	case !e.found:
+		return "enabled, but the shell does not know it: not installed"
+	case e.state == 1:
+		return "active"
+	case e.state == 4:
+		return "out of date: its metadata.json does not list this shell's version"
+	default:
+		return fmt.Sprintf("state %d: %s", e.state, e.err)
+	}
+}
+
+// extensions are the extensions the test user's session enables (org.gnome.shell
+// enabled-extensions, which the image's dconf defaults set), each with the state the running shell
+// gives it: an extension that broke with this shell, or is not there, fails the test.
+func (g *guest) extensions() []extension {
+	list, err := g.run(`sudo -u spin DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.shell enabled-extensions`, "")
+	if err != nil {
+		return []extension{{uuid: "(enabled-extensions)", err: err.Error()}}
+	}
+	var enabled []string
+	for _, f := range strings.FieldsFunc(list, func(r rune) bool { return r == '[' || r == ']' || r == ',' || r == ' ' || r == '\n' }) {
+		if f = strings.Trim(f, `'"`); f != "" && f != "@as" {
+			enabled = append(enabled, f)
+		}
+	}
+	raw, err := g.eval(`JSON.stringify(Main.extensionManager.getUuids().map(u => { const e = Main.extensionManager.lookup(u); return [u, e.state, e.error ? String(e.error) : ""]; }))`)
+	if err != nil {
+		return []extension{{uuid: "(extension manager)", err: err.Error()}}
+	}
+	// Eval answers the JSON of its result: here a string, which holds the JSON of the list.
+	var inner string
+	var rows [][]any
+	if json.Unmarshal([]byte(raw), &inner) != nil || json.Unmarshal([]byte(inner), &rows) != nil {
+		return []extension{{uuid: "(extension manager)", err: "unreadable: " + raw}}
+	}
+	known := map[string]extension{}
+	for _, row := range rows {
+		if len(row) != 3 {
+			continue
+		}
+		uuid, _ := row[0].(string)
+		state, _ := row[1].(float64)
+		msg, _ := row[2].(string)
+		known[uuid] = extension{uuid: uuid, state: int(state), err: msg, found: true}
+	}
+	out := make([]extension, 0, len(enabled))
+	for _, u := range enabled {
+		if e, ok := known[u]; ok {
+			out = append(out, e)
+		} else {
+			out = append(out, extension{uuid: u})
+		}
+	}
+	return out
 }
