@@ -1,0 +1,50 @@
+package:
+  name: accountsservice
+  version: 26.27.3
+  epoch: 0
+  description: D-Bus interface for user account query and manipulation
+  copyright:
+    - license: GPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - json-c-dev
+      - libxcrypt-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/accountsservice/accountsservice/-/archive/${{package.version}}/accountsservice-${{package.version}}.tar.gz
+      expected-sha256: 11de07bcd499c2277f78a6fc830d1437654f3397cc7bbed19c28b3818435ba38
+
+  # generate-version.sh reads the version from the source directory name,
+  # which is /home/build here.
+  - runs: |
+      printf '#!/bin/sh\necho %s\n' "${{package.version}}" > generate-version.sh
+
+  # vapi off: no vala consumers in the session.
+  - uses: meson/configure
+    with:
+      opts: -Dsystemdsystemunitdir=/usr/lib/systemd/system -Delogind=false -Dintrospection=true -Dvapi=false -Ddocbook=false -Dgtk_doc=false -Dtests=false -Dadmin_group=wheel -Dwtmpfile=/var/log/wtmp
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: accountsservice-dev
+    pipeline:
+      - uses: split/dev
