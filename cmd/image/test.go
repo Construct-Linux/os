@@ -82,7 +82,11 @@ func test(args []string) error {
 		return errors.New("GNOME Shell never answered Eval")
 	}
 	r.add("shell", true, "org.gnome.Shell.Eval answers in unsafe mode")
+	_, _ = g.eval(`Main.overview.hide(); true`)
+	time.Sleep(time.Second)
 	r.shot(v, "desktop")
+	sinks, err := g.run(`sudo -u spin XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
+	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
 	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched))
 	ok, detail := g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)

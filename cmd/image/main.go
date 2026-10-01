@@ -329,6 +329,9 @@ func start(mem, pubkey string) (*vm, error) {
 		"-device", "virtio-vga", "-display", "none", "-vnc", "127.0.0.1:7",
 		"-device", "virtio-net-pci,netdev=n0", "-netdev", "user,id=n0",
 		"-device", "qemu-xhci", "-device", "usb-tablet",
+		// An HDA card, so the sound stack - the kernel's driver, PipeWire, WirePlumber - has a
+		// device to find; its output goes nowhere.
+		"-audiodev", "none,id=snd0", "-device", "ich9-intel-hda", "-device", "hda-duplex,audiodev=snd0",
 		"-serial", "file:" + filepath.Join(out, "serial.log"),
 		"-qmp", "unix:" + qmp + ",server,nowait",
 	}

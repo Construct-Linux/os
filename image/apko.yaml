@@ -92,6 +92,7 @@ contents:
     # Apps.
     - nautilus
     - tinysparql
+    - localsearch
     - gnome-text-editor
     - gnome-calculator
     - loupe
