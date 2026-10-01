@@ -1,0 +1,42 @@
+package:
+  name: libbytesize
+  version: "2.12"
+  epoch: 0
+  description: Library for working with arbitrary big sizes in bytes
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext-dev
+      - gmp-dev
+      - mpfr-dev
+      - pcre2-dev
+      # configure runs AM_PATH_PYTHON even when the bindings are off.
+      - python-3.13
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/storaged-project/libbytesize/releases/download/${{package.version}}/libbytesize-${{package.version}}.tar.gz
+      expected-sha256: 8356bac2cafd2f31f39bf1ad373cef8448cab08b817aeaee5c526d54e81c3c5a
+
+  # Python bindings and the bscalc tool are only for scripting; udisks
+  # links the C library.
+  - uses: autoconf/configure
+    with:
+      opts: --without-python3 --without-tools --without-gtk-doc
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: libbytesize-dev
+    pipeline:
+      - uses: split/dev
