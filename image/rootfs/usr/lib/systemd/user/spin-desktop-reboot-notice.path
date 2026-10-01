@@ -1,4 +1,5 @@
-# A version is written and waits for a reboot (/usr/lib/spin-desktop/reboot-required).
+# A version is written and waits for a reboot: spin-desktop pending --mark, after an update, left
+# its version in /run/spin-desktop/reboot-required.
 [Unit]
 Description=Tell the person a new Spin Desktop waits for a reboot
 

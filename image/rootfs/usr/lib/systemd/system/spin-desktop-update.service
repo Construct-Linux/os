@@ -15,4 +15,4 @@ Type=oneshot
 # version again until it is vacuumed.
 ExecStartPre=-/usr/lib/systemd/systemd-sysupdate vacuum
 ExecStart=/usr/lib/systemd/systemd-sysupdate update
-ExecStartPost=/usr/lib/spin-desktop/reboot-required
+ExecStartPost=/usr/bin/spin-desktop pending --mark /run/spin-desktop/reboot-required

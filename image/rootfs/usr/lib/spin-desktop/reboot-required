@@ -1,9 +1,0 @@
-#!/bin/sh
-# After an update: when systemd-sysupdate wrote a version newer than the booted one, leave the
-# mark spin-desktop-reboot-notice.path (every user's session) tells its person about. Nothing
-# reboots by itself.
-if /usr/lib/systemd/systemd-sysupdate pending >/dev/null 2>&1; then
-	mkdir -p /run/spin-desktop
-	/usr/lib/systemd/systemd-sysupdate list 2>/dev/null | awk '$1 ~ /^[0-9]/ {v=$1} END {print v}' > /run/spin-desktop/reboot-required
-fi
-exit 0

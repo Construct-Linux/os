@@ -3,6 +3,7 @@
 //
 //	spin-desktop install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
 //	spin-desktop boot-check                                     reboot a counted boot that did not come up
+//	spin-desktop pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
 //
 // install's release is a directory - a stick's spin-update partition, mounted read-only - checked
 // against the public key the root carries (internal/update's KeyringPath) before anything is
@@ -33,7 +34,8 @@ import (
 
 const usage = `usage:
   spin-desktop install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--loader FILE]
-  spin-desktop boot-check`
+  spin-desktop boot-check
+  spin-desktop pending    [--esp DIR] [--mark FILE]`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -48,6 +50,8 @@ func main() {
 		err = update.BootCheck(ctx, systemctl{}, update.Vars(update.EFIVars), journal())
 	case "install":
 		err = installCmd(ctx, os.Args[2:], os.Stdin, os.Stdout)
+	case "pending":
+		err = pendingCmd(os.Args[2:], os.Stdout)
 	default:
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
@@ -240,6 +244,51 @@ func (systemctl) Active(ctx context.Context, unit string) (bool, error) {
 func (systemctl) Reboot(ctx context.Context) error {
 	if out, err := exec.CommandContext(ctx, "systemctl", "reboot").CombinedOutput(); err != nil {
 		return fmt.Errorf("systemctl reboot: %w: %s", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+// pendingCmd prints the version systemd-boot starts at the next boot when it is newer than the
+// running one, and with --mark writes it to that file - which the session turns into "restart to
+// update" - or removes the file when nothing waits. It reads the ESP, not the update's source: the
+// answer must not need the network, or the stick the update came from.
+func pendingCmd(args []string, out io.Writer) error {
+	fl := flag.NewFlagSet("pending", flag.ContinueOnError)
+	esp := fl.String("esp", "/boot", "where the ESP is mounted (systemd's gpt-auto mounts the booted one at /boot)")
+	mark := fl.String("mark", "", "write the pending version here, or remove this file when there is none")
+	osRelease := fl.String("os-release", "/usr/lib/os-release", "the running root's os-release")
+	if err := fl.Parse(args); err != nil {
+		return err
+	}
+	booted, err := update.BootedVersion(*osRelease)
+	if err != nil {
+		return fmt.Errorf("the running version: %w", err)
+	}
+	entries, err := os.ReadDir(filepath.Join(*esp, "EFI", "Linux"))
+	if err != nil {
+		return err
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	v := update.Pending(names, booted)
+	if *mark != "" {
+		if v == "" {
+			if err := os.Remove(*mark); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return err
+			}
+		} else {
+			if err := os.MkdirAll(filepath.Dir(*mark), 0o755); err != nil {
+				return err
+			}
+			if err := os.WriteFile(*mark, []byte(v+"\n"), 0o644); err != nil {
+				return err
+			}
+		}
+	}
+	if v != "" {
+		fmt.Fprintln(out, v)
 	}
 	return nil
 }

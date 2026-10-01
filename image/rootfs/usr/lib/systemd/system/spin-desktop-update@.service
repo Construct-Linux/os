@@ -16,5 +16,5 @@ ExecStart=/usr/bin/mount -o ro,nodev,nosuid,noexec /dev/%i /run/spin-desktop/upd
 # again until it is vacuumed (spin-desktop-update.service says more).
 ExecStart=-/usr/lib/systemd/systemd-sysupdate --component=stick vacuum
 ExecStart=/usr/lib/systemd/systemd-sysupdate --component=stick update
-ExecStartPost=/usr/lib/spin-desktop/reboot-required
+ExecStartPost=/usr/bin/spin-desktop pending --mark /run/spin-desktop/reboot-required
 ExecStopPost=-/usr/bin/umount /run/spin-desktop/update
