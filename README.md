@@ -89,3 +89,26 @@ What it took beyond the first session, ~110 recipes in all:
 Still open: the AutoFDO/Propeller profile (needs the real machine), Firefox is unbranded
 ("Nightly"), Bluetooth audio has SBC and Opus only (Wolfi has no LDAC/aptX/AAC/LC3), and E3 -
 a UKI/verity disk on the NucBox from a USB stick.
+
+## The stick, installing, and updating
+
+`task usb` makes `_output/usb/disk.raw`, a USB stick's image that is three things at once:
+
+- **live**: UEFI -> systemd-boot -> a unified kernel image (SpinBot's splash, then Plymouth's) ->
+  the EROFS root under dm-verity, read-only and checked block by block. `cmd/spin-init` runs before
+  systemd: it makes `/var` in the rest of the stick at its first boot and lays `/etc` over it, so
+  settings persist.
+- **installer**: `sudo spin-desktop install` writes the machine's first internal disk (not the
+  stick): ESP, root A + verity, root B + verity (empty), `/var` with the rest.
+- **update**: its `spin-update` partition holds the release, signed. Plugged into an installed
+  machine it is written into the slot that machine did not boot; the next boot starts it, three
+  times at most until GDM is up (`boot-complete.target`), and falls back to the running version
+  otherwise. `/var` (home, Flatpaks, Docker) and the changes to `/etc` are never touched.
+
+Releases are signed with Ed25519 by a key outside the repository (`task keygen:release`, in
+`~/.local/share/spin-desktop/gnupg`); its public half is in the image, and a release signed by
+anything else - or a keyring with a non-Ed25519 key - is refused. SSH is Ed25519 only.
+
+`task test:lifecycle` checks all of it in QEMU - install from a stick onto an NVMe disk, boot it,
+update with the next release's stick, keep what was in `/var` and `/etc`, roll back by itself from
+a release whose desktop never comes up: 18/18 (2026-10-01).
