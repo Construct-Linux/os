@@ -248,6 +248,7 @@ func rootLayers(test bool) []layer {
 			"etc/systemd/system/multi-user.target.wants/spin-desktop-flathub.service":             "/usr/lib/systemd/system/spin-desktop-flathub.service",
 			"etc/systemd/system/multi-user.target.wants/NetworkManager-wait-online.service":       "/usr/lib/systemd/system/NetworkManager-wait-online.service",
 			"etc/systemd/user/default.target.wants/xdg-user-dirs.service":                         "/usr/lib/systemd/user/xdg-user-dirs.service",
+			"etc/systemd/user/basic.target.wants/systemd-tmpfiles-setup.service":                  "/usr/lib/systemd/user/systemd-tmpfiles-setup.service",
 			"etc/systemd/system/multi-user.target.wants/scx.service":                              "/usr/lib/systemd/system/scx.service",
 			"etc/systemd/system/sysinit.target.wants/spin-desktop-ssh-hostkeys.service":           "/usr/lib/systemd/system/spin-desktop-ssh-hostkeys.service",
 			"etc/systemd/system/display-manager.service":                                          "/usr/lib/systemd/system/gdm.service",
