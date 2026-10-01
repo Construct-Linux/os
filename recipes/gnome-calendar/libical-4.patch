@@ -1,0 +1,59 @@
+--- a/src/core/gcal-recurrence.c
++++ b/src/core/gcal-recurrence.c
+@@ -22,6 +22,30 @@
+ 
+ #include <glib.h>
+ 
++#if ICAL_CHECK_VERSION (4, 0, 0)
++/* libical 4 sizes BY* arrays instead of ending them with ICAL_RECURRENCE_ARRAY_MAX */
++static gshort
++i_cal_recurrence_get_by_day (ICalRecurrence *rrule,
++                             guint           index)
++{
++  if (index >= i_cal_recurrence_get_by_array_size (rrule, I_CAL_BY_DAY))
++    return -1;
++
++  return i_cal_recurrence_get_by (rrule, I_CAL_BY_DAY, index);
++}
++
++static void
++i_cal_recurrence_set_by_day (ICalRecurrence *rrule,
++                             guint           index,
++                             gshort          value)
++{
++  if (index >= i_cal_recurrence_get_by_array_size (rrule, I_CAL_BY_DAY))
++    i_cal_recurrence_resize_by_array (rrule, I_CAL_BY_DAY, index + 1);
++
++  i_cal_recurrence_set_by (rrule, I_CAL_BY_DAY, index, value);
++}
++#endif
++
+ G_DEFINE_BOXED_TYPE (GcalRecurrence, gcal_recurrence, gcal_recurrence_ref, gcal_recurrence_unref)
+ 
+ static void
+--- a/src/gui/importer/gcal-importer.c
++++ b/src/gui/importer/gcal-importer.c
+@@ -147,7 +147,11 @@
+   g_assert (g_utf8_validate (contents, length, NULL));
+ 
+   component = i_cal_parser_parse_string (contents);
++#if ICAL_CHECK_VERSION (4, 0, 0)
++  ical_error = i_cal_error_icalerrno ();
++#else
+   ical_error = i_cal_errno_return ();
++#endif
+ 
+   if (ical_error != I_CAL_NO_ERROR)
+     {
+--- a/src/utils/gcal-utils.h
++++ b/src/utils/gcal-utils.h
+@@ -51,7 +51,9 @@
+                                            GcalRecurrenceModType  modtype,
+                                            gpointer               user_data);
+ 
++#if !ICAL_CHECK_VERSION (4, 0, 0)
+ G_DEFINE_AUTOPTR_CLEANUP_FUNC (ICalTime, g_object_unref)
++#endif
+ 
+ gchar*               gcal_get_weekday                            (gint                i);
+ 

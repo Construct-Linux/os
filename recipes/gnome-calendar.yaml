@@ -1,0 +1,66 @@
+package:
+  name: gnome-calendar
+  version: "51.0"
+  epoch: 0
+  description: Calendar application for GNOME
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      # the calendars themselves are evolution-data-server's D-Bus services, not linked libraries
+      - evolution-data-server
+      - gsettings-desktop-schemas
+
+environment:
+  contents:
+    packages:
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - evolution-data-server-dev
+      - fribidi-dev
+      - geoclue-dev
+      - geocode-glib-dev
+      - glib-dev
+      # blueprint-compiler imports GLib/GObject through PyGObject at build time
+      - glib-gir
+      - gobject-introspection-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - libgweather4-dev
+      - libical-dev
+      - libsoup3-dev
+      - meson
+      - ninja
+      # blueprint-compiler runs under /usr/bin/python3
+      - python-3.13
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-calendar/${{vars.series}}/gnome-calendar-${{package.version}}.tar.xz
+      expected-sha256: 77c290450c40834392cdea2c40451561e98f43d5dae93cd9e915051a6708dc30
+
+  # Wolfi's libical is 4: libical-glib declares ICalTime's autoptr itself, and
+  # i_cal_errno_return() became i_cal_error_icalerrno(), BYDAY is a sized array
+  - uses: patch
+    with:
+      patches: gnome-calendar/libical-4.patch
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-calendar-lang
+    pipeline:
+      - uses: split/locales
