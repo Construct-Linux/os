@@ -1,0 +1,84 @@
+package:
+  name: folks
+  version: 0.15.12
+  epoch: 0
+  description: GObject library to aggregate people into metacontacts
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - evolution-data-server-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - json-glib-dev
+      - libgee-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - vala
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/folks/${{vars.series}}/folks-${{package.version}}.tar.xz
+      expected-sha256: 21f44e2bdabb1ee7f8e41bb996d10ac7daf35c78c498177db0c00f580a20a914
+
+  # folks is written in Vala and its E-D-S backend needs E-D-S's VAPIs, which our
+  # evolution-data-server is built without (no Vala there). They are generated here from its
+  # installed GIRs with the metadata and custom files of the same E-D-S release, the way its
+  # src/vala/CMakeLists.txt does, into a build-only directory.
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/evolution-data-server/${{vars.eds-series}}/evolution-data-server-${{vars.eds-version}}.tar.xz
+      expected-sha256: 78be88e9a511f5afe7ff2e363eade84b622dd0282647fc576edb2d4ff2962cba
+      extract: false
+
+  - runs: |
+      mkdir -p eds-src eds-vapi
+      tar -xf evolution-data-server-${{vars.eds-version}}.tar.xz -C eds-src --strip-components=1 evolution-data-server-${{vars.eds-version}}/src/vala
+      meta=eds-src/src/vala
+      gen() {
+        lib=$1; gir=$2; shift 2
+        printf '%s\n' "$@" > eds-vapi/$lib.deps
+        pkgs=""
+        for p in "$@"; do pkgs="$pkgs --pkg $p"; done
+        extra=""
+        [ -f $meta/$lib-custom.vala ] && extra=$meta/$lib-custom.vala
+        vapigen --vapidir=eds-vapi --metadatadir=$meta $pkgs --library $lib -d eds-vapi /usr/share/gir-1.0/$gir $extra
+      }
+      gen camel-1.2 Camel-1.2.gir gio-2.0 libxml-2.0 posix
+      gen libedataserver-1.2 EDataServer-1.2.gir camel-1.2 gio-2.0 libsoup-3.0 libxml-2.0 json-glib-1.0 posix
+      gen libebook-contacts-1.2 EBookContacts-1.2.gir camel-1.2 libedataserver-1.2 gio-2.0 libsoup-3.0 libxml-2.0 posix
+      gen libebook-1.2 EBook-1.2.gir camel-1.2 libedataserver-1.2 libebook-contacts-1.2 gio-2.0 libsoup-3.0 libxml-2.0 posix
+
+  # Telepathy is not in Wolfi; the BlueZ backend needs OBEX (not shipped) and oFono is a modem
+  # stack the desktop does not run. The import and inspect tools are developer utilities.
+  - uses: meson/configure
+    with:
+      opts: -Deds_backend=true -Dtelepathy_backend=false -Dbluez_backend=false -Dofono_backend=false -Dzeitgeist=false -Dimport_tool=false -Dinspect_tool=false -Dprofiling=false -Dtests=false -Dinstalled_tests=false -Ddocs=false -Db_lto=true -Dvala_args=--vapidir=$(pwd)/eds-vapi
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "0.15"
+  eds-series: "3.62"
+  eds-version: 3.62.0
+
+subpackages:
+  - name: folks-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: folks-lang
+    pipeline:
+      - uses: split/locales
