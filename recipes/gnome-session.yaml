@@ -1,0 +1,47 @@
+package:
+  name: gnome-session
+  version: "51.0"
+  epoch: 0
+  description: GNOME session manager
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - dconf
+      - gnome-settings-daemon
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - glib-dev
+      - gnome-desktop-dev
+      - meson
+      - ninja
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-session/${{vars.series}}/gnome-session-${{package.version}}.tar.xz
+      expected-sha256: 5195c4f60542a953ab6ebd288f3785b8e7746292d8c167e0c99d353438a184d1
+
+  - uses: meson/configure
+    with:
+      opts: -Ddocbook=false -Dman=false -Dsystemduserunitdir=/usr/lib/systemd/user
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-session-lang
+    pipeline:
+      - uses: split/locales
