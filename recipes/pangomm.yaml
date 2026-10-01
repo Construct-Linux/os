@@ -1,0 +1,53 @@
+package:
+  name: pangomm
+  version: 2.56.2
+  epoch: 0
+  description: C++ bindings for Pango
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cairomm-1.16-dev
+      - glibmm-dev
+      - libsigcplusplus-dev
+      - m4
+      - meson
+      - ninja
+      - pango-dev
+      - perl
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/pangomm/${{vars.series}}/pangomm-${{package.version}}.tar.xz
+      expected-sha256: f1e984c85a85b6a0e61616366521f51dd8282a072bb45d15b5084762b62f4c0e
+
+  - uses: meson/configure
+    with:
+      opts: -Dbuild-documentation=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "2.56"
+
+subpackages:
+  - name: pangomm-dev
+    pipeline:
+      - uses: split/dev
+      - runs: |
+          # pangommconfig.h and the gmmproc m4 files live in this private dir; only builds need them
+          mkdir -p "${{targets.subpkgdir}}"/usr/lib
+          for d in "${{targets.destdir}}"/usr/lib/pangomm-*; do
+            [ -d "$d" ] || continue
+            cp -a "$d" "${{targets.subpkgdir}}"/usr/lib/
+            rm -rf "$d"
+          done
