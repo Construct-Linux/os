@@ -8,3 +8,8 @@ require (
 )
 
 require golang.org/x/sys v0.48.0
+
+require (
+	github.com/ProtonMail/go-crypto v1.5.2 // indirect
+	github.com/cloudflare/circl v1.6.5 // indirect
+)
