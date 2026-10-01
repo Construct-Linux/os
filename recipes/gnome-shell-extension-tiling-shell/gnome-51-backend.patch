@@ -1,0 +1,18 @@
+Clutter.get_default_backend() is gone in mutter 51 (Clutter-51.gir no longer
+has clutter_get_default_backend), so moving a tablet pen over the stage threw
+on every motion event. The stage's context holds the same backend.
+Not fixed upstream on the v18.0 branch as of 832aac5a.
+
+diff --git a/src/components/tilingsystem/tilingManager.ts b/src/components/tilingsystem/tilingManager.ts
+index 8a58a45..1f0108c 100644
+--- a/src/components/tilingsystem/tilingManager.ts
++++ b/src/components/tilingsystem/tilingManager.ts
+@@ -530,7 +530,7 @@ export class TilingManager {
+                         const [x, y] = event.get_coords();
+                         TouchPointer.get().onTouchEvent(x, y);
+                         // Move the actual mouse cursor to match tablet position
+-                        const seat = Clutter.get_default_backend().get_default_seat();
++                        const seat = global.stage.get_context().get_backend().get_default_seat();
+                         seat.warp_pointer(x, y);
+                     }
+                 }

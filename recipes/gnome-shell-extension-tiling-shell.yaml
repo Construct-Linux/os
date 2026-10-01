@@ -1,0 +1,57 @@
+package:
+  name: gnome-shell-extension-tiling-shell
+  # 18.0 is not released yet: the maintainer added GNOME 51 on the v18.0 branch (RC), and the
+  # 18.0-candidate tag predates fixes on it. _rc keeps the final 18.0 sorting above this.
+  version: "18.0_rc20260919"
+  epoch: 0
+  description: Tiling window management for GNOME Shell (tilingshell@ferrarodomenico.com)
+  copyright:
+    # package.json says GPL v2; the LICENSE file is GPL-3.0.
+    - license: GPL-3.0-only
+  dependencies:
+    # Plain JavaScript loaded by the shell: melange derives nothing from its gi:// imports.
+    runtime:
+      - gnome-shell
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - ca-certificates-bundle
+      - gettext
+      - glib
+      - glib-dev
+      - nodejs-22
+      - npm
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/domferr/tilingshell
+      branch: v18.0
+      expected-commit: 832aac5a6260f1c9ccaf9eb210e20daae0091c32
+
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-tiling-shell/gnome-51-backend.patch
+
+  # TypeScript transpiled by esbuild; upstream ships no lockfile, so npm resolves the
+  # devDependencies' ranges at build time (network is available, as cargo has it for loupe).
+  - runs: |
+      npm install --no-audit --no-fund
+      node esbuild.mjs
+      glib-compile-resources --sourcedir=./gresources --target=./dist/resources.gresource ./gresources/resources.gresource.xml
+
+  # Installed by hand: upstream's packaging only zips dist/ for extensions.gnome.org.
+  - runs: |
+      uuid=tilingshell@ferrarodomenico.com
+      dest=${{targets.destdir}}/usr/share/gnome-shell/extensions/$uuid
+      mkdir -p "$dest"
+      cp -r dist/. "$dest/"
+      # The schema is installed system-wide and compiled by the image (issue #613: without it
+      # the shell crashes when the extension is enabled); no per-extension compiled copy.
+      rm -rf "$dest/schemas"
+      install -Dm644 resources/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml \
+        ${{targets.destdir}}/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.tilingshell.gschema.xml
+      grep -q '"51"' "$dest/metadata.json"
