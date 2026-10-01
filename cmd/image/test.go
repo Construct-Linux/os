@@ -101,6 +101,9 @@ func test(args []string) error {
 		return errors.New("GNOME Shell never answered Eval")
 	}
 	r.add("shell", true, "org.gnome.Shell.Eval answers in unsafe mode")
+	// The run takes longer than GNOME's idle delay: with the display blanked, every screenshot
+	// after it is a black "Display output is not active".
+	_, _ = g.run(`sudo -u spin DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.shot(v, "desktop")
@@ -389,6 +392,13 @@ func (r *report) system(g *guest) {
 	userFailed, _ := g.run(`systemctl --user -M spin@ --failed --no-legend --plain 2>/dev/null | awk '{print $1}'`, "")
 	dumps, _ := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $NF}' | sort | uniq -c`, "")
 	errs, _ := g.run(`journalctl -b -p err --no-pager -o short-monotonic`, "")
+	// What GNOME Shell logs below error priority but is a bug all the same: an extension's
+	// exception, an actor used after it was destroyed (both typical of a lock/unlock cycle, which
+	// disables and enables every extension), a cursor the theme lacks.
+	shell, _ := g.run(`journalctl -b --no-pager -o cat _COMM=gnome-shell | grep -E 'JS ERROR|already disposed|Could not load cursor' || true`, "")
+	_ = os.WriteFile(filepath.Join(r.dir, "shell-log.txt"), []byte(shell), 0o644)
+	lines := strings.Fields(strings.ReplaceAll(strings.TrimSpace(shell), " ", "_"))
+	r.add("shell log", len(lines) == 0, fmt.Sprintf("%d lines in shell-log.txt: %s", len(lines), oneLine(firstLine(shell))))
 	r.add("system units", strings.TrimSpace(failed) == "", "failed: "+oneLine(failed))
 	// Each failed unit's own log, while the machine that has it is still up.
 	units := filepath.Join(r.dir, "units")
@@ -405,6 +415,10 @@ func (r *report) system(g *guest) {
 		_ = os.WriteFile(filepath.Join(r.dir, "plymouth-debug.log"), []byte(ply), 0o644)
 	}
 
+}
+
+func firstLine(s string) string {
+	return strings.SplitN(strings.TrimSpace(s), "\n", 2)[0]
 }
 
 func lastLine(s string) string {
@@ -612,30 +626,60 @@ func (g *guest) notifications() (bool, string) {
 }
 
 // shellView is a part of the shell drawn only by the shell theme: a screenshot of each is how a
-// theme written for an older shell shows what it does not style.
-type shellView struct{ name, open, close string }
+// theme written for an older shell shows what it does not style. wake is input sent before the
+// screenshot: a locked session turns its display off at once, and only input brings it back.
+type shellView struct{ name, open, close, wake string }
 
 // shellViews ends with the lock screen: its prompt is the unlock dialog the shell's AuthPrompt
 // draws, which GNOME 51 restyled, and nothing after it in the run must find the session locked.
 var shellViews = []shellView{
-	{"overview", `Main.overview.show()`, `Main.overview.hide()`},
-	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`},
-	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`},
-	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`},
-	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`},
-	{"lock-screen", `Main.screenShield.lock(false)`, ``},
-	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`},
+	{"overview", `Main.overview.show()`, `Main.overview.hide()`, ""},
+	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, ""},
+	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, ""},
+	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, ""},
+	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, ""},
+	// libadwaita apps must follow the light/dark switch: Settings, opened in the light scheme.
+	{"settings-light",
+		`new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").activate()`,
+		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, ""},
+	{"lock-screen", `Main.screenShield.lock(false)`, ``, "pointer"},
+	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`, "key"},
 }
 
 func (r *report) shellViews(v *vm, g *guest) {
 	for _, s := range shellViews {
 		_, err := g.eval(s.open + "; true")
 		r.add("view:"+s.name, err == nil, "screenshot shell-"+s.name+".png")
-		time.Sleep(2 * time.Second)
+		// Menus open in under a second; a window (Settings) needs a few to draw.
+		time.Sleep(4 * time.Second)
+		switch s.wake {
+		case "pointer":
+			_ = v.pointTo(16000, 16000)
+			_ = v.pointTo(16400, 16400)
+			time.Sleep(2 * time.Second)
+		case "key":
+			// The first key wakes the display; the second lifts the curtain to the prompt, and a
+			// modifier alone does not.
+			_ = v.key("shift")
+			time.Sleep(2 * time.Second)
+			_ = v.key("spc")
+			time.Sleep(2 * time.Second)
+		}
 		r.shot(v, "shell-"+s.name)
+		if s.name == "lock-screen" {
+			r.locked(g)
+		}
 		if s.close != "" {
 			_, _ = g.eval(s.close + "; true")
 			time.Sleep(time.Second)
 		}
 	}
+}
+
+// locked checks what a lock leaves behind: the shell disables every extension while the screen is
+// locked, and a disabled extension must not keep its machinery running (Tiling Shell kept one
+// tiling manager per monitor, with their display handlers and actors, upstream #559).
+func (r *report) locked(g *guest) {
+	n, err := g.eval(`String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.stateObj?._tilingManagers?.length ?? 0)`)
+	r.add("locked: tilingshell", err == nil && strings.Trim(n, `"`) == "0", "tiling managers alive while disabled: "+n)
 }

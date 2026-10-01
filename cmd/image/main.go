@@ -550,6 +550,22 @@ func (v *vm) screenshot(file string) error {
 	return qmpRun(v.qmp, map[string]any{"execute": "screendump", "arguments": map[string]any{"filename": abs}})
 }
 
+// pointTo moves the USB tablet's pointer to (x, y) on QEMU's absolute scale, 0-32767 each way:
+// input a locked session wakes its display for, without lifting the lock screen's curtain.
+func (v *vm) pointTo(x, y int) error {
+	return qmpRun(v.qmp, map[string]any{"execute": "input-send-event", "arguments": map[string]any{"events": []any{
+		map[string]any{"type": "abs", "data": map[string]any{"axis": "x", "value": x}},
+		map[string]any{"type": "abs", "data": map[string]any{"axis": "y", "value": y}},
+	}}})
+}
+
+// key presses and releases one key, by QEMU qcode ("shift", "esc").
+func (v *vm) key(qcode string) error {
+	return qmpRun(v.qmp, map[string]any{"execute": "send-key", "arguments": map[string]any{
+		"keys": []any{map[string]any{"type": "qcode", "data": qcode}},
+	}})
+}
+
 func (v *vm) stop() {
 	_ = qmpRun(v.qmp, map[string]any{"execute": "quit"})
 	_ = v.cmd.Wait()
