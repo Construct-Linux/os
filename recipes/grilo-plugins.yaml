@@ -1,0 +1,69 @@
+package:
+  name: grilo-plugins
+  version: 0.3.18
+  epoch: 0
+  description: GNOME media discovery framework plugins
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      # The tracker3 source only returns what the localsearch indexer has filed.
+      - localsearch
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext-dev
+      - gnome-online-accounts-dev
+      - gperf
+      - glib-dev
+      - gom-dev
+      - grilo-dev
+      - json-glib-dev
+      - libarchive-dev
+      - libmediaart-dev
+      - libsoup3-dev
+      - libxml2-dev
+      # tests/tracker3 is configured unconditionally and looks up localsearch for its sandbox.
+      - localsearch
+      - lua5.4-dev
+      - meson
+      - ninja
+      - rest1-dev
+      - sqlite-dev
+      - tinysparql-dev
+      - totem-pl-parser-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/grilo-plugins/${{vars.series}}/grilo-plugins-${{package.version}}.tar.xz
+      expected-sha256: 8e3ce74ee717c3c322d0cb0f8df26bb0914028a5d016e28055ffb49cc9a46c5e
+
+  # flickr needs liboauth and dmap needs libdmapsharing, neither in Wolfi.
+  # chromaprint only works with the gst chromaprint element, which Wolfi lacks.
+  # dleyna talks to a dLeyna D-Bus service nothing here ships; tracker (2.x) is the deprecated API.
+  # youtube needs libgdata, which only exists for libsoup 2; freebox only finds Freebox ISP set-top boxes.
+  - uses: meson/configure
+    with:
+      opts: -Dhelp=no -Dgoa=enabled -Denable-lua-factory=yes -Denable-flickr=no -Denable-dmap=no -Denable-chromaprint=no -Denable-dleyna=no -Denable-tracker=no -Denable-youtube=no -Denable-freebox=no -Denable-bookmarks=yes -Denable-filesystem=yes -Denable-gravatar=yes -Denable-local-metadata=yes -Denable-magnatune=yes -Denable-metadata-store=yes -Denable-optical-media=yes -Denable-podcasts=yes -Denable-shoutcast=yes -Denable-thetvdb=yes -Denable-tmdb=yes -Denable-tracker3=yes
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "0.3"
+
+subpackages:
+  - name: grilo-plugins-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: grilo-plugins-lang
+    pipeline:
+      - uses: split/locales
