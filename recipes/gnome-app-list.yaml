@@ -1,0 +1,28 @@
+package:
+  name: gnome-app-list
+  version: "2026.08"
+  epoch: 0
+  description: App recommendation data for GNOME Software
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - meson
+      - ninja
+      - python-3.13
+
+pipeline:
+  # GNOME publishes no .sha256sum for this module; the digest was checked against Alpine's sha512.
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-app-list/2026/gnome-app-list-${{package.version}}.tar.xz
+      expected-sha256: 4142563951a5897cdc42db080d50edea2e7decf2d85da1d1e7fba2b02ec9f455
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
