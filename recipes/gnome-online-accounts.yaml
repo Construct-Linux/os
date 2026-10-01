@@ -1,0 +1,55 @@
+package:
+  name: gnome-online-accounts
+  version: 3.58.1
+  epoch: 0
+  description: Single sign-on framework for GNOME
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - gcr4-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - json-glib-dev
+      - keyutils-dev
+      - krb5-dev
+      - libadwaita-dev
+      - libsecret-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - libxslt
+      - meson
+      - ninja
+      - rest1-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-online-accounts/${{vars.series}}/gnome-online-accounts-${{package.version}}.tar.xz
+      expected-sha256: 9ec1900cc51409c2067c07c828c10be06fe3bf68d2999bb72d7d5ed325ed9bbc
+
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dvapi=false -Ddocumentation=false -Dman=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "3.58"
+
+subpackages:
+  - name: gnome-online-accounts-dev
+    pipeline:
+      - uses: split/dev
