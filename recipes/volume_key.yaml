@@ -1,0 +1,47 @@
+package:
+  name: volume_key
+  version: 0.3.12
+  epoch: 0
+  description: Library for manipulating storage volume encryption keys
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - autoconf
+      - automake
+      - build-base
+      - busybox
+      - cryptsetup-dev
+      - gettext-dev
+      - glib-dev
+      - gpgme-dev
+      - libtool
+      - libnss-dev
+      - pkgconf-dev
+      - util-linux-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://releases.pagure.org/volume_key/volume_key-${{package.version}}.tar.xz
+      expected-sha256: 6ca3748fc1dad22c450bbf6601d4e706cb11c5e662d11bb4aeb473a9cd77309b
+
+  - runs: autoreconf -vif
+
+  # The Python bindings need SWIG and nothing in the desktop imports them.
+  - uses: autoconf/configure
+    with:
+      opts: --without-python --without-python3
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: volume_key-dev
+    pipeline:
+      - uses: split/dev
