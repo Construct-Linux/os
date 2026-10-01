@@ -89,6 +89,8 @@ func test(args []string) error {
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
 	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched))
+	dock, err := g.run(`sudo -u spin docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1 | tail -1`, "")
+	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), oneLine(dock))
 	ok, detail := g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 
