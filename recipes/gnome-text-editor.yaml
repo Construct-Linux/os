@@ -1,0 +1,50 @@
+package:
+  name: gnome-text-editor
+  version: "51.0"
+  epoch: 0
+  description: A simple text editor for GNOME
+  copyright:
+    - license: GPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - editorconfig-dev
+      - enchant2-dev
+      - glib-dev
+      - gtk-4-dev
+      - gtksourceview5-dev
+      - itstool
+      - libadwaita-dev
+      - libspelling-dev
+      - meson
+      - ninja
+      # itstool (yelp help, no option to skip it) runs under /usr/bin/python3
+      - python-3.13
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-text-editor/${{vars.series}}/gnome-text-editor-${{package.version}}.tar.xz
+      expected-sha256: 2b76e6da1506346c54b36ba1a3aeedcd28f4cb7d6a8793d217f209456c92dd4c
+
+  - uses: meson/configure
+    with:
+      opts: -Deditorconfig=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-text-editor-lang
+    pipeline:
+      - uses: split/locales
