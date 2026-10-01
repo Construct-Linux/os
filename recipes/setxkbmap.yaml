@@ -1,0 +1,35 @@
+package:
+  name: setxkbmap
+  version: 1.3.5
+  epoch: 0
+  description: Set the keyboard using the X Keyboard Extension
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - libx11-dev
+      - libxkbfile-dev
+      - libxrandr-dev
+      - pkgconf
+      - util-macros
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://www.x.org/releases/individual/app/setxkbmap-${{package.version}}.tar.xz
+      expected-sha256: 360193cecc93f906d8383a8fb5c1f3a7eed35e6ced0e118a64ee56ae13c88cac
+
+  - uses: autoconf/configure
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  # No configure switch for the man page; the image ships no docs.
+  - runs: rm -rf ${{targets.destdir}}/usr/share/man
+
+  - uses: strip
