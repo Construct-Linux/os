@@ -9,6 +9,7 @@
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
 //	image usb   [-test]                         the USB stick's root, kernel image and release, in build/tools as root
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
+//	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
 //	image check                                 every ELF's NEEDED libraries are in the root
 package main
@@ -53,6 +54,8 @@ func main() {
 		err = usb(os.Args[2:])
 	case "usb-disk":
 		err = usbDisk(os.Args[2:])
+	case "lifecycle":
+		err = lifecycle(os.Args[2:])
 	case "run":
 		err = runIn(os.Args[2:])
 	case "theme":
@@ -410,18 +413,50 @@ const vsockCID = 4207
 func start(mem, pubkey string) (*vm, error) { return startDisk(mem, pubkey, false) }
 
 // startDisk boots _output/disk.raw with the kernel given directly, or with stick the USB disk
-// (_output/usb/disk.raw) as a machine boots it: UEFI firmware, the image on a USB stick of 32 GB,
-// of which the first boot makes /var.
+// (_output/usb/disk.raw) as a machine boots it: UEFI firmware with variables of its own, the image
+// on a USB stick of 32 GB, of which the first boot makes /var.
 func startDisk(mem, pubkey string, stick bool) (*vm, error) {
-	qmp := filepath.Join(out, "qmp.sock")
-	_ = os.Remove(qmp)
-	args := []string{"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", mem}
+	m := machine{mem: mem, pubkey: pubkey}
 	if stick {
-		boot, err := stickBoot()
-		if err != nil {
+		dir := filepath.Join(out, "usb")
+		m.vars = filepath.Join(dir, "OVMF_VARS.fd")
+		s := filepath.Join(dir, "stick.raw")
+		if err := freshVars(m.vars); err != nil {
 			return nil, err
 		}
-		args = append(args, boot...)
+		if err := stickCopy(filepath.Join(dir, "disk.raw"), s); err != nil {
+			return nil, err
+		}
+		m.sticks = []string{s}
+	}
+	return m.start()
+}
+
+// machine is a QEMU of this repository's disks: with vars, UEFI firmware keeping its variables in
+// that file - boot entries an install made outlive a reboot - and the sticks plugged in, in USB
+// order, and an NVMe disk; without, the ext4 test disk with the kernel given directly.
+type machine struct {
+	mem, pubkey string
+	vars        string
+	sticks      []string
+	nvme        string
+}
+
+func (m machine) start() (*vm, error) {
+	qmp := filepath.Join(out, "qmp.sock")
+	_ = os.Remove(qmp)
+	args := []string{"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", m.mem}
+	if m.vars != "" {
+		args = append(args, "-machine", "q35",
+			"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
+			"-drive", "if=pflash,format=raw,file="+m.vars)
+		for i, s := range m.sticks {
+			args = append(args, "-drive", fmt.Sprintf("if=none,id=stick%d,format=raw,file=%s", i, s))
+		}
+		if m.nvme != "" {
+			args = append(args, "-drive", "if=none,id=nvme0,format=raw,file="+m.nvme,
+				"-device", "nvme,drive=nvme0,serial=spin-desktop-test")
+		}
 	} else {
 		args = append(args,
 			"-kernel", filepath.Join(out, "kernel", "bzImage"),
@@ -438,14 +473,18 @@ func startDisk(mem, pubkey string, stick bool) (*vm, error) {
 		"-serial", "file:"+filepath.Join(out, "serial.log"),
 		"-qmp", "unix:"+qmp+",server,nowait",
 	)
-	if stick {
-		// After the xHCI controller it plugs into.
-		args = append(args, "-device", "usb-storage,bus=xhci.0,drive=stick,removable=on,bootindex=0")
+	// After the xHCI controller they plug into; the firmware boots the first stick first.
+	for i := range m.sticks {
+		dev := fmt.Sprintf("usb-storage,bus=xhci.0,drive=stick%d,removable=on", i)
+		if i == 0 && m.nvme == "" {
+			dev += ",bootindex=0"
+		}
+		args = append(args, "-device", dev)
 	}
-	if pubkey != "" {
+	if m.pubkey != "" {
 		args = append(args,
 			"-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", vsockCID),
-			"-smbios", "type=11,value=io.systemd.credential:ssh.ephemeral-authorized_keys-all="+strings.TrimSpace(pubkey))
+			"-smbios", "type=11,value=io.systemd.credential:ssh.ephemeral-authorized_keys-all="+strings.TrimSpace(m.pubkey))
 	}
 	cmd := exec.Command("qemu-system-x86_64", args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
@@ -455,26 +494,25 @@ func startDisk(mem, pubkey string, stick bool) (*vm, error) {
 	return &vm{cmd: cmd, qmp: qmp, cid: vsockCID}, nil
 }
 
-// stickBoot is UEFI firmware with its own variable store, and the USB disk as a 32 GB stick: a
-// copy, so every boot is a first boot, sparse past the image for /var.
-func stickBoot() ([]string, error) {
-	dir := filepath.Join(out, "usb")
-	stick, vars := filepath.Join(dir, "stick.raw"), filepath.Join(dir, "OVMF_VARS.fd")
-	for _, c := range [][]string{
-		{"cp", "--sparse=always", filepath.Join(dir, "disk.raw"), stick},
-		{"truncate", "-s", "32G", stick},
-		{"cp", "/usr/share/OVMF/OVMF_VARS_4M.fd", vars},
-	} {
-		if out, err := exec.Command(c[0], c[1:]...).CombinedOutput(); err != nil {
-			return nil, fmt.Errorf("%s: %w: %s", c[0], err, out)
-		}
+// freshVars is a variable store as the firmware ships it: no boot entries.
+func freshVars(vars string) error {
+	return copyCmd("cp", "/usr/share/OVMF/OVMF_VARS_4M.fd", vars)
+}
+
+// stickCopy is the stick a disk image is written onto: 32 GB, sparse past the image, so the first
+// boot of it is a first boot and finds room for /var.
+func stickCopy(img, stick string) error {
+	if err := copyCmd("cp", "--sparse=always", img, stick); err != nil {
+		return err
 	}
-	return []string{
-		"-machine", "q35",
-		"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
-		"-drive", "if=pflash,format=raw,file=" + vars,
-		"-drive", "if=none,id=stick,format=raw,file=" + stick,
-	}, nil
+	return copyCmd("truncate", "-s", "32G", stick)
+}
+
+func copyCmd(name string, args ...string) error {
+	if out, err := exec.Command(name, args...).CombinedOutput(); err != nil {
+		return fmt.Errorf("%s: %w: %s", name, err, out)
+	}
+	return nil
 }
 
 func (v *vm) screenshot(file string) error {

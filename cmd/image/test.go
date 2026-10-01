@@ -327,6 +327,31 @@ func (r *report) shot(v *vm, name string) {
 // write adds what the system says about itself - failed units, core dumps, the journal's errors
 // - and writes the report; it fails when any scenario or system check did.
 func (r *report) write(g *guest) error {
+	if g != nil {
+		r.system(g)
+	}
+	var b strings.Builder
+	bad := 0
+	for _, x := range r.results {
+		mark := "PASS"
+		if !x.ok {
+			mark = "FAIL"
+			bad++
+		}
+		fmt.Fprintf(&b, "%s %s: %s\n", mark, x.name, x.detail)
+	}
+	if err := os.WriteFile(filepath.Join(r.dir, "report.txt"), []byte(b.String()), 0o644); err != nil {
+		return err
+	}
+	fmt.Printf("%d/%d passed; screenshots and journal-errors.txt in %s\n", len(r.results)-bad, len(r.results), r.dir)
+	if bad > 0 {
+		return fmt.Errorf("%d checks failed", bad)
+	}
+	return nil
+}
+
+// system adds what the machine says about itself: failed units, core dumps, the journal's errors.
+func (r *report) system(g *guest) {
 	failed, _ := g.run(`systemctl --failed --no-legend --plain | awk '{print $1}'`, "")
 	userFailed, _ := g.run(`systemctl --user -M spin@ --failed --no-legend --plain 2>/dev/null | awk '{print $1}'`, "")
 	dumps, _ := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $NF}' | sort | uniq -c`, "")
@@ -347,24 +372,6 @@ func (r *report) write(g *guest) error {
 		_ = os.WriteFile(filepath.Join(r.dir, "plymouth-debug.log"), []byte(ply), 0o644)
 	}
 
-	var b strings.Builder
-	bad := 0
-	for _, x := range r.results {
-		mark := "PASS"
-		if !x.ok {
-			mark = "FAIL"
-			bad++
-		}
-		fmt.Fprintf(&b, "%s %s: %s\n", mark, x.name, x.detail)
-	}
-	if err := os.WriteFile(filepath.Join(r.dir, "report.txt"), []byte(b.String()), 0o644); err != nil {
-		return err
-	}
-	fmt.Printf("%d/%d passed; screenshots and journal-errors.txt in %s\n", len(r.results)-bad, len(r.results), r.dir)
-	if bad > 0 {
-		return fmt.Errorf("%d checks failed", bad)
-	}
-	return nil
 }
 
 func lastLine(s string) string {
@@ -452,12 +459,24 @@ func runIn(args []string) error {
 	fl := flag.NewFlagSet("run", flag.ExitOnError)
 	stick := fl.Bool("usb", false, "boot the USB disk instead of the ext4 test disk")
 	wait := fl.Duration("wait", 0, "how long to wait after sshd answers, for the boot to settle")
+	nvme := fl.String("nvme", "", "with -vars: boot this NVMe disk image (the lifecycle's), with -sticks plugged in")
+	vars := fl.String("vars", "", "the firmware's variable store to boot with")
+	sticks := fl.String("sticks", "", "comma-separated stick images to plug in")
 	_ = fl.Parse(args)
 	_, pub, err := testKey()
 	if err != nil {
 		return err
 	}
-	v, err := startDisk("6G", pub, *stick)
+	var v *vm
+	if *vars != "" {
+		m := machine{mem: "6G", pubkey: pub, vars: *vars, nvme: *nvme}
+		if *sticks != "" {
+			m.sticks = strings.Split(*sticks, ",")
+		}
+		v, err = m.start()
+	} else {
+		v, err = startDisk("6G", pub, *stick)
+	}
 	if err != nil {
 		return err
 	}

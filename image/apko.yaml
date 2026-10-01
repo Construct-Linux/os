@@ -25,6 +25,12 @@ contents:
     - kmod
     - util-linux
     - util-linux-misc
+    # What spin-desktop install and update run: mount and umount (their own packages in Wolfi),
+    # and the ESP's and /var's mkfs.
+    - mount
+    - umount
+    - dosfstools
+    - e2fsprogs
     - shadow
     - coreutils
     - bash

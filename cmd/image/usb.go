@@ -27,6 +27,7 @@ func usb(args []string) error {
 	fl := flag.NewFlagSet("usb", flag.ExitOnError)
 	test := fl.Bool("test", false, "add image/test/rootfs, as task disk -- -test does")
 	extra := fl.String("append", "", "more of the kernel's command line, to diagnose a boot (plymouth.debug)")
+	broken := fl.Bool("broken", false, "add image/test/broken: a release whose GDM fails, for the lifecycle test's rollback")
 	hashFile := fl.String("password-hash", filepath.Join(".cache", "spin-password.hash"),
 		"the user's password, as crypt(3) makes it (openssl passwd -6): the screen locks, and sudo asks")
 	_ = fl.Parse(args)
@@ -51,7 +52,11 @@ func usb(args []string) error {
 		return fmt.Errorf("spin-init: %w", err)
 	}
 	merged := filepath.Join(out, "root.tar")
-	if err := merge(rootLayers(*test), merged); err != nil {
+	layers := rootLayers(*test)
+	if *broken {
+		layers = append(layers, dirLayer{dir: "image/test/broken"})
+	}
+	if err := merge(layers, merged); err != nil {
 		return err
 	}
 	if err := run("tar", "--numeric-owner", "--xattrs", "-xpf", merged, "-C", root); err != nil {

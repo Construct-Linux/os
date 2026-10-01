@@ -138,6 +138,18 @@ tasks:
         vars: {CLI_ARGS: -test, SIGNING_HOME: .cache/test-gnupg}
       - go run ./cmd/image test -usb {{.CLI_ARGS}}
 
+  test:lifecycle:
+    desc: "Install from a stick onto an NVMe disk, update with the next release's stick, roll back from a broken one: three test releases, in QEMU."
+    deps: [keygen:test]
+    cmds:
+      - mkdir -p _output/lifecycle
+      - for: [v1, v2, v3]
+        cmd: >-
+          task usb SIGNING_HOME=.cache/test-gnupg -- -test {{if eq .ITEM "v3"}}-broken{{end}} > .cache/logs/usb-{{.ITEM}}.log 2>&1
+          && cp --sparse=always _output/usb/disk.raw _output/lifecycle/{{.ITEM}}.raw
+          && basename $(ls -d _output/release/*/ | sort | tail -1) > _output/lifecycle/{{.ITEM}}.version
+      - go run ./cmd/image lifecycle
+
   gap:
     desc: How far Wolfi is from each desktop profile.
     cmds:
