@@ -12,6 +12,9 @@ After=dev-%i.device local-fs.target
 Type=oneshot
 RuntimeDirectory=spin-desktop/update
 ExecStart=/usr/bin/mount -o ro,nodev,nosuid,noexec /dev/%i /run/spin-desktop/update
+# A stick pulled out half way leaves a version written but not bootable, which is not written
+# again until it is vacuumed (spin-desktop-update.service says more).
+ExecStart=-/usr/lib/systemd/systemd-sysupdate --component=stick vacuum
 ExecStart=/usr/lib/systemd/systemd-sysupdate --component=stick update
 ExecStartPost=/usr/lib/spin-desktop/reboot-required
 ExecStopPost=-/usr/bin/umount /run/spin-desktop/update

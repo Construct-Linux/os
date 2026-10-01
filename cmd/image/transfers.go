@@ -46,6 +46,9 @@ func writeTransfers() error {
 // UUIDs their names carry (@u), which the kernel image's command line names - and the kernel image
 // last, onto the ESP with three tries: systemd-boot starts it at the next boot and falls back to
 // the version that wrote it if it never reaches boot-complete.target (spin-desktop boot-check).
+// The kernel image is written 0644: a mode without write is FAT's read-only attribute, and
+// systemd-boot counts a try by renaming the file - it cannot rename a read-only one, and then
+// counts nothing and never falls back.
 func transfers(url string) map[string]string {
 	header := "# Written by cmd/image (transfers.go): a release from " + url + ".\n"
 	partition := func(file, typ string) string {
@@ -81,7 +84,7 @@ Type=regular-file
 Path=/EFI/Linux
 PathRelativeTo=esp
 MatchPattern=spin-desktop_@v+@l-@d.efi spin-desktop_@v+@l.efi spin-desktop_@v.efi
-Mode=0444
+Mode=0644
 TriesLeft=3
 TriesDone=0
 InstancesMax=2

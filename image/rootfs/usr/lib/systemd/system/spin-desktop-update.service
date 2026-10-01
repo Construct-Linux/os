@@ -10,5 +10,9 @@ After=network-online.target
 
 [Service]
 Type=oneshot
+# An update that stopped half way - a refused kernel image after its slot was written, a lost
+# network - is never booted (it has no kernel image), but systemd-sysupdate will not write that
+# version again until it is vacuumed.
+ExecStartPre=-/usr/lib/systemd/systemd-sysupdate vacuum
 ExecStart=/usr/lib/systemd/systemd-sysupdate update
 ExecStartPost=/usr/lib/spin-desktop/reboot-required

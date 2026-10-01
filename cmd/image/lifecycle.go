@@ -123,7 +123,8 @@ func lifecycle(args []string) error {
 	_, err = g.run(`mkdir -p /etc/sysupdate.d && for f in /usr/lib/sysupdate.d/*.transfer; do `+
 		`sed "s|^Path=https://.*|Path=`+url+`|" "$f" > /etc/sysupdate.d/$(basename "$f"); done`, "")
 	r.add("point updates at the test server", err == nil, url+errText(err))
-	outs, err = g.run(`systemctl start spin-desktop-update.service; journalctl -b --no-pager -o cat -u spin-desktop-update.service | tail -3`, "")
+	_, err = g.run(`systemctl start spin-desktop-update.service`, "")
+	outs, _ = g.run(`journalctl -b --no-pager -o cat -u spin-desktop-update.service | tail -3`, "")
 	r.add("v2 downloads", err == nil, oneLine(outs)+errText(err))
 	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v2 is counted on the ESP", strings.Contains(esp, "spin-desktop_"+versions["v2"]+"+3"), oneLine(esp))
