@@ -1,0 +1,45 @@
+package:
+  name: libgee
+  version: 0.20.8
+  epoch: 0
+  description: GObject collection library
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libgee/${{vars.series}}/libgee-${{package.version}}.tar.xz
+      expected-sha256: 189815ac143d89867193b0c52b7dc31f3aa108a15f04d6b5dca2b6adfad0b0ee
+
+  # The shipped Vala-generated C trips GCC 14's incompatible-pointer-types errors.
+  - runs: |
+      CFLAGS="$CFLAGS -fpermissive" ./configure \
+        --prefix=/usr \
+        --sysconfdir=/etc \
+        --disable-static \
+        --enable-introspection=yes \
+        --disable-doc
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+vars:
+  series: "0.20"
+
+subpackages:
+  - name: libgee-dev
+    pipeline:
+      - uses: split/dev
