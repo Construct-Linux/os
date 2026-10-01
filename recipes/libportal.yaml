@@ -1,0 +1,53 @@
+package:
+  name: libportal
+  version: 0.11.0
+  epoch: 0
+  description: GIO-style async APIs for most Flatpak portals
+  copyright:
+    - license: LGPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/flatpak/libportal/releases/download/${{package.version}}/libportal-${{package.version}}.tar.xz
+      expected-sha256: abb9e452a1c372133bd3eb8f0bb30d07b2d0a8fb02001c4155cf287555db4040
+
+  # The desktop's apps are GTK 4; GTK 3 and Qt backends have no consumer here.
+  - uses: meson/configure
+    with:
+      opts: -Dbackend-gtk3=disabled -Dbackend-gtk4=enabled -Dbackend-qt5=disabled -Dbackend-qt6=disabled -Dintrospection=true -Dvapi=false -Ddocs=false -Dtests=false -Dportal-tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libportal-gtk4
+    description: libportal GTK 4 backend
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib/girepository-1.0
+          mv ${{targets.destdir}}/usr/lib/libportal-gtk4.so.* ${{targets.subpkgdir}}/usr/lib/
+          mv ${{targets.destdir}}/usr/lib/girepository-1.0/XdpGtk4* ${{targets.subpkgdir}}/usr/lib/girepository-1.0/
+
+  - name: libportal-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - libportal
+        - libportal-gtk4
