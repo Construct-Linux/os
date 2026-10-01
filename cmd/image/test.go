@@ -68,7 +68,7 @@ var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power
 
 func test(args []string) error {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
-	only := fl.String("only", "", "comma-separated scenario names (app ids or panel:<name>); all by default")
+	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views); all by default")
 	mem := fl.String("m", "6G", "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	_ = fl.Parse(args)
@@ -157,6 +157,9 @@ func test(args []string) error {
 		r.shot(v, "panel-"+p)
 	}
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
+	if len(want) == 0 || want["views"] {
+		r.shellViews(v, g)
+	}
 	return r.write(g)
 }
 
@@ -606,4 +609,33 @@ func (g *guest) notifications() (bool, string) {
 		return false, strings.Join(titles, "; ")
 	}
 	return true, "none at login"
+}
+
+// shellView is a part of the shell drawn only by the shell theme: a screenshot of each is how a
+// theme written for an older shell shows what it does not style.
+type shellView struct{ name, open, close string }
+
+// shellViews ends with the lock screen: its prompt is the unlock dialog the shell's AuthPrompt
+// draws, which GNOME 51 restyled, and nothing after it in the run must find the session locked.
+var shellViews = []shellView{
+	{"overview", `Main.overview.show()`, `Main.overview.hide()`},
+	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`},
+	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`},
+	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`},
+	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`},
+	{"lock-screen", `Main.screenShield.lock(false)`, ``},
+	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`},
+}
+
+func (r *report) shellViews(v *vm, g *guest) {
+	for _, s := range shellViews {
+		_, err := g.eval(s.open + "; true")
+		r.add("view:"+s.name, err == nil, "screenshot shell-"+s.name+".png")
+		time.Sleep(2 * time.Second)
+		r.shot(v, "shell-"+s.name)
+		if s.close != "" {
+			_, _ = g.eval(s.close + "; true")
+			time.Sleep(time.Second)
+		}
+	}
 }
