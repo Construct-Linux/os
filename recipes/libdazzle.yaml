@@ -1,0 +1,48 @@
+package:
+  name: libdazzle
+  version: 3.44.0
+  epoch: 0
+  description: GTK 3 widgets and utilities for GNOME applications
+  copyright:
+    - license: GPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-3-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libdazzle/${{vars.series}}/libdazzle-${{package.version}}.tar.xz
+      expected-sha256: 3cd3e45eb6e2680cb05d52e1e80dd8f9d59d4765212f0e28f78e6c1783d18eae
+
+  # dazzle-list-counters is a debugging aid nothing on the desktop runs.
+  - uses: meson/configure
+    with:
+      opts: -Dwith_introspection=true -Dwith_vapi=false -Denable_gtk_doc=false -Denable_tests=false -Denable_tools=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "3.44"
+
+subpackages:
+  - name: libdazzle-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: libdazzle-lang
+    pipeline:
+      - uses: split/locales
