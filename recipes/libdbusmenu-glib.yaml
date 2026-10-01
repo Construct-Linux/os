@@ -1,0 +1,49 @@
+package:
+  name: libdbusmenu-glib
+  version: 16.04.0
+  epoch: 0
+  description: Library for passing menus over DBus
+  copyright:
+    - license: LGPL-3.0-or-later OR LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - intltool
+      - perl-xml-parser
+  environment:
+    # Upstream builds with -Werror and does not compile cleanly with current GCC.
+    CFLAGS: -Wno-error
+    # configure defines the HAVE_VALGRIND conditional only when tests are on, then fails
+    # its own sanity check with tests off.
+    HAVE_VALGRIND_TRUE: "#"
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://launchpad.net/libdbusmenu/16.04/${{package.version}}/+download/libdbusmenu-${{package.version}}.tar.gz
+      expected-sha256: b9cc4a2acd74509435892823607d966d424bd9ad5d0b00938f27240a1bfa878a
+
+  # gtk: the GTK binding is not needed by the shell, only the GLib library.
+  # dumper: needs gtk+-2.0. tests: need json-glib and dbus-test-runner. vala, gtk-doc: not shipped.
+  - uses: autoconf/configure
+    with:
+      opts: --disable-static --disable-gtk --disable-dumper --disable-tests --disable-vala --disable-gtk-doc --enable-introspection=yes
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: rm -rf ${{targets.destdir}}/usr/share/doc ${{targets.destdir}}/usr/share/gtk-doc ${{targets.destdir}}/usr/libexec
+
+  - uses: strip
+
+subpackages:
+  - name: libdbusmenu-glib-dev
+    pipeline:
+      - uses: split/dev
