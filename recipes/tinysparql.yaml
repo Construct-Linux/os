@@ -1,0 +1,55 @@
+package:
+  name: tinysparql
+  version: 3.12.0
+  epoch: 0
+  description: Low-footprint RDF triple store with a SPARQL 1.1 interface
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - icu-dev
+      - json-glib-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - python-3.13
+      - sqlite-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/tinysparql/${{vars.series}}/tinysparql-${{package.version}}.tar.xz
+      expected-sha256: 40e3e3ae9811ae07a94ac7dfe8259f218679ebb1c9bc98d7ab345b2405926b57
+
+  # stemmer off: libstemmer is not in Wolfi. avahi off: DNS-SD for HTTP endpoints is not needed on the desktop.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=enabled -Dvapi=disabled -Ddocs=false -Dman=false -Dtests=false -Dstemmer=disabled -Davahi=disabled -Dunicode_support=icu -Dbash_completion=false -Dsystemd_user_services=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "3.12"
+
+subpackages:
+  - name: tinysparql-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: tinysparql-lang
+    pipeline:
+      - uses: split/locales
