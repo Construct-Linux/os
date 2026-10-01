@@ -1,0 +1,44 @@
+package:
+  name: gnome-shell-extension-night-theme-switcher
+  version: "84"
+  epoch: 0
+  description: GNOME Shell extension that switches the color scheme, background and commands at sunset and sunrise
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      - gnome-shell
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - glib-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.com/rmnvgr/nightthemeswitcher-gnome-shell-extension
+      tag: ${{package.version}}
+      expected-commit: 5413ac8cf4f8d8e726cd9925b6cb4e66eeddafc6
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # The image compiles every schema in /usr/share/glib-2.0/schemas at build; the shell falls back
+  # to that source when the extension has no schemas directory of its own.
+  - runs: |
+      ext=${{targets.destdir}}/usr/share/gnome-shell/extensions/${{vars.uuid}}
+      mkdir -p ${{targets.destdir}}/usr/share/glib-2.0/schemas
+      mv $ext/schemas/*.gschema.xml ${{targets.destdir}}/usr/share/glib-2.0/schemas/
+      rm -r $ext/schemas
+
+vars:
+  uuid: nightthemeswitcher@romainvigier.fr
