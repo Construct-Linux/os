@@ -1,0 +1,71 @@
+package:
+  name: gnome-software
+  version: "51.0"
+  epoch: 0
+  description: Install and update applications (Flatpak)
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      # The curated and featured app lists the overview shows.
+      - gnome-app-list
+      - flatpak
+
+environment:
+  contents:
+    packages:
+      - appstream-dev
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - flatpak-dev
+      - gdk-pixbuf-dev
+      - gettext
+      - glib-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-4-dev
+      - itstool
+      - json-glib-dev
+      - libadwaita-dev
+      - libgudev-dev
+      - libsoup3-dev
+      - libxmlb-dev
+      - meson
+      - ninja
+      - ostree-dev
+      - polkit-dev
+      # itstool runs under /usr/bin/python3.
+      - python-3.13
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-software/${{vars.series}}/gnome-software-${{package.version}}.tar.xz
+      expected-sha256: 834b6035e61e36dd72339eb3e15d299b472ae0b393467a5bb36bb0045e0ba123
+
+  # Flatpak is the only source of apps: there is no PackageKit, fwupd, snapd or malcontent on
+  # this image. Web apps install into Epiphany, which needs webkitgtk. The sysupdate plugin
+  # talks to systemd-sysupdated, which recipes/systemd-sysupdate does not build (the OS updates
+  # through its own transfers). sysprof is not available.
+  - uses: meson/configure
+    with:
+      opts: -Dflatpak=true -Dpackagekit=false -Dfwupd=false -Dsnap=false -Dmalcontent=false -Dwebapps=false -Dhardcoded_foss_webapps=false -Dhardcoded_proprietary_webapps=false -Dsystemd-sysupdate=false -Deos_updater=false -Drpm_ostree=false -Dmogwai=false -Ddkms=false -Dpolkit=true -Dgudev=true -Dsysprof=disabled -Dtests=false -Dinstalled_tests=false -Dman=false -Dgtk_doc=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-software-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: gnome-software-lang
+    pipeline:
+      - uses: split/locales
