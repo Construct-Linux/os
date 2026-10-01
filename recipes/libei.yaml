@@ -1,0 +1,44 @@
+package:
+  name: libei
+  version: 1.6.0
+  epoch: 0
+  description: Emulated Input library (libei, libeis, liboeffis)
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - libevdev-dev
+      - libxkbcommon-dev
+      - meson
+      - ninja
+      # the protocol scanner renders its C sources from jinja2 templates
+      - py3.13-attrs
+      - py3.13-jinja2
+      - python-3.13
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/libinput/libei/-/archive/${{package.version}}/libei-${{package.version}}.tar.bz2
+      expected-sha256: 5ed6078fa63afd554cc04b1001675615da0ed8fe23b80492ab63403140b5a830
+
+  # sd-bus from libsystemd: the session runs on systemd, so basu is not needed
+  - uses: meson/configure
+    with:
+      opts: -Dsd-bus-provider=libsystemd -Dlibei=enabled -Dlibeis=enabled -Dliboeffis=enabled -Dtests=disabled -Ddocumentation=[]
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libei-dev
+    pipeline:
+      - uses: split/dev
