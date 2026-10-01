@@ -1,0 +1,48 @@
+package:
+  name: gnome-shell-extension-appindicator
+  version: "66"
+  epoch: 0
+  description: GNOME Shell extension for AppIndicator, KStatusNotifierItem and legacy tray icons
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gnome-shell
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - glib-dev
+      # meson.build reads the uuid, schema and gettext domain from metadata.json with jq.
+      - jq
+      - meson
+      - ninja
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/ubuntu/gnome-shell-extension-appindicator
+      tag: v${{package.version}}
+      expected-commit: 52da5222a17f7a862e8a47d2bc523f29abf59964
+
+  # An explicit local_install keeps the prefix /usr whoever runs the build.
+  - uses: meson/configure
+    with:
+      opts: -Dlocal_install=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # The install script compiles the schema directory; the image compiles all schemas at build, and
+  # a gschemas.compiled here would clash with every other package's.
+  - runs: |
+      rm -f "${{targets.destdir}}"/usr/share/glib-2.0/schemas/gschemas.compiled
+
+subpackages:
+  - name: gnome-shell-extension-appindicator-lang
+    pipeline:
+      - uses: split/locales
