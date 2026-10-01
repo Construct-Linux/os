@@ -1,0 +1,43 @@
+package:
+  name: libwacom
+  version: 2.20.0
+  epoch: 0
+  description: Library to help implement Wacom tablet settings
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - libevdev-dev
+      - libgudev-dev
+      - meson
+      - ninja
+      # the udev hwdb is generated at build time by a python script
+      - python3
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/linuxwacom/libwacom/releases/download/libwacom-${{package.version}}/libwacom-${{package.version}}.tar.xz
+      expected-sha256: 370b45b5e05a91960df0aeb9c9481ae05846aab92ab2d4ec66945a0da4216888
+
+  # tests need pytest, py3-libevdev and pyudev
+  - uses: meson/configure
+    with:
+      opts: -Ddocumentation=disabled -Dtests=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libwacom-dev
+    pipeline:
+      - uses: split/dev
