@@ -1,0 +1,43 @@
+package:
+  name: gst-plugins-rs
+  version: 0.15.4
+  epoch: 0
+  description: GStreamer Rust plugins (gtk4paintablesink only)
+  copyright:
+    - license: MPL-2.0
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cargo-c
+      - glib-dev
+      - gst-plugins-base-dev
+      - gstreamer-dev
+      - gtk-4-dev
+      - meson
+      - ninja
+      - python-3
+      - rust
+
+pipeline:
+  # The 0.15.4 tag still points at git dependencies; +fixup is the same release with its
+  # Cargo.lock on crates.io.
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.freedesktop.org/gstreamer/gst-plugins-rs
+      tag: ${{package.version}}+fixup
+      expected-commit: c164a6696fcb0408f72a108e5f35ec25eb047464
+
+  # Showtime and Snapshot need only gtk4paintablesink to show video; every other plugin is
+  # compile time and attack surface nothing in the desktop uses.
+  - uses: meson/configure
+    with:
+      opts: -Dauto_features=disabled -Dgtk4=enabled -Ddoc=disabled -Dtests=disabled -Dexamples=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
