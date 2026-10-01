@@ -1,0 +1,40 @@
+package:
+  name: exempi
+  version: 2.6.6
+  epoch: 0
+  description: Library to parse XMP metadata
+  copyright:
+    - license: BSD-3-Clause
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - expat-dev
+      - zlib-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://libopenraw.freedesktop.org/download/exempi-${{package.version}}.tar.xz
+      expected-sha256: 900fb9957be2095c78e5111b99c49378adac58161a358f52f93c55126f34eb8f
+
+  # Unit tests off: they are the only thing that needs boost. Samples off: papers only links
+  # the library.
+  - uses: autoconf/configure
+    with:
+      opts: --disable-static --enable-unittest=no --enable-samples=no
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: rm -rf ${{targets.destdir}}/usr/share/man
+
+  - uses: strip
+
+subpackages:
+  - name: exempi-dev
+    pipeline:
+      - uses: split/dev
