@@ -1,0 +1,44 @@
+package:
+  name: power-profiles-daemon
+  version: "0.30"
+  epoch: 0
+  description: Makes power profiles handling available over D-Bus
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      # powerprofilesctl is a Python script using GLib through PyGObject
+      - python-3.13
+      - py3.13-gobject3
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - libgudev-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - python-3.13
+      - systemd-dev
+      - upower-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.freedesktop.org/upower/power-profiles-daemon.git
+      tag: ${{package.version}}
+      expected-commit: 5b4994c8a91290481bef87a5bae95391d0ec677f
+
+  # bash completion needs shtab, man page needs argparse-manpage; neither is wanted in a minimal build
+  - uses: meson/configure
+    with:
+      opts: -Dsystemdsystemunitdir=/usr/lib/systemd/system -Dgtk_doc=false -Dtests=false -Dmanpage=disabled -Dbashcomp=disabled -Dpylint=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
