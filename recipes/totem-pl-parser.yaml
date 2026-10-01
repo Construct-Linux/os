@@ -1,0 +1,50 @@
+package:
+  name: totem-pl-parser
+  version: 3.26.7
+  epoch: 0
+  description: GNOME playlist parser library
+  copyright:
+    - license: LGPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - libarchive-dev
+      - libgcrypt-dev
+      - libxml2-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/totem-pl-parser/${{vars.series}}/totem-pl-parser-${{package.version}}.tar.xz
+      expected-sha256: 60d517c1acabe54ae337f64451264fc76730696eaae26b5480fb37166689b5f3
+
+  # uchardet is not in Wolfi; without it playlists in legacy encodings are read as UTF-8.
+  - uses: meson/configure
+    with:
+      opts: -Denable-libarchive=yes -Denable-libgcrypt=yes -Denable-uchardet=no -Denable-gtk-doc=false -Dintrospection=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "3.26"
+
+subpackages:
+  - name: totem-pl-parser-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: totem-pl-parser-lang
+    pipeline:
+      - uses: split/locales
