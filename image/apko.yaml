@@ -21,6 +21,7 @@ contents:
     - dbus
     - kmod
     - util-linux
+    - util-linux-misc
     - shadow
     - coreutils
     - bash

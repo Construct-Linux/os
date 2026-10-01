@@ -218,18 +218,29 @@ func (g *guest) waitShell(d time.Duration) (string, error) {
 	return v, err
 }
 
-// waitUnit waits for a oneshot unit to leave "activating" and reports how it ended.
+// waitUnit waits for a oneshot unit to run, or to be skipped by its condition, and reports how
+// it ended. A unit that has not started yet is also inactive with Result=success, so it counts as
+// done only once its main process or its condition has a timestamp.
 func (g *guest) waitUnit(unit string, d time.Duration) (bool, string) {
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
-		out, err := g.run("systemctl show -p ActiveState -p Result --value "+unit, "")
-		f := strings.Fields(out)
-		if err == nil && len(f) == 2 && f[0] != "activating" {
-			return f[1] == "success", unit + ": " + f[0] + "/" + f[1]
+		out, err := g.run("systemctl show -p ActiveState -p Result -p ExecMainExitTimestampMonotonic -p ConditionResult -p ConditionTimestampMonotonic "+unit, "")
+		p := map[string]string{}
+		for _, l := range strings.Split(out, "\n") {
+			if k, v, ok := strings.Cut(l, "="); ok {
+				p[k] = v
+			}
+		}
+		if err == nil && p["ActiveState"] != "" && p["ActiveState"] != "activating" {
+			ran := p["ExecMainExitTimestampMonotonic"] != "0"
+			skipped := p["ConditionResult"] == "no" && p["ConditionTimestampMonotonic"] != "0"
+			if ran || skipped {
+				return p["Result"] == "success", fmt.Sprintf("%s: %s/%s (skipped: %v)", unit, p["ActiveState"], p["Result"], skipped)
+			}
 		}
 		time.Sleep(5 * time.Second)
 	}
-	return false, fmt.Sprintf("%s still activating after %v", unit, d)
+	return false, fmt.Sprintf("%s did not finish within %v", unit, d)
 }
 
 func (g *guest) runApp(a app) (bool, string) {
