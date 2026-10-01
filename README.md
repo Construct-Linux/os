@@ -31,9 +31,9 @@ reached; Bluefin then built Dakota on GNOME OS instead.
 
 - Firmware: Wolfi ships none. This machine loads `i915/adlp_dmc.bin`, `i915/adlp_guc_70.bin`,
   `i915/tgl_huc.bin`, `iwlwifi-so-a0-hr-b0-89.ucode`, `intel/ibt-0040-4150.{sfi,ddc}`; pinned
-  from linux-firmware. spin-ami's kernel has no modules and no initrd, so built-in drivers
-  need their blobs in `CONFIG_EXTRA_FIRMWARE`.
-- Kernel: metal.config gains i915, iwlwifi/mac80211, btusb, HDA/SOF, r8169, input, suspend.
+  from linux-firmware, read from /usr/lib/firmware when each driver's module loads.
+- Kernel: metal's, with modules - i915, xe, amdgpu, Wi-Fi, Bluetooth, HDA/SOF, docks - each
+  signed by a key that exists only inside its build.
 - Updates: metal reinstalls from the medium; a desktop needs A/B (systemd-sysupdate) and a
   rebuild whenever Firefox or Mesa ship a security fix.
 - Apps: snaps go away; Firefox from Wolfi or Flathub, VS Code from Flathub or a tarball in /var.
