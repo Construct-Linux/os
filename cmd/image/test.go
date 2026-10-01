@@ -342,6 +342,10 @@ func (r *report) write(g *guest) error {
 	r.add("user units", strings.TrimSpace(userFailed) == "", "failed: "+oneLine(userFailed))
 	r.add("core dumps", strings.TrimSpace(dumps) == "", oneLine(dumps))
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
+	// Plymouth's own log, when the disk was built to boot with plymouth.debug.
+	if ply, err := g.run("cat /var/log/plymouth-debug.log", ""); err == nil && ply != "" {
+		_ = os.WriteFile(filepath.Join(r.dir, "plymouth-debug.log"), []byte(ply), 0o644)
+	}
 
 	var b strings.Builder
 	bad := 0
@@ -440,4 +444,30 @@ func ppmToken(br *bufio.Reader) (string, error) {
 		}
 		tok = append(tok, c)
 	}
+}
+
+// runIn boots the disk as test does, runs script in it as root once sshd answers, prints what it
+// wrote, and stops the machine: a look inside a boot without a scenario for it.
+func runIn(args []string) error {
+	fl := flag.NewFlagSet("run", flag.ExitOnError)
+	stick := fl.Bool("usb", false, "boot the USB disk instead of the ext4 test disk")
+	wait := fl.Duration("wait", 0, "how long to wait after sshd answers, for the boot to settle")
+	_ = fl.Parse(args)
+	_, pub, err := testKey()
+	if err != nil {
+		return err
+	}
+	v, err := startDisk("6G", pub, *stick)
+	if err != nil {
+		return err
+	}
+	defer v.stop()
+	g := &guest{cid: v.cid}
+	if err := g.wait(4 * time.Minute); err != nil {
+		return err
+	}
+	time.Sleep(*wait)
+	outs, err := g.run(strings.Join(fl.Args(), " "), "")
+	fmt.Print(outs)
+	return err
 }

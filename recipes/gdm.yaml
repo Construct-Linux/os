@@ -1,7 +1,7 @@
 package:
   name: gdm
   version: "51.0"
-  epoch: 0
+  epoch: 1
   description: GNOME display manager
   copyright:
     - license: GPL-2.0-or-later
@@ -33,6 +33,7 @@ environment:
       - libgudev-dev
       - linux-pam-dev
       - meson
+      - plymouth-dev
       - ninja
       - polkit-dev
       - systemd-dev
@@ -48,11 +49,11 @@ pipeline:
     with:
       patches: gdm/pam-base.patch
 
-  # x11-support off: gnome-shell 51 runs only as a Wayland compositor. selinux and plymouth off:
-  # neither is in the image.
+  # x11-support off: gnome-shell 51 runs only as a Wayland compositor. selinux off: it is not in
+  # the image. Plymouth on: GDM takes the screen over from the boot splash without a flash.
   - uses: meson/configure
     with:
-      opts: -Dsbindir=bin -Dlogind-provider=systemd -Dsystemd-journal=true -Dsystemdsystemunitdir=/usr/lib/systemd/system -Dsystemduserunitdir=/usr/lib/systemd/user -Ddbus-sys=/usr/share/dbus-1/system.d -Ddefault-pam-config=openembedded -Dpam-services-dir=/etc/pam.d -Dlibaudit=enabled -Dselinux=disabled -Dplymouth=disabled -Dx11-support=false
+      opts: -Dsbindir=bin -Dlogind-provider=systemd -Dsystemd-journal=true -Dsystemdsystemunitdir=/usr/lib/systemd/system -Dsystemduserunitdir=/usr/lib/systemd/user -Ddbus-sys=/usr/share/dbus-1/system.d -Ddefault-pam-config=openembedded -Dpam-services-dir=/etc/pam.d -Dlibaudit=enabled -Dselinux=disabled -Dplymouth=enabled -Dx11-support=false
 
   - uses: meson/compile
 

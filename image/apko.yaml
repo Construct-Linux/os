@@ -13,6 +13,8 @@ contents:
     - systemd
     - systemd-init
     - systemd-boot
+    # The boot splash: SpinBot over a turning ring (cmd/image/plymouth.go).
+    - plymouth
     - systemd-logind-service
     - systemd-timesyncd
     - systemd-userdb

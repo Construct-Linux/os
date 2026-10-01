@@ -1,7 +1,7 @@
 package:
   name: plymouth
   version: 26.134.222
-  epoch: 0
+  epoch: 2
   description: Graphical boot splash with KMS and frame-buffer renderers
   copyright:
     - license: GPL-2.0-or-later
@@ -37,14 +37,19 @@ pipeline:
       expected-commit: d15928a8e06c217aad0f2e3579df23fec93dc009
 
   # gtk off: it only builds the x11 renderer and the plymouth-x11 test tool. upstart-monitoring
-  # off: systemd drives the boot. tracing off: the debug spew is not wanted on a daily system.
+  # off: systemd drives the boot. Tracing on: it writes only when plymouth.debug or --debug asks,
+  # and without it a boot that shows no splash says nothing about why.
   - uses: meson/configure
     with:
-      opts: --sbindir=bin -Ddocs=false -Dgtk=disabled -Ddrm=true -Dpango=enabled -Dfreetype=enabled -Dudev=enabled -Dsystemd-integration=true -Dupstart-monitoring=false -Dtracing=false -Drelease-file=/etc/os-release
+      opts: --sbindir=bin -Ddocs=false -Dgtk=disabled -Ddrm=true -Dpango=enabled -Dfreetype=enabled -Dudev=enabled -Dsystemd-integration=true -Dupstart-monitoring=false -Dtracing=true -Drelease-file=/etc/os-release
 
   - uses: meson/compile
 
   - uses: meson/install
+
+  # Wolfi's xkeyboard-config.pc is a link to xkeyboard-config-2.pc, so its package provides only
+  # pc:xkeyboard-config-2; requiring that name keeps plymouth-dev installable (as gnome-desktop).
+  - runs: sed -i 's/\bxkeyboard-config\b\([^-]\|$\)/xkeyboard-config-2\1/' ${{targets.destdir}}/usr/lib/pkgconfig/ply-*.pc
 
   # plymouthd creates /run/plymouth itself at start; /run is a tmpfs, nothing ships there.
   - runs: |

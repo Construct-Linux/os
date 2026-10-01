@@ -8,6 +8,7 @@
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
 //	image usb   [-test]                         the USB stick's disk, in build/tools as root (cmd/image/usb.go)
+//	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
 //	image check                                 every ELF's NEEDED libraries are in the root
 package main
 
@@ -49,6 +50,8 @@ func main() {
 		err = test(os.Args[2:])
 	case "usb":
 		err = usb(os.Args[2:])
+	case "run":
+		err = runIn(os.Args[2:])
 	case "theme":
 		err = plymouthTheme()
 	case "check":
@@ -336,11 +339,30 @@ func boot(args []string) error {
 	shot := fl.String("shot", "", "take a screenshot (PPM) here after -after, then stop the VM")
 	after := fl.Duration("after", 90*time.Second, "how long after start to take the screenshot")
 	mem := fl.String("m", "4G", "memory")
+	stick := fl.Bool("usb", false, "boot the USB disk by UEFI from a stick, as a machine does")
+	shots := fl.Int("shots", 0, "take this many screenshots, one a second from the start, into _output/boot/, then stop")
 	_ = fl.Parse(args)
 
-	v, err := start(*mem, "")
+	v, err := startDisk(*mem, "", *stick)
 	if err != nil {
 		return err
+	}
+	if *shots > 0 {
+		dir := filepath.Join(out, "boot")
+		_ = os.RemoveAll(dir)
+		_ = os.MkdirAll(dir, 0o755)
+		for i := range *shots {
+			time.Sleep(time.Second)
+			p := filepath.Join(dir, fmt.Sprintf("%02d.ppm", i+1))
+			if v.screenshot(p) == nil {
+				time.Sleep(300 * time.Millisecond)
+				if ppmToPNG(p, strings.TrimSuffix(p, ".ppm")+".png") == nil {
+					_ = os.Remove(p)
+				}
+			}
+		}
+		v.stop()
+		return nil
 	}
 	fmt.Println("VNC 127.0.0.1:5907, serial", filepath.Join(out, "serial.log"))
 	if *shot == "" {

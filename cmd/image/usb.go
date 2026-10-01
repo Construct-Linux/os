@@ -26,6 +26,7 @@ import (
 func usb(args []string) error {
 	fl := flag.NewFlagSet("usb", flag.ExitOnError)
 	test := fl.Bool("test", false, "add image/test/rootfs, as task disk -- -test does")
+	extra := fl.String("append", "", "more of the kernel's command line, to diagnose a boot (plymouth.debug)")
 	hashFile := fl.String("password-hash", filepath.Join(".cache", "spin-password.hash"),
 		"the user's password, as crypt(3) makes it (openssl passwd -6): the screen locks, and sudo asks")
 	_ = fl.Parse(args)
@@ -66,6 +67,7 @@ func usb(args []string) error {
 	}
 	esp := filepath.Join(stage, "esp")
 	label := "spin-desktop_" + version
+	v.extra = *extra
 	if err := espTree(root, esp, label, v); err != nil {
 		return err
 	}
@@ -116,6 +118,9 @@ func bake(root, passwordHash, version string) error {
 	files := map[string]string{
 		// systemd makes a machine id at every boot, from the firmware's (cmdline), and mounts it here.
 		"etc/machine-id": "",
+		// What ConditionNeedsUpdate=/etc units (ldconfig, hwdb, the journal's catalog) would do at
+		// boot, bake has done: without this file they run at every first boot of an image.
+		"etc/.updated": "",
 		"etc/fstab": `# / is the kernel's: EROFS under dm-verity, read-only, set up from the command line before
 # anything runs (cmd/image usb). What the machine writes goes to /var, the partition
 # systemd-repart makes at first boot in the rest of the stick (usr/lib/repart.d/60-var.conf).
@@ -258,6 +263,7 @@ type verity struct {
 	rootHash, salt   string
 	rootUUID, vUUID  string
 	rootImg, treeImg string
+	extra            string
 }
 
 const verityBlock = 4096
@@ -310,7 +316,12 @@ func verifiedRoot(root, img, tree string) (verity, error) {
 		rootImg: img, treeImg: tree}, nil
 }
 
-// cmdline is the kernel's command line, in the kernel image where nothing at boot can change it:
+// cmdline is the kernel's command line, in the kernel image where nothing at boot can change it.
+// Plymouth draws on the firmware's framebuffer (simpledrm) from the start: the GPU's own driver
+// is a module udev loads seconds later, and without plymouth.use-simpledrm Plymouth waits for it
+// and the boot shows text instead. And with a serial console on the command line Plymouth runs as
+// text on every console and looks for no screen at all, unless told to leave serial ones out.
+//
 // spin-ami's bare metal's root - dm-verity over the root partition, checked against the tree
 // partition, both found by the partition UUIDs the root hash gives them - and its consoles, the
 // machine's id from its firmware, cgroup v2 only, and a reboot ten seconds after a panic.
@@ -321,7 +332,7 @@ func (v verity) cmdline() string {
 	return `dm-mod.create="root,,,ro,` + table + `" dm-mod.waitfor=` + data + "," + hash +
 		" root=/dev/dm-0 rootfstype=erofs ro init=/usr/lib/spin-desktop/init" +
 		" console=ttyS0,115200n8 console=tty0 systemd.gpt_auto=0 cgroup_no_v1=all,named" +
-		" systemd.machine_id=firmware panic=10 quiet splash"
+		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" + strings.TrimRight(" "+v.extra, " ")
 }
 
 // espTree lays the ESP: systemd-boot at the removable-media path, which firmware boots from a
