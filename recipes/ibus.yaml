@@ -1,0 +1,64 @@
+package:
+  name: ibus
+  version: 1.5.34
+  epoch: 0
+  description: Next Generation Input Bus for Linux
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - dbus
+      - dconf
+      - iso-codes
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - dconf-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-3-dev
+      - gtk-4-dev
+      - iso-codes-dev
+      - libevdev-dev
+      - libx11-dev
+      - libxfixes-dev
+      - libxkbcommon-dev
+      - python-3
+      - systemd-dev
+      - wayland-dev
+      - wayland-protocols
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/ibus/ibus/releases/download/${{package.version}}/ibus-${{package.version}}.tar.gz
+      expected-sha256: 12a72210ce5250f8a66df562a75e034e67b2bce74c4df2983dc86d1154894943
+
+  # GNOME Shell is the panel and candidate window, so ibus's own Vala UI, emoji/unicode pickers
+  # and setup tool are off; the UCD and Unicode emoji data they need are not in Wolfi either.
+  # Python bindings are not used by gjs. Wayland stays on: the tarball's pregenerated
+  # tools/main.c calls libwayland-client, and without valac it cannot be regenerated.
+  - uses: autoconf/configure
+    with:
+      opts: --sysconfdir=/etc --disable-gtk2 --enable-gtk3 --enable-gtk4 --enable-xim --enable-wayland --disable-appindicator --enable-introspection=yes --enable-vala=no --disable-gtk-doc --disable-tests --enable-dconf --disable-memconf --enable-systemd-services --disable-python2 --disable-python-library --disable-setup --disable-dbus-python-check --disable-ui --disable-libnotify --disable-emoji-dict --disable-unicode-dict --enable-surrounding-text
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: ibus-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: ibus-lang
+    pipeline:
+      - uses: split/locales
