@@ -1,0 +1,68 @@
+package:
+  name: xwayland
+  version: 24.1.13
+  epoch: 0
+  description: X server running as a Wayland client
+  copyright:
+    - license: MIT
+  dependencies:
+    runtime:
+      - xkbcomp
+      - xkeyboard-config
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - font-util-dev
+      - libdrm-dev
+      - libepoxy-dev
+      - libbsd-dev
+      - libmd-dev
+      - libxau-dev
+      - libxcvt-dev
+      - libxfont-dev
+      - libxkbfile-dev
+      - libxshmfence-dev
+      - mesa-dev
+      - mesa-gbm
+      - meson
+      - ninja
+      - pixman-dev
+      - systemd-dev
+      - wayland-dev
+      - wayland-protocols-dev
+      - xorgproto
+      - xkbcomp-dev
+      - xtrans-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://xorg.freedesktop.org/archive/individual/xserver/xwayland-${{package.version}}.tar.xz
+      expected-sha256: 173aea3d6f79609164c04528e1c8e4c9b60fcd59391c3c9dad4667297d727fb6
+
+  # libei and libdecor are not in Wolfi: xwayland_ei and libdecor off (mutter decorates
+  # rootful windows itself and offers input capture through its own portal). secure-rpc off
+  # so libtirpc is not pulled in for an auth scheme nothing uses.
+  - uses: meson/configure
+    with:
+      opts: -Dxvfb=false -Dxdmcp=false -Dsecure-rpc=false -Dxcsecurity=true -Ddri3=true -Dglamor=true -Dsha1=libmd -Dxwayland_ei=false -Dlibdecor=false -Dsystemd_notify=true -Ddocs=false -Ddevel-docs=false -Ddocs-pdf=false -Dxkb_dir=/usr/share/X11/xkb -Dxkb_output_dir=/var/lib/xkb
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # protocol.txt and the Xserver man page belong to xorg-server-common and xorg-server-doc.
+  - runs: |
+      rm -f ${{targets.destdir}}/usr/lib/xorg/protocol.txt
+      rm -rf ${{targets.destdir}}/usr/share/man
+
+  - uses: strip
+
+subpackages:
+  - name: xwayland-dev
+    pipeline:
+      - uses: split/dev
