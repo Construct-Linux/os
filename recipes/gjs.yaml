@@ -1,0 +1,56 @@
+package:
+  name: gjs
+  version: 1.90.0
+  epoch: 0
+  description: GNOME JavaScript bindings
+  copyright:
+    - license: MIT AND LGPL-2.0-or-later
+  dependencies:
+    runtime:
+      # libmozjs-140.so has no versioned soname, so no so: dependency is generated for it.
+      - mozjs140
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cairo-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - libffi-dev
+      - meson
+      # mozjs140-dev does not pull in libmozjs-140.so, which it links against.
+      - mozjs140
+      - mozjs140-dev
+      - ninja
+      - readline-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gjs/${{vars.series}}/gjs-${{package.version}}.tar.xz
+      expected-sha256: 47e9f22b1d4aca841c6c492b449b6de32ff680972183e26fe7b98a45c5c3fee1
+
+  # profiler needs sysprof, which is not available.
+  - uses: meson/configure
+    with:
+      opts: -Dbuildtype=release -Db_ndebug=true -Dprofiler=disabled -Dreadline=enabled -Dinstalled_tests=false -Dskip_dbus_tests=true -Dskip_gtk_tests=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # The gobject-introspection-tests subproject installs its test libraries even with installed_tests off.
+  - runs: rm -rf ${{targets.destdir}}/usr/libexec/installed-tests
+
+  - uses: strip
+
+vars:
+  series: "1.90"
+
+subpackages:
+  - name: gjs-dev
+    pipeline:
+      - uses: split/dev
