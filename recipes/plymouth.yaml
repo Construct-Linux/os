@@ -1,0 +1,58 @@
+package:
+  name: plymouth
+  version: 26.134.222
+  epoch: 0
+  description: Graphical boot splash with KMS and frame-buffer renderers
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - xkeyboard-config
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cairo-dev
+      - freetype-dev
+      - gettext
+      - glib-dev
+      - libdrm-dev
+      - libevdev-dev
+      - libpng-dev
+      - libxkbcommon-dev
+      - meson
+      - ninja
+      - pango-dev
+      - systemd
+      - systemd-dev
+      - xkeyboard-config-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.freedesktop.org/plymouth/plymouth.git
+      tag: ${{package.version}}
+      expected-commit: d15928a8e06c217aad0f2e3579df23fec93dc009
+
+  # gtk off: it only builds the x11 renderer and the plymouth-x11 test tool. upstart-monitoring
+  # off: systemd drives the boot. tracing off: the debug spew is not wanted on a daily system.
+  - uses: meson/configure
+    with:
+      opts: --sbindir=bin -Ddocs=false -Dgtk=disabled -Ddrm=true -Dpango=enabled -Dfreetype=enabled -Dudev=enabled -Dsystemd-integration=true -Dupstart-monitoring=false -Dtracing=false -Drelease-file=/etc/os-release
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # plymouthd creates /run/plymouth itself at start; /run is a tmpfs, nothing ships there.
+  - runs: |
+      rm -rf ${{targets.destdir}}/run
+
+  - uses: strip
+
+subpackages:
+  - name: plymouth-dev
+    pipeline:
+      - uses: split/dev
