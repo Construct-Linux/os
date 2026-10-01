@@ -1,0 +1,59 @@
+package:
+  name: appstream
+  version: 1.0.6
+  epoch: 0
+  description: Library and tool to read and query AppStream software metadata
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - curl-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gperf
+      - itstool
+      - libxml2-dev
+      - libxmlb-dev
+      - meson
+      - ninja
+      # itstool runs under /usr/bin/python3.
+      - python-3.13
+      - systemd-dev
+      - yaml-dev
+      - zstd-dev
+
+# 1.0.x: 1.1 and later need libfyaml, which Wolfi does not ship; 1.0 parses YAML with libyaml.
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://www.freedesktop.org/software/appstream/releases/AppStream-${{package.version}}.tar.xz
+      expected-sha256: db4439db6a33de3ca1041473501610844ddf1b72ae23016c05242c681c380b4d
+      # The tarball's entries start with ./AppStream-<version>/.
+      strip-components: 2
+
+  # docs/ builds man pages from the DocBook XSL stylesheets with no switch, tests/ installs installed-tests unconditionally,
+  # and g-ir-scanner cannot parse the [[fallthrough]] that current gperf emits, so the gperf output stays out of the GIR scan.
+  - uses: patch
+    with:
+      patches: appstream/build-fixes.patch
+
+  # stemming off: Snowball is not in Wolfi. compose off: it needs cairo/rsvg/fontconfig only for building catalogs, not reading them.
+  - uses: meson/configure
+    with:
+      opts: -Dgir=true -Dvapi=false -Dqt=false -Dcompose=false -Dstemming=false -Dsystemd=true -Dzstd-support=true -Dapt-support=false -Ddocs=false -Dapidocs=false -Dinstall-docs=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: appstream-dev
+    pipeline:
+      - uses: split/dev

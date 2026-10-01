@@ -1,0 +1,31 @@
+--- a/meson.build
++++ b/meson.build
+@@ -226,8 +226,6 @@
+ subdir('po/')
+ subdir('data/')
+ subdir('contrib/')
+-subdir('docs/')
+-subdir('tests/')
+ if get_option('qt')
+     subdir('qt/')
+ endif
+--- a/src/meson.build
++++ b/src/meson.build
+@@ -182,7 +182,7 @@
+         '@OUTPUT@'
+     ]
+ )
+-aslib_src = aslib_src + [aslib_gperf_xml, aslib_gperf_yaml]
++aslib_gperf_src = [aslib_gperf_xml, aslib_gperf_yaml]
+ 
+ aslib_deps = [glib_dep,
+               gobject_dep,
+@@ -197,7 +197,7 @@
+ endif
+ 
+ appstream_lib = library ('appstream',
+-    [aslib_src,
++    [aslib_src, aslib_gperf_src,
+      aslib_pub_headers,
+      aslib_gir_headers,
+      aslib_priv_headers,
