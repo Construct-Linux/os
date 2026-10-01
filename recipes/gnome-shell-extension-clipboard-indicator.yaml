@@ -1,0 +1,54 @@
+package:
+  name: gnome-shell-extension-clipboard-indicator
+  version: "71"
+  epoch: 0
+  description: Clipboard history manager in the GNOME Shell top bar
+  copyright:
+    - license: MIT
+  dependencies:
+    runtime:
+      - gnome-shell
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - gettext
+      - glib
+
+vars:
+  uuid: clipboard-indicator@tudmotu.com
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/Tudmotu/gnome-shell-extension-clipboard-indicator
+      tag: v${{package.version}}
+      expected-commit: c880c7fb88dc7232a61a5864d125989a4f375daa
+
+  # v71 predates GNOME 51; the patch is upstream PR #641, see its header.
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-clipboard-indicator/gnome-51.patch
+
+  - runs: |
+      glib-compile-schemas --strict --dry-run schemas
+      ext=${{targets.destdir}}/usr/share/gnome-shell/extensions/${{vars.uuid}}
+      install -d "$ext"
+      install -m644 *.js metadata.json stylesheet.css "$ext"/
+      # The image compiles all schemas at build, so the extension's own
+      # gschemas.compiled is left out and getSettings() finds the system one.
+      install -Dm644 schemas/*.gschema.xml -t ${{targets.destdir}}/usr/share/glib-2.0/schemas/
+      # Without a locale/ beside it the shell reads the extension's catalogue from
+      # /usr/share/locale, where split/lang can take it.
+      for po in locale/*/LC_MESSAGES/*.po; do
+        lang=${po#locale/}; lang=${lang%%/*}
+        install -d ${{targets.destdir}}/usr/share/locale/$lang/LC_MESSAGES
+        msgfmt "$po" -o ${{targets.destdir}}/usr/share/locale/$lang/LC_MESSAGES/clipboard-indicator.mo
+      done
+      grep -q '"51"' "$ext"/metadata.json
+
+subpackages:
+  - name: gnome-shell-extension-clipboard-indicator-lang
+    pipeline:
+      - uses: split/locales
