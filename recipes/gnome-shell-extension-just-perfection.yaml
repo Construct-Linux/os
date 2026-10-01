@@ -1,0 +1,50 @@
+package:
+  name: gnome-shell-extension-just-perfection
+  version: "37.0"
+  epoch: 0
+  description: GNOME Shell extension to tweak and hide parts of the shell
+  copyright:
+    - license: GPL-3.0-only
+  dependencies:
+    runtime:
+      - gnome-shell
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - gettext
+      - glib-dev
+      - libxml2-utils
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.gnome.org/jrahmatzadeh/just-perfection.git
+      tag: ${{package.version}}
+      expected-commit: ae48fd2d75a5747bbda1bdb2b039e9a3384ddf4c
+
+  # Installed by hand, the layout scripts/build.sh's `gnome-extensions pack` produces, except that
+  # the schema and the translations go system-wide: the image compiles schemas at build, and the
+  # shell falls back to /usr/share/locale when the extension carries no locale/ of its own.
+  - runs: |
+      uuid=just-perfection-desktop@just-perfection
+      dest=${{targets.destdir}}/usr/share/gnome-shell/extensions/$uuid
+
+      glib-compile-resources --sourcedir src/data --target resources.gresource src/data/resources.gresource.xml
+
+      mkdir -p $dest
+      cp -r src/extension.js src/prefs.js src/stylesheet.css src/metadata.json src/lib $dest/
+      install -m644 resources.gresource LICENSE $dest/
+      install -Dm644 src/schemas/*.gschema.xml -t ${{targets.destdir}}/usr/share/glib-2.0/schemas/
+
+      for po in po/*.po; do
+        lang=$(basename $po .po)
+        mkdir -p ${{targets.destdir}}/usr/share/locale/$lang/LC_MESSAGES
+        msgfmt -o ${{targets.destdir}}/usr/share/locale/$lang/LC_MESSAGES/just-perfection.mo $po
+      done
+
+subpackages:
+  - name: gnome-shell-extension-just-perfection-lang
+    pipeline:
+      - uses: split/locales
