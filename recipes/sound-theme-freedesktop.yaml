@@ -1,0 +1,28 @@
+package:
+  name: sound-theme-freedesktop
+  version: "0.8"
+  epoch: 0
+  description: Desktop sound theme from Freedesktop
+  copyright:
+    - license: CC-BY-SA-3.0 AND GPL-2.0-or-later AND GPL-2.0-only AND CC-BY-3.0
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - intltool
+      - perl-xml-parser
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://people.freedesktop.org/~mccann/dist/sound-theme-freedesktop-${{package.version}}.tar.bz2
+      expected-sha256: cb518b20eef05ec2e82dda1fa89a292c1760dc023aba91b8aa69bafac85e8a14
+
+  - uses: autoconf/configure
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
