@@ -1,0 +1,73 @@
+package:
+  name: gdm
+  version: "51.0"
+  epoch: 0
+  description: GNOME display manager
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - dbus
+      - dconf
+      - gnome-session
+      - gnome-settings-daemon
+      - gnome-shell
+      - gsettings-desktop-schemas
+      - linux-pam
+
+environment:
+  contents:
+    packages:
+      - accountsservice-dev
+      - audit-dev
+      - build-base
+      - busybox
+      - dconf
+      - gettext
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - itstool
+      - json-glib-dev
+      - keyutils-dev
+      - libgudev-dev
+      - linux-pam-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gdm/${{vars.series}}/gdm-${{package.version}}.tar.xz
+      expected-sha256: 2ce5acf5a438b8f6dc1d14fd777a911be5eeb2f7ab9a7c4600166205b15d6536
+
+  # Wolfi's linux-pam ships base-{auth,account,password,session}, not common-*.
+  - uses: patch
+    with:
+      patches: gdm/pam-base.patch
+
+  # x11-support off: gnome-shell 51 runs only as a Wayland compositor. selinux and plymouth off:
+  # neither is in the image.
+  - uses: meson/configure
+    with:
+      opts: -Dsbindir=bin -Dlogind-provider=systemd -Dsystemd-journal=true -Dsystemdsystemunitdir=/usr/lib/systemd/system -Dsystemduserunitdir=/usr/lib/systemd/user -Ddbus-sys=/usr/share/dbus-1/system.d -Ddefault-pam-config=openembedded -Dpam-services-dir=/etc/pam.d -Dlibaudit=enabled -Dselinux=disabled -Dplymouth=disabled -Dx11-support=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gdm-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: gdm-lang
+    pipeline:
+      - uses: split/locales
