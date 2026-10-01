@@ -6,6 +6,7 @@
 //
 //	image disk  [-size 12G]                     _output/rootfs.tar ... -> _output/disk.raw
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
+//	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
 //	image check                                 every ELF's NEEDED libraries are in the root
 package main
 
@@ -43,6 +44,8 @@ func main() {
 		err = disk(os.Args[2:])
 	case "boot":
 		err = boot(os.Args[2:])
+	case "test":
+		err = test(os.Args[2:])
 	case "check":
 		err = check(filepath.Join(out, "root.tar"))
 	default:
@@ -154,6 +157,7 @@ func clean(name string) string {
 func disk(args []string) error {
 	fl := flag.NewFlagSet("disk", flag.ExitOnError)
 	size := fl.String("size", "12G", "the ext4 image's size")
+	test := fl.Bool("test", false, "add image/test/rootfs: what lets cmd/image test drive the session")
 	_ = fl.Parse(args)
 
 	layers := []layer{
@@ -177,6 +181,9 @@ func disk(args []string) error {
 			"etc/systemd/system/sockets.target.wants/systemd-networkd.socket":                     "/dev/null",
 			"etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service": "/dev/null",
 		},
+	}
+	if *test {
+		layers = append(layers, dirLayer{dir: "image/test/rootfs"})
 	}
 	merged := filepath.Join(out, "root.tar")
 	if err := merge(layers, merged); err != nil {
@@ -275,33 +282,67 @@ func boot(args []string) error {
 	mem := fl.String("m", "4G", "memory")
 	_ = fl.Parse(args)
 
-	qmp := filepath.Join(out, "qmp.sock")
-	_ = os.Remove(qmp)
-	cmd := exec.Command("qemu-system-x86_64",
-		"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", *mem,
-		"-kernel", filepath.Join(out, "kernel", "bzImage"),
-		"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
-		"-drive", "file="+filepath.Join(out, "disk.raw")+",if=virtio,format=raw",
-		"-device", "virtio-vga", "-display", "none", "-vnc", "127.0.0.1:7",
-		"-device", "virtio-net-pci,netdev=n0", "-netdev", "user,id=n0",
-		"-device", "qemu-xhci", "-device", "usb-tablet",
-		"-serial", "file:"+filepath.Join(out, "serial.log"),
-		"-qmp", "unix:"+qmp+",server,nowait",
-	)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	if err := cmd.Start(); err != nil {
+	v, err := start(*mem, "")
+	if err != nil {
 		return err
 	}
 	fmt.Println("VNC 127.0.0.1:5907, serial", filepath.Join(out, "serial.log"))
 	if *shot == "" {
-		return cmd.Wait()
+		return v.cmd.Wait()
 	}
 	time.Sleep(*after)
-	abs, _ := filepath.Abs(*shot)
-	err := qmpRun(qmp, map[string]any{"execute": "screendump", "arguments": map[string]any{"filename": abs}})
-	_ = qmpRun(qmp, map[string]any{"execute": "quit"})
-	_ = cmd.Wait()
+	err = v.screenshot(*shot)
+	v.stop()
 	return err
+}
+
+// vm is a running QEMU of _output/disk.raw.
+type vm struct {
+	cmd *exec.Cmd
+	qmp string
+	cid int
+}
+
+// vsockCID is the guest's vsock address: the harness reaches its sshd as vsock/<cid>.
+const vsockCID = 4207
+
+// start boots the disk. With a public key, the guest gets it as root's authorized key by
+// credential (systemd's provision.conf) and a vsock device for systemd-ssh-generator's sshd.
+func start(mem, pubkey string) (*vm, error) {
+	qmp := filepath.Join(out, "qmp.sock")
+	_ = os.Remove(qmp)
+	args := []string{
+		"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", mem,
+		"-kernel", filepath.Join(out, "kernel", "bzImage"),
+		"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
+		"-drive", "file=" + filepath.Join(out, "disk.raw") + ",if=virtio,format=raw",
+		"-device", "virtio-vga", "-display", "none", "-vnc", "127.0.0.1:7",
+		"-device", "virtio-net-pci,netdev=n0", "-netdev", "user,id=n0",
+		"-device", "qemu-xhci", "-device", "usb-tablet",
+		"-serial", "file:" + filepath.Join(out, "serial.log"),
+		"-qmp", "unix:" + qmp + ",server,nowait",
+	}
+	if pubkey != "" {
+		args = append(args,
+			"-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", vsockCID),
+			"-smbios", "type=11,value=io.systemd.credential:ssh.authorized_keys.root="+strings.TrimSpace(pubkey))
+	}
+	cmd := exec.Command("qemu-system-x86_64", args...)
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	return &vm{cmd: cmd, qmp: qmp, cid: vsockCID}, nil
+}
+
+func (v *vm) screenshot(file string) error {
+	abs, _ := filepath.Abs(file)
+	return qmpRun(v.qmp, map[string]any{"execute": "screendump", "arguments": map[string]any{"filename": abs}})
+}
+
+func (v *vm) stop() {
+	_ = qmpRun(v.qmp, map[string]any{"execute": "quit"})
+	_ = v.cmd.Wait()
 }
 
 func qmpRun(sock string, command map[string]any) error {

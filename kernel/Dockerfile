@@ -121,9 +121,11 @@ ARG KERNEL_NPROC=16
 # The build's date, user and host go into the banner (uname -v) unless told otherwise; they are
 # the snapshot's day and fixed names. The module signing key is not: make generates it in this
 # tree (certs/signing_key.pem) and it never leaves the stage, so only these modules ever load.
+# x86-64-v3 (AVX2, BMI2, 2013 on) is the CPU level everything spin-desktop builds targets.
 RUN cd linux && make -j${KERNEL_NPROC} \
         KBUILD_BUILD_TIMESTAMP="$(date -u -d "$(echo "${DEBIAN_SNAPSHOT}" | cut -c1-8)")" \
         KBUILD_BUILD_USER=spin-desktop KBUILD_BUILD_HOST=build \
+        KCFLAGS="-march=x86-64-v3" \
         bzImage modules
 
 RUN <<EOT

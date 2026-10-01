@@ -1,8 +1,9 @@
 version: "3"
 
 # Recipes in recipes/ build with melange into packages/, a local repository signed with
-# melange.rsa (`task keygen`), on top of Wolfi. melange runs in Docker with bubblewrap inside,
-# which needs --privileged.
+# melange.rsa (`task keygen`), on top of Wolfi, for x86-64-v3 (build/x86-64-v3.env, the level
+# the kernel targets too; the optimisation level stays each build system's). melange runs in
+# Docker with bubblewrap inside, which needs --privileged.
 
 vars:
   MELANGE: cgr.dev/chainguard/melange@sha256:3285b57ff3d6f241993f181c1cb154a590ec3ade8c3f6d987686b42693d27afe
@@ -37,7 +38,7 @@ tasks:
       - >-
         docker run --rm --privileged -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}}
         build recipes/{{.NAME}}.yaml --arch x86_64 --runner bubblewrap
-        --signing-key melange.rsa {{.WOLFI}} {{.LOCAL}}
+        --signing-key melange.rsa {{.WOLFI}} {{.LOCAL}} --env-file build/x86-64-v3.env
         --out-dir .cache/out/{{.NAME}} --apk-cache-dir .cache/apk
         > .cache/logs/{{.NAME}}.log 2>&1
         || { tail -40 .cache/logs/{{.NAME}}.log; exit 1; }
@@ -76,9 +77,16 @@ tasks:
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/rootfs.tar
 
   disk:
-    desc: Merge rootfs, modules, firmware and image/rootfs into _output/disk.raw (ext4).
+    desc: "Merge rootfs, modules, firmware and image/rootfs into _output/disk.raw (ext4); task disk -- -test adds image/test/rootfs."
     cmds:
-      - go run ./cmd/image disk
+      - go run ./cmd/image disk {{.CLI_ARGS}}
+
+  test:
+    desc: "Build the test disk and drive the session: every app and Settings panel, failed units, core dumps (task test -- -only org.gnome.Ptyxis.desktop)."
+    cmds:
+      - go run ./cmd/image disk -test
+      - go run ./cmd/image check
+      - go run ./cmd/image test {{.CLI_ARGS}}
 
   boot:
     desc: "Boot _output/disk.raw in QEMU (VNC :7); task boot -- -shot _output/shot.ppm takes a screenshot and stops."
