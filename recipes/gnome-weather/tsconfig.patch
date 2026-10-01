@@ -1,0 +1,14 @@
+--- a/tsconfig.json	2026-03-12 16:37:40.000000000 -0300
++++ b/tsconfig.json	2026-10-01 14:50:29.653720377 -0300
+@@ -3,7 +3,10 @@
+         "experimentalDecorators": true,
+         "strict": true,
+         "target": "ES2022",
+-        "baseUrl": ".",
++        "rootDir": "./src",
++        "paths": {
++            "src/*": ["./src/*"]
++        },
+         "moduleResolution": "bundler",
+         "module": "ES2022",
+         "lib": [

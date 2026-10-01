@@ -1,0 +1,70 @@
+package:
+  name: gnome-weather
+  version: "50.0"
+  epoch: 0
+  description: Weather application for GNOME
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    # A GJS app: melange derives nothing from its gi:// imports, so every typelib it loads
+    # (Gtk/Gdk/Gsk, Adw, GWeather, Geoclue, Graphene, GLib/Gio/GObject) is listed by hand.
+    runtime:
+      - geoclue
+      - gjs
+      - glib-gir
+      - graphene
+      - gtk-4
+      - libadwaita
+      - libgweather4
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext-dev
+      - geoclue-dev
+      - gjs-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - libgweather4-dev
+      - meson
+      - ninja
+      - python3
+      # The sources are TypeScript; meson runs tsc against the bundled gi-types, no npm fetch.
+      - typescript
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-weather/${{vars.series}}/gnome-weather-${{package.version}}.tar.xz
+      expected-sha256: 57de7578605f91f9ab400551ce7738db7505bc88f42a33c70ce7a70167fdb513
+
+  # Upstream targets TypeScript 5; Wolfi's is 7, which requires an explicit rootDir and has
+  # dropped baseUrl, which only served the bare 'src/...' import specifiers that paths now maps.
+  - uses: patch
+    with:
+      patches: gnome-weather/tsconfig.patch
+
+  # No GNOME 51 release of Weather exists yet; 50.0 is the newest stable.
+  - uses: meson/configure
+    with:
+      opts: -Ddogtail=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "50"
+
+subpackages:
+  - name: gnome-weather-lang
+    pipeline:
+      - uses: split/locales
