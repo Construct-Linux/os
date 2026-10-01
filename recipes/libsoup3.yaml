@@ -1,0 +1,60 @@
+package:
+  name: libsoup3
+  version: 3.8.0
+  epoch: 0
+  description: GNOME HTTP client/server library
+  copyright:
+    - license: LGPL-2.0-or-later
+  dependencies:
+    runtime:
+      - glib-networking
+      - gsettings-desktop-schemas
+
+environment:
+  contents:
+    packages:
+      - brotli-dev
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - krb5-dev
+      - libpsl-dev
+      - meson
+      - nghttp2-dev
+      - python-3
+      - ninja
+      - sqlite-dev
+      - zlib-dev
+      - zstd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libsoup/${{vars.series}}/libsoup-${{package.version}}.tar.xz
+      expected-sha256: bbf08fa3e03a88c31a3d27a0d87cb422e9490f2d08e149211103df6d638a2238
+
+  # glib-networking is a runtime dependency, not a build one, so the TLS probe is off.
+  # NTLM needs Samba's ntlm_auth at runtime; sysprof is not shipped.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=enabled -Dvapi=disabled -Ddocs=disabled -Dtests=false -Dinstalled_tests=false -Dautobahn=disabled -Dpkcs11_tests=disabled -Dsysprof=disabled -Dtls_check=false -Dntlm=disabled -Dgssapi=enabled -Dbrotli=enabled -Dzstd=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "3.8"
+
+subpackages:
+  - name: libsoup3-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: libsoup3-lang
+    pipeline:
+      - uses: split/locales
