@@ -1,0 +1,98 @@
+package:
+  name: gnome-contacts
+  version: "51.0"
+  epoch: 0
+  description: Contacts manager for GNOME
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - evolution-data-server-dev
+      - folks-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - glycin-2-dev
+      - glycin-2-gtk4-dev
+      - gnome-online-accounts-dev
+      - gobject-introspection-dev
+      - gstreamer-dev
+      - gtk-4-dev
+      - json-glib-dev
+      - libadwaita-dev
+      - libgee-dev
+      - libportal-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - meson
+      - ninja
+      - qrencode-dev
+      - vala
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-contacts/${{vars.series}}/gnome-contacts-${{package.version}}.tar.xz
+      expected-sha256: c8b60752f65a966e0a2c0cbf7c1e1607ee3b4a49318b50b19bdad2ab7fc6706d
+
+  # The app is Vala, and folks-eds.vapi pulls in E-D-S's VAPIs, which our evolution-data-server
+  # does not ship (built without Vala). They are generated from its GIRs with the metadata and
+  # custom files of the same E-D-S release, as folks does.
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/evolution-data-server/${{vars.eds-series}}/evolution-data-server-${{vars.eds-version}}.tar.xz
+      expected-sha256: 78be88e9a511f5afe7ff2e363eade84b622dd0282647fc576edb2d4ff2962cba
+      extract: false
+
+  # libadwaita, libportal and gnome-online-accounts ship no VAPI either: generate them from their
+  # GIRs (libadwaita with its upstream metadata, recipes/gnome-contacts/) into the build root only.
+  - runs: |
+      vapidir=/usr/share/vala/vapi
+      mkdir -p $vapidir eds-src
+      tar -xf evolution-data-server-${{vars.eds-version}}.tar.xz -C eds-src --strip-components=1 evolution-data-server-${{vars.eds-version}}/src/vala
+      meta=eds-src/src/vala
+      gen() {
+        lib=$1; gir=$2; shift 2
+        printf '%s\n' "$@" > $vapidir/$lib.deps
+        pkgs=""
+        for p in "$@"; do pkgs="$pkgs --pkg $p"; done
+        extra=""
+        [ -f $meta/$lib-custom.vala ] && extra=$meta/$lib-custom.vala
+        vapigen --vapidir=$vapidir --metadatadir=$meta $pkgs --library $lib -d $vapidir /usr/share/gir-1.0/$gir $extra
+      }
+      gen camel-1.2 Camel-1.2.gir gio-2.0 libxml-2.0 posix
+      gen libedataserver-1.2 EDataServer-1.2.gir camel-1.2 gio-2.0 libsoup-3.0 libxml-2.0 json-glib-1.0 posix
+      gen libebook-contacts-1.2 EBookContacts-1.2.gir camel-1.2 libedataserver-1.2 gio-2.0 libsoup-3.0 libxml-2.0 posix
+      gen libebook-1.2 EBook-1.2.gir camel-1.2 libedataserver-1.2 libebook-contacts-1.2 gio-2.0 libsoup-3.0 libxml-2.0 posix
+      meta=gnome-contacts
+      gen libadwaita-1 Adw-1.gir gio-2.0 gtk4
+      gen libportal Xdp-1.0.gir gio-2.0
+      gen libportal-gtk4 XdpGtk4-1.0.gir gio-2.0 gtk4 libportal
+      gen goa-1.0 Goa-1.0.gir gio-2.0
+
+  # The man page is built with docbook XSL, which the image does not carry.
+  - uses: meson/configure
+    with:
+      opts: -Dmanpage=false -Ddocs=false -Db_lto=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+  eds-series: "3.62"
+  eds-version: 3.62.0
+
+subpackages:
+  - name: gnome-contacts-lang
+    pipeline:
+      - uses: split/locales
