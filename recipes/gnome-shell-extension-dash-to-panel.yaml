@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-dash-to-panel
   version: "74"
-  epoch: 1
+  epoch: 2
   description: GNOME Shell extension that merges the dash into the top panel
   copyright:
     - license: GPL-2.0-or-later
@@ -18,24 +18,18 @@ environment:
       - glib
 
 pipeline:
+  # v74 plus, on the fork's gnome-51 branch: a drag over the panel no longer opens the overview
+  # (upstream #2087), Super+I is free unless intellihide is on (#2416), a long left click activates
+  # (#2561), a quit app's badge clears (#2560), file modes (#2433), and the extension-version
+  # default at the packaged version, so a new account is not told "has been updated".
   - uses: git-checkout
     with:
-      repository: https://github.com/home-sweet-gnome/dash-to-panel
-      tag: v${{package.version}}
-      expected-commit: db578c4f0061686609ed0bd1422967dfee2554d6
+      repository: https://github.com/aledbf/dash-to-panel
+      branch: gnome-51
+      expected-commit: e1c1767c70cc146e8cc77c660d605c196d13f9ef
 
   # A DESTDIR install is the system one: the schema goes to /usr/share/glib-2.0/schemas, compiled
   # with the image, and no gschemas.compiled stays in the extension directory. VERSION keeps the
   # Makefile from calling git for the version.
   - runs: |
       make install DESTDIR=${{targets.destdir}} VERSION=${{package.version}}
-
-  # The extension greets every user whose stored version differs from its own with "has been
-  # updated", and upstream's schema default lags its releases (65 in v74), so a new account got
-  # the notice on its first login. The default is the packaged version: a user sees it only when
-  # an update really brings a new one.
-  - runs: |
-      schema=${{targets.destdir}}/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.dash-to-panel.gschema.xml
-      grep -q '<key type="i" name="extension-version">' "$schema"
-      sed -i '/name="extension-version"/{n;s|<default>[0-9]*</default>|<default>${{package.version}}</default>|}' "$schema"
-      grep -A1 'name="extension-version"' "$schema" | grep -q '<default>${{package.version}}</default>'

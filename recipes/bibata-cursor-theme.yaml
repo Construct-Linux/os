@@ -1,7 +1,7 @@
 package:
   name: bibata-cursor-theme
   version: 2.0.7
-  epoch: 0
+  epoch: 1
   description: Bibata Modern cursor themes (Classic, dark; Ice, light)
   copyright:
     - license: GPL-3.0-or-later
@@ -10,6 +10,7 @@ environment:
   contents:
     packages:
       - busybox
+      - python-3.13
       - xz
 
 # The prebuilt release cursors: building them needs clickgen (Python) and the
@@ -32,5 +33,23 @@ pipeline:
       for theme in Bibata-Modern-Classic Bibata-Modern-Ice; do
         tar -xJf $theme.tar.xz -C ${{targets.destdir}}/usr/share/icons
         test -f ${{targets.destdir}}/usr/share/icons/$theme/index.theme
+      done
+      chmod -R u=rwX,go=rX ${{targets.destdir}}/usr/share/icons
+
+  # GNOME Shell 51 draws its cursor from SVGs in <theme>/cursors_scalable and ignores X cursors:
+  # without them the shell logs "Could not load cursor" and shows Adwaita's. The fork's gnome-51
+  # branch (v2.0.7 plus scalable.py) writes them from Bibata's own SVGs, colours and hotspots.
+  - uses: git-checkout
+    with:
+      repository: https://github.com/aledbf/Bibata_Cursor
+      branch: gnome-51
+      expected-commit: 10537b1491730f63a1ec9a11c65261b466b3a1c2
+      destination: src
+
+  - runs: |
+      cd src
+      python3 scalable.py -o ${{targets.destdir}}/usr/share/icons Bibata-Modern-Classic Bibata-Modern-Ice
+      for theme in Bibata-Modern-Classic Bibata-Modern-Ice; do
+        test -f ${{targets.destdir}}/usr/share/icons/$theme/cursors_scalable/default/metadata.json
       done
       chmod -R u=rwX,go=rX ${{targets.destdir}}/usr/share/icons

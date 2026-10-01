@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-appindicator
   version: "66"
-  epoch: 0
+  epoch: 1
   description: GNOME Shell extension for AppIndicator, KStatusNotifierItem and legacy tray icons
   copyright:
     - license: GPL-2.0-or-later
@@ -22,11 +22,15 @@ environment:
       - ninja
 
 pipeline:
+  # v66 plus, on the fork's gnome-51 branch: a leaked handler per D-Bus operation (upstream #647),
+  # exceptions on detached menu items (#656), a stack trace a second for apps' own Get errors
+  # (#581, #551), tray-pos handlers doubling (#641), duplicate icons (#665), and the bus scan's
+  # subprocess killed when cancelled (#310).
   - uses: git-checkout
     with:
-      repository: https://github.com/ubuntu/gnome-shell-extension-appindicator
-      tag: v${{package.version}}
-      expected-commit: 52da5222a17f7a862e8a47d2bc523f29abf59964
+      repository: https://github.com/aledbf/gnome-shell-extension-appindicator
+      branch: gnome-51
+      expected-commit: 6fb3d54c003e3caff70960fdbb20b3e7d049a992
 
   # An explicit local_install keeps the prefix /usr whoever runs the build.
   - uses: meson/configure

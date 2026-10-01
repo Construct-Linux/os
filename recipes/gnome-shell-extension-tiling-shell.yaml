@@ -3,7 +3,7 @@ package:
   # 18.0 is not released yet: the maintainer added GNOME 51 on the v18.0 branch (RC), and the
   # 18.0-candidate tag predates fixes on it. _rc keeps the final 18.0 sorting above this.
   version: "18.0_rc20260919"
-  epoch: 2
+  epoch: 3
   description: Tiling window management for GNOME Shell (tilingshell@ferrarodomenico.com)
   copyright:
     # package.json says GPL v2; the LICENSE file is GPL-3.0.
@@ -26,14 +26,16 @@ environment:
       - npm
 
 pipeline:
-  # The fork's gnome-51 branch is upstream's v18.0 at 832aac5a plus two commits: the seat taken
-  # from the stage's backend (Clutter.get_default_backend() is gone in mutter 51), and a tracked
-  # package-lock.json, which upstream ignores.
+  # The fork's gnome-51 branch is upstream's v18.0 at 832aac5a plus: the seat taken from the
+  # stage's backend (Clutter.get_default_backend() is gone in mutter 51), a tracked
+  # package-lock.json (upstream ignores it), the tiling managers destroyed on disable again
+  # (upstream #559: they outlived every screen lock), and a restored window kept in its tile
+  # (upstream #372).
   - uses: git-checkout
     with:
       repository: https://github.com/aledbf/tilingshell
       branch: gnome-51
-      expected-commit: afe010a1cb18ab71a0d7447451e03e1451e26afb
+      expected-commit: 26ec758d5b0b2ff86ea1c1795f17c127640433a9
 
   # TypeScript transpiled by esbuild; npm ci installs exactly the lockfile's versions, each
   # checked against its integrity hash, or fails.
