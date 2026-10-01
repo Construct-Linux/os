@@ -1,0 +1,61 @@
+diff -ruN a/meson.build b/meson.build
+--- a/meson.build	2026-10-01 00:09:44.696337631 -0300
++++ b/meson.build	2026-10-01 00:09:44.721832410 -0300
+@@ -68,7 +68,8 @@
+ 
+ add_project_arguments(compiler_flags, language: 'c')
+ 
+-dvdread_dep = dependency('dvdread', version: '>= 4.2.0')
++dvdread_dep = dependency('dvdread', version: '>= 4.2.0', required: false)
++config_h.set('HAVE_DVDREAD', dvdread_dep.found())
+ gio_unix_dep = dependency('gio-unix-2.0', version: '>= 2.31.0')
+ gmodule_dep = dependency('gmodule-2.0')
+ gtk_dep = dependency('gtk+-3.0', version: '>= 3.16.0')
+diff -ruN a/src/disks/gdudvdsupport.c b/src/disks/gdudvdsupport.c
+--- a/src/disks/gdudvdsupport.c	2026-10-01 00:09:44.701553156 -0300
++++ b/src/disks/gdudvdsupport.c	2026-10-01 00:09:44.721955485 -0300
+@@ -13,11 +13,12 @@
+ #include <sys/ioctl.h>
+ #include <linux/fs.h>
+ 
++#include "gdudvdsupport.h"
++
++#ifdef HAVE_DVDREAD
+ #include <dvdread/dvd_reader.h>
+ #include <dvdread/dvd_udf.h>
+ 
+-#include "gdudvdsupport.h"
+-
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
+ /* libdvdcss support - see http://www.videolan.org/developers/libdvdcss.html */
+@@ -493,3 +494,29 @@
+ }
+ 
+ /* ---------------------------------------------------------------------------------------------------- */
++
++#else /* HAVE_DVDREAD */
++
++GduDVDSupport *
++gdu_dvd_support_new  (const gchar *device_file,
++                      guint64      device_size)
++{
++  return NULL;
++}
++
++void
++gdu_dvd_support_free (GduDVDSupport *support)
++{
++}
++
++gssize
++gdu_dvd_support_read (GduDVDSupport *support,
++                      int            fd,
++                      guchar        *buffer,
++                      guint64        offset,
++                      guint64        size)
++{
++  return -1;
++}
++
++#endif /* HAVE_DVDREAD */

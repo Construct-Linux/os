@@ -1,0 +1,66 @@
+package:
+  name: gnome-disk-utility
+  version: 46.1
+  epoch: 0
+  description: GNOME libraries and applications for dealing with storage devices
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      # Disks drives udisks2 over D-Bus; udisks2 calls these tools to partition and format.
+      - udisks2
+      - dosfstools
+      - gptfdisk
+      - parted
+      - wipefs
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext
+      - glib-dev
+      - gnome-settings-daemon-dev
+      - gtk-3-dev
+      - libcanberra-dev
+      - libhandy1-dev
+      - libnotify-dev
+      - libpwquality-dev
+      - libsecret-dev
+      - meson
+      - ninja
+      - systemd-dev
+      - udisks2-dev
+      - xz-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-disk-utility/${{vars.series}}/gnome-disk-utility-${{package.version}}.tar.xz
+      expected-sha256: c24e9439a04d70bcfae349ca134c7005435fe2b6f452114df878bff0b89bbffe
+
+  # libdvdread is not in Wolfi; without it, imaging a CSS-scrambled DVD reads the raw sectors.
+  - uses: patch
+    with:
+      patches: gnome-disk-utility/optional-dvdread.patch
+
+  # man pages off: they need libxslt and docbook stylesheets.
+  - uses: meson/configure
+    with:
+      opts: -Dlogind=libsystemd -Dgsd_plugin=true -Dman=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "46"
+
+subpackages:
+  - name: gnome-disk-utility-lang
+    pipeline:
+      - uses: split/locales
