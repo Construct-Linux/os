@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -216,17 +215,17 @@ func (g *guest) waitUnit2Active(unit string, d time.Duration) (bool, string) {
 }
 
 // waitUpdate waits for the spin-desktop-update@ unit a plugged stick started to end, and says how.
+// It reads the journal: a oneshot that already ended is unloaded, and no longer listed.
 func (g *guest) waitUpdate(d time.Duration) (bool, string) {
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
-		units, _ := g.run(`systemctl list-units --all --plain --no-legend 'spin-desktop-update@*' | awk '{print $1}'`, "")
-		for _, u := range strings.Fields(units) {
-			if ok, detail := g.waitUnit(u, d); ok || !strings.Contains(detail, "did not finish") {
-				log, _ := g.run("journalctl -b --no-pager -o cat -u "+u+" | tail -3", "")
-				return ok, detail + ": " + oneLine(log)
-			}
+		log, _ := g.run(`journalctl -b --no-pager -o cat -u 'spin-desktop-update@*' | grep -E '^(Finished|Failed to start) Update' | tail -1`, "")
+		log = strings.TrimSpace(log)
+		if log != "" {
+			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'spin-desktop-update@*' -t spin-desktop | tail -2`, "")
+			return strings.HasPrefix(log, "Finished"), log + ": " + oneLine(tail)
 		}
 		time.Sleep(3 * time.Second)
 	}
-	return false, errors.New("no spin-desktop-update@ unit ran").Error()
+	return false, "no spin-desktop-update@ unit ended"
 }
