@@ -1,0 +1,37 @@
+package:
+  name: bolt
+  version: 0.9.11
+  epoch: 0
+  description: Thunderbolt 3 device manager
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - bash
+      - build-base
+      - busybox
+      - glib-dev
+      - meson
+      - ninja
+      - polkit-dev
+      # meson runs scripts with #!/bin/bash and #!/usr/bin/python3 at configure time
+      - python-3
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/bolt/bolt/-/archive/${{package.version}}/bolt-${{package.version}}.tar.gz
+      expected-sha256: cde4fc6d4a188e37d088cf59a5b2d174ac4b03d57bf9d084d711ba92105c33c0
+
+  - uses: meson/configure
+    with:
+      opts: -Dman=false -Dinstall-tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
