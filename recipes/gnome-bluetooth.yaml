@@ -1,0 +1,55 @@
+package:
+  name: gnome-bluetooth
+  version: 47.2
+  epoch: 0
+  description: The GNOME Bluetooth subsystem
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - bluez
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gsound-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - libnotify-dev
+      - libudev-dev
+      - meson
+      # meson.build probes python3 for dbusmock unconditionally
+      - python3
+      - ninja
+      - upower-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-bluetooth/${{vars.series}}/gnome-bluetooth-${{package.version}}.tar.xz
+      expected-sha256: 41f20e6d6176b72590af63552b232d83f2fffdd77ecfaa5eaf32c5a4a86fad64
+
+  # gnome-shell loads GnomeBluetooth through gjs, so introspection stays on.
+  # sendto off: bluetooth-sendto needs obexd, which is not shipped.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dsendto=false -Dgtk_doc=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "47"
+
+subpackages:
+  - name: gnome-bluetooth-dev
+    pipeline:
+      - uses: split/dev
