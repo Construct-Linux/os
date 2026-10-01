@@ -1,0 +1,52 @@
+package:
+  name: ostree
+  version: "2026.4"
+  epoch: 0
+  description: Operating system and container binary deployment and upgrades
+  copyright:
+    - license: LGPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - bison
+      - build-base
+      - busybox
+      - curl-dev
+      - e2fsprogs-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gpgme-dev
+      - libarchive-dev
+      - libassuan-dev
+      - libgpg-error-dev
+      - openssl-dev
+      - systemd-dev
+      - util-linux-dev
+      - xz-dev
+      - zlib-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/ostreedev/ostree/releases/download/v${{package.version}}/libostree-${{package.version}}.tar.xz
+      expected-sha256: b26c9016eb03bb4ee52cc00c642d56e00fc79ae7faac6bf4aa317d7451339ef7
+
+  # curl is the HTTP backend, so libsoup is not needed. rofiles-fuse is a
+  # flatpak-builder helper, not used at runtime. Man pages need docbook.
+  # SELinux and Avahi have no user on this image.
+  - uses: autoconf/configure
+    with:
+      opts: --sbindir=/usr/bin --libexecdir=/usr/lib --disable-static --disable-glibtest --enable-introspection=yes --disable-gtk-doc --disable-man --disable-rofiles-fuse --with-curl --without-soup --with-openssl --with-gpgme --without-selinux --without-avahi --with-libsystemd --with-systemdsystemunitdir=/usr/lib/systemd/system --with-systemdsystemgeneratordir=/usr/lib/systemd/system-generators
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: ostree-dev
+    pipeline:
+      - uses: split/dev
