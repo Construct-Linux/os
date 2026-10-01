@@ -1,0 +1,46 @@
+package:
+  name: gnome-font-viewer
+  version: "50.0"
+  epoch: 0
+  description: View fonts on your system
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - fontconfig-dev
+      - freetype-dev
+      - fribidi-dev
+      - gettext
+      - glib-dev
+      - gtk-4-dev
+      - harfbuzz-dev
+      - libadwaita-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-font-viewer/${{vars.series}}/gnome-font-viewer-${{package.version}}.tar.xz
+      expected-sha256: 9564b088c5b150c54e2a3a7bc7014deec6ee551261e98488f891b1f1b8dc6b80
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "50"
+
+subpackages:
+  - name: gnome-font-viewer-lang
+    pipeline:
+      - uses: split/locales
