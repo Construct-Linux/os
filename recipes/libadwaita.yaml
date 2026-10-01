@@ -1,0 +1,53 @@
+package:
+  name: libadwaita
+  version: 1.10.0
+  epoch: 0
+  description: Building blocks for modern GNOME applications
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - adwaita-fonts
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - fribidi-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - meson
+      - ninja
+      - sassc
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libadwaita/${{vars.series}}/libadwaita-${{package.version}}.tar.xz
+      expected-sha256: b1bf56239269d101a6391ad4553c910eff9cc6170b803916405477ef60a66c84
+
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=enabled -Dvapi=false -Ddocumentation=false -Dtests=false -Dexamples=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "1.10"
+
+subpackages:
+  - name: libadwaita-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: libadwaita-lang
+    pipeline:
+      - uses: split/locales
