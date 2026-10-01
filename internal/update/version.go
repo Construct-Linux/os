@@ -1,4 +1,4 @@
-// Package update is how the desktop moves to its next version: spin-desktop update, when a stick
+// Package update is how the desktop moves to its next version: drift update, when a stick
 // carrying a release is plugged in. It reads a release - SHA256SUMS, and its OpenPGP signature by
 // the key the machine's root trusts - and writes the version it names into the root slot the
 // machine did not boot, and its kernel image beside the booted one's, counted, for systemd-boot to

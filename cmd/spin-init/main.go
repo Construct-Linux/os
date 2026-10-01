@@ -22,13 +22,13 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
 const (
 	systemd = "/usr/lib/systemd/systemd"
 	// overlay holds /etc's upper and work directories on /var.
-	overlay = "/var/lib/spin-desktop/etc"
+	overlay = "/var/lib/spindrift/etc"
 	// varWait is how long the var partition may take to appear: the root's own partitions were
 	// there when the kernel set the root up (dm-mod.waitfor), and var is on the same disk.
 	varWait = 5 * time.Second

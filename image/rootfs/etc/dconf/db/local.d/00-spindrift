@@ -1,6 +1,6 @@
-# Spin Desktop's look, the defaults every user starts from; each person changes them in Settings
+# Spindrift's look, the defaults every user starts from; each person changes them in Settings
 # or Tweaks, in their own dconf database. Orchis for the shell and GTK 3; libadwaita apps take
-# it from ~/.config/gtk-4.0 (usr/share/user-tmpfiles.d/spin-desktop-libadwaita.conf), built for
+# it from ~/.config/gtk-4.0 (usr/share/user-tmpfiles.d/spindrift-libadwaita.conf), built for
 # this GNOME by the Orchis fork and checked in task test's screenshots, since each release can
 # break it.
 

@@ -1,7 +1,7 @@
 # Downloads the newest release from where releases are published (the default sysupdate
 # component, usr/lib/sysupdate.d) and writes it into the slot the machine did not boot, once
 # systemd-pull has checked its signature and every file. It never reboots: the person is told
-# (spin-desktop-reboot-notice), and the next boot starts it - three times at most until it comes
+# (spindrift-reboot-notice), and the next boot starts it - three times at most until it comes
 # up, then back to this one.
 [Unit]
 Description=Update from where releases are published
@@ -15,4 +15,4 @@ Type=oneshot
 # version again until it is vacuumed.
 ExecStartPre=-/usr/lib/systemd/systemd-sysupdate vacuum
 ExecStart=/usr/lib/systemd/systemd-sysupdate update
-ExecStartPost=/usr/bin/spin-desktop pending --mark /run/spin-desktop/reboot-required
+ExecStartPost=/usr/bin/drift pending --mark /run/spindrift/reboot-required

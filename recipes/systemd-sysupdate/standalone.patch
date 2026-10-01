@@ -1,7 +1,7 @@
 systemd-sysupdate as a standalone binary, linked statically against systemd's
 own libraries the way systemd-repart.standalone is.
 
-Wolfi's systemd is built with -Dsysupdate=disabled, so spin-desktop builds
+Wolfi's systemd is built with -Dsysupdate=disabled, so spindrift builds
 systemd-sysupdate on its own. Upstream v261.3 has no systemd-sysupdate.standalone
 target; the normal target links libsystemd-shared-261.so, which would tie the
 package to the exact build of Wolfi's systemd. The standalone one carries what

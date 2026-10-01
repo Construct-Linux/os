@@ -22,7 +22,7 @@ import (
 
 // ImageID is the desktop's IMAGE_ID in os-release, and what its root slots' labels, its kernel
 // images' names and a release's files start with: what a version of it is matched by.
-const ImageID = "spin-desktop"
+const ImageID = "spindrift"
 
 // What a release holds besides its files: their digests, as sha256sum(1) writes them, and a
 // detached OpenPGP signature of that list (gpg --detach-sign) by the key the machine's root trusts.
@@ -34,7 +34,7 @@ const (
 // KeyringPath is where the root carries the public key a release's signature is checked against,
 // armored or binary, relative to the root. The private half is the person's, offline: it never is
 // in a build, an image or this repository.
-const KeyringPath = "usr/share/spin-desktop/release.pgp"
+const KeyringPath = "usr/share/spindrift/release.pgp"
 
 // Names are the files of version's release whose root hash gives its slot the partition UUIDs
 // root and verity: the slot's root and hash tree, named with the version and the UUID each

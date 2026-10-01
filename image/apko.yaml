@@ -25,7 +25,7 @@ contents:
     - kmod
     - util-linux
     - util-linux-misc
-    # What spin-desktop install and update run: mount and umount (their own packages in Wolfi),
+    # What drift install and update run: mount and umount (their own packages in Wolfi),
     # and the ESP's and /var's mkfs.
     - mount
     - umount
@@ -129,7 +129,7 @@ contents:
     - gnome-software
     - papers
     - gnome-calendar
-    # The look (etc/dconf/db/local.d/00-spin-desktop): Orchis, Tela, Bibata.
+    # The look (etc/dconf/db/local.d/00-spindrift): Orchis, Tela, Bibata.
     - orchis-theme
     - tela-icon-theme
     - bibata-cursor-theme

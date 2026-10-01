@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// lifecycle is a machine's life with Spin Desktop, in QEMU: installed from a stick onto its NVMe
+// lifecycle is a machine's life with Spindrift, in QEMU: installed from a stick onto its NVMe
 // disk, booted from it, updated by plugging in the stick of the next release, and rolled back by
 // systemd-boot from a release whose desktop never comes up - with what the person kept in /var and
 // changed in /etc there all along. The sticks are three test builds, oldest first: task
@@ -69,7 +69,7 @@ func lifecycle(args []string) error {
 		return err
 	}
 	outs, err := g.run(`set -e; mkdir -p /run/rel; mount -o ro /dev/disk/by-partlabel/spin-update /run/rel; `+
-		`spin-desktop install --disk /dev/nvme0n1 --from /run/rel --yes; umount /run/rel`, "")
+		`drift install --disk /dev/nvme0n1 --from /run/rel --yes; umount /run/rel`, "")
 	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
 	r.add("install", err == nil, lastLine(outs)+errText(err))
 	v.powerOff(g)
@@ -86,7 +86,7 @@ func lifecycle(args []string) error {
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
 	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts`, "")
 	r.add("/var on the disk", strings.Contains(src, "nvme0n1"), oneLine(src))
-	_, err = g.run(`echo kept > /var/home/spin/marker && echo kept > /etc/spin-desktop-marker`, "")
+	_, err = g.run(`echo kept > /var/home/spin/marker && echo kept > /etc/spindrift-marker`, "")
 	r.add("keep a file in /var and one in /etc", err == nil, errText(err))
 	ok, detail := g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v1 comes up", ok, detail)
@@ -123,12 +123,12 @@ func lifecycle(args []string) error {
 	_, err = g.run(`mkdir -p /etc/sysupdate.d && for f in /usr/lib/sysupdate.d/*.transfer; do `+
 		`sed "s|^Path=https://.*|Path=`+url+`|" "$f" > /etc/sysupdate.d/$(basename "$f"); done`, "")
 	r.add("point updates at the test server", err == nil, url+errText(err))
-	_, err = g.run(`systemctl start spin-desktop-update.service`, "")
-	outs, _ = g.run(`journalctl -b --no-pager -o cat -u spin-desktop-update.service | tail -3`, "")
+	_, err = g.run(`systemctl start spindrift-update.service`, "")
+	outs, _ = g.run(`journalctl -b --no-pager -o cat -u spindrift-update.service | tail -3`, "")
 	r.add("v2 downloads", err == nil, oneLine(outs)+errText(err))
 	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
-	r.add("v2 is counted on the ESP", strings.Contains(esp, "spin-desktop_"+versions["v2"]+"+3"), oneLine(esp))
-	mark, _ := g.run(`cat /run/spin-desktop/reboot-required`, "")
+	r.add("v2 is counted on the ESP", strings.Contains(esp, "spindrift_"+versions["v2"]+"+3"), oneLine(esp))
+	mark, _ := g.run(`cat /run/spindrift/reboot-required`, "")
 	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
@@ -137,13 +137,13 @@ func lifecycle(args []string) error {
 		return r.write(nil)
 	}
 	r.add("reboot into v2", g.version() == versions["v2"], "running "+g.version())
-	kept, _ := g.run(`cat /var/home/spin/marker /etc/spin-desktop-marker`, "")
+	kept, _ := g.run(`cat /var/home/spin/marker /etc/spindrift-marker`, "")
 	r.add("kept across the update", strings.Count(kept, "kept") == 2, oneLine(kept))
 	ok, detail = g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v2 comes up", ok, detail)
 	time.Sleep(10 * time.Second) // systemd-bless-boot runs once the target is reached
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
-	r.add("v2 is blessed", strings.Contains(esp, "spin-desktop_"+versions["v2"]+".efi"), oneLine(esp))
+	r.add("v2 is blessed", strings.Contains(esp, "spindrift_"+versions["v2"]+".efi"), oneLine(esp))
 	v.powerOff(g)
 
 	// 5. v3's desktop never comes up: three tries, then systemd-boot falls back to v2 by itself.
@@ -167,8 +167,8 @@ func lifecycle(args []string) error {
 	}
 	r.add("v3 rolls back to v2", g.version() == versions["v2"], "running "+g.version())
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
-	r.add("v3 is marked bad", strings.Contains(esp, "spin-desktop_"+versions["v3"]+"+0-3"), oneLine(esp))
-	kept, _ = g.run(`cat /var/home/spin/marker /etc/spin-desktop-marker`, "")
+	r.add("v3 is marked bad", strings.Contains(esp, "spindrift_"+versions["v3"]+"+0-3"), oneLine(esp))
+	kept, _ = g.run(`cat /var/home/spin/marker /etc/spindrift-marker`, "")
 	r.add("kept across the rollback", strings.Count(kept, "kept") == 2, oneLine(kept))
 	err = r.write(g)
 	v.powerOff(g)
@@ -241,20 +241,20 @@ func (g *guest) waitUnit2Active(unit string, d time.Duration) (bool, string) {
 	return state == "active", unit + ": " + state
 }
 
-// waitUpdate waits for the spin-desktop-update@ unit a plugged stick started to end, and says how.
+// waitUpdate waits for the spindrift-update@ unit a plugged stick started to end, and says how.
 // It reads the journal: a oneshot that already ended is unloaded, and no longer listed.
 func (g *guest) waitUpdate(d time.Duration) (bool, string) {
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
-		log, _ := g.run(`journalctl -b --no-pager -o cat -u 'spin-desktop-update@*' | grep -E '^(Finished|Failed to start) Update' | tail -1`, "")
+		log, _ := g.run(`journalctl -b --no-pager -o cat -u 'spindrift-update@*' | grep -E '^(Finished|Failed to start) Update' | tail -1`, "")
 		log = strings.TrimSpace(log)
 		if log != "" {
-			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'spin-desktop-update@*' -t spin-desktop | tail -2`, "")
+			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'spindrift-update@*' -t drift | tail -2`, "")
 			return strings.HasPrefix(log, "Finished"), log + ": " + oneLine(tail)
 		}
 		time.Sleep(3 * time.Second)
 	}
-	return false, "no spin-desktop-update@ unit ended"
+	return false, "no spindrift-update@ unit ended"
 }
 
 // serve answers dir's files over HTTP on this host, where a guest reaches it at 10.0.2.2 (QEMU's

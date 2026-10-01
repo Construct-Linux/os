@@ -15,7 +15,7 @@ const BootComplete = "boot-complete.target"
 // is not counting: a blessed one, which a reboot would only start again.
 var ErrNothingToFallBackTo = errors.New("update: boot-complete.target was not reached, and systemd-boot is not counting this kernel image's tries: there is nothing to fall back to")
 
-// BootCheck is spin-desktop-boot-check.service, once boot-complete.target was reached or failed to
+// BootCheck is spindrift-boot-check.service, once boot-complete.target was reached or failed to
 // be. Boot counting falls back only from a boot that ends: one that comes up without a login screen
 // stays up, never blessed and never tried again. So a boot that did not reach it, of a kernel image
 // systemd-boot is counting (LoaderBootCountPath), is rebooted: systemd-boot starts the image with a

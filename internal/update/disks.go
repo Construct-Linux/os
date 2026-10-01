@@ -174,7 +174,7 @@ func dmNamed(sys, name string) (string, error) {
 			return filepath.Base(filepath.Dir(filepath.Dir(m))), nil
 		}
 	}
-	return "", fmt.Errorf("install: no device-mapper device called %s: this is not a Spin Desktop's running system", name)
+	return "", fmt.Errorf("install: no device-mapper device called %s: this is not a Spindrift's running system", name)
 }
 
 // wholeDisk is the disk dev is: itself, or the disk it is a partition of - the directory above its

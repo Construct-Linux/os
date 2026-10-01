@@ -1,10 +1,10 @@
-# AGENTS.md - Spin Desktop
+# AGENTS.md - Spindrift
 
 What an agent working here needs and the code cannot say: rules, their reasons, and how a change
 is checked. `README.md` says what the desktop is; `task --list` is the catalogue; git is the
 history. Nothing here is a changelog.
 
-Spin Desktop is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on spin-ami's
+Spindrift is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on spin-ami's
 kernel and boot design: a unified kernel image, a read-only EROFS root under dm-verity, no
 initrd, A/B slots updated by systemd-sysupdate, and systemd-boot falling back from a release
 that does not come up.
@@ -24,7 +24,7 @@ that does not come up.
   `task usb`, `task test`, `task test:usb`, `task test:lifecycle`. Do not run `docker`/`melange`
   /`apko` by hand for something a task does; add or fix the task instead.
 - **Decisions are Go, not shell.** `cmd/image` (disks, the harness, releases), `cmd/spin-init`
-  (PID 1 before systemd), `cmd/spin-desktop` (install, boot-check), `internal/` (gpt, update).
+  (PID 1 before systemd), `cmd/drift` (install, boot-check), `internal/` (gpt, update).
   The Taskfile runs steps and containers, in short blocks; a unit's `ExecStart=` stays a command,
   not a program.
 - **Keep looking for performance and for security**, and measure both. Every change is a chance
@@ -40,7 +40,7 @@ that does not come up.
 
 ## Security, which nothing may loosen
 
-- **Ed25519 only.** SSH host and client keys (`sshd_config.d/10-spin-desktop.conf`), and release
+- **Ed25519 only.** SSH host and client keys (`sshd_config.d/10-spindrift.conf`), and release
   signing keys: `image check-key` (internal/update `ParseKeyring`) refuses a keyring with any other
   signing key, at build. No RSA, no ECDSA.
 - **The release key never enters the repository or a container.** It lives in `SIGNING_HOME`
@@ -48,7 +48,7 @@ that does not come up.
   throwaway key in `.cache/test-gnupg`.
 - **Updates come only through url-file transfers.** systemd-sysupdate checks `SHA256SUMS.gpg` and
   every file's digest only for `url-file` sources (via systemd-pull); a `regular-file` source is
-  written unchecked. A stick is read as `file:///run/spin-desktop/update`, GitHub Releases as
+  written unchecked. A stick is read as `file:///run/spindrift/update`, GitHub Releases as
   https. The transfers are generated in `cmd/image/transfers.go`; never hand-write one.
 - **The test layer never reaches a real disk.** `image/test/` (unsafe-mode shell, the broken GDM)
   goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot credential

@@ -11,7 +11,7 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
 // LoaderPath is where an installed ESP holds the systemd-boot the boot entry starts, as firmware
@@ -20,7 +20,7 @@ import (
 const LoaderPath = `\EFI\systemd\systemd-bootx64.efi`
 
 // EntryTitle is what the firmware's boot menu calls the entry.
-const EntryTitle = "Spin Desktop"
+const EntryTitle = "Spindrift"
 
 // BootEntry makes the firmware whose variables are vars start systemd-boot from the ESP esp of the
 // disk whose table is disk: a Boot#### entry, first in BootOrder. An entry of the same title and

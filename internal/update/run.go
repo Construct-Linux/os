@@ -19,9 +19,9 @@ type System interface {
 	Reboot(ctx context.Context) error
 }
 
-// DefaultSource is where a stick's release is mounted (spin-desktop-update@, systemd-sysupdate's
+// DefaultSource is where a stick's release is mounted (spindrift-update@, systemd-sysupdate's
 // file:// source), which install reads by default.
-const DefaultSource = "/run/spin-desktop/update"
+const DefaultSource = "/run/spindrift/update"
 
 // Size limits of what is read before its signature is checked.
 const (

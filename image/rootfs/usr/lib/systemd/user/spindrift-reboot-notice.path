@@ -1,0 +1,10 @@
+# A version is written and waits for a reboot: drift pending --mark, after an update, left
+# its version in /run/spindrift/reboot-required.
+[Unit]
+Description=Tell the person a new Spindrift waits for a reboot
+
+[Path]
+PathExists=/run/spindrift/reboot-required
+
+[Install]
+WantedBy=default.target

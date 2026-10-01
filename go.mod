@@ -1,4 +1,4 @@
-module github.com/spin-stack/spin-desktop
+module github.com/spin-stack/spindrift
 
 go 1.27
 

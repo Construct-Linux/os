@@ -12,7 +12,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
 // TypeVar is /var's partition type, x86-64's in the Discoverable Partitions Specification.

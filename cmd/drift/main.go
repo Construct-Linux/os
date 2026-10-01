@@ -1,9 +1,9 @@
-// Command spin-desktop is what the desktop's own root runs besides systemd-sysupdate, which writes
+// Command drift is what the desktop's own root runs besides systemd-sysupdate, which writes
 // its updates (usr/lib/sysupdate.d):
 //
-//	spin-desktop install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
-//	spin-desktop boot-check                                     reboot a counted boot that did not come up
-//	spin-desktop pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
+//	drift install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
+//	drift boot-check                                     reboot a counted boot that did not come up
+//	drift pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
 //
 // install's release is a directory - a stick's spin-update partition, mounted read-only - checked
 // against the public key the root carries (internal/update's KeyringPath) before anything is
@@ -28,14 +28,14 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
-	"github.com/spin-stack/spin-desktop/internal/update"
+	"github.com/spin-stack/spindrift/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/update"
 )
 
 const usage = `usage:
-  spin-desktop install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--loader FILE]
-  spin-desktop boot-check
-  spin-desktop pending    [--esp DIR] [--mark FILE]`
+  drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--loader FILE]
+  drift boot-check
+  drift pending    [--esp DIR] [--mark FILE]`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -56,7 +56,7 @@ func main() {
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "spin-desktop:", err)
+		fmt.Fprintln(os.Stderr, "drift:", err)
 		os.Exit(1)
 	}
 }
@@ -66,10 +66,10 @@ var defaultKeyring = "/" + update.KeyringPath
 
 // mountVFAT mounts the FAT file system at dev under /run, and answers where and how to unmount it.
 func mountVFAT(ctx context.Context, dev string) (string, func() error, error) {
-	if err := os.MkdirAll("/run/spin-desktop", 0o700); err != nil {
+	if err := os.MkdirAll("/run/spindrift", 0o700); err != nil {
 		return "", nil, err
 	}
-	dir, err := os.MkdirTemp("/run/spin-desktop", "esp-")
+	dir, err := os.MkdirTemp("/run/spindrift", "esp-")
 	if err != nil {
 		return "", nil, err
 	}
@@ -145,7 +145,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 
 // confirm shows disk and what is on it, and asks for its name typed back: everything on it goes.
 func confirm(in io.Reader, out io.Writer, disk update.BlockDisk) error {
-	fmt.Fprintf(out, "Spin Desktop is to be installed on\n\n  %s\n\n", disk)
+	fmt.Fprintf(out, "Spindrift is to be installed on\n\n  %s\n\n", disk)
 	if f, err := os.Open(disk.Path()); err == nil {
 		if t, err := gpt.Read(f); err == nil {
 			fmt.Fprintln(out, "which holds now:")

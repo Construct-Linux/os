@@ -19,7 +19,7 @@ vars:
   UID:
     sh: id -u
   # The release key's keyring: outside the repository, and never in a container (task usb).
-  SIGNING_HOME: '{{.SIGNING_HOME | default (print .HOME "/.local/share/spin-desktop/gnupg")}}'
+  SIGNING_HOME: '{{.SIGNING_HOME | default (print .HOME "/.local/share/spindrift/gnupg")}}'
 
 tasks:
   keygen:
@@ -100,38 +100,38 @@ tasks:
     status: [test -d .cache/test-gnupg]
     cmds:
       - mkdir -p -m 700 .cache/test-gnupg
-      - gpg --homedir .cache/test-gnupg --batch --passphrase '' --quick-generate-key "Spin Desktop test release" ed25519 sign never
+      - gpg --homedir .cache/test-gnupg --batch --passphrase '' --quick-generate-key "Spindrift test release" ed25519 sign never
 
   keygen:release:
     desc: "The release key, in {{.SIGNING_HOME}} - outside the repository; gpg asks for its passphrase. Back it up, or move it to a YubiKey."
     status: ['test -d {{.SIGNING_HOME}}']
     cmds:
       - mkdir -p -m 700 {{.SIGNING_HOME}}
-      - gpg --homedir {{.SIGNING_HOME}} --quick-generate-key "Spin Desktop release" ed25519 sign never
+      - gpg --homedir {{.SIGNING_HOME}} --quick-generate-key "Spindrift release" ed25519 sign never
 
   usb:
     desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release (SIGNING_HOME=, the release key's by default) on its spin-update partition (task usb -- -test for the harness's)."
     cmds:
-      - docker build -q -t spin-desktop-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
+      - docker build -q -t spindrift-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
       - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
-      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/lib/spin-desktop/init ./cmd/spin-init
-      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/bin/spin-desktop ./cmd/spin-desktop
-      - mkdir -p _output/release-key/usr/share/spin-desktop
-      - gpg --homedir {{.SIGNING_HOME}} --export > _output/release-key/usr/share/spin-desktop/release.pgp
+      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/lib/spindrift/init ./cmd/spin-init
+      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/bin/drift ./cmd/drift
+      - mkdir -p _output/release-key/usr/share/spindrift
+      - gpg --homedir {{.SIGNING_HOME}} --export > _output/release-key/usr/share/spindrift/release.pgp
       # Releases are Ed25519 alone: gpg checks them on the machine (systemd-sysupdate), so the
       # keyring it is given is refused here if it holds any other kind of key.
-      - go run ./cmd/image check-key _output/release-key/usr/share/spin-desktop/release.pgp
+      - go run ./cmd/image check-key _output/release-key/usr/share/spindrift/release.pgp
       - mkdir -p _output/release-key/usr/lib/systemd
-      - cp _output/release-key/usr/share/spin-desktop/release.pgp _output/release-key/usr/lib/systemd/import-pubring.pgp
+      - cp _output/release-key/usr/share/spindrift/release.pgp _output/release-key/usr/lib/systemd/import-pubring.pgp
       - >-
-        docker run --rm --privileged -e SPIN_DESKTOP_UPDATE_URL -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
+        docker run --rm --privileged -e SPINDRIFT_UPDATE_URL -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
         '_output/bin/image usb {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/release _output/root.tar; exit $rc'
       # Signed here, by the key in SIGNING_HOME: it never enters a container.
       - >-
         rel=$(ls -d _output/release/*/ | sort | tail -1) &&
         gpg --homedir {{.SIGNING_HOME}} --batch --yes --detach-sign -o "$rel/SHA256SUMS.gpg" "$rel/SHA256SUMS"
       - >-
-        docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
+        docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
         '_output/bin/image usb-disk; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
 
   test:usb:
@@ -156,7 +156,7 @@ tasks:
           && rm -rf _output/lifecycle/{{.ITEM}}.release && cp -r $rel _output/lifecycle/{{.ITEM}}.release
       # The sticks an update must refuse, from v2's (cmd/image/forge.go; mtools is the container's).
       - >-
-        docker run --rm -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
+        docker run --rm -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
         '_output/bin/image forge -stick _output/lifecycle/v2.raw; rc=$?; chown -R {{.UID}}:{{.UID}} _output/lifecycle; exit $rc'
       - go run ./cmd/image lifecycle
 

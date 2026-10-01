@@ -28,7 +28,7 @@ func disk(t *testing.T, size int64) *os.File {
 func TestATableIsReadAsItWasWritten(t *testing.T) {
 	f := disk(t, 64<<20)
 	want := Table{Disk: "0b6d8f0e-1b1a-4f55-9d6c-9f1e5c7b3a21", Partitions: []Partition{
-		{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "spin-desktop-live", Number: 1},
+		{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "spindrift-live", Number: 1},
 		{Type: TypeESP, UUID: "8db37c3e-fa8d-e299-a792-c04533fff123", First: 4096, Last: 8191, Name: "esp ü", Attrs: 1 << 60, Number: 2},
 		{Type: TypeBasicData, UUID: "00000000-0000-0000-0000-000000000001", First: 8192, Last: LastUsable(64 << 20), Name: strings.Repeat("n", 36), Number: 3},
 	}}
@@ -263,7 +263,7 @@ func slotDisk(t *testing.T) *os.File {
 	f := disk(t, slotSize)
 	if err := Write(f, slotSize, Table{Disk: "0b6d8f0e-1b1a-4f55-9d6c-9f1e5c7b3a21", Partitions: []Partition{
 		{Type: TypeESP, UUID: "8db37c3e-fa8d-e299-a792-c04533fff123", First: 2048, Last: 4095, Name: "esp"},
-		{Type: TypeLinuxData, UUID: slotA, First: 4096, Last: 8191, Name: "spin-desktop_20261001.090000"},
+		{Type: TypeLinuxData, UUID: slotA, First: 4096, Last: 8191, Name: "spindrift_20261001.090000"},
 		{Type: TypeLinuxData, UUID: slotB, First: 8192, Last: 12287, Name: "_empty"},
 	}}); err != nil {
 		t.Fatal(err)
@@ -305,7 +305,7 @@ func TestRenamingAPartitionChangesItsGUIDAndNameAlone(t *testing.T) {
 	f := slotDisk(t)
 	before := bothEntries(t, f)
 	const newUUID = "3f3c0a48-7b27-5b3b-73c2-385422d45830"
-	if err := Rename(f, slotB, newUUID, "spin-desktop_20261001.134321"); err != nil {
+	if err := Rename(f, slotB, newUUID, "spindrift_20261001.134321"); err != nil {
 		t.Fatal(err)
 	}
 	after := bothEntries(t, f)
@@ -320,7 +320,7 @@ func TestRenamingAPartitionChangesItsGUIDAndNameAlone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p := got.Partitions[2]; p.UUID != newUUID || p.Name != "spin-desktop_20261001.134321" || p.First != 8192 || p.Last != 12287 || p.Type != TypeLinuxData {
+	if p := got.Partitions[2]; p.UUID != newUUID || p.Name != "spindrift_20261001.134321" || p.First != 8192 || p.Last != 12287 || p.Type != TypeLinuxData {
 		t.Errorf("slot B is %+v", p)
 	}
 	if err := Rename(f, newUUID, newUUID, "_empty"); err != nil {

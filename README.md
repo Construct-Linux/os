@@ -1,4 +1,4 @@
-# Spin Desktop
+# Spindrift
 
 A GNOME desktop on [Wolfi](https://github.com/wolfi-dev), built and verified like Spin OS
 (spin-ami): one image, read-only and checked block by block, updated as a whole into a second
@@ -39,7 +39,7 @@ task usb                                  # -> _output/usb/disk.raw
 Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three things:
 
 - **live**: the desktop runs from it; its first boot makes `/var` in the rest of the stick.
-- **installer**: `sudo spin-desktop install` erases the machine's first internal disk (never the
+- **installer**: `sudo drift install` erases the machine's first internal disk (never the
   stick) and lays two system slots and `/var` on it.
 - **update**: plugged into an installed machine, it writes its release into the slot not running.
 
@@ -60,6 +60,6 @@ rolls back from a broken release. `AGENTS.md` says what each change needs.
 | `kernel/`, `firmware/` | the desktop's kernel fragment and firmware selection, over spin-ami's |
 | `cmd/image` | disks, the USB stick, releases, the QEMU harness and lifecycle |
 | `cmd/spin-init` | the first process: `/var`, and `/etc` over it, before systemd |
-| `cmd/spin-desktop` | `install` and `boot-check` on the machine |
+| `cmd/drift` | `install` and `boot-check` on the machine |
 | `internal/` | GPT, and installing a signed release |
 | `cmd/gap` | how far Wolfi is from a desktop profile, in recipes to own |

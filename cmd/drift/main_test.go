@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spin-stack/spin-desktop/internal/update"
+	"github.com/spin-stack/spindrift/internal/update"
 )
 
 // An install goes on only when the person types the disk's name back: anything else - another

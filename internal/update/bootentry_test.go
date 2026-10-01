@@ -6,7 +6,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
 // installed is the table of a disk the installer laid out, its ESP first.

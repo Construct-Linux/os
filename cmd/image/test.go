@@ -126,7 +126,7 @@ func test(args []string) error {
 	dock, err := g.run(`sudo -u spin docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
-	ok, detail = g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)
+	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 
 	want := map[string]bool{}
@@ -176,7 +176,7 @@ func testKey() (ssh.Signer, string, error) {
 		if gerr != nil {
 			return nil, "", gerr
 		}
-		block, merr := ssh.MarshalPrivateKey(priv, "spin-desktop test")
+		block, merr := ssh.MarshalPrivateKey(priv, "spindrift test")
 		if merr != nil {
 			return nil, "", merr
 		}

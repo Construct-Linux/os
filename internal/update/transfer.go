@@ -10,7 +10,7 @@ import (
 
 	"github.com/ulikunitz/xz"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
 // Disk is the disk an install writes, open to be read and written.

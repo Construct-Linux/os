@@ -12,11 +12,11 @@ After=dev-%i.device local-fs.target
 
 [Service]
 Type=oneshot
-RuntimeDirectory=spin-desktop/update
-ExecStart=/usr/bin/mount -o ro,nodev,nosuid,noexec /dev/%i /run/spin-desktop/update
+RuntimeDirectory=spindrift/update
+ExecStart=/usr/bin/mount -o ro,nodev,nosuid,noexec /dev/%i /run/spindrift/update
 # A stick pulled out half way leaves a version written but not bootable, which is not written
-# again until it is vacuumed (spin-desktop-update.service says more).
+# again until it is vacuumed (spindrift-update.service says more).
 ExecStart=-/usr/lib/systemd/systemd-sysupdate --component=stick vacuum
 ExecStart=/usr/lib/systemd/systemd-sysupdate --component=stick update
-ExecStartPost=/usr/bin/spin-desktop pending --mark /run/spin-desktop/reboot-required
-ExecStopPost=-/usr/bin/umount /run/spin-desktop/update
+ExecStartPost=/usr/bin/drift pending --mark /run/spindrift/reboot-required
+ExecStopPost=-/usr/bin/umount /run/spindrift/update

@@ -13,7 +13,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
 // installSize is the disk a test installs on: the least the layout takes, and a gibibyte more.

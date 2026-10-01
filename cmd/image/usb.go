@@ -51,7 +51,7 @@ func usb(args []string) error {
 		return err
 	}
 	// Built on the host by task usb: this container has no Go.
-	if _, err := os.Stat(filepath.Join(initDir, "usr/lib/spin-desktop/init")); err != nil {
+	if _, err := os.Stat(filepath.Join(initDir, "usr/lib/spindrift/init")); err != nil {
 		return fmt.Errorf("spin-init: %w", err)
 	}
 	merged := filepath.Join(out, "root.tar")
@@ -74,7 +74,7 @@ func usb(args []string) error {
 		return err
 	}
 	esp := filepath.Join(stage, "esp")
-	label := "spin-desktop_" + version
+	label := "spindrift_" + version
 	v.extra = *extra
 	if err := espTree(root, esp, label, v); err != nil {
 		return err
@@ -106,7 +106,7 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 		return "", err
 	}
 	// The root and its tree compressed - what is downloaded, and what GitHub takes (2 GB a file
-	// at most); systemd-import and spin-desktop install decompress them as they write.
+	// at most); systemd-import and drift install decompress them as they write.
 	files := map[string]string{
 		label + "_" + v.rootUUID + ".root.raw.xz": v.rootImg,
 		label + "_" + v.vUUID + ".verity.raw.xz":  v.treeImg,
@@ -160,7 +160,7 @@ func usbDisk(args []string) error {
 	if _, err := os.Stat(filepath.Join(rel, "SHA256SUMS.gpg")); err != nil {
 		return fmt.Errorf("%s is not signed: %w", rel, err)
 	}
-	label := "spin-desktop_" + *version
+	label := "spindrift_" + *version
 	stage := filepath.Join(out, "usb")
 	// The stick boots the uncompressed root and tree the build left in its stage; the release
 	// names the partition UUIDs they take.
@@ -236,12 +236,12 @@ Type=var
 Label=var
 Format=ext4
 `,
-		"usr/lib/os-release": fmt.Sprintf(`NAME="Spin Desktop"
-ID=spin-desktop
+		"usr/lib/os-release": fmt.Sprintf(`NAME="Spindrift"
+ID=spindrift
 ID_LIKE=wolfi
-PRETTY_NAME="Spin Desktop %[1]s"
+PRETTY_NAME="Spindrift %[1]s"
 VERSION_ID=%[1]s
-IMAGE_ID=spin-desktop
+IMAGE_ID=spindrift
 IMAGE_VERSION=%[1]s
 HOME_URL="https://github.com/spin-stack"
 `, version),
@@ -441,7 +441,7 @@ func (v verity) cmdline() string {
 	table := fmt.Sprintf("0 %d verity 1 %s %s %d %d %d 0 sha256 %s %s 1 panic_on_corruption",
 		v.dataBlocks*verityBlock/512, data, hash, verityBlock, verityBlock, v.dataBlocks, v.rootHash, v.salt)
 	return `dm-mod.create="root,,,ro,` + table + `" dm-mod.waitfor=` + data + "," + hash +
-		" root=/dev/dm-0 rootfstype=erofs ro init=/usr/lib/spin-desktop/init" +
+		" root=/dev/dm-0 rootfstype=erofs ro init=/usr/lib/spindrift/init" +
 		" console=ttyS0,115200n8 console=tty0 cgroup_no_v1=all,named" +
 		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" + strings.TrimRight(" "+v.extra, " ")
 }
@@ -474,7 +474,7 @@ func espTree(root, esp, label string, v verity) error {
 	if err != nil {
 		return err
 	}
-	shown, err := splash(splashLine{"Spin Desktop", 4}, splashLine{strings.TrimPrefix(label, "spin-desktop_"), 2})
+	shown, err := splash(splashLine{"Spindrift", 4}, splashLine{strings.TrimPrefix(label, "spindrift_"), 2})
 	if err != nil {
 		return err
 	}
@@ -548,9 +548,9 @@ func repart(stage, disk, label string, v verity, release string) error {
 		"21-root-verity.conf": fmt.Sprintf("[Partition]\nType=root-verity\nLabel=%s\nUUID=%s\nCopyBlocks=%s\nReadOnly=yes\n",
 			label, v.vUUID, abs(v.treeImg)),
 		// The release, for installing and updating; FAT, so any machine mounts it, and named so
-		// spin-desktop-update finds it.
+		// spindrift-update finds it.
 		// The release's files at its root: systemd-sysupdate reads SHA256SUMS from the URL it is
-		// given, file:///run/spin-desktop/update, where it is mounted.
+		// given, file:///run/spindrift/update, where it is mounted.
 		"30-update.conf": fmt.Sprintf("[Partition]\nType=linux-generic\nLabel=spin-update\nFormat=vfat\nCopyFiles=%s:/\nSizeMinBytes=%d\n",
 			abs(release), dirSize(release)*11/10+64<<20),
 	} {

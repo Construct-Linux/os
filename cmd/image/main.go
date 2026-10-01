@@ -34,8 +34,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spin-stack/spin-desktop/internal/gpt"
-	"github.com/spin-stack/spin-desktop/internal/update"
+	"github.com/spin-stack/spindrift/internal/gpt"
+	"github.com/spin-stack/spindrift/internal/update"
 )
 
 var gptRead = gpt.Read
@@ -191,19 +191,19 @@ func checkKey(args []string) error {
 	return err
 }
 
-// keyDir holds the release key's public half at usr/share/spin-desktop/release.pgp (task usb).
+// keyDir holds the release key's public half at usr/share/spindrift/release.pgp (task usb).
 var keyDir = filepath.Join(out, "release-key")
 
 // initDir holds cmd/spin-init, built for the root as a layer of its own.
 var initDir = filepath.Join(out, "spin-init")
 
 // buildInit builds this repository's programs for the root, static, into initDir: cmd/spin-init
-// at /usr/lib/spin-desktop/init, which the USB disk's kernel runs first (init=; the ext4 test
-// disk boots systemd directly), and cmd/spin-desktop at /usr/bin/spin-desktop.
+// at /usr/lib/spindrift/init, which the USB disk's kernel runs first (init=; the ext4 test
+// disk boots systemd directly), and cmd/drift at /usr/bin/drift.
 func buildInit() error {
 	for pkg, dst := range map[string]string{
-		"./cmd/spin-init":    "usr/lib/spin-desktop/init",
-		"./cmd/spin-desktop": "usr/bin/spin-desktop",
+		"./cmd/spin-init": "usr/lib/spindrift/init",
+		"./cmd/drift":     "usr/bin/drift",
 	} {
 		cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(initDir, dst), pkg)
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOAMD64=v3")
@@ -234,23 +234,23 @@ func rootLayers(test bool) []layer {
 			"home": "var/home",
 			// Names are resolved by systemd-resolved, which NetworkManager hands each link's DNS to:
 			// systemd's tmpfiles points /etc/resolv.conf at its stub.
-			"etc/systemd/system/multi-user.target.wants/systemd-resolved.service":        "/usr/lib/systemd/system/systemd-resolved.service",
-			"etc/systemd/system/dbus-org.freedesktop.resolve1.service":                   "/usr/lib/systemd/system/systemd-resolved.service",
-			"etc/systemd/system/multi-user.target.wants/spin-desktop-boot-check.service": "/usr/lib/systemd/system/spin-desktop-boot-check.service",
-			"etc/systemd/system/timers.target.wants/spin-desktop-update.timer":           "/usr/lib/systemd/system/spin-desktop-update.timer",
-			"etc/systemd/user/default.target.wants/spin-desktop-reboot-notice.path":      "/usr/lib/systemd/user/spin-desktop-reboot-notice.path",
-			"etc/systemd/system/default.target":                                          "/usr/lib/systemd/system/graphical.target",
-			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service":        "/usr/lib/systemd/system/spin-desktop-caches.service",
+			"etc/systemd/system/multi-user.target.wants/systemd-resolved.service":     "/usr/lib/systemd/system/systemd-resolved.service",
+			"etc/systemd/system/dbus-org.freedesktop.resolve1.service":                "/usr/lib/systemd/system/systemd-resolved.service",
+			"etc/systemd/system/multi-user.target.wants/spindrift-boot-check.service": "/usr/lib/systemd/system/spindrift-boot-check.service",
+			"etc/systemd/system/timers.target.wants/spindrift-update.timer":           "/usr/lib/systemd/system/spindrift-update.timer",
+			"etc/systemd/user/default.target.wants/spindrift-reboot-notice.path":      "/usr/lib/systemd/user/spindrift-reboot-notice.path",
+			"etc/systemd/system/default.target":                                       "/usr/lib/systemd/system/graphical.target",
+			"etc/systemd/system/sysinit.target.wants/spindrift-caches.service":        "/usr/lib/systemd/system/spindrift-caches.service",
 			"etc/localtime": "/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
 			"etc/systemd/system/sockets.target.wants/docker.socket":                               "/usr/lib/systemd/system/docker.socket",
 			"etc/systemd/system/multi-user.target.wants/containerd.service":                       "/usr/lib/systemd/system/containerd.service",
 			"etc/systemd/system/multi-user.target.wants/power-profiles-daemon.service":            "/usr/lib/systemd/system/power-profiles-daemon.service",
-			"etc/systemd/system/multi-user.target.wants/spin-desktop-flathub.service":             "/usr/lib/systemd/system/spin-desktop-flathub.service",
+			"etc/systemd/system/multi-user.target.wants/spindrift-flathub.service":                "/usr/lib/systemd/system/spindrift-flathub.service",
 			"etc/systemd/system/multi-user.target.wants/NetworkManager-wait-online.service":       "/usr/lib/systemd/system/NetworkManager-wait-online.service",
 			"etc/systemd/user/default.target.wants/xdg-user-dirs.service":                         "/usr/lib/systemd/user/xdg-user-dirs.service",
 			"etc/systemd/user/basic.target.wants/systemd-tmpfiles-setup.service":                  "/usr/lib/systemd/user/systemd-tmpfiles-setup.service",
 			"etc/systemd/system/multi-user.target.wants/scx.service":                              "/usr/lib/systemd/system/scx.service",
-			"etc/systemd/system/sysinit.target.wants/spin-desktop-ssh-hostkeys.service":           "/usr/lib/systemd/system/spin-desktop-ssh-hostkeys.service",
+			"etc/systemd/system/sysinit.target.wants/spindrift-ssh-hostkeys.service":              "/usr/lib/systemd/system/spindrift-ssh-hostkeys.service",
 			"etc/systemd/system/display-manager.service":                                          "/usr/lib/systemd/system/gdm.service",
 			"etc/systemd/system/multi-user.target.wants/NetworkManager.service":                   "/usr/lib/systemd/system/NetworkManager.service",
 			"etc/systemd/system/dbus-org.freedesktop.nm-dispatcher.service":                       "/usr/lib/systemd/system/NetworkManager-dispatcher.service",
@@ -485,7 +485,7 @@ func (m machine) start() (*vm, error) {
 		}
 		if m.nvme != "" {
 			args = append(args, "-drive", "if=none,id=nvme0,format=raw,file="+m.nvme,
-				"-device", "nvme,drive=nvme0,serial=spin-desktop-test")
+				"-device", "nvme,drive=nvme0,serial=spindrift-test")
 		}
 	} else {
 		args = append(args,

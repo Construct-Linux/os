@@ -1,6 +1,0 @@
-[Unit]
-Description=Tell the person a new Spin Desktop waits for a reboot
-
-[Service]
-Type=oneshot
-ExecStart=/bin/sh -c 'v=$(cat /run/spin-desktop/reboot-required); gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify "Spin Desktop" 0 system-software-update "Spin Desktop $v is ready" "Restart to start it. If it does not come up, the version you have now starts again by itself." "[]" "{\"urgency\": <byte 1>, \"resident\": <true>}" 0'
