@@ -1,6 +1,6 @@
 package:
   name: tela-icon-theme
-  version: 2026.07.07
+  version: 2026.08.10
   epoch: 0
   description: Tela flat icon theme (Tela, Tela-dark, Tela-light)
   copyright:
@@ -22,11 +22,13 @@ environment:
       - gtk-3-update-icon-cache
 
 pipeline:
+  # The fork's gnome-51 branch: upstream master (2026-08-10) plus an icon for Decibels, the
+  # one visible app of the image Tela had none for.
   - uses: git-checkout
     with:
-      repository: https://github.com/vinceliuice/Tela-icon-theme
-      tag: ${{vars.tag}}
-      expected-commit: 4f560eccd0acc9c192f31077c2b3202422cb24fb
+      repository: https://github.com/aledbf/Tela-icon-theme
+      branch: gnome-51
+      expected-commit: 2cd0faae14605e8b3b21cd6581dcf8c815f60de9
 
   # Only the standard folder colour: the image names Tela/Tela-dark/Tela-light and
   # each further colour is another full copy of the theme.
@@ -35,10 +37,8 @@ pipeline:
       bash ./install.sh -d "${{targets.destdir}}"/usr/share/icons standard
       for t in Tela Tela-dark Tela-light; do
         test -f "${{targets.destdir}}/usr/share/icons/$t/index.theme"
+        test -e "${{targets.destdir}}/usr/share/icons/$t/scalable/apps/org.gnome.Decibels.svg"
       done
       # The read-only root's icon caches are baked by the image build; a cache shipped
       # here would be overwritten there anyway.
       rm -f "${{targets.destdir}}"/usr/share/icons/*/icon-theme.cache
-
-vars:
-  tag: 2026-07-07

@@ -3,7 +3,7 @@ package:
   # 18.0 is not released yet: the maintainer added GNOME 51 on the v18.0 branch (RC), and the
   # 18.0-candidate tag predates fixes on it. _rc keeps the final 18.0 sorting above this.
   version: "18.0_rc20260919"
-  epoch: 1
+  epoch: 2
   description: Tiling window management for GNOME Shell (tilingshell@ferrarodomenico.com)
   copyright:
     # package.json says GPL v2; the LICENSE file is GPL-3.0.
@@ -26,21 +26,18 @@ environment:
       - npm
 
 pipeline:
+  # The fork's gnome-51 branch is upstream's v18.0 at 832aac5a plus two commits: the seat taken
+  # from the stage's backend (Clutter.get_default_backend() is gone in mutter 51), and a tracked
+  # package-lock.json, which upstream ignores.
   - uses: git-checkout
     with:
-      repository: https://github.com/domferr/tilingshell
-      branch: v18.0
-      expected-commit: 832aac5a6260f1c9ccaf9eb210e20daae0091c32
+      repository: https://github.com/aledbf/tilingshell
+      branch: gnome-51
+      expected-commit: afe010a1cb18ab71a0d7447451e03e1451e26afb
 
-  - uses: patch
-    with:
-      patches: gnome-shell-extension-tiling-shell/gnome-51-backend.patch
-
-  # TypeScript transpiled by esbuild. Upstream ships no lockfile, so the recipe carries one
-  # (npm install --package-lock-only at the pinned commit, patch applied): npm ci installs exactly
-  # those versions, each checked against its integrity hash, or fails.
+  # TypeScript transpiled by esbuild; npm ci installs exactly the lockfile's versions, each
+  # checked against its integrity hash, or fails.
   - runs: |
-      cp gnome-shell-extension-tiling-shell/package-lock.json .
       npm ci --no-audit --no-fund
       node esbuild.mjs
       glib-compile-resources --sourcedir=./gresources --target=./dist/resources.gresource ./gresources/resources.gresource.xml
