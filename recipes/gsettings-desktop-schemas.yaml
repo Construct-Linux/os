@@ -1,0 +1,41 @@
+package:
+  name: gsettings-desktop-schemas
+  version: "51.0"
+  epoch: 0
+  description: Shared GSettings schemas for the GNOME desktop
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gsettings-desktop-schemas/${{vars.series}}/gsettings-desktop-schemas-${{package.version}}.tar.xz
+      expected-sha256: 1e2419a5f21d26c324b28ae1c00e29e9175e8b596fff385a04c2172b36652226
+
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gsettings-desktop-schemas-dev
+    pipeline:
+      - uses: split/dev
