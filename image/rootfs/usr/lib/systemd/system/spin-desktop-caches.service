@@ -14,8 +14,8 @@ RemainAfterExit=yes
 ExecStart=/usr/bin/glib-compile-schemas /usr/share/glib-2.0/schemas
 ExecStart=-/usr/bin/fc-cache -s
 ExecStart=-/usr/bin/update-mime-database /usr/share/mime
-ExecStart=-/usr/bin/gtk4-update-icon-cache -q -t -f /usr/share/icons/hicolor
-ExecStart=-/usr/bin/gtk4-update-icon-cache -q -t -f /usr/share/icons/Adwaita
+ExecStart=-/bin/sh -c 'for d in /usr/share/icons/*/; do [ -f "$d/index.theme" ] && gtk4-update-icon-cache -q -t -f "$d"; done; true'
+ExecStart=-/usr/bin/dconf update
 
 [Install]
 WantedBy=sysinit.target

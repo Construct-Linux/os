@@ -193,6 +193,8 @@ func bake(root, passwordHash, version string) error {
 		"fc-cache -s",
 		"for d in /usr/share/icons/*/; do [ -f \"$d/index.theme\" ] && gtk4-update-icon-cache -q -t -f \"$d\"; done; true",
 		"ldconfig",
+		// The desktop's defaults (etc/dconf/db/local.d): theme, icons, accent, extensions.
+		"dconf update",
 	); err != nil {
 		return err
 	}
