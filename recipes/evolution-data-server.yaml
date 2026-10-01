@@ -1,0 +1,66 @@
+package:
+  name: evolution-data-server
+  version: 3.62.0
+  epoch: 0
+  description: Unified backend for address books, calendars and tasks
+  copyright:
+    - license: LGPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - bison
+      - build-base
+      - busybox
+      - cmake
+      - flex
+      - gcr-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gnome-online-accounts-dev
+      - gobject-introspection-dev
+      - gperf
+      - icu-dev
+      - json-glib-dev
+      - krb5-dev
+      - libgweather4-dev
+      - libical-dev
+      - libnspr-dev
+      - libnss-dev
+      - libsecret-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - ninja
+      - sqlite-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/evolution-data-server/${{vars.series}}/evolution-data-server-${{package.version}}.tar.xz
+      expected-sha256: 78be88e9a511f5afe7ff2e363eade84b622dd0282647fc576edb2d4ff2962cba
+
+  # GTK (libedataserverui) is for Evolution itself, and its OAuth2 dialogs need webkitgtk; the shell
+  # only talks to the D-Bus factories. Canberra only serves the GTK alarm notifier. libphonenumber is
+  # not in Wolfi. LDAP address books are not a desktop need. Schemas are compiled at image time.
+  - uses: cmake/configure
+    with:
+      opts: -DSYSCONF_INSTALL_DIR=/etc -DENABLE_GTK=OFF -DENABLE_GTK4=OFF -DENABLE_OAUTH2_WEBKITGTK=OFF -DENABLE_OAUTH2_WEBKITGTK4=OFF -DENABLE_CANBERRA=OFF -DENABLE_GOA=ON -DENABLE_WEATHER=ON -DENABLE_INTROSPECTION=ON -DENABLE_VALA_BINDINGS=OFF -DENABLE_GTK_DOC=OFF -DENABLE_EXAMPLES=OFF -DENABLE_INSTALLED_TESTS=OFF -DENABLE_TESTS=OFF -DWITH_PHONENUMBER=OFF -DWITH_LIBDB=OFF -DWITH_OPENLDAP=OFF -DWITH_KRB5=ON -DENABLE_SCHEMAS_COMPILE=OFF
+
+  - uses: cmake/build
+
+  - uses: cmake/install
+
+  - uses: strip
+
+vars:
+  series: "3.62"
+
+subpackages:
+  - name: evolution-data-server-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: evolution-data-server-lang
+    pipeline:
+      - uses: split/locales
