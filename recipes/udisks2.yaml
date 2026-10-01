@@ -1,0 +1,51 @@
+package:
+  name: udisks2
+  version: 2.11.2
+  epoch: 0
+  description: Daemon, tools and libraries to manipulate disks
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - acl-dev
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - libblockdev-dev
+      - libgudev-dev
+      - polkit-dev
+      - systemd-dev
+      - util-linux-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/storaged-project/udisks/releases/download/udisks-${{package.version}}/udisks-${{package.version}}.tar.bz2
+      expected-sha256: 18630a8aad806bea0bc626ce97e71e50ec82c742956ac1c834a4275f8f22207b
+
+  # SMART needs libblockdev's smart plugin, built without it. LVM2,
+  # BTRFS, iSCSI and LibStorageMgmt are storage-admin modules with no user
+  # on a desktop VM. umount.udisks2 goes to /usr/bin: Wolfi lints /usr/sbin
+  # as a usrmerge violation.
+  - uses: autoconf/configure
+    with:
+      opts: --sbindir=/usr/bin --disable-static --disable-gtk-doc --disable-man --enable-introspection=yes --disable-smart --disable-lvm2 --disable-btrfs --disable-iscsi --disable-lsm --with-systemdsystemunitdir=/usr/lib/systemd/system --with-udevdir=/usr/lib/udev --with-tmpfilesdir=/usr/lib/tmpfiles.d
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: udisks2-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: udisks2-lang
+    pipeline:
+      - uses: split/locales
