@@ -68,6 +68,23 @@ tasks:
         docker build -f firmware/Dockerfile --target firmware --output type=local,dest=_output
         $(cd {{.AMI}} && go tool versions args wolfi-base linux-firmware intel-microcode) .
 
+  rootfs:
+    desc: Build the desktop's root filesystem from image/apko.yaml (Wolfi + packages/) into _output/rootfs.tar.
+    cmds:
+      - mkdir -p _output
+      - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/apko.yaml _output/rootfs.tar
+      - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/rootfs.tar
+
+  disk:
+    desc: Merge rootfs, modules, firmware and image/rootfs into _output/disk.raw (ext4).
+    cmds:
+      - go run ./cmd/image disk
+
+  boot:
+    desc: "Boot _output/disk.raw in QEMU (VNC :7); task boot -- -shot _output/shot.ppm takes a screenshot and stops."
+    cmds:
+      - go run ./cmd/image boot {{.CLI_ARGS}}
+
   gap:
     desc: How far Wolfi is from each desktop profile.
     cmds:
