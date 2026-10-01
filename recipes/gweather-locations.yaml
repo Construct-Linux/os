@@ -1,0 +1,42 @@
+package:
+  name: gweather-locations
+  version: "2026.2"
+  epoch: 0
+  description: GWeather locations database
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - glib-dev
+      - glib-gir
+      - meson
+      - ninja
+      - py3-gobject3
+      - python3
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gweather-locations/${{vars.series}}/gweather-locations-${{package.version}}.tar.xz
+      expected-sha256: e7570a3661e0a752a06387b2032585cf588fc56770b1f9f39f1a55d17b2835fe
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "2026"
+
+subpackages:
+  - name: gweather-locations-dev
+    pipeline:
+      - uses: split/dev
