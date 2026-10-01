@@ -1,0 +1,96 @@
+package:
+  name: gnome-shell-extensions
+  version: "51.0"
+  epoch: 0
+  # The main package keeps the translations: every extension here uses this one gettext
+  # domain, so each extension depends on it and the image gets its languages with it.
+  description: GNOME Shell's own extensions (shared translations; each extension is a subpackage)
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - glib
+      - glib-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-shell-extensions/${{vars.series}}/gnome-shell-extensions-${{package.version}}.tar.xz
+      expected-sha256: 3c078d7b88faee3d0f68adcee1392b1bed84731b91a337ec894cc88aa8a8b813
+
+  # The 'all' set without apps-menu: it imports GMenu (gnome-menus), in neither Wolfi nor
+  # recipes/. classic_mode stays off: its session needs apps-menu, and the image runs the
+  # standard session.
+  - uses: meson/configure
+    with:
+      opts: -Denable_extensions=auto-move-windows,drive-menu,launch-new-instance,light-style,native-window-placement,places-menu,screenshot-window-sizer,status-icons,system-monitor,user-theme,window-list,windowsNavigator,workspace-indicator -Dclassic_mode=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # The image compiles every schema at build (cmd/image bake); a compiled file from one
+  # package would be overwritten by it, or conflict with another package's.
+  - runs: |
+      rm -f ${{targets.destdir}}/usr/share/glib-2.0/schemas/gschemas.compiled
+
+vars:
+  series: "51"
+  uuid-suffix: "@gnome-shell-extensions.gcampax.github.com"
+
+data:
+  - name: extensions
+    items:
+      auto-move-windows: Opens chosen applications on chosen workspaces
+      drive-menu: A status menu for removable drives
+      launch-new-instance: Always opens a new window when an application is activated
+      light-style: Switches the shell to the light style
+      native-window-placement: Places window previews in the overview more compactly
+      places-menu: A status menu for places (home, bookmarks, mounts)
+      screenshot-window-sizer: Resizes windows to sizes good for screenshots
+      status-icons: Shows legacy tray icons in the top bar
+      user-theme: Loads a shell theme from the user's or the system's themes
+      window-list: A window list at the bottom of the screen
+      windowsNavigator: Selects windows and workspaces in the overview with the keyboard
+      workspace-indicator: A workspace switcher in the top bar
+
+subpackages:
+  - range: extensions
+    name: gnome-shell-extension-${{range.key}}
+    description: ${{range.value}}
+    dependencies:
+      runtime:
+        - gnome-shell
+        - gnome-shell-extensions
+    pipeline:
+      - runs: |
+          ext=usr/share/gnome-shell/extensions/${{range.key}}${{vars.uuid-suffix}}
+          schema=usr/share/glib-2.0/schemas/org.gnome.shell.extensions.${{range.key}}.gschema.xml
+          mkdir -p ${{targets.subpkgdir}}/usr/share/gnome-shell/extensions
+          mv ${{targets.destdir}}/$ext ${{targets.subpkgdir}}/usr/share/gnome-shell/extensions/
+          if [ -e ${{targets.destdir}}/$schema ]; then
+            mkdir -p ${{targets.subpkgdir}}/usr/share/glib-2.0/schemas
+            mv ${{targets.destdir}}/$schema ${{targets.subpkgdir}}/usr/share/glib-2.0/schemas/
+          fi
+
+  # Its own entry for libgtop: the extension imports the GTop typelib, which nothing derives
+  # from JavaScript.
+  - name: gnome-shell-extension-system-monitor
+    description: CPU, memory, swap, network and disk use in the top bar
+    dependencies:
+      runtime:
+        - gnome-shell
+        - gnome-shell-extensions
+        - libgtop
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/share/gnome-shell/extensions ${{targets.subpkgdir}}/usr/share/glib-2.0/schemas
+          mv ${{targets.destdir}}/usr/share/gnome-shell/extensions/system-monitor${{vars.uuid-suffix}} ${{targets.subpkgdir}}/usr/share/gnome-shell/extensions/
+          mv ${{targets.destdir}}/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.system-monitor.gschema.xml ${{targets.subpkgdir}}/usr/share/glib-2.0/schemas/
