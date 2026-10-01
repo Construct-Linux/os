@@ -1,0 +1,56 @@
+package:
+  name: libcanberra
+  version: "0.30"
+  epoch: 0
+  description: Simple audio library for GTK applications
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - sound-theme-freedesktop
+
+environment:
+  contents:
+    packages:
+      - alsa-lib-dev
+      - build-base
+      - busybox
+      - gtk-3-dev
+      - libltdl
+      - libogg-dev
+      - libtool
+      - libvorbis-dev
+      - pulseaudio-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://dev.alpinelinux.org/archive/libcanberra/libcanberra-${{package.version}}.tar.xz
+      expected-sha256: c2b671e67e0c288a69fc33dc1b6f1b534d07882c2aceed37004bf48c601afa72
+
+  # GNOME runs on Wayland; the GTK module otherwise calls Xlib on a non-X11 display.
+  - uses: patch
+    with:
+      patches: libcanberra/dont-assume-all-GdkDisplays-are-GdkX11Displays.patch
+
+  # gtk2 is not shipped; OSS is obsolete; the gstreamer backend is unneeded next to pulse/alsa;
+  # tdb caching is optional; lynx only regenerates the README.
+  - uses: autoconf/configure
+    with:
+      opts: --disable-oss --disable-gstreamer --disable-gtk --enable-gtk3 --enable-pulse --enable-alsa --enable-udev --disable-tdb --disable-gtk-doc --disable-lynx --disable-static
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: |
+      rm -rf ${{targets.destdir}}/usr/share/doc ${{targets.destdir}}/usr/share/gtk-doc
+      find ${{targets.destdir}} -name '*.la' -delete
+
+  - uses: strip
+
+subpackages:
+  - name: libcanberra-dev
+    pipeline:
+      - uses: split/dev
