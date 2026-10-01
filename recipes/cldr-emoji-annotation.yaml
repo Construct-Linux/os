@@ -1,0 +1,36 @@
+package:
+  name: cldr-emoji-annotation
+  version: "48"
+  epoch: 0
+  description: Emoji annotation files in CLDR
+  copyright:
+    - license: Unicode-DFS-2016
+  target-architecture:
+    - all
+
+environment:
+  contents:
+    packages:
+      - busybox
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/unicode-org/cldr/archive/release-${{package.version}}/cldr-release-${{package.version}}.tar.gz
+      expected-sha256: 8edd97a3600bbd1c451f07c5bf7b979467e88ac6d101d360eb8f9b057d21a4d6
+
+  - runs: |
+      for d in annotations annotationsDerived dtd; do
+        mkdir -p ${{targets.destdir}}/usr/share/unicode/cldr/common/$d
+        find common/$d -maxdepth 1 -type f \( -name '*.xml' -o -name '*.dtd' \) \
+          -exec install -m644 {} ${{targets.destdir}}/usr/share/unicode/cldr/common/$d/ \;
+      done
+      # ibus finds the annotations through this file; upstream CLDR does not ship one.
+      mkdir -p ${{targets.destdir}}/usr/share/pkgconfig
+      cat > ${{targets.destdir}}/usr/share/pkgconfig/cldr-emoji-annotation.pc <<PC
+      prefix=/usr
+
+      Name: cldr-emoji-annotations
+      Description: annotation files in CLDR
+      Version: ${{package.version}}
+      PC
