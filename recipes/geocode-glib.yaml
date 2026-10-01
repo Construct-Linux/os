@@ -1,0 +1,45 @@
+package:
+  name: geocode-glib
+  version: 3.26.4
+  epoch: 0
+  description: Geocoding helper library
+  copyright:
+    - license: LGPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - json-glib-dev
+      - libsoup3-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/geocode-glib/${{vars.series}}/geocode-glib-${{package.version}}.tar.xz
+      expected-sha256: 2d9a6826d158470449a173871221596da0f83ebdcff98b90c7049089056a37aa
+
+  # soup2=false builds the geocode-glib-2.0 API against libsoup3; libsoup2 is not shipped.
+  - uses: meson/configure
+    with:
+      opts: -Dsoup2=false -Denable-introspection=true -Denable-gtk-doc=false -Denable-installed-tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "3.26"
+
+subpackages:
+  - name: geocode-glib-dev
+    pipeline:
+      - uses: split/dev
