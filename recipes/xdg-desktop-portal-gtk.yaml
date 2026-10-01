@@ -1,0 +1,45 @@
+package:
+  name: xdg-desktop-portal-gtk
+  version: 1.15.3
+  epoch: 0
+  description: GTK implementation of xdg-desktop-portal
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - gsettings-desktop-schemas
+      - xdg-desktop-portal
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - fontconfig-dev
+      - gettext
+      - glib-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-3-dev
+      - meson
+      - ninja
+      - xdg-desktop-portal
+      - xdg-desktop-portal-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/flatpak/xdg-desktop-portal-gtk/releases/download/${{package.version}}/xdg-desktop-portal-gtk-${{package.version}}.tar.xz
+      expected-sha256: 47a3743d2419a8601e691db37e85bb5fac5ae4b26842177065cd5f22ada23b37
+
+  # wallpaper off: it needs gnome-desktop-3 (our gnome-desktop builds without the legacy GTK3 library); xdg-desktop-portal-gnome serves the Wallpaper portal.
+  - uses: meson/configure
+    with:
+      opts: -Dwallpaper=disabled -Dsettings=enabled -Dappchooser=enabled -Dlockdown=enabled -Ddbus-service-dir=/usr/share/dbus-1/services -Dsystemd-user-unit-dir=/usr/lib/systemd/user
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
