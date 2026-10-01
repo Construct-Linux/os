@@ -1,0 +1,58 @@
+package:
+  name: gtk-vnc
+  version: 1.5.0
+  epoch: 0
+  description: VNC viewer widget for GTK
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cyrus-sasl-dev
+      - gdk-pixbuf-dev
+      - glib-dev
+      - glib-gir
+      - gnutls-dev
+      - gobject-introspection-dev
+      - gtk-3-dev
+      - libgcrypt-dev
+      - libgpg-error-dev
+      - meson
+      - ninja
+      - perl
+      - perl-text-csv
+      - pulseaudio-dev
+      - python3
+      - zlib-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gtk-vnc/${{vars.series}}/gtk-vnc-${{package.version}}.tar.xz
+      expected-sha256: c0beb4747528ad931da43acc567c6a0190f7fc624465571ed9ccece02c34dd23
+
+  # Pulseaudio stays: it carries the VNC audio channel, served by pipewire-pulse on the desktop.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=enabled -Dpulseaudio=enabled -Dsasl=enabled -Dwith-vala=disabled -Dgi-docs=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "1.5"
+
+subpackages:
+  - name: gtk-vnc-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: gtk-vnc-lang
+    pipeline:
+      - uses: split/locales
