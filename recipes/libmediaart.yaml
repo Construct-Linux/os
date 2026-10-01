@@ -1,0 +1,46 @@
+package:
+  name: libmediaart
+  version: 1.9.7
+  epoch: 0
+  description: Media art extraction and cache management library
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gdk-pixbuf-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libmediaart/${{vars.series}}/libmediaart-${{package.version}}.tar.xz
+      expected-sha256: 2b43dd9f54f0d8d0b89e2addb83341ab06d7b98cb1b2e704383584af9c560f6b
+
+  # gdk-pixbuf is the upstream backend; Alpine's glycin backend is an
+  # out-of-tree patch, and the qt backends pull in qt, which is not shipped.
+  # vapi off: no Vala consumers.
+  - uses: meson/configure
+    with:
+      opts: -Dimage_library=gdk-pixbuf -Dintrospection=true -Dvapi=false -Dtests=false -Dgtk_doc=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "1.9"
+
+subpackages:
+  - name: libmediaart-dev
+    pipeline:
+      - uses: split/dev
