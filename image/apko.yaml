@@ -127,6 +127,8 @@ contents:
     - gnome-maps
     - gnome-connections
     - gnome-software
+    - papers
+    - gnome-calendar
     - flatpak
     # sched_ext schedulers (kernel/desktop.config's SCHED_CLASS_EXT).
     - scx

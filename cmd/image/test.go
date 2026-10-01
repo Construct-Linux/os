@@ -55,6 +55,8 @@ var apps = []app{
 	{"org.gnome.Maps.desktop", 30 * time.Second},
 	{"org.gnome.Connections.desktop", 20 * time.Second},
 	{"org.gnome.Software.desktop", 60 * time.Second},
+	{"org.gnome.Papers.desktop", 20 * time.Second},
+	{"org.gnome.Calendar.desktop", 30 * time.Second},
 	{"firefox.desktop", 60 * time.Second},
 	{"com.google.Chrome.desktop", 60 * time.Second},
 }
