@@ -1,7 +1,7 @@
 package:
   name: evolution-data-server
   version: 3.62.0
-  epoch: 2
+  epoch: 3
   description: Unified backend for address books, calendars and tasks
   copyright:
     - license: LGPL-2.0-or-later
@@ -21,6 +21,8 @@ environment:
       - cmake
       - flex
       - gcr-dev
+      - gcr4-dev
+      - gtk-4-dev
       - gettext-dev
       - glib-dev
       - glib-gir
@@ -46,12 +48,14 @@ pipeline:
       uri: https://download.gnome.org/sources/evolution-data-server/${{vars.series}}/evolution-data-server-${{package.version}}.tar.xz
       expected-sha256: 78be88e9a511f5afe7ff2e363eade84b622dd0282647fc576edb2d4ff2962cba
 
-  # GTK (libedataserverui) is for Evolution itself, and its OAuth2 dialogs need webkitgtk; the shell
-  # only talks to the D-Bus factories. Canberra only serves the GTK alarm notifier. libphonenumber is
-  # not in Wolfi. LDAP address books are not a desktop need. Schemas are compiled at image time.
+  # libedataserverui4 (GTK 4) on: GNOME Calendar asks for account passwords and TLS trust through it.
+  # The GTK 3 one is Evolution's alone, and the OAuth2 dialogs of both need webkitgtk, which is not
+  # shipped: OAuth2 accounts sign in through GNOME Online Accounts instead. Canberra only serves the
+  # GTK alarm notifier. libphonenumber is not in Wolfi. LDAP address books are not a desktop need.
+  # Schemas are compiled at image time.
   - uses: cmake/configure
     with:
-      opts: -DSYSCONF_INSTALL_DIR=/etc -DENABLE_GTK=OFF -DENABLE_GTK4=OFF -DENABLE_OAUTH2_WEBKITGTK=OFF -DENABLE_OAUTH2_WEBKITGTK4=OFF -DENABLE_CANBERRA=OFF -DENABLE_GOA=ON -DENABLE_WEATHER=ON -DENABLE_INTROSPECTION=ON -DENABLE_VALA_BINDINGS=OFF -DENABLE_GTK_DOC=OFF -DENABLE_EXAMPLES=OFF -DENABLE_INSTALLED_TESTS=OFF -DENABLE_TESTS=OFF -DWITH_PHONENUMBER=OFF -DWITH_LIBDB=OFF -DWITH_OPENLDAP=OFF -DWITH_KRB5=ON -DENABLE_SCHEMAS_COMPILE=OFF
+      opts: -DSYSCONF_INSTALL_DIR=/etc -DENABLE_GTK=OFF -DENABLE_GTK4=ON -DENABLE_OAUTH2_WEBKITGTK=OFF -DENABLE_OAUTH2_WEBKITGTK4=OFF -DENABLE_CANBERRA=OFF -DENABLE_GOA=ON -DENABLE_WEATHER=ON -DENABLE_INTROSPECTION=ON -DENABLE_VALA_BINDINGS=OFF -DENABLE_GTK_DOC=OFF -DENABLE_EXAMPLES=OFF -DENABLE_INSTALLED_TESTS=OFF -DENABLE_TESTS=OFF -DWITH_PHONENUMBER=OFF -DWITH_LIBDB=OFF -DWITH_OPENLDAP=OFF -DWITH_KRB5=ON -DENABLE_SCHEMAS_COMPILE=OFF
 
   - uses: cmake/build
 
