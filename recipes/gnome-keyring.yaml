@@ -1,0 +1,52 @@
+package:
+  name: gnome-keyring
+  version: "51.1"
+  epoch: 0
+  description: GNOME keyring daemon, Secret Service provider
+  copyright:
+    - license: GPL-2.0-only AND LGPL-2.0-only
+  dependencies:
+    runtime:
+      # libsecret clients prompt through the gcr binaries.
+      - gcr
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gcr-dev
+      - glib-dev
+      - libcap-ng-dev
+      - libgcrypt-dev
+      - linux-pam-dev
+      - meson
+      - ninja
+      - p11-kit-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-keyring/${{vars.series}}/gnome-keyring-${{package.version}}.tar.xz
+      expected-sha256: dfe7adc5876ef0670e7eba2907799bdbb8875ce58bb4208e1a52169bd16a47ca
+
+  # ssh-agent off: gcr4 ships gcr-ssh-agent with its own user units.
+  # selinux off: Wolfi images do not run SELinux.
+  - uses: meson/configure
+    with:
+      opts: -Dsystemd=enabled -Dpam=true -Dlibcap-ng=enabled -Dssh-agent=false -Dselinux=disabled -Dmanpage=false -Ddebug-mode=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-keyring-lang
+    pipeline:
+      - uses: split/locales
