@@ -1,0 +1,45 @@
+package:
+  name: orchis-theme
+  version: "20260707"
+  epoch: 0
+  description: Orchis GTK and GNOME Shell theme (blue and teal, light and dark)
+  copyright:
+    - license: GPL-3.0-only
+
+environment:
+  contents:
+    packages:
+      - bash
+      - busybox
+      # install.sh finds itself with readlink -m, which busybox lacks.
+      - coreutils
+      - sassc
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/vinceliuice/Orchis-theme
+      tag: ${{vars.tag}}
+      expected-commit: 29975e38624ec93d8e460f8ea17129bcb68c05ef
+
+  # install.sh marks the GTK 4 styles for GNOME >= 47 (libadwaita's accent colours) only when it
+  # finds a gnome-shell binary to ask; the build has none and the image runs 51.
+  - runs: |
+      sed -i "s/^\$gnome_version: 'old';/\$gnome_version: 'new';/" src/_sass/_tweaks.scss
+      grep -q "^\$gnome_version: 'new';" src/_sass/_tweaks.scss
+
+  # --shell 48 pins the newest shell stylesheet upstream ships instead of probing the build host.
+  # No -l (it links into a home directory) and no -g (the login screen keeps GNOME's look).
+  - runs: |
+      mkdir -p ${{targets.destdir}}/usr/share/themes
+      ./install.sh -d ${{targets.destdir}}/usr/share/themes -t default teal -c light dark -s standard --shell 48
+      test -f ${{targets.destdir}}/usr/share/themes/Orchis-Teal-Dark/gnome-shell/gnome-shell.css
+
+  # Cinnamon, Xfwm4, Metacity and Plank styles serve desktops the image does not ship.
+  - runs: |
+      cd ${{targets.destdir}}/usr/share/themes
+      rm -r Orchis-*-hdpi Orchis-*-xhdpi
+      for t in Orchis-*; do rm -r $t/cinnamon $t/xfwm4 $t/metacity-1 $t/plank; done
+
+vars:
+  tag: 2026-07-07
