@@ -36,12 +36,13 @@ Signed-By: /usr/share/keyrings/debian-archive-keyring.gpg
 Check-Valid-Until: no
 EOF
 
+# zstd compresses the modules as modules_install writes them (desktop.config's MODULE_COMPRESS_ZSTD).
 RUN --mount=type=cache,sharing=locked,id=desktop-kernel-aptlib,target=/var/lib/apt \
     --mount=type=cache,sharing=locked,id=desktop-kernel-aptcache,target=/var/cache/apt \
     apt-get update && apt-get install -y --no-install-recommends \
         build-essential libncurses-dev flex bison libssl-dev libelf-dev bc cpio kmod \
         wget xz-utils ca-certificates file dwarves python3 \
-        clang-19 lld-19 llvm-19
+        clang-19 lld-19 llvm-19 zstd
 
 # Every make below - the configuration included, since which options exist depends on the
 # compiler it finds - uses clang-19, ld.lld-19 and llvm-*-19 (Documentation/kbuild/llvm.rst).
