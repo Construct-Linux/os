@@ -1,10 +1,16 @@
 package:
   name: evolution-data-server
   version: 3.62.0
-  epoch: 0
+  epoch: 2
   description: Unified backend for address books, calendars and tasks
   copyright:
     - license: LGPL-2.0-or-later
+  dependencies:
+    runtime:
+      # NSS and NSPR have unversioned sonames (libnss3.so), from which melange derives no dependency: libcamel and libebook link NSS and NSPR.
+      - libnss
+      - libnspr
+
 
 environment:
   contents:

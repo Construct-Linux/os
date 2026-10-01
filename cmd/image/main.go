@@ -6,12 +6,15 @@
 //
 //	image disk  [-size 12G]                     _output/rootfs.tar ... -> _output/disk.raw
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
+//	image check                                 every ELF's NEEDED libraries are in the root
 package main
 
 import (
 	"archive/tar"
 	"bufio"
+	"bytes"
 	"context"
+	"debug/elf"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -40,6 +43,8 @@ func main() {
 		err = disk(os.Args[2:])
 	case "boot":
 		err = boot(os.Args[2:])
+	case "check":
+		err = check(filepath.Join(out, "root.tar"))
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}
@@ -192,9 +197,17 @@ func disk(args []string) error {
 // one's, and every directory a file sits in present before it.
 func merge(layers []layer, dst string) error {
 	owner := make(map[string]int)
+	// A directory's own header, from the layer that has it: a tar may list a directory's files
+	// before the directory, and mke2fs needs the directory first.
+	dirHdr := make(map[string]tar.Header)
 	for i, l := range layers {
 		if err := l.walk(func(h *tar.Header, _ io.Reader) error {
 			owner[h.Name] = i
+			if h.Typeflag == tar.TypeDir {
+				dirHdr[h.Name] = *h
+			} else {
+				delete(dirHdr, h.Name)
+			}
 			return nil
 		}); err != nil {
 			return fmt.Errorf("%s: %w", l.name(), err)
@@ -206,21 +219,22 @@ func merge(layers []layer, dst string) error {
 	}
 	bw := bufio.NewWriterSize(f, 1<<20)
 	tw := tar.NewWriter(bw)
-	dirs := map[string]bool{}
-	var parents func(name string) error
-	parents = func(name string) error {
-		dir := path.Dir(name)
-		if dir == "." || dirs[dir] {
+	written := map[string]bool{}
+	var dir func(name string) error
+	dir = func(name string) error {
+		if name == "." || written[name] {
 			return nil
 		}
-		if err := parents(dir); err != nil {
+		if err := dir(path.Dir(name)); err != nil {
 			return err
 		}
-		dirs[dir] = true
-		if _, ok := owner[dir]; ok {
-			return nil // its own header comes from the layer that has it
+		written[name] = true
+		h, ok := dirHdr[name]
+		if !ok {
+			h = tar.Header{Typeflag: tar.TypeDir, Mode: 0o755}
 		}
-		return tw.WriteHeader(&tar.Header{Typeflag: tar.TypeDir, Name: dir + "/", Mode: 0o755})
+		h.Name = name + "/"
+		return tw.WriteHeader(&h)
 	}
 	for i, l := range layers {
 		if err := l.walk(func(h *tar.Header, r io.Reader) error {
@@ -228,16 +242,10 @@ func merge(layers []layer, dst string) error {
 				return nil
 			}
 			if h.Typeflag == tar.TypeDir {
-				if dirs[h.Name] && i > 0 {
-					return nil
-				}
-				dirs[h.Name] = true
+				return dir(h.Name)
 			}
-			if err := parents(h.Name); err != nil {
+			if err := dir(path.Dir(h.Name)); err != nil {
 				return err
-			}
-			if h.Typeflag == tar.TypeDir {
-				h.Name += "/"
 			}
 			if err := tw.WriteHeader(h); err != nil {
 				return err
@@ -332,6 +340,97 @@ func qmpRun(sock string, command map[string]any) error {
 			}
 			break
 		}
+	}
+	return nil
+}
+
+// check reads the merged root and reports every ELF whose NEEDED libraries the dynamic loader
+// would not find in it: a package whose dependency was not declared - a provider that publishes
+// no so: names, a library in a private directory - shows up here, not as a crash at boot.
+func check(root string) error {
+	type obj struct {
+		needed, runpath []string
+	}
+	files := map[string]bool{}
+	links := map[string]string{}
+	objs := map[string]obj{}
+	err := tarLayer{file: root}.walk(func(h *tar.Header, r io.Reader) error {
+		switch h.Typeflag {
+		case tar.TypeSymlink:
+			links[h.Name] = h.Linkname
+			return nil
+		case tar.TypeReg:
+		default:
+			return nil
+		}
+		files[h.Name] = true
+		if h.Size < 64 {
+			return nil
+		}
+		br := bufio.NewReader(r)
+		if b, _ := br.Peek(4); !bytes.Equal(b, []byte(elf.ELFMAG)) {
+			return nil
+		}
+		data, err := io.ReadAll(br)
+		if err != nil {
+			return err
+		}
+		f, err := elf.NewFile(bytes.NewReader(data))
+		if err != nil {
+			return nil
+		}
+		defer f.Close()
+		needed, _ := f.DynString(elf.DT_NEEDED)
+		rp, _ := f.DynString(elf.DT_RUNPATH)
+		rp2, _ := f.DynString(elf.DT_RPATH)
+		var runpath []string
+		for _, v := range append(rp, rp2...) {
+			for _, d := range strings.Split(v, ":") {
+				runpath = append(runpath, strings.ReplaceAll(d, "$ORIGIN", "/"+path.Dir(h.Name)))
+			}
+		}
+		if len(needed) > 0 {
+			objs[h.Name] = obj{needed, runpath}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	exists := func(name string) bool {
+		for i := 0; i < 16; i++ {
+			if files[name] {
+				return true
+			}
+			t, ok := links[name]
+			if !ok {
+				return false
+			}
+			if !strings.HasPrefix(t, "/") {
+				t = path.Join(path.Dir(name), t)
+			}
+			name = clean(t)
+		}
+		return false
+	}
+	bad := 0
+	for name, o := range objs {
+		for _, lib := range o.needed {
+			found := false
+			for _, d := range append(o.runpath, "/usr/lib", "/lib", "/usr/lib64", "/lib64") {
+				if exists(clean(path.Join(d, lib))) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				fmt.Printf("%s: %s not found\n", name, lib)
+				bad++
+			}
+		}
+	}
+	if bad > 0 {
+		return fmt.Errorf("%d unresolved libraries", bad)
 	}
 	return nil
 }

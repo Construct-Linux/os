@@ -1,10 +1,16 @@
 package:
   name: volume_key
   version: 0.3.12
-  epoch: 0
+  epoch: 2
   description: Library for manipulating storage volume encryption keys
   copyright:
     - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      # NSS and NSPR have unversioned sonames (libnss3.so), from which melange derives no dependency: libvolume_key and the volume_key tool link NSS and NSPR.
+      - libnss
+      - libnspr
+
 
 environment:
   contents:

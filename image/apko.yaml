@@ -24,6 +24,8 @@ contents:
     - shadow
     - coreutils
     - bash
+    - bash-binsh
+    - kbd
     - sudo
     # Graphics, input and sound below the session.
     - mesa
@@ -33,12 +35,19 @@ contents:
     - mesa-gles
     - mesa-libgallium
     - libinput
+    # libinput's device quirks (/usr/share/libinput) are in -libs, which nothing depends on.
+    - libinput-libs
     - xkeyboard-config
     - pipewire
     - pipewire-pulse
     - wireplumber
     - bluez
     - polkit
+    # GNOME Shell's JavaScript reaches GLib, GObject, Gio and cairo through their typelibs: glib's
+    # are in glib-gir, cairo's only in gobject-introspection-dev.
+    - glib-gir
+    - gobject-introspection-dev
+    - at-spi2-core
     # The session.
     - gdm
     - gnome-shell

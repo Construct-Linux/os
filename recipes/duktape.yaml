@@ -1,0 +1,34 @@
+package:
+  name: duktape
+  version: "2.7.0"
+  # Above Wolfi's epoch 2, whose libduktape.so.207 calls sin() without NEEDED libm: whatever
+  # loads it - polkitd, libproxy's PAC backend inside every GIO process - dies in the loader
+  # ("Relink libduktape.so.207 with libm.so.6 for IFUNC symbol sin").
+  epoch: 3
+  description: Embeddable JavaScript engine
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/svaarala/duktape/releases/download/v${{package.version}}/duktape-${{package.version}}.tar.xz
+      expected-sha256: 90f8d2fa8b5567c6899830ddef2c03f3c27960b11aca222fa17aa7ac613c2890
+
+  # libm after the source, where --as-needed keeps it.
+  - runs: |
+      sed -i 's|-o \$@ \$(DUKTAPE_SRCDIR)/duktape.c$|-o $@ $(DUKTAPE_SRCDIR)/duktape.c -lm|' Makefile.sharedlibrary
+      DESTDIR=${{targets.destdir}} INSTALL_PREFIX=/usr make -f Makefile.sharedlibrary install
+
+  - uses: strip
+
+subpackages:
+  - name: duktape-dev
+    pipeline:
+      - uses: split/dev

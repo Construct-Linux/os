@@ -1,10 +1,16 @@
 package:
   name: libblockdev
   version: 3.4.0
-  epoch: 0
+  epoch: 2
   description: Library for manipulating block devices
   copyright:
     - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      # NSS and NSPR have unversioned sonames (libnss3.so), from which melange derives no dependency: the crypto plugin (libbd_crypto) links NSS.
+      - libnss
+      - libnspr
+
 
 environment:
   contents:
