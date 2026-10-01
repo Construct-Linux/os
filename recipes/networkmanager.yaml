@@ -1,0 +1,92 @@
+package:
+  name: networkmanager
+  version: 1.58.1
+  epoch: 0
+  description: Network management daemon
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - dbus
+      - libnm
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - curl-dev
+      - dbus-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gnutls-dev
+      - gobject-introspection-dev
+      - libgudev-dev
+      - libndp-dev
+      - libnl3-dev
+      - libpsl-dev
+      - libudev-dev
+      - linux-headers
+      - meson
+      - ninja
+      - perl
+      - polkit-dev
+      - py3.13-gobject3
+      - python-3.13
+      - readline-dev
+      - systemd-dev
+      - util-linux-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/api/v4/projects/411/packages/generic/NetworkManager/${{package.version}}/NetworkManager-${{package.version}}.tar.xz
+      expected-sha256: 262864cfd198123d3e5dbe91937441b97ee9059d6d712e1a5bfbb1c54668d14d
+
+  # crypto=gnutls: Wolfi has no Mozilla NSS development package.
+  # ppp, modem_manager, ofono: PPP and ModemManager are deliberately not available.
+  # ovs, teamdctl, nm_cloud_setup, ifupdown, ifcfg_rh: no Open vSwitch, teamd, cloud or distro config files on the desktop.
+  # nmtui: Wolfi has no newt.
+  # clat, ebpf, nbft: BPF 464XLAT and NVMe-oF boot are not desktop features and pull in libbpf, clang and libnvme.
+  # selinux, libaudit: neither runs on Spin OS.
+  # python-3.13 and py3.13-gobject3: libnm property metadata is generated from the gir even without docs.
+  - uses: meson/configure
+    with:
+      opts: --sbindir=bin -Dsystemdsystemunitdir=/usr/lib/systemd/system -Dsystemdsystemgeneratordir=/usr/lib/systemd/system-generators -Dudev_dir=/usr/lib/udev -Ddbus_conf_dir=/usr/share/dbus-1/system.d -Dsession_tracking=systemd -Dsession_tracking_consolekit=false -Dsuspend_resume=systemd -Dsystemd_journal=true -Dpolkit=true -Dselinux=false -Dlibaudit=no -Dcrypto=gnutls -Dconfig_dhcp_default=internal -Dnft=/usr/sbin/nft -Dwifi=true -Diwd=false -Dppp=false -Dmodem_manager=false -Dofono=false -Dovs=false -Dteamdctl=false -Dnm_cloud_setup=false -Dbluez5_dun=false -Dnmtui=false -Dclat=false -Debpf=false -Dnbft=false -Difupdown=false -Difcfg_rh=false -Dreadline=libreadline -Dintrospection=true -Dvapi=false -Ddocs=false -Dman=false -Dtests=no -Dqt=false -Dmore_asserts=0
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libnm
+    description: GObject client library for NetworkManager
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libnm.so.* ${{targets.subpkgdir}}/usr/lib/
+          mv ${{targets.destdir}}/usr/lib/girepository-1.0 ${{targets.subpkgdir}}/usr/lib/
+
+  - name: networkmanager-wifi
+    description: Wi-Fi device plugin for NetworkManager
+    dependencies:
+      runtime:
+        - networkmanager
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib/NetworkManager/${{package.version}}
+          mv ${{targets.destdir}}/usr/lib/NetworkManager/${{package.version}}/libnm-device-plugin-wifi.so ${{targets.subpkgdir}}/usr/lib/NetworkManager/${{package.version}}/
+
+  - name: networkmanager-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - libnm
+
+  - name: networkmanager-lang
+    pipeline:
+      - uses: split/locales
