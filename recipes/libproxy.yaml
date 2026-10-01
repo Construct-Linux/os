@@ -1,0 +1,55 @@
+package:
+  name: libproxy
+  version: 0.5.12
+  epoch: 0
+  description: Library handling all the details of proxy configuration
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - curl-dev
+      - duktape
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gsettings-desktop-schemas-dev
+      - meson
+      - ninja
+      - python-3
+  # Wolfi's libduktape has no DT_NEEDED on libm; the gir dump binary loads it first and
+  # segfaults resolving the IFUNC sin. Pulling libm in ahead of duktape avoids that.
+  environment:
+    LDFLAGS: -Wl,--no-as-needed -lm -Wl,--as-needed
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/libproxy/libproxy/archive/refs/tags/${{package.version}}.tar.gz
+      expected-sha256: a1fa55991998b80a567450a9e84382421a7176a84446c95caaa8b72cf09fa86f
+
+  # KDE config is off: no Plasma in this desktop. Windows/OS X config only build on those systems.
+  - uses: meson/configure
+    with:
+      opts: -Ddocs=false -Dtests=false -Dvapi=false -Dintrospection=true -Dconfig-kde=false -Dconfig-windows=false -Dconfig-osx=false -Drelease=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libproxy-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: libproxy-bin
+    description: Binary to test libproxy
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/bin
+          mv ${{targets.destdir}}/usr/bin/proxy ${{targets.subpkgdir}}/usr/bin/
