@@ -166,8 +166,15 @@ func disk(args []string) error {
 		tarLayer{file: filepath.Join(out, "firmware", "firmware.tar"), prefix: "usr/lib/firmware"},
 		dirLayer{dir: "image/rootfs"},
 		links{
-			"etc/systemd/system/default.target":                                                   "/usr/lib/systemd/system/graphical.target",
-			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service":                 "/usr/lib/systemd/system/spin-desktop-caches.service",
+			"etc/systemd/system/default.target":                                   "/usr/lib/systemd/system/graphical.target",
+			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service": "/usr/lib/systemd/system/spin-desktop-caches.service",
+			"etc/localtime": "/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
+			"etc/systemd/system/sockets.target.wants/docker.socket":                               "/usr/lib/systemd/system/docker.socket",
+			"etc/systemd/system/multi-user.target.wants/containerd.service":                       "/usr/lib/systemd/system/containerd.service",
+			"etc/systemd/system/multi-user.target.wants/power-profiles-daemon.service":            "/usr/lib/systemd/system/power-profiles-daemon.service",
+			"etc/systemd/system/multi-user.target.wants/spin-desktop-flathub.service":             "/usr/lib/systemd/system/spin-desktop-flathub.service",
+			"etc/systemd/system/multi-user.target.wants/NetworkManager-wait-online.service":       "/usr/lib/systemd/system/NetworkManager-wait-online.service",
+			"etc/systemd/user/default.target.wants/xdg-user-dirs.service":                         "/usr/lib/systemd/user/xdg-user-dirs.service",
 			"etc/systemd/system/display-manager.service":                                          "/usr/lib/systemd/system/gdm.service",
 			"etc/systemd/system/multi-user.target.wants/NetworkManager.service":                   "/usr/lib/systemd/system/NetworkManager.service",
 			"etc/systemd/system/dbus-org.freedesktop.nm-dispatcher.service":                       "/usr/lib/systemd/system/NetworkManager-dispatcher.service",
@@ -456,9 +463,15 @@ func check(root string) error {
 	}
 	bad := 0
 	for name, o := range objs {
+		dirs := append(o.runpath, "/usr/lib", "/lib", "/usr/lib64", "/lib64")
+		// Mozilla's applications load their own directory's libraries first, in the order its
+		// dependentlibs.list gives, before anything that NEEDs them.
+		if files[path.Join(path.Dir(name), "dependentlibs.list")] {
+			dirs = append(dirs, "/"+path.Dir(name))
+		}
 		for _, lib := range o.needed {
 			found := false
-			for _, d := range append(o.runpath, "/usr/lib", "/lib", "/usr/lib64", "/lib64") {
+			for _, d := range dirs {
 				if exists(clean(path.Join(d, lib))) {
 					found = true
 					break

@@ -37,6 +37,11 @@ contents:
     - mesa-gl
     - mesa-gles
     - mesa-libgallium
+    # Vulkan: Intel (anv), AMD (radv), and lavapipe for what has neither (a VM).
+    - mesa-vulkan-intel
+    - mesa-vulkan-ati
+    - mesa-vulkan-swrast
+    - vulkan-loader
     - libinput
     # libinput's device quirks (/usr/share/libinput) are in -libs, which nothing depends on.
     - libinput-libs
@@ -73,6 +78,54 @@ contents:
     - font-noto
     - glycin-2
     - wireless-regdb
+    # What a session leans on: realtime priority for the compositor and PipeWire, Thunderbolt
+    # authorisation, power profiles, the portals' GTK backend, GVfs (trash, mounts, network
+    # places), the user's folders, and wallpapers.
+    - rtkit
+    - bolt
+    - power-profiles-daemon
+    - xdg-desktop-portal-gtk
+    - gvfs
+    - xdg-user-dirs
+    - gnome-backgrounds
+    # Apps.
+    - nautilus
+    - tinysparql
+    - gnome-text-editor
+    - gnome-calculator
+    - loupe
+    - gnome-disk-utility
+    - flatpak
+    - font-noto-emoji
+    - glibc-locale-en
+    - glibc-locale-es
+    - tzdata
+    - libsecret
+    # Media: GStreamer, which GNOME's apps and the screencast play and record through.
+    - gstreamer
+    - gst-plugins-base
+    - gst-plugins-good
+    # Apps Wolfi maintains itself.
+    - firefox
+    # Development: a compiler, make, git, and Docker on containerd.
+    - build-base
+    - make
+    - gcc
+    - git
+    - openssh-client
+    - curl
+    - vim
+    - less
+    - dockerd-29
+    - dockerd-service-29
+    - docker-init-29
+    - docker-cli
+    - docker-cli-buildx
+    - docker-compose
+    - containerd-2
+    - containerd-service-2
+    - runc
+    - iptables-nft
 
 accounts:
   run-as: root

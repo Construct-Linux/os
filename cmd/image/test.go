@@ -42,6 +42,7 @@ var apps = []app{
 	{"org.gnome.SystemMonitor.desktop", 20 * time.Second},
 	{"org.gnome.DiskUtility.desktop", 20 * time.Second},
 	{"firefox.desktop", 60 * time.Second},
+	{"com.google.Chrome.desktop", 60 * time.Second},
 }
 
 // panels are Settings' pages a person reaches first; each is opened by name and screenshotted.
@@ -82,6 +83,8 @@ func test(args []string) error {
 	}
 	r.add("shell", true, "org.gnome.Shell.Eval answers in unsafe mode")
 	r.shot(v, "desktop")
+	ok, detail := g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)
+	r.add("flathub", ok, detail)
 
 	want := map[string]bool{}
 	for _, n := range strings.Split(*only, ",") {
@@ -211,6 +214,20 @@ func (g *guest) waitShell(d time.Duration) (string, error) {
 		err = fmt.Errorf("still starting up (%s)", v)
 	}
 	return v, err
+}
+
+// waitUnit waits for a oneshot unit to leave "activating" and reports how it ended.
+func (g *guest) waitUnit(unit string, d time.Duration) (bool, string) {
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		out, err := g.run("systemctl show -p ActiveState -p Result --value "+unit, "")
+		f := strings.Fields(out)
+		if err == nil && len(f) == 2 && f[0] != "activating" {
+			return f[1] == "success", unit + ": " + f[0] + "/" + f[1]
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return false, fmt.Sprintf("%s still activating after %v", unit, d)
 }
 
 func (g *guest) runApp(a app) (bool, string) {
