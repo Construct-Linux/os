@@ -102,7 +102,7 @@ func lifecycle(args []string) error {
 			r.add("refuse "+bad, false, err.Error())
 			return r.write(nil)
 		}
-		ok, detail = g.waitUpdate(5 * time.Minute)
+		ok, detail = g.waitUpdate(15 * time.Minute)
 		esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 		refused := !ok && !strings.Contains(esp, versions["v2"]) && g.version() == versions["v1"]
 		r.add("refuse a stick: "+bad, refused, detail+"; ESP: "+oneLine(esp))
@@ -155,7 +155,7 @@ func lifecycle(args []string) error {
 		r.add("boot with v3's stick", false, err.Error())
 		return r.write(nil)
 	}
-	ok, detail = g.waitUpdate(5 * time.Minute)
+	ok, detail = g.waitUpdate(15 * time.Minute)
 	r.add("v3's stick updates", ok, detail)
 	g.reboot()
 	deadline := time.Now().Add(20 * time.Minute)

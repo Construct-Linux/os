@@ -5,7 +5,9 @@
 # otherwise.
 [Unit]
 Description=Update from the release on %I
-BindsTo=dev-%i.device
+# After the device, not bound to it: while systemd-sysupdate writes the machine's partitions udev
+# announces the block devices again, and BindsTo= stopped the update half way through. A stick
+# pulled out fails the copy by itself, and the next update vacuums what it left.
 After=dev-%i.device local-fs.target
 
 [Service]
