@@ -1,0 +1,68 @@
+package:
+  name: nautilus
+  version: 51.0.1
+  epoch: 0
+  description: GNOME file manager
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gsettings-desktop-schemas
+      # search and the recent/starred views query the tinysparql store
+      - tinysparql
+
+environment:
+  contents:
+    packages:
+      - blueprint-compiler
+      - build-base
+      - busybox
+      - gdk-pixbuf-dev
+      - gettext
+      - glib-dev
+      # blueprint-compiler loads the GLib/Gtk typelibs at build time
+      - glib-gir
+      - glycin-2-dev
+      - glycin-2-gtk4-dev
+      - gnome-autoar-dev
+      - gnome-desktop-dev
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - icu-dev
+      - libadwaita-dev
+      - libportal-dev
+      - libxml2-utils
+      - meson
+      - ninja
+      - python-3.13
+      - tinysparql-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/nautilus/${{vars.series}}/nautilus-${{package.version}}.tar.xz
+      expected-sha256: a00db908fd65026cbd5dc634e12d189de8eba2b03f105d2425341768a5ee92fb
+
+  # extensions off: the image/audio-video property pages need gexiv2, which Wolfi lacks.
+  # cloudproviders off: libcloudproviders is not in Wolfi. selinux off: the desktop runs without SELinux.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Ddocs=false -Dextensions=false -Dtests=none -Dselinux=disabled -Dcloudproviders=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: nautilus-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: nautilus-lang
+    pipeline:
+      - uses: split/locales
