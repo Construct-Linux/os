@@ -95,6 +95,7 @@ contents:
     - gnome-calculator
     - loupe
     - gnome-disk-utility
+    - gnome-system-monitor
     - flatpak
     # sched_ext schedulers (kernel/desktop.config's SCHED_CLASS_EXT).
     - scx
