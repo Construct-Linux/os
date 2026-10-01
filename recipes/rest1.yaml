@@ -1,0 +1,45 @@
+package:
+  name: rest1
+  version: 0.9.1
+  epoch: 0
+  description: Library for access to RESTful web services
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - json-glib-dev
+      - libsoup3-dev
+      - libxml2-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/rest/${{vars.series}}/rest-${{package.version}}.tar.xz
+      expected-sha256: 9266a5c10ece383e193dfb7ffb07b509cc1f51521ab8dad76af96ed14212c2e3
+
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dvapi=false -Dexamples=false -Dgtk_doc=false -Dtests=false -Dsoup2=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "0.9"
+
+subpackages:
+  - name: rest1-dev
+    pipeline:
+      - uses: split/dev
