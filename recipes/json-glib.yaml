@@ -1,0 +1,42 @@
+package:
+  name: json-glib
+  version: 1.10.8
+  epoch: 0
+  description: JSON parser and generator for GLib
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/json-glib/${{vars.series}}/json-glib-${{package.version}}.tar.xz
+      expected-sha256: 55c5c141a564245b8f8fbe7698663c87a45a7333c2a2c56f06f811ab73b212dd
+
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=enabled -Dgtk_doc=disabled -Dman=false -Dtests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "1.10"
+
+subpackages:
+  - name: json-glib-dev
+    pipeline:
+      - uses: split/dev

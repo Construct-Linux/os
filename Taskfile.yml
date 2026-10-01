@@ -1,0 +1,37 @@
+version: "3"
+
+# Recipes in recipes/ build with melange into packages/, a local repository signed with
+# melange.rsa (`task keygen`), on top of Wolfi. melange runs in Docker with bubblewrap inside,
+# which needs --privileged.
+
+vars:
+  MELANGE: cgr.dev/chainguard/melange@sha256:3285b57ff3d6f241993f181c1cb154a590ec3ade8c3f6d987686b42693d27afe
+  APKO: cgr.dev/chainguard/apko@sha256:730ae486fc77b0cc7326cdd66fb2bb3e093f9fd14b101af603fe714786752ab3
+  WOLFI: --repository-append https://packages.wolfi.dev/os --keyring-append https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+  LOCAL: --repository-append /work/packages --keyring-append /work/melange.rsa.pub
+
+tasks:
+  keygen:
+    desc: Create the key that signs packages/.
+    status: [test -f melange.rsa]
+    cmds:
+      - docker run --rm -u $(id -u):$(id -g) -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}} keygen melange.rsa
+
+  build:
+    desc: "Build one recipe: task build -- json-glib"
+    deps: [keygen]
+    cmds:
+      - mkdir -p packages .cache/apk .cache/logs
+      - >-
+        docker run --rm --privileged -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}}
+        build recipes/{{.CLI_ARGS}}.yaml --arch x86_64 --runner bubblewrap
+        --signing-key melange.rsa {{.WOLFI}} {{.LOCAL}}
+        --out-dir packages --apk-cache-dir .cache/apk
+        > .cache/logs/{{.CLI_ARGS}}.log 2>&1
+        || { tail -20 .cache/logs/{{.CLI_ARGS}}.log; exit 1; }
+      - docker run --rm -v {{.ROOT_DIR}}:/work {{.MELANGE}} -c 'true' 2>/dev/null || sudo -n chown -R $(id -u):$(id -g) packages .cache 2>/dev/null || true
+
+  gap:
+    desc: How far Wolfi is from each desktop profile.
+    cmds:
+      - go run ./cmd/gap
