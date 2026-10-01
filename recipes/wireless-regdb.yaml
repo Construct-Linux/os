@@ -1,0 +1,25 @@
+package:
+  name: wireless-regdb
+  version: 2026.09.03
+  epoch: 0
+  description: Central Regulatory Domain Database
+  copyright:
+    - license: ISC
+  dependencies:
+    runtime: []
+
+environment:
+  contents:
+    packages:
+      - busybox
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://mirrors.edge.kernel.org/pub/software/network/wireless-regdb/wireless-regdb-${{package.version}}.tar.xz
+      expected-sha256: b22e0901227b820cd1c280abe681a15b773a5103a5e10dc442e94ebb34cbf58d
+
+  # Only the signed regulatory.db the kernel loads itself; regulatory.bin
+  # serves crda, which systemd-era kernels no longer use.
+  - runs: |
+      install -D -m644 -t ${{targets.destdir}}/usr/lib/firmware regulatory.db regulatory.db.p7s
