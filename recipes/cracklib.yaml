@@ -1,0 +1,48 @@
+package:
+  name: cracklib
+  version: 2.10.3
+  epoch: 0
+  description: Library used to enforce strong passwords
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      # cracklib-format calls gzip -cdf on plain text, which busybox gzip rejects.
+      - gzip
+      - zlib-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/cracklib/cracklib/releases/download/v${{package.version}}/cracklib-${{package.version}}.tar.xz
+      expected-sha256: 1d1b83676b5673051b9373e1ca0db81c1fa88faf9a195a3c1af984fd9c250d66
+
+  # Python bindings off: libpwquality only links the C library.
+  - uses: autoconf/configure
+    with:
+      opts: --disable-nls --disable-static --without-python --sbindir=/usr/bin
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  # Alpine compiles the dictionary in an apk trigger; here it is compiled once at build time
+  # from the bundled cracklib-small list so pw_dict exists without a post-install step.
+  - runs: |
+      LD_LIBRARY_PATH=${{targets.destdir}}/usr/lib \
+        ${{targets.destdir}}/usr/bin/cracklib-format dicts/cracklib-small \
+        | LD_LIBRARY_PATH=${{targets.destdir}}/usr/lib ${{targets.destdir}}/usr/bin/cracklib-packer \
+          ${{targets.destdir}}/usr/share/cracklib/pw_dict
+      test -f ${{targets.destdir}}/usr/share/cracklib/pw_dict.pwd
+      rm -rf ${{targets.destdir}}/usr/share/man
+
+  - uses: strip
+
+subpackages:
+  - name: cracklib-dev
+    pipeline:
+      - uses: split/dev
