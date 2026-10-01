@@ -1,0 +1,51 @@
+package:
+  name: xdg-desktop-portal-gnome
+  version: "51.0"
+  epoch: 0
+  description: GNOME backend for xdg-desktop-portal
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - gsettings-desktop-schemas
+      - xdg-desktop-portal
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - fontconfig-dev
+      - gettext
+      - glib-dev
+      - gnome-desktop-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - libx11-dev
+      - meson
+      - ninja
+      - systemd-dev
+      - wayland-dev
+      - xdg-desktop-portal
+      - xdg-desktop-portal-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/xdg-desktop-portal-gnome/${{vars.series}}/xdg-desktop-portal-gnome-${{package.version}}.tar.xz
+      expected-sha256: ec228b305091b649c16c690e102aa1d66fc10e9834888d51e411913c82c1430d
+
+  - uses: meson/configure
+    with:
+      opts: -Dsystemd=enabled -Dsystemduserunitdir=/usr/lib/systemd/user
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
