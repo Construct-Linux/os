@@ -1,0 +1,52 @@
+package:
+  name: gcr
+  version: 3.41.2
+  epoch: 0
+  description: Library for bits of crypto UI and parsing (GTK 3 API)
+  copyright:
+    - license: LGPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gpg
+      - gtk-3-dev
+      - libgcrypt-dev
+      - libxslt
+      - meson
+      - ninja
+      - openssh-client
+      - p11-kit-dev
+      # The vapi files are generated whenever introspection is on; there is no switch.
+      - vala
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gcr/${{vars.series}}/gcr-${{package.version}}.tar.xz
+      expected-sha256: bad10f3c553a0e1854649ab59c5b2434da22ca1a54ae6138f1f53961567e1ab7
+
+  # ssh_agent off: gcr 4 ships gcr-ssh-agent and its user units, two copies would collide.
+  # systemd off: it only provides socket activation for that agent.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dgtk=true -Dgtk_doc=false -Dgpg_path=/usr/bin/gpg -Dssh_agent=false -Dsystemd=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "3.41"
+
+subpackages:
+  - name: gcr-dev
+    pipeline:
+      - uses: split/dev
