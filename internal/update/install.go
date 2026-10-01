@@ -68,6 +68,10 @@ func Layout(r Release, size int64, uuid func() string) (gpt.Table, error) {
 			humanSize(size), humanSize((at+int64(minVar/gpt.Sector)+40)*gpt.Sector))
 	}
 	parts = append(parts, gpt.Partition{Type: TypeVar, UUID: uuid(), First: at, Last: last, Name: VarName})
+	// Each entry's number is its place: what the kernel calls the partition once it reads the table.
+	for i := range parts {
+		parts[i].Number = i + 1
+	}
 	return gpt.Table{Disk: uuid(), Partitions: parts}, nil
 }
 

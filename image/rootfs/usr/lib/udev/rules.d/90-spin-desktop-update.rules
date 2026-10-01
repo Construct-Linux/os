@@ -1,0 +1,3 @@
+# A stick that carries a release (its spin-update partition, cmd/image usb-disk) updates the
+# machine it is plugged into: spin-desktop-update@ writes it into the slot the machine did not boot.
+ACTION=="add", SUBSYSTEM=="block", ENV{ID_PART_ENTRY_NAME}=="spin-update", TAG+="systemd", ENV{SYSTEMD_WANTS}+="spin-desktop-update@%k.service"

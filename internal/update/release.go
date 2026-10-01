@@ -17,6 +17,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 	"github.com/ProtonMail/go-crypto/openpgp/armor"
+	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
 // ImageID is the desktop's IMAGE_ID in os-release, and what its root slots' labels, its kernel
@@ -59,7 +60,36 @@ func ParseKeyring(raw []byte) (openpgp.EntityList, error) {
 	if len(keys) == 0 {
 		return nil, errors.New("update: the release keyring holds no key")
 	}
+	for _, e := range keys {
+		// The keys that can sign: the primary, and the subkeys flagged to. An encryption
+		// subkey (X25519) signs nothing.
+		pks := []*packet.PublicKey{e.PrimaryKey}
+		for _, sub := range e.Subkeys {
+			if sub.Sig != nil && sub.Sig.FlagsValid && !sub.Sig.FlagSign {
+				continue
+			}
+			pks = append(pks, sub.PublicKey)
+		}
+		for _, pk := range pks {
+			if !ed25519Key(pk) {
+				return nil, fmt.Errorf("update: the release keyring holds %s, which is not Ed25519: a release is signed with Ed25519 alone", pk.KeyIdString())
+			}
+		}
+	}
 	return keys, nil
+}
+
+// ed25519Key is whether pk is an Ed25519 key, in either of the encodings gpg writes one in: EdDSA
+// over Curve25519 (RFC 4880bis, gpg's default for ed25519) or Ed25519 itself (RFC 9580).
+func ed25519Key(pk *packet.PublicKey) bool {
+	switch pk.PubKeyAlgo {
+	case packet.PubKeyAlgoEd25519:
+		return true
+	case packet.PubKeyAlgoEdDSA:
+		curve, err := pk.Curve()
+		return err == nil && curve == packet.Curve25519
+	}
+	return false
 }
 
 // Verify is nil when sig, a detached signature, armored or binary, is one of keys' over sums.

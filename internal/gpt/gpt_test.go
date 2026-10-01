@@ -28,9 +28,9 @@ func disk(t *testing.T, size int64) *os.File {
 func TestATableIsReadAsItWasWritten(t *testing.T) {
 	f := disk(t, 64<<20)
 	want := Table{Disk: "0b6d8f0e-1b1a-4f55-9d6c-9f1e5c7b3a21", Partitions: []Partition{
-		{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "spin-desktop-live"},
-		{Type: TypeESP, UUID: "8db37c3e-fa8d-e299-a792-c04533fff123", First: 4096, Last: 8191, Name: "esp ü"},
-		{Type: TypeBasicData, UUID: "00000000-0000-0000-0000-000000000001", First: 8192, Last: LastUsable(64 << 20), Name: strings.Repeat("n", 36)},
+		{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "spin-desktop-live", Number: 1},
+		{Type: TypeESP, UUID: "8db37c3e-fa8d-e299-a792-c04533fff123", First: 4096, Last: 8191, Name: "esp ü", Attrs: 1 << 60, Number: 2},
+		{Type: TypeBasicData, UUID: "00000000-0000-0000-0000-000000000001", First: 8192, Last: LastUsable(64 << 20), Name: strings.Repeat("n", 36), Number: 3},
 	}}
 	if err := Write(f, 64<<20, want); err != nil {
 		t.Fatal(err)
@@ -362,5 +362,34 @@ func TestARenameThatCannotBeIsRefused(t *testing.T) {
 	}
 	if !bytes.Equal(bothEntries(t, f), before) {
 		t.Error("a refused rename changed the table")
+	}
+}
+
+func TestGrowMovesTheBackupTableToTheEndOfALargerDisk(t *testing.T) {
+	f := disk(t, 64<<20)
+	want := Table{Disk: "0b6d8f0e-1b1a-4f55-9d6c-9f1e5c7b3a21", Partitions: []Partition{
+		{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "root", Attrs: 1 << 60, Number: 1},
+	}}
+	if err := Write(f, 32<<20, want); err != nil {
+		t.Fatal(err)
+	}
+	// An image of 32 MiB written onto a disk of 64: its backup table is in the middle.
+	moved, err := Grow(f, 64<<20)
+	if err != nil || !moved {
+		t.Fatalf("Grow = %v, %v; want it to move the backup table", moved, err)
+	}
+	got, err := Read(f)
+	if err != nil || !reflect.DeepEqual(got, want) {
+		t.Fatalf("read %+v, %v\nwant %+v", got, err, want)
+	}
+	h := make([]byte, Sector)
+	if _, err := f.ReadAt(h, Sector); err != nil {
+		t.Fatal(err)
+	}
+	if alt := int64(binary.LittleEndian.Uint64(h[32:])); alt != 64<<20/Sector-1 {
+		t.Errorf("the backup table is at sector %d, not the disk's last", alt)
+	}
+	if moved, err := Grow(f, 64<<20); err != nil || moved {
+		t.Errorf("Grow on a table already at the end = %v, %v; want nothing moved", moved, err)
 	}
 }

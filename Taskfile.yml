@@ -18,6 +18,8 @@ vars:
       $(cd ../spin-ami && go tool versions args debian debian-snapshot kernel)
   UID:
     sh: id -u
+  # The release key's keyring: outside the repository, and never in a container (task usb).
+  SIGNING_HOME: '{{.SIGNING_HOME | default (print .HOME "/.local/share/spin-desktop/gnupg")}}'
 
 tasks:
   keygen:
@@ -93,21 +95,47 @@ tasks:
     cmds:
       - go run ./cmd/image boot {{.CLI_ARGS}}
 
+  keygen:test:
+    desc: A throwaway release key under .cache/test-gnupg, for the harness's disks.
+    status: [test -d .cache/test-gnupg]
+    cmds:
+      - mkdir -p -m 700 .cache/test-gnupg
+      - gpg --homedir .cache/test-gnupg --batch --passphrase '' --quick-generate-key "Spin Desktop test release" ed25519 sign never
+
+  keygen:release:
+    desc: "The release key, in {{.SIGNING_HOME}} - outside the repository; gpg asks for its passphrase. Back it up, or move it to a YubiKey."
+    status: ['test -d {{.SIGNING_HOME}}']
+    cmds:
+      - mkdir -p -m 700 {{.SIGNING_HOME}}
+      - gpg --homedir {{.SIGNING_HOME}} --quick-generate-key "Spin Desktop release" ed25519 sign never
+
   usb:
-    desc: "The USB stick's disk, _output/usb/disk.raw: ESP + UKI, EROFS root under dm-verity, /var made at first boot (task usb -- -test for the harness's)."
+    desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release (SIGNING_HOME=, the release key's by default) on its spin-update partition (task usb -- -test for the harness's)."
     cmds:
       - docker build -q -t spin-desktop-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
       - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
       - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/lib/spin-desktop/init ./cmd/spin-init
+      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/bin/spin-desktop ./cmd/spin-desktop
+      - mkdir -p _output/release-key/usr/share/spin-desktop
+      - gpg --homedir {{.SIGNING_HOME}} --export > _output/release-key/usr/share/spin-desktop/release.pgp
+      - test -s _output/release-key/usr/share/spin-desktop/release.pgp
       - >-
         docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
-        '_output/bin/image usb {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/root.tar; exit $rc'
+        '_output/bin/image usb {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/release _output/root.tar; exit $rc'
+      # Signed here, by the key in SIGNING_HOME: it never enters a container.
+      - >-
+        rel=$(ls -d _output/release/*/ | sort | tail -1) &&
+        gpg --homedir {{.SIGNING_HOME}} --batch --yes --detach-sign -o "$rel/SHA256SUMS.sig" "$rel/SHA256SUMS"
+      - >-
+        docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
+        '_output/bin/image usb-disk; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
 
   test:usb:
-    desc: Build the USB disk with the test layer and run the harness on it, booted by UEFI from a USB stick.
+    desc: Build the USB disk with the test layer, signed by a throwaway key, and run the harness on it, booted by UEFI from a USB stick.
+    deps: [keygen:test]
     cmds:
       - task: usb
-        vars: {CLI_ARGS: -test}
+        vars: {CLI_ARGS: -test, SIGNING_HOME: .cache/test-gnupg}
       - go run ./cmd/image test -usb {{.CLI_ARGS}}
 
   gap:

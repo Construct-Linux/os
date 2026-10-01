@@ -71,11 +71,95 @@ func usb(args []string) error {
 	if err := espTree(root, esp, label, v); err != nil {
 		return err
 	}
-	disk := filepath.Join(stage, "disk.raw")
-	if err := repart(stage, disk, label, v); err != nil {
+	rel, err := writeRelease(version, esp, label, v)
+	if err != nil {
 		return err
 	}
-	fmt.Printf("%s: %s, root hash %s\n", disk, label, v.rootHash)
+	fmt.Printf("%s: %s, root hash %s; sign SHA256SUMS, then image usb-disk\n", rel, label, v.rootHash)
+	return nil
+}
+
+// releaseDir is where a version's release is written: what an update reads, and what the stick's
+// spin-update partition carries.
+func releaseDir(version string) string { return filepath.Join(out, "release", version) }
+
+// writeRelease lays version's release: the root and its tree named with the partition UUIDs a
+// slot takes for them (the kernel image's command line names those), the kernel image, and
+// SHA256SUMS over them, which the host signs (SHA256SUMS.sig, gpg --detach-sign) before the stick
+// is made. internal/update reads it by these names.
+func writeRelease(version, esp, label string, v verity) (string, error) {
+	dir := releaseDir(version)
+	if err := os.RemoveAll(dir); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	files := map[string]string{
+		label + "_" + v.rootUUID + ".root.raw": v.rootImg,
+		label + "_" + v.vUUID + ".verity.raw":  v.treeImg,
+		label + ".efi":                         filepath.Join(esp, "EFI", "Linux", label+".efi"),
+	}
+	names := make([]string, 0, len(files))
+	for name, src := range files {
+		if err := os.Link(src, filepath.Join(dir, name)); err != nil {
+			return "", err
+		}
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var sums strings.Builder
+	for _, name := range names {
+		f, err := os.Open(filepath.Join(dir, name))
+		if err != nil {
+			return "", err
+		}
+		h := sha256.New()
+		_, err = io.Copy(h, f)
+		f.Close()
+		if err != nil {
+			return "", err
+		}
+		fmt.Fprintf(&sums, "%x  %s\n", h.Sum(nil), name)
+	}
+	return dir, os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte(sums.String()), 0o644)
+}
+
+// usbDisk lays the stick's image from the last usb's stage once its release is signed: the ESP,
+// the root and its tree, and spin-update, a FAT partition holding the release - what a machine
+// installs from, and updates from when the stick is plugged into one already installed.
+func usbDisk(args []string) error {
+	fl := flag.NewFlagSet("usb-disk", flag.ExitOnError)
+	version := fl.String("version", "", "the release to lay (default: the newest in _output/release)")
+	_ = fl.Parse(args)
+	if *version == "" {
+		entries, err := os.ReadDir(filepath.Join(out, "release"))
+		if err != nil || len(entries) == 0 {
+			return fmt.Errorf("no release in %s: run image usb first", filepath.Join(out, "release"))
+		}
+		*version = entries[len(entries)-1].Name()
+	}
+	rel := releaseDir(*version)
+	if _, err := os.Stat(filepath.Join(rel, "SHA256SUMS.sig")); err != nil {
+		return fmt.Errorf("%s is not signed: %w", rel, err)
+	}
+	label := "spin-desktop_" + *version
+	v := verity{}
+	matches, _ := filepath.Glob(filepath.Join(rel, label+"_*.root.raw"))
+	vm, _ := filepath.Glob(filepath.Join(rel, label+"_*.verity.raw"))
+	if len(matches) != 1 || len(vm) != 1 {
+		return fmt.Errorf("%s has no single root and verity", rel)
+	}
+	v.rootImg, v.treeImg = matches[0], vm[0]
+	v.rootUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(matches[0]), label+"_"), ".root.raw")
+	v.vUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(vm[0]), label+"_"), ".verity.raw")
+	stage := filepath.Join(out, "usb")
+	disk := filepath.Join(stage, "disk.raw")
+	_ = os.Remove(disk)
+	if err := repart(stage, disk, label, v, rel); err != nil {
+		return err
+	}
+	fmt.Printf("%s: %s\n", disk, label)
 	return nil
 }
 
@@ -122,12 +206,11 @@ func bake(root, passwordHash, version string) error {
 		// boot, bake has done: without this file they run at every first boot of an image.
 		"etc/.updated": "",
 		"etc/fstab": `# / is the kernel's: EROFS under dm-verity, read-only, set up from the command line before
-# anything runs (cmd/image usb). What the machine writes goes to /var, the partition
-# systemd-repart makes at first boot in the rest of the stick (usr/lib/repart.d/60-var.conf).
-PARTLABEL=var /var ext4 defaults 0 2
+# anything runs (cmd/image usb). /var is mounted by spin-init (cmd/spin-init), from the root's own
+# disk, before systemd starts; it lays /etc over it.
 tmpfs /tmp tmpfs mode=1777,nosuid,nodev 0 0
 `,
-		"usr/lib/repart.d/60-var.conf": `# /var, made at first boot in whatever the stick has beyond the image.
+		"usr/lib/repart.d/60-var.conf": `# /var, made by spin-init at a stick's first boot in whatever it has beyond the image.
 [Partition]
 Type=var
 Label=var
@@ -156,11 +239,19 @@ HOME_URL="https://github.com/spin-stack"
 	if err := varSkeleton(root); err != nil {
 		return err
 	}
+	// spin-init makes /var on the root's disk; systemd-repart's own unit would look at every
+	// disk's free space, an installed machine's included.
+	_ = os.Remove(filepath.Join(root, "etc/systemd/system/systemd-repart.service"))
+	if err := os.Symlink("/dev/null", filepath.Join(root, "etc/systemd/system/systemd-repart.service")); err != nil {
+		return err
+	}
 	_ = os.Remove(filepath.Join(root, "etc/os-release"))
 	if err := os.Symlink("../usr/lib/os-release", filepath.Join(root, "etc/os-release")); err != nil {
 		return err
 	}
-	for _, d := range []string{"var", "tmp", "home"} {
+	// Mount points a read-only root cannot make at boot: /boot is where systemd's gpt-auto mounts
+	// the ESP of the disk the machine booted from, which systemd-bless-boot and updates write.
+	for _, d := range []string{"var", "tmp", "home", "boot", "efi"} {
 		_ = os.MkdirAll(filepath.Join(root, d), 0o755)
 	}
 	return os.Chmod(filepath.Join(root, "tmp"), os.ModeSticky|0o777)
@@ -331,7 +422,7 @@ func (v verity) cmdline() string {
 		v.dataBlocks*verityBlock/512, data, hash, verityBlock, verityBlock, v.dataBlocks, v.rootHash, v.salt)
 	return `dm-mod.create="root,,,ro,` + table + `" dm-mod.waitfor=` + data + "," + hash +
 		" root=/dev/dm-0 rootfstype=erofs ro init=/usr/lib/spin-desktop/init" +
-		" console=ttyS0,115200n8 console=tty0 systemd.gpt_auto=0 cgroup_no_v1=all,named" +
+		" console=ttyS0,115200n8 console=tty0 cgroup_no_v1=all,named" +
 		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" + strings.TrimRight(" "+v.extra, " ")
 }
 
@@ -423,7 +514,7 @@ func microcode(dst string) (string, error) {
 
 // repart lays the stick's image: the ESP, the root and its tree; /var is the stick's own, made at
 // first boot. The seed is the root's partition UUID, so the same root is the same disk.
-func repart(stage, disk, label string, v verity) error {
+func repart(stage, disk, label string, v verity, release string) error {
 	defs := filepath.Join(stage, "repart.d")
 	if err := os.MkdirAll(defs, 0o755); err != nil {
 		return err
@@ -436,6 +527,10 @@ func repart(stage, disk, label string, v verity) error {
 			label, v.rootUUID, abs(v.rootImg)),
 		"21-root-verity.conf": fmt.Sprintf("[Partition]\nType=root-verity\nLabel=%s\nUUID=%s\nCopyBlocks=%s\nReadOnly=yes\n",
 			label, v.vUUID, abs(v.treeImg)),
+		// The release, for installing and updating; FAT, so any machine mounts it, and named so
+		// spin-desktop-update finds it.
+		"30-update.conf": fmt.Sprintf("[Partition]\nType=linux-generic\nLabel=spin-update\nFormat=vfat\nCopyFiles=%s:/%s\nSizeMinBytes=%d\n",
+			abs(release), filepath.Base(release), dirSize(release)*11/10+64<<20),
 	} {
 		if err := os.WriteFile(filepath.Join(defs, name), []byte(body), 0o644); err != nil {
 			return err
@@ -443,6 +538,17 @@ func repart(stage, disk, label string, v verity) error {
 	}
 	return run("systemd-repart", "--empty=create", "--size=auto", "--dry-run=no", "--no-pager",
 		"--definitions="+defs, "--seed="+v.rootUUID, disk)
+}
+
+func dirSize(dir string) int64 {
+	var n int64
+	_ = filepath.Walk(dir, func(_ string, fi os.FileInfo, err error) error {
+		if err == nil && fi.Mode().IsRegular() {
+			n += fi.Size()
+		}
+		return nil
+	})
+	return n
 }
 
 func run(name string, args ...string) error {

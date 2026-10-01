@@ -207,3 +207,14 @@ func TestTheBootedVersionIsTheOSReleases(t *testing.T) {
 		t.Error("an os-release with no version was read")
 	}
 }
+
+func TestAKeyringWithAKeyThatIsNotEd25519IsRefused(t *testing.T) {
+	rsaKey, err := openpgp.NewEntity("rsa", "", "rsa@spin-desktop", &packet.Config{Algorithm: packet.PubKeyAlgoRSA, RSABits: 2048})
+	must(t, err)
+	if _, err := ParseKeyring(publicKeyring(t, rsaKey, false)); err == nil {
+		t.Error("an RSA release key was taken; a release is signed with Ed25519 alone")
+	}
+	if _, err := ParseKeyring(publicKeyring(t, testKeys()[0], true)); err != nil {
+		t.Errorf("an Ed25519 key was refused: %v", err)
+	}
+}

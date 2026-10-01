@@ -39,12 +39,17 @@ const (
 	TypeBasicData = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
 )
 
-// Partition is one entry: its type and unique GUIDs, lowercase, its first and last sector, and its
-// name, which systemd's tools call its label.
+// Partition is one entry: its type and unique GUIDs, lowercase, its first and last sector, its
+// name, which systemd's tools call its label, and its attribute bits - systemd-repart's ReadOnly=
+// is bit 60 - which a table written again keeps.
 type Partition struct {
 	Type, UUID  string
 	First, Last int64
 	Name        string
+	Attrs       uint64
+	// Number is the entry's place in the table, from 1: the kernel's partition number, which a
+	// table read gives and a table written takes from the order of Partitions.
+	Number int
 }
 
 // Offset and Size are the partition's, in bytes.
@@ -97,6 +102,7 @@ func Write(w io.WriterAt, size int64, t Table) error {
 		}
 		binary.LittleEndian.PutUint64(e[32:], uint64(p.First))
 		binary.LittleEndian.PutUint64(e[40:], uint64(p.Last))
+		binary.LittleEndian.PutUint64(e[48:], p.Attrs)
 		for j, u := range utf16.Encode([]rune(p.Name)) {
 			binary.LittleEndian.PutUint16(e[56+2*j:], u)
 		}
@@ -180,6 +186,25 @@ func protectiveMBR(size int64) []byte {
 	return m
 }
 
+// Grow writes d's table again for a disk of size bytes when its backup is not at the disk's end -
+// an image written onto a larger disk, a USB stick from cmd/image's disk.raw - so the space after
+// the image is the table's to give: what systemd-repart makes /var in. It answers whether it moved
+// anything.
+func Grow(d Disk, size int64) (bool, error) {
+	h, _, err := readTable(d, 1)
+	if err != nil {
+		return false, err
+	}
+	if int64(binary.LittleEndian.Uint64(h[32:])) == size/Sector-1 {
+		return false, nil
+	}
+	t, err := Read(d)
+	if err != nil {
+		return false, err
+	}
+	return true, Write(d, size, t)
+}
+
 // Read is the primary table of r. Its checksums are checked: the installer copies what it finds by
 // it onto a machine's disk.
 func Read(r io.ReaderAt) (Table, error) {
@@ -203,7 +228,9 @@ func Read(r io.ReaderAt) (Table, error) {
 		p := Partition{
 			Type: guid(e), UUID: guid(e[16:]),
 			First: int64(le.Uint64(e[32:])), Last: int64(le.Uint64(e[40:])),
-			Name: strings.TrimRight(string(utf16.Decode(units)), "\x00"),
+			Name:   strings.TrimRight(string(utf16.Decode(units)), "\x00"),
+			Attrs:  le.Uint64(e[48:]),
+			Number: i + 1,
 		}
 		if p.First > p.Last || p.Last > 1<<50 {
 			return Table{}, fmt.Errorf("gpt: %q runs from sector %d to %d", p.Name, p.First, p.Last)

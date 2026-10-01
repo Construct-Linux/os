@@ -7,7 +7,8 @@
 //	image disk  [-size 12G]                     _output/rootfs.tar ... -> _output/disk.raw
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
-//	image usb   [-test]                         the USB stick's disk, in build/tools as root (cmd/image/usb.go)
+//	image usb   [-test]                         the USB stick's root, kernel image and release, in build/tools as root
+//	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
 //	image check                                 every ELF's NEEDED libraries are in the root
 package main
@@ -50,6 +51,8 @@ func main() {
 		err = test(os.Args[2:])
 	case "usb":
 		err = usb(os.Args[2:])
+	case "usb-disk":
+		err = usbDisk(os.Args[2:])
 	case "run":
 		err = runIn(os.Args[2:])
 	case "theme":
@@ -162,17 +165,28 @@ func (l links) walk(fn func(*tar.Header, io.Reader) error) error {
 	return nil
 }
 
+// keyDir holds the release key's public half at usr/share/spin-desktop/release.pgp (task usb).
+var keyDir = filepath.Join(out, "release-key")
+
 // initDir holds cmd/spin-init, built for the root as a layer of its own.
 var initDir = filepath.Join(out, "spin-init")
 
-// buildInit builds cmd/spin-init, static, at /usr/lib/spin-desktop/init in initDir. The USB
-// disk's kernel runs it as the first process (init=); the ext4 test disk boots systemd directly.
+// buildInit builds this repository's programs for the root, static, into initDir: cmd/spin-init
+// at /usr/lib/spin-desktop/init, which the USB disk's kernel runs first (init=; the ext4 test
+// disk boots systemd directly), and cmd/spin-desktop at /usr/bin/spin-desktop.
 func buildInit() error {
-	dst := filepath.Join(initDir, "usr/lib/spin-desktop/init")
-	cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", dst, "./cmd/spin-init")
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOAMD64=v3")
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	return cmd.Run()
+	for pkg, dst := range map[string]string{
+		"./cmd/spin-init":    "usr/lib/spin-desktop/init",
+		"./cmd/spin-desktop": "usr/bin/spin-desktop",
+	} {
+		cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(initDir, dst), pkg)
+		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOAMD64=v3")
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func clean(name string) string {
@@ -193,10 +207,11 @@ func rootLayers(test bool) []layer {
 			"home": "var/home",
 			// Names are resolved by systemd-resolved, which NetworkManager hands each link's DNS to:
 			// systemd's tmpfiles points /etc/resolv.conf at its stub.
-			"etc/systemd/system/multi-user.target.wants/systemd-resolved.service": "/usr/lib/systemd/system/systemd-resolved.service",
-			"etc/systemd/system/dbus-org.freedesktop.resolve1.service":            "/usr/lib/systemd/system/systemd-resolved.service",
-			"etc/systemd/system/default.target":                                   "/usr/lib/systemd/system/graphical.target",
-			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service": "/usr/lib/systemd/system/spin-desktop-caches.service",
+			"etc/systemd/system/multi-user.target.wants/systemd-resolved.service":        "/usr/lib/systemd/system/systemd-resolved.service",
+			"etc/systemd/system/dbus-org.freedesktop.resolve1.service":                   "/usr/lib/systemd/system/systemd-resolved.service",
+			"etc/systemd/system/multi-user.target.wants/spin-desktop-boot-check.service": "/usr/lib/systemd/system/spin-desktop-boot-check.service",
+			"etc/systemd/system/default.target":                                          "/usr/lib/systemd/system/graphical.target",
+			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service":        "/usr/lib/systemd/system/spin-desktop-caches.service",
 			"etc/localtime": "/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
 			"etc/systemd/system/sockets.target.wants/docker.socket":                               "/usr/lib/systemd/system/docker.socket",
 			"etc/systemd/system/multi-user.target.wants/containerd.service":                       "/usr/lib/systemd/system/containerd.service",
@@ -220,6 +235,11 @@ func rootLayers(test bool) []layer {
 			"etc/systemd/system/sockets.target.wants/systemd-networkd.socket":                     "/dev/null",
 			"etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service": "/dev/null",
 		},
+	}
+	// The key a release's signature is checked against, as task usb exported it from the signing
+	// keyring: absent from a disk built without one, which then can verify no update.
+	if _, err := os.Stat(keyDir); err == nil {
+		layers = append(layers, dirLayer{dir: keyDir})
 	}
 	if test {
 		layers = append(layers, dirLayer{dir: "image/test/rootfs"})

@@ -1,0 +1,21 @@
+# Ends a boot that did not come up, so systemd-boot can fall back from its kernel image
+# (spin-desktop boot-check, internal/update): boot counting counts starts, and a boot whose GDM
+# failed stays up, never blessed and never started again. Once boot-complete.target was reached or
+# failed to be, a boot that did not reach it, of an image systemd-boot is counting, is rebooted.
+[Unit]
+Description=Fall back from a kernel image whose boot did not come up
+# Wants as well as After: without it the target is in no boot's transaction but a counted one,
+# and After= alone orders nothing.
+Wants=boot-complete.target
+After=boot-complete.target
+JobTimeoutSec=15min
+JobTimeoutAction=reboot
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/spin-desktop boot-check
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target
