@@ -1,0 +1,73 @@
+package:
+  name: snapshot
+  version: "51.0"
+  epoch: 0
+  description: GNOME camera app to take pictures and videos
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    # Every element below is created by name at run time (gst::ElementFactory, a GstEncodingProfile),
+    # so melange derives none of them.
+    runtime:
+      # The camera source: pipewiresrc, fed by the portal's PipeWire camera node.
+      - pipewire
+      # gtk4paintablesink, the viewfinder.
+      - gst-plugins-rs
+      # camerabin, and openh264enc for the H.264/MP4 profile Snapshot prefers when it is present.
+      - gst-plugins-bad
+      # videoconvert, videorate, the encodebin.
+      - gst-plugins-base
+      # mp4mux, and the JPEG encoder for pictures.
+      - gst-plugins-good
+      # avenc_aac, the AAC encoder the MP4 profile's audio needs. gst-plugins-ugly (x264enc) is
+      # not needed: openh264enc covers H.264, and Wolfi's good has no vp8enc for the WebM fallback.
+      - gst-libav
+      # The glycin crate decodes the thumbnails through glycin-2's out-of-process loaders.
+      - glycin-2
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext-dev
+      - glib-dev
+      - glycin-2-dev
+      - glycin-2-gtk4-dev
+      - gst-plugins-bad-dev
+      - gst-plugins-base-dev
+      - gstreamer-dev
+      - gtk-4-dev
+      - lcms2-dev
+      - libadwaita-dev
+      - libseccomp-dev
+      - meson
+      - ninja
+      - rust
+
+pipeline:
+  # The release tarball carries its crates in vendor/, so the build is offline.
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/snapshot/${{vars.series}}/snapshot-${{package.version}}.tar.xz
+      expected-sha256: 3e64fa4cd1a742ae34b6f6d8e6d9614a2d3eab88a1b0071c11ab53617eb214c2
+
+  # GNOME runs on Wayland here; the X11 feature only adds gdk4-x11 paths.
+  - uses: meson/configure
+    with:
+      opts: -Dprofile=default -Dx11=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: snapshot-lang
+    pipeline:
+      - uses: split/locales
