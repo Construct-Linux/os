@@ -1,0 +1,44 @@
+package:
+  name: editorconfig
+  version: 0.12.11
+  epoch: 0
+  description: EditorConfig core library written in C
+  copyright:
+    - license: BSD-2-Clause
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cmake
+      - ninja
+      - pcre2-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/editorconfig/editorconfig-core-c/archive/v${{package.version}}/editorconfig-core-c-${{package.version}}.tar.gz
+      expected-sha256: 9d8b420b56a969ea3cf784861c72d26fa0e158fa1494d732df2c8a1480d36a5c
+
+  # Docs need doxygen.
+  - uses: cmake/configure
+    with:
+      opts: -DBUILD_DOCUMENTATION=OFF -DINSTALL_HTML_DOC=OFF
+
+  - uses: cmake/build
+
+  - uses: cmake/install
+
+  # The static archive has no consumer; the versioned binary name is only a symlink target.
+  - runs: |
+      rm -f ${{targets.destdir}}/usr/lib/*.a
+      rm -f ${{targets.destdir}}/usr/bin/editorconfig
+      mv ${{targets.destdir}}/usr/bin/editorconfig-${{package.version}} ${{targets.destdir}}/usr/bin/editorconfig
+
+  - uses: strip
+
+subpackages:
+  - name: editorconfig-dev
+    pipeline:
+      - uses: split/dev
