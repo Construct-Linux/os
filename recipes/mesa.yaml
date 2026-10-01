@@ -2,7 +2,7 @@ package:
   name: mesa
   version: "26.2.3"
   # Replaces Wolfi's mesa 26.2.3 (epoch 1), which has no Intel drivers (iris, crocus, anv).
-  epoch: 2
+  epoch: 3
   description: Mesa DRI OpenGL library
   copyright:
     - license: MIT AND SGI-B-2.0 AND BSL-1.0
@@ -10,6 +10,8 @@ package:
     runtime:
       - libglvnd
       - wayland-protocols
+      # libgallium links libSPIRV-Tools.so, an unversioned soname melange derives no dependency from.
+      - spirv-tools
 
 vars:
   llvm-version: 22

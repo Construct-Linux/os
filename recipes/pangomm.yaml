@@ -1,7 +1,7 @@
 package:
   name: pangomm
   version: 2.56.2
-  epoch: 0
+  epoch: 1
   description: C++ bindings for Pango
   copyright:
     - license: LGPL-2.1-or-later
@@ -41,6 +41,17 @@ vars:
 
 subpackages:
   - name: pangomm-dev
+    # pangomm-2.48.pc requires cairomm-1.16, and Wolfi's cairomm-1.16-dev ships that .pc without
+    # providing pc:cairomm-1.16: the generated dependency would be unsatisfiable, so it is written
+    # out here instead.
+    options:
+      no-depends: true
+    dependencies:
+      runtime:
+        - pangomm
+        - cairomm-1.16-dev
+        - glibmm-dev
+        - pango-dev
     pipeline:
       - uses: split/dev
       - runs: |
