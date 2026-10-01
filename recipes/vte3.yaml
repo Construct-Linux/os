@@ -1,0 +1,66 @@
+package:
+  name: vte3
+  version: 0.84.1
+  epoch: 0
+  description: Virtual Terminal Emulator library
+  copyright:
+    - license: LGPL-3.0-or-later
+  dependencies:
+    runtime:
+      - adwaita-fonts
+
+environment:
+  contents:
+    packages:
+      - bash
+      - build-base
+      - busybox
+      - fast_float
+      - fmt-dev
+      - fribidi-dev
+      - glib-dev
+      - glib-gir
+      - gnutls-dev
+      - gobject-introspection-dev
+      - gperf
+      - gtk-4-dev
+      - icu-dev
+      - libxml2-utils
+      - linux-headers
+      - lz4-dev
+      - meson
+      - ncurses-dev
+      - ninja
+      - pango-dev
+      - pcre2-dev
+      - simdutf-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/vte/${{vars.series}}/vte-${{package.version}}.tar.xz
+      expected-sha256: aca1caa8478aebcdbb1d67897fb3511eb7601debae6810e16a15b6fa25f31ac8
+
+  # The desktop's terminals (Console, Ptyxis) are GTK 4; the GTK 3 library and the demo app have no user.
+  - uses: meson/configure
+    with:
+      opts: -Dgtk3=false -Dgtk4=true -Dgir=true -Dvapi=false -Ddocs=false -Dapp=false -Dglade=false -D_systemd=true -Dgnutls=true -Dicu=true -Dfribidi=true
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "0.84"
+
+subpackages:
+  - name: vte3-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: vte3-lang
+    pipeline:
+      - uses: split/locales
