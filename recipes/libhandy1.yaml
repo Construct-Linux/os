@@ -1,0 +1,48 @@
+package:
+  name: libhandy1
+  version: 1.8.3
+  epoch: 0
+  description: Building blocks for modern adaptive GTK 3 applications
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-3-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libhandy/${{vars.series}}/libhandy-${{package.version}}.tar.xz
+      expected-sha256: 05b497229073ff557f10b326e074c5066f8743a302d4820ab97bcb5cd2dab087
+
+  # glade catalog off: glade is not part of the desktop.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=enabled -Dvapi=false -Dgtk_doc=false -Dtests=false -Dexamples=false -Dglade_catalog=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "1.8"
+
+subpackages:
+  - name: libhandy1-dev
+    pipeline:
+      - uses: split/dev
+
+  - name: libhandy1-lang
+    pipeline:
+      - uses: split/locales
