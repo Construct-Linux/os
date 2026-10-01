@@ -1,0 +1,30 @@
+package:
+  name: fast_float
+  version: 8.3.0
+  epoch: 0
+  description: Fast implementation of the C++ from_chars functions for float and double types
+  copyright:
+    - license: Apache-2.0 OR MIT OR BSL-1.0
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cmake
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/fastfloat/fast_float/archive/v${{package.version}}/fast_float-${{package.version}}.tar.gz
+      expected-sha256: 90485994d0fed61d0693e8dba32c464b0e8adf7f2e7c2efbf5bff0df5ef5b13f
+
+  # Tests would fetch doctest and supplemental test files over the network.
+  - uses: cmake/configure
+    with:
+      opts: -DFASTFLOAT_TEST=OFF -DFETCHCONTENT_FULLY_DISCONNECTED=ON
+
+  - uses: cmake/build
+
+  - uses: cmake/install
