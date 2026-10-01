@@ -1,0 +1,26 @@
+--- a/data/sounds/alarms/meson.build
++++ b/data/sounds/alarms/meson.build
+@@ -1,4 +1,4 @@
+-oggenc = find_program('oggenc')
++ffmpeg = find_program('ffmpeg')
+ 
+ alarms_resources = [
+   'beep-beep.flac',
+@@ -11,7 +11,7 @@
+     input: alarm,
+     # The default ogg serial numbers are unreproducible
+     # Set the serial number to 0
+-    command: [oggenc, '@INPUT@', '--serial', '0', '-o', '@OUTPUT@' ],
++    command: [ffmpeg, '-nostdin', '-loglevel', 'error', '-i', '@INPUT@', '-map_metadata', '-1', '-c:a', 'libvorbis', '-fflags', '+bitexact', '-flags:a', '+bitexact', '-f', 'ogg', '-y', '@OUTPUT@' ],
+   )
+ endforeach
+ 
+@@ -46,7 +46,7 @@
+     input: alarm,
+     # The default ogg serial numbers are unreproducible
+     # Set the serial number to 0
+-    command: [oggenc, '@INPUT@', '--serial', '0', '-o', '@OUTPUT@' ],
++    command: [ffmpeg, '-nostdin', '-loglevel', 'error', '-i', '@INPUT@', '-map_metadata', '-1', '-c:a', 'libvorbis', '-fflags', '+bitexact', '-flags:a', '+bitexact', '-f', 'ogg', '-y', '@OUTPUT@' ],
+     install: true,
+     install_dir: get_option('datadir') / 'sounds' / 'gnome' / 'default' / 'alarms',
+   )

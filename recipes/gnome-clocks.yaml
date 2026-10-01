@@ -1,0 +1,76 @@
+package:
+  name: gnome-clocks
+  version: "51.0"
+  epoch: 0
+  description: Keep track of time
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gsettings-desktop-schemas
+      # Alarms and timers ring through Gtk.MediaFile, which plays the .oga sounds with GStreamer:
+      # oggdemux/vorbisdec from base, the PipeWire/Pulse sink from good.
+      - gst-plugins-base
+      - gst-plugins-good
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      # Wolfi has no vorbis-tools (oggenc); the patch encodes the alarm sounds with ffmpeg.
+      - ffmpeg
+      - geoclue-dev
+      - geocode-glib-dev
+      - gettext
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gnome-desktop-dev
+      - gtk-4-dev
+      - icu-dev
+      - itstool
+      - libadwaita-dev
+      - libgweather4-dev
+      - meson
+      - ninja
+      - vala
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-clocks/${{vars.series}}/gnome-clocks-${{package.version}}.tar.xz
+      expected-sha256: 4bdf9c0481a83037da1d0fa26d2c2c6a80cb736458fd18fde14acaf7924874c6
+
+  - uses: patch
+    with:
+      patches: gnome-clocks/ffmpeg-oggenc.patch
+
+  # The app is written in Vala, but our libadwaita and libgweather4 ship no vapi: generate both
+  # from their GIR (libadwaita's upstream metadata in recipes/gnome-clocks/) into the build root.
+  - runs: |
+      vapidir=/usr/share/vala/vapi
+      mkdir -p $vapidir
+      vapigen --library libadwaita-1 --pkg gio-2.0 --pkg gtk4 --metadatadir gnome-clocks -d $vapidir /usr/share/gir-1.0/Adw-1.gir
+      printf 'gio-2.0\ngtk4\n' > $vapidir/libadwaita-1.deps
+      vapigen --library gweather4 --pkg gio-2.0 -d $vapidir /usr/share/gir-1.0/GWeather-4.0.gir
+      printf 'gio-2.0\n' > $vapidir/gweather4.deps
+
+  - uses: meson/configure
+    with:
+      opts: -Ddocs=false -Dprofile=default
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-clocks-lang
+    pipeline:
+      - uses: split/locales
