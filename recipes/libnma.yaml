@@ -1,0 +1,85 @@
+package:
+  name: libnma
+  version: 1.10.6
+  epoch: 0
+  description: NetworkManager GUI client library
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - iso-codes
+      - libnma-common
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gcr4-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-3-dev
+      - gtk-4-dev
+      - iso-codes-dev
+      - meson
+      - networkmanager-dev
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/libnma/${{vars.series}}/libnma-${{package.version}}.tar.xz
+      expected-sha256: 53a6fb2b190ad37c5986caed3e98bede7c3c602399ee4f93c8fc054303d76dab
+
+  # libnma_gtk4: gnome-control-center links libnma-gtk4; the GTK3 library is not optional upstream.
+  # mobile_broadband_provider_info: ModemManager is deliberately not available, so the mobile broadband wizard has no use.
+  - uses: meson/configure
+    with:
+      opts: -Dlibnma_gtk4=true -Dgcr=true -Diso_codes=true -Dmobile_broadband_provider_info=false -Dintrospection=true -Dvapi=false -Dgtk_doc=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # The nm-applet schema belongs to network-manager-applet, which is not shipped.
+  - runs: |
+      rm ${{targets.destdir}}/usr/share/glib-2.0/schemas/org.gnome.nm-applet.gschema.xml
+
+  - uses: strip
+
+vars:
+  series: "1.10"
+
+subpackages:
+  - name: libnma-common
+    description: NetworkManager GUI client library (shared data for GTK3 and GTK4 libraries)
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/share/glib-2.0
+          mv ${{targets.destdir}}/usr/share/glib-2.0/schemas ${{targets.subpkgdir}}/usr/share/glib-2.0/
+
+  - name: libnma-gtk4
+    description: NetworkManager GUI client library (GTK4 library)
+    dependencies:
+      runtime:
+        - iso-codes
+        - libnma-common
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib/girepository-1.0
+          mv ${{targets.destdir}}/usr/lib/libnma-gtk4.so.* ${{targets.subpkgdir}}/usr/lib/
+          mv ${{targets.destdir}}/usr/lib/girepository-1.0/NMA4-*.typelib ${{targets.subpkgdir}}/usr/lib/girepository-1.0/
+
+  - name: libnma-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - libnma
+        - libnma-gtk4
+
+  - name: libnma-lang
+    pipeline:
+      - uses: split/locales
