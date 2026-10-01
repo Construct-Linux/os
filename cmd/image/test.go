@@ -83,6 +83,8 @@ func test(args []string) error {
 	}
 	r.add("shell", true, "org.gnome.Shell.Eval answers in unsafe mode")
 	r.shot(v, "desktop")
+	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
+	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched))
 	ok, detail := g.waitUnit("spin-desktop-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 

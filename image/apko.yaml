@@ -96,6 +96,8 @@ contents:
     - loupe
     - gnome-disk-utility
     - flatpak
+    # sched_ext schedulers (kernel/desktop.config's SCHED_CLASS_EXT).
+    - scx
     - font-noto-emoji
     - glibc-locale-en
     - glibc-locale-es
