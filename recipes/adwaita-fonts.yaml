@@ -1,0 +1,50 @@
+package:
+  name: adwaita-fonts
+  version: "51.0"
+  epoch: 0
+  description: The typefaces for GNOME
+  copyright:
+    - license: OFL-1.1
+  dependencies:
+    runtime:
+      - adwaita-fonts-sans
+      - adwaita-fonts-mono
+    provides:
+      - font-adwaita=${{package.full-version}}
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - meson
+      - ninja
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/adwaita-fonts/${{vars.series}}/adwaita-fonts-${{package.version}}.tar.xz
+      expected-sha256: fa104ae2c1b96580d322f563ffe8b2dfca5296b0eca4971efd2d8011405123d2
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: adwaita-fonts-sans
+    description: The typefaces for GNOME (Sans)
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/share/fonts/Adwaita
+          mv ${{targets.destdir}}/usr/share/fonts/Adwaita/AdwaitaSans-*.ttf ${{targets.subpkgdir}}/usr/share/fonts/Adwaita/
+
+  - name: adwaita-fonts-mono
+    description: The typefaces for GNOME (Mono)
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/share/fonts/Adwaita
+          mv ${{targets.destdir}}/usr/share/fonts/Adwaita/AdwaitaMono-*.ttf ${{targets.subpkgdir}}/usr/share/fonts/Adwaita/
