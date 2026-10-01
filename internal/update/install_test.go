@@ -1,0 +1,242 @@
+package update
+
+import (
+	"bytes"
+	"context"
+	"encoding/binary"
+	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
+	"testing"
+
+	"github.com/spin-stack/spin-desktop/internal/gpt"
+)
+
+// installSize is the disk a test installs on: the least the layout takes, and a gibibyte more.
+const installSize = (firstSector+espSectors+2*(rootSectors+veritySectors))*gpt.Sector + minVar + 1<<30
+
+// installer is an install's machine: a sparse disk, the ESP's directory, the firmware's variables
+// and the programs it ran.
+type installer struct {
+	disk *os.File
+	esp  string
+	vars Vars
+	ran  []string
+}
+
+func newInstaller(t *testing.T, size int64) *installer {
+	t.Helper()
+	dir := t.TempDir()
+	f, err := os.Create(filepath.Join(dir, "disk"))
+	must(t, err)
+	t.Cleanup(func() { _ = f.Close() })
+	must(t, f.Truncate(size))
+	vars := Vars(filepath.Join(dir, "efivars"))
+	must(t, os.MkdirAll(string(vars), 0o755))
+	return &installer{disk: f, esp: filepath.Join(dir, "esp"), vars: vars}
+}
+
+func (in *installer) options(t *testing.T, source string, size int64) InstallOptions {
+	t.Helper()
+	loader := filepath.Join(t.TempDir(), "systemd-bootx64.efi")
+	write(t, loader, "systemd-boot")
+	n := 0
+	return InstallOptions{
+		Keys: trusted(t), Source: source,
+		Disk: BlockDisk{Name: "nvme0n1", Size: size},
+		Open: func(path string) (Disk, error) {
+			if path != "/dev/nvme0n1" {
+				return nil, fmt.Errorf("opened %s", path)
+			}
+			return nopClose{in.disk}, nil
+		},
+		Reread:    func(Disk) error { return nil },
+		Partition: func(n int) (string, error) { return fmt.Sprintf("/dev/nvme0n1p%d", n), nil },
+		Run: func(_ context.Context, name string, args ...string) error {
+			in.ran = append(in.ran, name+" "+strings.Join(args, " "))
+			return nil
+		},
+		MountESP: func(context.Context, string) (string, func() error, error) {
+			must(t, os.MkdirAll(in.esp, 0o755))
+			return in.esp, func() error { return nil }, nil
+		},
+		Loader: loader, Vars: in.vars,
+		UUID: func() string { n++; return fmt.Sprintf("00000000-0000-4000-8000-%012d", n) },
+		Log:  slog.New(slog.DiscardHandler),
+	}
+}
+
+// An install lays the disk out as an update reads it - an ESP, slot A holding the release under the
+// UUIDs and label its files name, slot B empty, /var - writes the release's root and hash tree into
+// slot A, makes the ESP and /var, gives the ESP systemd-boot and the kernel image blessed, and makes
+// the firmware boot the disk first.
+func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
+	in := newInstaller(t, installSize)
+	dir, body := release(t, "20261001.134321", newRoot, newVerity, signer(), 0xb)
+	table, err := Install(t.Context(), in.options(t, dir, installSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err := gpt.Read(in.disk)
+	must(t, err)
+	if !reflect.DeepEqual(read, table) {
+		t.Errorf("the disk's table is %+v, not the one written", read)
+	}
+	label := ImageID + "_20261001.134321"
+	var got []string
+	for _, p := range read.Partitions {
+		got = append(got, p.Type+" "+p.Name)
+	}
+	want := []string{gpt.TypeESP + " " + ESPName, TypeRoot + " " + label, TypeRootVerity + " " + label,
+		TypeRoot + " " + Empty, TypeRootVerity + " " + Empty, TypeVar + " " + VarName}
+	if !slices.Equal(got, want) {
+		t.Errorf("the partitions are %v", got)
+	}
+	if read.Partitions[1].UUID != newRoot || read.Partitions[2].UUID != newVerity {
+		t.Errorf("slot A's UUIDs are %s and %s", read.Partitions[1].UUID, read.Partitions[2].UUID)
+	}
+	slots, err := Slots(read)
+	if err != nil || len(slots) != 2 || slots[0].Version != "20261001.134321" || slots[1].Version != "" {
+		t.Errorf("the slots are %+v, %v", slots, err)
+	}
+	slotA := make([]byte, len(body))
+	_, err = in.disk.ReadAt(slotA, read.Partitions[1].Offset())
+	must(t, err)
+	if !bytes.Equal(slotA, body) {
+		t.Error("slot A does not hold the release's root")
+	}
+	if !slices.Equal(in.ran, []string{"mkfs.vfat -F 32 -n ESP /dev/nvme0n1p1", "mkfs.ext4 -q -F -L var /dev/nvme0n1p6"}) {
+		t.Errorf("ran %v", in.ran)
+	}
+	for _, f := range []string{"EFI/BOOT/BOOTX64.EFI", "EFI/systemd/systemd-bootx64.efi", "loader/loader.conf", Linux + "/" + label + ".efi"} {
+		if _, err := os.Stat(filepath.Join(in.esp, f)); err != nil {
+			t.Errorf("the ESP lacks %s", f)
+		}
+	}
+	if images, _ := Images(in.esp); len(images) != 1 || images[0].Counted {
+		t.Errorf("the ESP's kernel images are %+v, not one blessed", images)
+	}
+	order, err := in.vars.Read("BootOrder", Global)
+	if err != nil || len(order) != 2 || binary.LittleEndian.Uint16(order) != 0 {
+		t.Errorf("BootOrder is %v, %v", order, err)
+	}
+}
+
+// A disk too small for two slots and a /var worth having is refused before anything is written.
+func TestASmallDiskIsRefused(t *testing.T) {
+	const small = 20 << 30
+	in := newInstaller(t, small)
+	dir, _ := release(t, "20261001.134321", newRoot, newVerity, signer(), 0xb)
+	if _, err := Install(t.Context(), in.options(t, dir, small)); err == nil || !strings.Contains(err.Error(), "needs") {
+		t.Fatalf("err = %v", err)
+	}
+	head := make([]byte, 1<<20)
+	_, err := in.disk.ReadAt(head, 0)
+	must(t, err)
+	if !bytes.Equal(head, make([]byte, len(head))) || len(in.ran) != 0 {
+		t.Error("a disk too small was written")
+	}
+}
+
+// A release signed by another key installs nothing: the disk is as it was.
+func TestAnInstallOfAnotherKeysReleaseWritesNothing(t *testing.T) {
+	in := newInstaller(t, installSize)
+	dir, _ := release(t, "20261001.134321", newRoot, newVerity, otherKey(), 0xb)
+	if _, err := Install(t.Context(), in.options(t, dir, installSize)); err == nil {
+		t.Fatal("another key's release was installed")
+	}
+	head := make([]byte, 1<<20)
+	_, err := in.disk.ReadAt(head, 0)
+	must(t, err)
+	if !bytes.Equal(head, make([]byte, len(head))) || len(in.ran) != 0 {
+		t.Error("the disk was written")
+	}
+}
+
+// sysfs is a /sys with what the kernel shows of a machine's block devices: files by path - a path
+// ending in / is an empty directory - and links by path to where they point.
+func sysfs(t *testing.T, files map[string]string, links map[string]string) string {
+	t.Helper()
+	sys := t.TempDir()
+	for p, body := range files {
+		full := filepath.Join(sys, p)
+		if strings.HasSuffix(p, "/") {
+			must(t, os.MkdirAll(full, 0o755))
+			continue
+		}
+		write(t, full, body)
+	}
+	for p, target := range links {
+		link(t, target, filepath.Join(sys, p))
+	}
+	return sys
+}
+
+// The disks listed are the machine's disks with their size, model and serial - never the medium, a
+// CD drive, a loop device, device-mapper's, or a drive with nothing in it - and the one picked by
+// itself is the first that is neither removable nor on USB: the machine's own.
+func TestTheDiskPickedIsTheMachinesOwn(t *testing.T) {
+	sys := sysfs(t, map[string]string{
+		"devices/pci0000:00/0000:00:14.0/usb2/2-1/block/sda/size":         "61440000\n",
+		"devices/pci0000:00/0000:00:14.0/usb2/2-1/block/sda/removable":    "1\n",
+		"devices/pci0000:00/0000:00:1d.0/nvme/nvme0/nvme0n1/size":         "2000409264\n",
+		"devices/pci0000:00/0000:00:1d.0/nvme/nvme0/nvme0n1/removable":    "0\n",
+		"devices/pci0000:00/0000:00:1d.0/nvme/nvme0/nvme0n1/device/model": "Samsung SSD 990 PRO 1TB  \n",
+		"devices/virtual/block/sdb/size":                                  "61440000\n",
+		"devices/virtual/block/sr0/size":                                  "1064960\n",
+		"devices/virtual/block/loop0/size":                                "100\n",
+		"devices/virtual/block/dm-0/size":                                 "100\n",
+		"devices/virtual/block/sdc/size":                                  "0\n",
+	}, map[string]string{
+		"block/sda":     "../devices/pci0000:00/0000:00:14.0/usb2/2-1/block/sda",
+		"block/nvme0n1": "../devices/pci0000:00/0000:00:1d.0/nvme/nvme0/nvme0n1",
+		"block/sdb":     "../devices/virtual/block/sdb",
+		"block/sr0":     "../devices/virtual/block/sr0",
+		"block/loop0":   "../devices/virtual/block/loop0",
+		"block/dm-0":    "../devices/virtual/block/dm-0",
+		"block/sdc":     "../devices/virtual/block/sdc",
+	})
+	disks, err := Disks(sys, "sdb")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, d := range disks {
+		names = append(names, d.Name)
+	}
+	if !slices.Equal(names, []string{"nvme0n1", "sda"}) {
+		t.Fatalf("the disks are %v", names)
+	}
+	if !disks[1].USB || !disks[1].Removable || disks[0].USB || disks[0].Model != "Samsung SSD 990 PRO 1TB" {
+		t.Errorf("the disks are %+v", disks)
+	}
+	d, err := Default(disks)
+	if err != nil || d.Name != "nvme0n1" {
+		t.Errorf("picked %+v, %v", d, err)
+	}
+	if _, err := Default(disks[1:]); err == nil {
+		t.Error("a USB stick was picked by itself")
+	}
+}
+
+// The medium is the disk under the running root's device-mapper device: a live stick's root is two
+// of its partitions.
+func TestTheMediumIsTheDiskUnderTheRoot(t *testing.T) {
+	sys := sysfs(t, map[string]string{
+		"block/dm-0/dm/name":             "root\n",
+		"devices/usb/sda/sda2/partition": "2\n",
+		"devices/usb/sda/sda3/partition": "3\n",
+		"class/block/dm-0/slaves/sda2/":  "",
+		"class/block/dm-0/slaves/sda3/":  "",
+	}, map[string]string{
+		"class/block/sda2": "../../devices/usb/sda/sda2",
+		"class/block/sda3": "../../devices/usb/sda/sda3",
+	})
+	if d, err := MediumDisk(sys); err != nil || d != "sda" {
+		t.Errorf("the medium is %q, %v", d, err)
+	}
+}
