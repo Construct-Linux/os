@@ -1,0 +1,59 @@
+package:
+  name: gnome-characters
+  version: "51.0"
+  epoch: 0
+  description: GNOME utility to find and insert unusual characters
+  copyright:
+    - license: BSD-3-Clause AND GPL-2.0-or-later
+  dependencies:
+    runtime:
+      # The app is GJS: every typelib it imports is a runtime dependency melange
+      # cannot derive from the JavaScript sources.
+      - gjs
+      - glib-gir
+      - gnome-desktop
+      - graphene
+      - gtk-4
+      - libadwaita
+      - pango
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - desktop-file-utils
+      - gettext-dev
+      - gjs-dev
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-4-dev
+      - libadwaita-dev
+      - meson
+      - ninja
+      - pango-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-characters/${{vars.series}}/gnome-characters-${{package.version}}.tar.xz
+      expected-sha256: 8b90e9d7fcff43622ed34677f0029cd74b440185f1639af48c439f63bebadc31
+
+  - uses: meson/configure
+    with:
+      opts: -Dinstalled_tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+vars:
+  series: "51"
+
+subpackages:
+  - name: gnome-characters-lang
+    pipeline:
+      - uses: split/locales
