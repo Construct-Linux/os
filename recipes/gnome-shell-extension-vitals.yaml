@@ -1,0 +1,46 @@
+package:
+  name: gnome-shell-extension-vitals
+  version: 84.0.0
+  epoch: 0
+  description: GNOME Shell extension showing temperature, voltage, fan, memory, CPU, network and storage
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - gnome-shell
+      # sensors.js imports gi://GTop for storage usage and silently drops it when the typelib is
+      # missing; melange cannot see a GI import, so the dependency is written out.
+      - libgtop
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - glib
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/corecoding/Vitals
+      tag: v${{package.version}}
+      expected-commit: 7108c2ae4146226c40eb6496e1829ca5ade8030e
+
+  # Upstream ships no build system: the extension is its source tree. The schema goes to the
+  # system directory because the image compiles schemas there at build; the .po/.pot sources stay
+  # out because the compiled .mo catalogs sit in the repository and the shell reads them from the
+  # extension's own locale/ directory.
+  - runs: |
+      glib-compile-schemas --strict --dry-run schemas
+      ext=${{targets.destdir}}/usr/share/gnome-shell/extensions/${{vars.uuid}}
+      mkdir -p "$ext"
+      cp -r extension.js helpers icons menuItem.js metadata.json prefs.js prefs.ui sensors.js \
+        stylesheet.css values.js "$ext"/
+      for mo in locale/*/LC_MESSAGES/vitals.mo; do
+        install -Dm644 "$mo" "$ext/$mo"
+      done
+      install -Dm644 schemas/org.gnome.shell.extensions.vitals.gschema.xml \
+        ${{targets.destdir}}/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.vitals.gschema.xml
+      grep -q '"51"' "$ext"/metadata.json
+
+vars:
+  uuid: Vitals@CoreCoding.com
