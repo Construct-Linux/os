@@ -1,0 +1,43 @@
+package:
+  name: basu
+  version: 0.2.1
+  epoch: 0
+  description: The sd-bus library, extracted from systemd
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - audit-dev
+      - build-base
+      - busybox
+      - gperf
+      - libcap-dev
+      - meson
+      - ninja
+      # meson.build runs getent to check the nobody user
+      - posix-libc-utils
+      # generate-gperfs.py runs under python3
+      - python-3.13
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://git.sr.ht/~emersion/basu/archive/v${{package.version}}.tar.gz
+      expected-sha256: 43b327073d1ac7bc6cbc0d3dfff729348fc970dfff0551ad40e366332e990204
+
+  - uses: meson/configure
+    with:
+      opts: -Dsystem-bus-address=unix:path=/run/dbus/system_bus_socket -Daudit=enabled -Dlibcap=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: basu-dev
+    pipeline:
+      - uses: split/dev
