@@ -63,5 +63,29 @@ network and sound). What the boots found, each now fixed in a recipe or the imag
 - Typelibs: GLib's are in glib-gir, cairo's only in gobject-introspection-dev.
 - GDM 51's greeters are dynamic users: nsswitch needs `systemd`.
 
-Still open: no rtkit (Wolfi has none), at-spi's bus unit, bolt, wallpapers, screencast, Vulkan
-(Wolfi's mesa is gallium only), and E3 - the NucBox from a USB stick.
+## Usable, and tested as such (2026-10-01)
+
+`task test` boots a test disk in QEMU (gnome-shell in unsafe mode, sshd over vsock with a key
+from an SMBIOS credential, an HDA card) and drives the session through org.gnome.Shell.Eval:
+28 checks - every app opens a window (Terminal, Settings, Files, Text Editor, Calculator, Image
+Viewer, System Monitor, Disks, Firefox, Chrome from Flathub), nine Settings panels open,
+WirePlumber has a sink, sched_ext runs scx_lavd, Docker runs a container as the user, and no
+unit failed and nothing dumped core. Screenshots of every step go to `_output/test`.
+
+What it took beyond the first session, ~110 recipes in all:
+
+- Overrides of Wolfi's own packages: **mesa** (Wolfi's has no Intel driver at all - no iris,
+  crocus or anv - and no Vulkan), **pipewire** (no Bluetooth audio, no GStreamer plugin),
+  **at-spi2-core** (no systemd units), **duktape** (no libm).
+- Wolfi's packaging gaps found by booting, now each a line in a recipe or the image: unversioned
+  sonames (NSS, SPIRV-Tools) and libraries in private directories get no dependency or provides
+  from melange; pkg-config names Wolfi ships but does not provide (xkeyboard-config,
+  cairomm-1.16); firefox without a desktop entry; dockerd and containerd without units; avahi
+  without its user; iptables pointing at legacy xtables.
+- CachyOS's compiler side, without its patches: kernel ThinLTO, AutoFDO and Propeller builds
+  ready for a perf profile from the NucBox, x86-64-v3 for the kernel and every recipe, full
+  dynamic preemption, sched_ext with scx_lavd instead of BORE.
+
+Still open: the AutoFDO/Propeller profile (needs the real machine), Firefox is unbranded
+("Nightly"), Bluetooth audio has SBC and Opus only (Wolfi has no LDAC/aptX/AAC/LC3), and E3 -
+a UKI/verity disk on the NucBox from a USB stick.
