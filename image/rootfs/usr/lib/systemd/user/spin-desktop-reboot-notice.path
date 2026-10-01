@@ -1,0 +1,9 @@
+# A version is written and waits for a reboot (/usr/lib/spin-desktop/reboot-required).
+[Unit]
+Description=Tell the person a new Spin Desktop waits for a reboot
+
+[Path]
+PathExists=/run/spin-desktop/reboot-required
+
+[Install]
+WantedBy=default.target

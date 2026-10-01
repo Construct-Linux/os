@@ -1,0 +1,14 @@
+# Downloads the newest release from where releases are published (the default sysupdate
+# component, usr/lib/sysupdate.d) and writes it into the slot the machine did not boot, once
+# systemd-pull has checked its signature and every file. It never reboots: the person is told
+# (spin-desktop-reboot-notice), and the next boot starts it - three times at most until it comes
+# up, then back to this one.
+[Unit]
+Description=Update from where releases are published
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/systemd/systemd-sysupdate update
+ExecStartPost=/usr/lib/spin-desktop/reboot-required

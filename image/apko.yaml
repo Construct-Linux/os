@@ -31,6 +31,10 @@ contents:
     - umount
     - dosfstools
     - e2fsprogs
+    # Updates: systemd-sysupdate (recipes/systemd-sysupdate; Wolfi's systemd has none), and the
+    # gpg it checks a release's SHA256SUMS.gpg with.
+    - systemd-sysupdate
+    - gpg
     - shadow
     - coreutils
     - bash

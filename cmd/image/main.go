@@ -33,7 +33,12 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/spin-stack/spin-desktop/internal/gpt"
+	"github.com/spin-stack/spin-desktop/internal/update"
 )
+
+var gptRead = gpt.Read
 
 const out = "_output"
 
@@ -58,6 +63,10 @@ func main() {
 		err = lifecycle(os.Args[2:])
 	case "run":
 		err = runIn(os.Args[2:])
+	case "forge":
+		err = forge(os.Args[2:])
+	case "check-key":
+		err = checkKey(os.Args[2:])
 	case "theme":
 		err = plymouthTheme()
 	case "check":
@@ -168,6 +177,20 @@ func (l links) walk(fn func(*tar.Header, io.Reader) error) error {
 	return nil
 }
 
+// checkKey refuses a release keyring with a signing key that is not Ed25519: the machine checks
+// releases with gpg (systemd-sysupdate), which would take any key in it.
+func checkKey(args []string) error {
+	if len(args) != 1 {
+		return fmt.Errorf("check-key <keyring>")
+	}
+	raw, err := os.ReadFile(args[0])
+	if err != nil {
+		return err
+	}
+	_, err = update.ParseKeyring(raw)
+	return err
+}
+
 // keyDir holds the release key's public half at usr/share/spin-desktop/release.pgp (task usb).
 var keyDir = filepath.Join(out, "release-key")
 
@@ -206,6 +229,7 @@ func rootLayers(test bool) []layer {
 		dirLayer{dir: "image/rootfs"},
 		dirLayer{dir: themeDir},
 		dirLayer{dir: initDir},
+		dirLayer{dir: transfersDir},
 		links{
 			"home": "var/home",
 			// Names are resolved by systemd-resolved, which NetworkManager hands each link's DNS to:
@@ -213,6 +237,8 @@ func rootLayers(test bool) []layer {
 			"etc/systemd/system/multi-user.target.wants/systemd-resolved.service":        "/usr/lib/systemd/system/systemd-resolved.service",
 			"etc/systemd/system/dbus-org.freedesktop.resolve1.service":                   "/usr/lib/systemd/system/systemd-resolved.service",
 			"etc/systemd/system/multi-user.target.wants/spin-desktop-boot-check.service": "/usr/lib/systemd/system/spin-desktop-boot-check.service",
+			"etc/systemd/system/timers.target.wants/spin-desktop-update.timer":           "/usr/lib/systemd/system/spin-desktop-update.timer",
+			"etc/systemd/user/default.target.wants/spin-desktop-reboot-notice.path":      "/usr/lib/systemd/user/spin-desktop-reboot-notice.path",
 			"etc/systemd/system/default.target":                                          "/usr/lib/systemd/system/graphical.target",
 			"etc/systemd/system/sysinit.target.wants/spin-desktop-caches.service":        "/usr/lib/systemd/system/spin-desktop-caches.service",
 			"etc/localtime": "/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
@@ -260,6 +286,9 @@ func disk(args []string) error {
 		return err
 	}
 	if err := buildInit(); err != nil {
+		return err
+	}
+	if err := writeTransfers(); err != nil {
 		return err
 	}
 	layers := rootLayers(*test)

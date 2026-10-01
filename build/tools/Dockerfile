@@ -5,7 +5,7 @@
 ARG WOLFI_BASE_IMAGE
 
 FROM ${WOLFI_BASE_IMAGE}
-RUN apk add --no-cache bash coreutils gnutar cpio util-linux mount umount findutils \
+RUN apk add --no-cache bash coreutils gnutar cpio util-linux mount umount findutils xz mtools \
         systemd udev systemd-ukify systemd-boot e2fsprogs dosfstools mtools \
         erofs-utils cryptsetup
 ENTRYPOINT ["/bin/bash"]

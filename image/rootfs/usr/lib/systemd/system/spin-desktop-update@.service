@@ -1,7 +1,8 @@
 # Updates the machine from the release on /dev/%i, a stick's spin-update partition: mounted
-# read-only, checked against the key the root carries, written into the slot the machine did not
-# boot (spin-desktop update). The next boot starts it, three times at most until it comes up
-# (boot-complete.target), and falls back to this one otherwise.
+# read-only, checked by systemd-sysupdate against the key the root carries (import-pubring.pgp),
+# and written into the slot the machine did not boot (the "stick" component, usr/lib/sysupdate.stick.d). The next boot starts
+# it, three times at most until it comes up (boot-complete.target), and falls back to this one
+# otherwise.
 [Unit]
 Description=Update from the release on %I
 BindsTo=dev-%i.device
@@ -11,5 +12,6 @@ After=dev-%i.device local-fs.target
 Type=oneshot
 RuntimeDirectory=spin-desktop/update
 ExecStart=/usr/bin/mount -o ro,nodev,nosuid,noexec /dev/%i /run/spin-desktop/update
-ExecStart=/usr/bin/spin-desktop update --from /run/spin-desktop/update
+ExecStart=/usr/lib/systemd/systemd-sysupdate --component=stick update
+ExecStartPost=/usr/lib/spin-desktop/reboot-required
 ExecStopPost=-/usr/bin/umount /run/spin-desktop/update

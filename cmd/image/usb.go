@@ -47,6 +47,9 @@ func usb(args []string) error {
 	if err := plymouthTheme(); err != nil {
 		return err
 	}
+	if err := writeTransfers(); err != nil {
+		return err
+	}
 	// Built on the host by task usb: this container has no Go.
 	if _, err := os.Stat(filepath.Join(initDir, "usr/lib/spin-desktop/init")); err != nil {
 		return fmt.Errorf("spin-init: %w", err)
@@ -90,7 +93,7 @@ func releaseDir(version string) string { return filepath.Join(out, "release", ve
 
 // writeRelease lays version's release: the root and its tree named with the partition UUIDs a
 // slot takes for them (the kernel image's command line names those), the kernel image, and
-// SHA256SUMS over them, which the host signs (SHA256SUMS.sig, gpg --detach-sign) before the stick
+// SHA256SUMS over them, which the host signs (SHA256SUMS.gpg, gpg --detach-sign: systemd-sysupdate's name for it) before the stick
 // is made. internal/update reads it by these names.
 func writeRelease(version, esp, label string, v verity) (string, error) {
 	dir := releaseDir(version)
@@ -145,7 +148,7 @@ func usbDisk(args []string) error {
 		*version = entries[len(entries)-1].Name()
 	}
 	rel := releaseDir(*version)
-	if _, err := os.Stat(filepath.Join(rel, "SHA256SUMS.sig")); err != nil {
+	if _, err := os.Stat(filepath.Join(rel, "SHA256SUMS.gpg")); err != nil {
 		return fmt.Errorf("%s is not signed: %w", rel, err)
 	}
 	label := "spin-desktop_" + *version
@@ -534,8 +537,10 @@ func repart(stage, disk, label string, v verity, release string) error {
 			label, v.vUUID, abs(v.treeImg)),
 		// The release, for installing and updating; FAT, so any machine mounts it, and named so
 		// spin-desktop-update finds it.
-		"30-update.conf": fmt.Sprintf("[Partition]\nType=linux-generic\nLabel=spin-update\nFormat=vfat\nCopyFiles=%s:/%s\nSizeMinBytes=%d\n",
-			abs(release), filepath.Base(release), dirSize(release)*11/10+64<<20),
+		// The release's files at its root: systemd-sysupdate reads SHA256SUMS from the URL it is
+		// given, file:///run/spin-desktop/update, where it is mounted.
+		"30-update.conf": fmt.Sprintf("[Partition]\nType=linux-generic\nLabel=spin-update\nFormat=vfat\nCopyFiles=%s:/\nSizeMinBytes=%d\n",
+			abs(release), dirSize(release)*11/10+64<<20),
 	} {
 		if err := os.WriteFile(filepath.Join(defs, name), []byte(body), 0o644); err != nil {
 			return err

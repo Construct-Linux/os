@@ -3,6 +3,8 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -90,19 +92,43 @@ func lifecycle(args []string) error {
 	r.add("v1 comes up", ok, detail)
 	v.powerOff(g)
 
-	// 3. The stick of v2 updates it; the next boot is v2, and everything kept is still there.
-	s2, err := stick("v2")
+	// 3. Sticks that are not a release its key signed are refused, and change nothing.
+	for _, bad := range []string{"unsigned", "badsig", "sums", "uki"} {
+		s, err := stick("v2-" + bad)
+		if err != nil {
+			return err
+		}
+		if v, g, err = boot(s); err != nil {
+			r.add("refuse "+bad, false, err.Error())
+			return r.write(nil)
+		}
+		ok, detail = g.waitUpdate(5 * time.Minute)
+		esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
+		refused := !ok && !strings.Contains(esp, versions["v2"]) && g.version() == versions["v1"]
+		r.add("refuse a stick: "+bad, refused, detail+"; ESP: "+oneLine(esp))
+		v.powerOff(g)
+	}
+
+	// 4. v2 comes from where releases are published - an HTTP server on this host here, which the
+	// default component's transfers are pointed at - by the daily timer's service.
+	srv, url, err := serve(filepath.Join(*dir, "v2.release"))
 	if err != nil {
 		return err
 	}
-	if v, g, err = boot(s2); err != nil {
-		r.add("boot with v2's stick", false, err.Error())
+	defer srv.Close()
+	if v, g, err = boot(); err != nil {
+		r.add("boot for the URL update", false, err.Error())
 		return r.write(nil)
 	}
-	ok, detail = g.waitUpdate(5 * time.Minute)
-	r.add("v2's stick updates", ok, detail)
+	_, err = g.run(`mkdir -p /etc/sysupdate.d && for f in /usr/lib/sysupdate.d/*.transfer; do `+
+		`sed "s|^Path=https://.*|Path=`+url+`|" "$f" > /etc/sysupdate.d/$(basename "$f"); done`, "")
+	r.add("point updates at the test server", err == nil, url+errText(err))
+	outs, err = g.run(`systemctl start spin-desktop-update.service; journalctl -b --no-pager -o cat -u spin-desktop-update.service | tail -3`, "")
+	r.add("v2 downloads", err == nil, oneLine(outs)+errText(err))
 	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v2 is counted on the ESP", strings.Contains(esp, "spin-desktop_"+versions["v2"]+"+3"), oneLine(esp))
+	mark, _ := g.run(`cat /run/spin-desktop/reboot-required`, "")
+	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
 		r.add("reboot into v2", false, err.Error())
@@ -119,7 +145,7 @@ func lifecycle(args []string) error {
 	r.add("v2 is blessed", strings.Contains(esp, "spin-desktop_"+versions["v2"]+".efi"), oneLine(esp))
 	v.powerOff(g)
 
-	// 4. v3's desktop never comes up: three tries, then systemd-boot falls back to v2 by itself.
+	// 5. v3's desktop never comes up: three tries, then systemd-boot falls back to v2 by itself.
 	s3, err := stick("v3")
 	if err != nil {
 		return err
@@ -228,4 +254,16 @@ func (g *guest) waitUpdate(d time.Duration) (bool, string) {
 		time.Sleep(3 * time.Second)
 	}
 	return false, "no spin-desktop-update@ unit ended"
+}
+
+// serve answers dir's files over HTTP on this host, where a guest reaches it at 10.0.2.2 (QEMU's
+// user network): what GitHub Releases is to a machine.
+func serve(dir string) (*http.Server, string, error) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		return nil, "", err
+	}
+	srv := &http.Server{Handler: http.FileServer(http.Dir(dir))}
+	go func() { _ = srv.Serve(l) }()
+	return srv, fmt.Sprintf("http://10.0.2.2:%d", l.Addr().(*net.TCPAddr).Port), nil
 }

@@ -118,14 +118,18 @@ tasks:
       - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/bin/spin-desktop ./cmd/spin-desktop
       - mkdir -p _output/release-key/usr/share/spin-desktop
       - gpg --homedir {{.SIGNING_HOME}} --export > _output/release-key/usr/share/spin-desktop/release.pgp
-      - test -s _output/release-key/usr/share/spin-desktop/release.pgp
+      # Releases are Ed25519 alone: gpg checks them on the machine (systemd-sysupdate), so the
+      # keyring it is given is refused here if it holds any other kind of key.
+      - go run ./cmd/image check-key _output/release-key/usr/share/spin-desktop/release.pgp
+      - mkdir -p _output/release-key/usr/lib/systemd
+      - cp _output/release-key/usr/share/spin-desktop/release.pgp _output/release-key/usr/lib/systemd/import-pubring.pgp
       - >-
-        docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
+        docker run --rm --privileged -e SPIN_DESKTOP_UPDATE_URL -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
         '_output/bin/image usb {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/release _output/root.tar; exit $rc'
       # Signed here, by the key in SIGNING_HOME: it never enters a container.
       - >-
         rel=$(ls -d _output/release/*/ | sort | tail -1) &&
-        gpg --homedir {{.SIGNING_HOME}} --batch --yes --detach-sign -o "$rel/SHA256SUMS.sig" "$rel/SHA256SUMS"
+        gpg --homedir {{.SIGNING_HOME}} --batch --yes --detach-sign -o "$rel/SHA256SUMS.gpg" "$rel/SHA256SUMS"
       - >-
         docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
         '_output/bin/image usb-disk; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
@@ -139,7 +143,7 @@ tasks:
       - go run ./cmd/image test -usb {{.CLI_ARGS}}
 
   test:lifecycle:
-    desc: "Install from a stick onto an NVMe disk, update with the next release's stick, roll back from a broken one: three test releases, in QEMU."
+    desc: "Install from a stick onto an NVMe disk, refuse forged sticks, update from a URL, roll back from a broken release by stick: three test releases, in QEMU."
     deps: [keygen:test]
     cmds:
       - mkdir -p _output/lifecycle
@@ -147,7 +151,13 @@ tasks:
         cmd: >-
           task usb SIGNING_HOME=.cache/test-gnupg -- -test {{if eq .ITEM "v3"}}-broken{{end}} > .cache/logs/usb-{{.ITEM}}.log 2>&1
           && cp --sparse=always _output/usb/disk.raw _output/lifecycle/{{.ITEM}}.raw
-          && basename $(ls -d _output/release/*/ | sort | tail -1) > _output/lifecycle/{{.ITEM}}.version
+          && rel=$(ls -d _output/release/*/ | sort | tail -1)
+          && basename $rel > _output/lifecycle/{{.ITEM}}.version
+          && rm -rf _output/lifecycle/{{.ITEM}}.release && cp -r $rel _output/lifecycle/{{.ITEM}}.release
+      # The sticks an update must refuse, from v2's (cmd/image/forge.go; mtools is the container's).
+      - >-
+        docker run --rm -v {{.ROOT_DIR}}:/work -w /work spin-desktop-tools -c
+        '_output/bin/image forge -stick _output/lifecycle/v2.raw; rc=$?; chown -R {{.UID}}:{{.UID}} _output/lifecycle; exit $rc'
       - go run ./cmd/image lifecycle
 
   gap:
