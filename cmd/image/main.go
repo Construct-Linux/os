@@ -663,9 +663,16 @@ func check(root string) error {
 		}
 		return false
 	}
+	// The directories some program in the root searches by its RUNPATH: a plugin it dlopens
+	// (GNOME Software's) NEEDs a library from there without a RUNPATH of its own, and finds it
+	// already loaded by its host.
+	var hosts []string
+	for _, o := range objs {
+		hosts = append(hosts, o.runpath...)
+	}
 	bad := 0
 	for name, o := range objs {
-		dirs := append(o.runpath, "/usr/lib", "/lib", "/usr/lib64", "/lib64")
+		dirs := append(append(o.runpath, "/usr/lib", "/lib", "/usr/lib64", "/lib64"), hosts...)
 		// Mozilla's applications load their own directory's libraries first, in the order its
 		// dependentlibs.list gives, before anything that NEEDs them.
 		if files[path.Join(path.Dir(name), "dependentlibs.list")] {
