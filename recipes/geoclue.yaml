@@ -1,0 +1,45 @@
+package:
+  name: geoclue
+  version: 2.8.2
+  epoch: 0
+  description: D-Bus geolocation service
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - json-glib-dev
+      - libsoup3-dev
+      - meson
+      - ninja
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/geoclue/geoclue/-/archive/${{package.version}}/geoclue-${{package.version}}.tar.bz2
+      expected-sha256: d4d65933b704d4c8d4ca9747dc511b883e35099abe534c8560f2aab3017e4cd4
+
+  # 3g/cdma/modem-gps need ModemManager and nmea needs Avahi, none of which ship;
+  # the demo agent (libnotify) is unused because gnome-shell is the agent.
+  # dbus-srv-user=geoclue installs a sysusers.d entry so the service does not run as root.
+  - uses: meson/configure
+    with:
+      opts: -Dintrospection=true -Dvapi=false -Dgtk-doc=false -D3g-source=false -Dcdma-source=false -Dmodem-gps-source=false -Dnmea-source=false -Ddemo-agent=false -Ddbus-srv-user=geoclue -Ddbus-sys-dir=/usr/share/dbus-1/system.d -Dsystemd-system-unit-dir=/usr/lib/systemd/system
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: geoclue-dev
+    pipeline:
+      - uses: split/dev
