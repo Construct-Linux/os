@@ -66,6 +66,9 @@ func ValidName(name string) error {
 	return nil
 }
 
+// Shell is a person's login shell.
+const Shell = "/bin/bash"
+
 // Home is where a user's home is: /var holds what a machine keeps.
 func Home(name string) string { return "/var/home/" + name }
 
@@ -83,7 +86,7 @@ func Write(etc, factory string, u User) error {
 	uid := strconv.Itoa(u.UID)
 	days := strconv.FormatInt(time.Now().Unix()/86400, 10)
 	own := map[string]string{
-		"passwd":  strings.Join([]string{u.Name, "x", uid, uid, u.RealName, Home(u.Name), "/bin/bash"}, ":"),
+		"passwd":  strings.Join([]string{u.Name, "x", uid, uid, u.RealName, Home(u.Name), Shell}, ":"),
 		"group":   u.Name + ":x:" + uid + ":",
 		"shadow":  strings.Join([]string{u.Name, u.HashedPassword, days, "0", "99999", "7", "", "", ""}, ":"),
 		"gshadow": u.Name + ":!::",

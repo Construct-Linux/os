@@ -1,0 +1,7 @@
+# The login shells the image has. Wolfi's base layout lists only BusyBox's, and bash adds itself
+# nowhere; a person's shell is bash (internal/account), and pkexec, chsh and GDM refuse a shell
+# this file does not name.
+/bin/sh
+/bin/ash
+/bin/bash
+/usr/bin/bash

@@ -10,6 +10,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/spin-stack/spindrift/internal/account"
 )
 
 // refs checks that what the baked root's configuration names exists in it: the units it runs
@@ -25,6 +27,7 @@ func refs(root string) []string {
 	r.dbus()
 	r.pam()
 	r.owners()
+	r.shells()
 	sort.Strings(r.problems)
 	return slices.Compact(r.problems)
 }
@@ -355,4 +358,27 @@ func names(root, file string) map[string]bool {
 		}
 	})
 	return m
+}
+
+// shells checks that root's login shell and the one a person is given (internal/account) are
+// programs the root has and that /etc/shells names: pkexec, chsh and GDM
+// refuse any other, and Wolfi's base layout names only BusyBox's.
+func (r *refChecker) shells() {
+	listed := map[string]bool{}
+	eachLine(filepath.Join(r.root, "etc/shells"), func(line string) { listed[line] = true })
+	// The shells that log in: root's and a person's. sync, halt and shutdown's are commands.
+	want := map[string]bool{account.Shell: true}
+	eachLine(filepath.Join(r.root, "etc/passwd"), func(line string) {
+		if f := strings.Split(line, ":"); len(f) == 7 && f[0] == "root" {
+			want[f[6]] = true
+		}
+	})
+	for sh := range want {
+		if !listed[sh] {
+			r.fail("etc/shells does not name %s, a user's shell", sh)
+		}
+		if !r.exists(sh) {
+			r.fail("%s, a user's shell, is not in the root", sh)
+		}
+	}
 }
