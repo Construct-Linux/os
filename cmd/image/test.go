@@ -130,6 +130,10 @@ func test(args []string) error {
 	// no Wi-Fi card to join a network with, but the supplicant must be there to be started.
 	wifi, err := g.run(`busctl call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus StartServiceByName su fi.w1.wpa_supplicant1 0 2>&1`, "")
 	r.add("wifi supplicant", err == nil && strings.HasPrefix(strings.TrimSpace(wifi), "u "), oneLine(wifi)+errText(err))
+	// Bluetooth, the same way: bluetoothd starts only with an adapter, which a VM has not, but the
+	// bus must know how to start it (Wolfi's bluez came without its unit and activation file).
+	bt, err := g.run(`busctl --system list --activatable --no-legend | awk '{print $1}' | grep -x org.bluez`, "")
+	r.add("bluetooth service", err == nil && strings.TrimSpace(bt) == "org.bluez", oneLine(bt)+errText(err))
 	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files

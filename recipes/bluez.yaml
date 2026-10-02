@@ -1,0 +1,130 @@
+# Wolfi's bluez, with systemd. Wolfi builds it --disable-systemd: no bluetooth.service and no
+# org.bluez D-Bus activation file, so nothing could start bluetoothd - not bluetooth.target, not
+# the bus - and the desktop had no Bluetooth (the NucBox's AX201 has it). Wolfi's test blocks are
+# dropped (their pipelines are Wolfi CI's); the rest is Wolfi's recipe as it is.
+# Generated from https://git.alpinelinux.org/aports/plain/main/bluez/APKBUILD
+package:
+  name: bluez
+  version: "5.87"
+  # Replaces Wolfi's bluez 5.87 (epoch 1): see the header.
+  epoch: 2
+  description: Tools for the Bluetooth protocol stack
+  copyright:
+    - license: GPL-2.0 AND LGPL-2.1 AND BSD-2-Clause AND MIT
+  resources:
+    cpu: "1"
+    memory: 5Gi
+  test-resources:
+    cpu: "1"
+    memory: 1Gi
+
+vars:
+  python-version: "3.13"
+
+environment:
+  # libical 4.x split the versit/vCard (vobject) API into a separate
+  # libicalvcal library; bluez obexd needs it linked explicitly since
+  # pkg-config libical no longer pulls it in (PKG_CHECK_MODULES ICAL).
+  environment:
+    ICAL_CFLAGS: "-I/usr/include"
+    ICAL_LIBS: "-lical -licalvcal"
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - ca-certificates-bundle
+      - dbus
+      - dbus-dev
+      - ell-dev
+      - glib-dev
+      - glibc-2.44-dev
+      - icu-dev
+      - json-c-dev
+      - libical-dev
+      - linux-headers
+      - pkgconf-dev
+      - py${{vars.python-version}}-docutils-bin
+      - py${{vars.python-version}}-pygments-bin
+      - python-${{vars.python-version}}
+      - readline-dev
+      - systemd-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/bluez/bluez
+      tag: ${{package.version}}
+      expected-commit: 65d11edee469c24dcc8d075b8be9c040cebaaf98
+
+  - uses: autoconf/configure
+    with:
+      opts: |
+        --enable-systemd \
+        --with-systemdsystemunitdir=/usr/lib/systemd/system \
+        --with-systemduserunitdir=/usr/lib/systemd/user \
+        --enable-external-ell \
+        --enable-library \
+        --enable-deprecated \
+        --enable-hid2hci \
+        --enable-mesh \
+        --enable-sixaxis \
+        --with-dbusconfdir=/usr/share
+
+  - uses: autoconf/make
+
+  - runs: |
+      make DESTDIR="${{targets.destdir}}" install install-pluginLTLIBRARIES
+      install -Dm755 test/simple-agent "${{targets.destdir}}"/usr/bin/bluez-simple-agent
+      install -Dm755 tools/btmgmt -t "${{targets.destdir}}"/usr/bin/
+      install -Dm755 attrib/gatttool -t "${{targets.destdir}}"/usr/bin/
+
+      install -Dm644 obexd/src/org.bluez.obex.service \
+        "${{targets.destdir}}"/usr/share/dbus-1/services/org.bluez.obex.service
+
+      # Workaround permission issue. Fixed upstream, but pulling in patch requires
+      # running autoreconf which seems to generate issues.
+      # https://github.com/bluez/bluez/commit/b1fd409960001a77cda2a09ecc00147ebd9c3667
+      # Fixes: https://github.com/wolfi-dev/os/issues/31026
+      chmod 0755 "${{targets.destdir}}"/etc/bluetooth
+
+  - name: remove libtool .la files
+    runs: find "${{targets.destdir}}" -name '*.la' -delete
+
+  - uses: strip
+
+subpackages:
+  - name: bluez-dbg
+    pipeline:
+      - uses: split/debug
+  - name: bluez-doc
+    pipeline:
+      - uses: split/manpages
+    description: bluez manpages
+  - name: bluez-btmgmt
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/bin
+          mv ${{targets.destdir}}/usr/bin/btmgmt ${{targets.subpkgdir}}/usr/bin
+  - name: bluez-btmon
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/bin
+          mv ${{targets.destdir}}/usr/bin/btmon ${{targets.subpkgdir}}/usr/bin
+  - name: bluez-cups
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/cups ${{targets.subpkgdir}}/usr/lib
+  - name: bluez-meshctl
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/bin
+          mv ${{targets.destdir}}/usr/bin/meshctl ${{targets.subpkgdir}}/usr/bin
+  - name: bluez-dev
+    pipeline:
+      - uses: split/dev
+    description: bluez dev
+update:
+  enabled: true
+  github:
+    identifier: bluez/bluez
