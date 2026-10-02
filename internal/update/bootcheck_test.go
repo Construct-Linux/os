@@ -36,7 +36,7 @@ func TestABootThatIsNotGoodIsRebootedWhileCounted(t *testing.T) {
 func TestAKernelImageNamesItsSlot(t *testing.T) {
 	dir := t.TempDir()
 	const root, verity = "0123abcd-0000-1111-2222-333344445555", "89abcdef-6666-7777-8888-9999aaaabbbb"
-	good := "dm-mod.create=\"root,,,ro,0 8 verity 1 PARTUUID=" + root + " PARTUUID=" + verity + " 4096\" dm-mod.waitfor=PARTUUID=" + root + ",PARTUUID=" + verity + " root=/dev/dm-0"
+	good := "roothash=" + strings.ReplaceAll(root+verity, "-", "") + " rootfstype=erofs ro"
 	for name, tc := range map[string]struct {
 		image []byte
 		fails string
@@ -44,7 +44,7 @@ func TestAKernelImageNamesItsSlot(t *testing.T) {
 		"its own": {image: peImage(t, map[string]string{".osrel": "IMAGE_VERSION=1.1\n", ".cmdline": good})},
 		"another version": {image: peImage(t, map[string]string{".osrel": "IMAGE_VERSION=1.10\n", ".cmdline": good}),
 			fails: "os-release"},
-		"another slot": {image: peImage(t, map[string]string{".osrel": "IMAGE_VERSION=1.1\n", ".cmdline": strings.ReplaceAll(good, verity, "3f3c0a48-7b27-5b3b-73c2-385422d45830")}),
+		"another slot": {image: peImage(t, map[string]string{".osrel": "IMAGE_VERSION=1.1\n", ".cmdline": strings.ReplaceAll(good, strings.ReplaceAll(verity, "-", ""), "3f3c0a487b275b3b73c2385422d45830")}),
 			fails: verity},
 		"no command line": {image: peImage(t, map[string]string{".osrel": "IMAGE_VERSION=1.1\n"}), fails: ".cmdline"},
 		"no os-release":   {image: peImage(t, map[string]string{".cmdline": good}), fails: ".osrel"},

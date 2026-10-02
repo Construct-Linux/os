@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 
@@ -55,8 +56,7 @@ func release(t *testing.T, version, root, verity string, signer *openpgp.Entity,
 	body := bytes.Repeat([]byte{fill}, rootSize-4096)
 	write(t, filepath.Join(dir, rootFile), string(xzOf(t, body)))
 	write(t, filepath.Join(dir, verityFile), string(xzOf(t, bytes.Repeat([]byte{fill + 1}, 64<<10))))
-	cmdline := `dm-mod.create="root,,,ro,0 8 verity 1 PARTUUID=` + root + ` PARTUUID=` + verity + ` 4096 4096 1 0 sha256 00 00" dm-mod.waitfor=PARTUUID=` +
-		root + `,PARTUUID=` + verity + ` root=/dev/dm-0`
+	cmdline := "roothash=" + strings.ReplaceAll(root+verity, "-", "") + " rootfstype=erofs ro"
 	write(t, filepath.Join(dir, uki), string(peImage(t, map[string]string{".osrel": "IMAGE_ID=" + ImageID + "\nIMAGE_VERSION=" + version + "\n", ".cmdline": cmdline})))
 	write(t, filepath.Join(dir, "README"), "not a machine's")
 	seal(t, dir, signer)
