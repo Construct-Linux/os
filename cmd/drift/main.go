@@ -192,10 +192,15 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		defer func() { _ = unmount() }() // read-only
 		*from = dir
 	}
+	dev, err := os.OpenFile(disk.Path(), os.O_RDWR, 0)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = dev.Close() }() // every write is synced where it is made
 	_, err = update.Install(ctx, update.InstallOptions{
-		Keys: keys, Source: *from, Disk: disk,
-		Open:   openDisk,
-		Reread: reread,
+		Keys: keys, Source: *from, Disk: disk, Device: dev,
+		// BLKRRPART, which every partitioning tool asks.
+		Reread: func() error { return unix.IoctlSetInt(int(dev.Fd()), unix.BLKRRPART, 0) },
 		Partition: func(n int) (string, error) {
 			return waitPartition(ctx, disk.Name, n)
 		},
@@ -240,20 +245,6 @@ func confirm(in *bufio.Reader, out io.Writer, disk update.BlockDisk) error {
 
 func sizeOf(n int64) string {
 	return fmt.Sprintf("%.1f GiB", float64(n)/(1<<30))
-}
-
-// openDisk opens a disk to be read and written.
-func openDisk(path string) (update.Disk, error) {
-	return os.OpenFile(path, os.O_RDWR, 0)
-}
-
-// reread has the kernel read the disk's new table: BLKRRPART, which every partitioning tool asks.
-func reread(d update.Disk) error {
-	f, ok := d.(*os.File)
-	if !ok {
-		return nil
-	}
-	return unix.IoctlSetInt(int(f.Fd()), unix.BLKRRPART, 0)
 }
 
 // waitPartition is the device of partition n of disk once the kernel lists it and its node is

@@ -17,11 +17,6 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
-// nopClose is the disk, which the test closes, as Install's own.
-type nopClose struct{ *os.File }
-
-func (nopClose) Close() error { return nil }
-
 // fakeSystem is systemd as a boot check sees it: which units are active, and the reboots asked
 // for.
 type fakeSystem struct {

@@ -47,14 +47,9 @@ func (in *installer) options(t *testing.T, source string, size int64) InstallOpt
 	n := 0
 	return InstallOptions{
 		Keys: trusted(t), Source: source,
-		Disk: BlockDisk{Name: "nvme0n1", Size: size},
-		Open: func(path string) (Disk, error) {
-			if path != "/dev/nvme0n1" {
-				return nil, fmt.Errorf("opened %s", path)
-			}
-			return nopClose{in.disk}, nil
-		},
-		Reread:    func(Disk) error { return nil },
+		Disk:      BlockDisk{Name: "nvme0n1", Size: size},
+		Device:    in.disk,
+		Reread:    func() error { return nil },
 		Partition: func(n int) (string, error) { return fmt.Sprintf("/dev/nvme0n1p%d", n), nil },
 		Run: func(_ context.Context, name string, args ...string) error {
 			in.ran = append(in.ran, name+" "+strings.Join(args, " "))

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"fmt"
-	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -82,11 +81,12 @@ type InstallOptions struct {
 	// Keys check the release's signature; Source is where it is, as for an update.
 	Keys   openpgp.KeyRing
 	Source string
-	// Disk is the disk to install on, which Open opens; Reread has the kernel read its new table,
-	// and Partition answers the device of its partition number n once the kernel has it.
+	// Disk is the disk to install on, and Device it open to be read and written, which the caller
+	// closes; Reread has the kernel read its new table, and Partition answers the device of its
+	// partition number n once the kernel has it.
 	Disk      BlockDisk
-	Open      func(path string) (Disk, error)
-	Reread    func(d Disk) error
+	Device    Disk
+	Reread    func() error
 	Partition func(n int) (string, error)
 	// Run runs a program - mkfs.vfat, mkfs.ext4 - and MountESP mounts the new ESP, answering where
 	// and how to unmount it.
@@ -121,13 +121,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 		return gpt.Table{}, err
 	}
 	log := o.Log.With("disk", o.Disk.Path(), "version", r.Version)
-	d, err := o.Open(o.Disk.Path())
-	if err != nil {
-		return gpt.Table{}, err
-	}
-	if closer, ok := d.(io.Closer); ok {
-		defer func() { _ = closer.Close() }() // every write is synced where it is made
-	}
+	d := o.Device
 	// Slot A is Empty until what it holds is checked: a copy cut off or refused leaves a disk with
 	// nothing that boots, not a slot a label vouches for.
 	writing := table
@@ -161,7 +155,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err := d.Sync(); err != nil {
 		return gpt.Table{}, err
 	}
-	if err := o.Reread(d); err != nil {
+	if err := o.Reread(); err != nil {
 		return gpt.Table{}, fmt.Errorf("install: the kernel reading the new table: %w", err)
 	}
 	esp, err := o.Partition(1)
