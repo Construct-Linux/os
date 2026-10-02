@@ -20,9 +20,11 @@ falling back from a release that does not come up.
   descriptions. The person you work for may write in another language; what lands in the
   repository is English.
 - **Locales are the product's, not the repository's**: the desktop speaks every language its
-  packages ship. Never strip translations to save space: keep `-lang`/locale subpackages buildable,
-  keep `glibc-locale-*` in the image, and do not hard-code a language anywhere but the image's
-  default (`image/rootfs/etc/locale.conf`).
+  packages ship. Never strip translations to save space: build with NLS, split catalogs into
+  `<name>-lang` (`split/locales`), install every `-lang` package in `image/apko.yaml` - apko
+  installs none by itself, and `go run ./cmd/image check-langs` (in `task rootfs`) fails the build
+  when one is missing - keep `glibc-locale-*` in the image, and do not hard-code a language
+  anywhere but the image's default (`image/rootfs/etc/locale.conf`).
 - **Every build step is a Taskfile task.** A container run, a melange build, a disk, a test: if it
   is done twice it is a task, and the task is how it is done - by people, agents and CI alike.
   `task build -- <recipe>` builds a recipe, `task rootfs`, `task kernel`, `task firmware`,

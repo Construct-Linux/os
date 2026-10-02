@@ -12,6 +12,7 @@
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
 //	image forge                                 the forged sticks the lifecycle must refuse
 //	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
+//	image check-langs                           every package in the root comes with its translations
 //	image check                                 every ELF's NEEDED libraries are in the root
 package main
 
@@ -50,6 +51,8 @@ func main() {
 		err = forge(os.Args[2:])
 	case "check-key":
 		err = checkKey(os.Args[2:])
+	case "check-langs":
+		err = checkLangs(filepath.Join(out, "rootfs.tar"))
 	case "check":
 		err = check(filepath.Join(out, "root.tar"))
 	default:

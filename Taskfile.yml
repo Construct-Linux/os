@@ -77,6 +77,9 @@ tasks:
       - mkdir -p _output
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/apko.yaml _output/rootfs.tar
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/rootfs.tar
+      # Every package's translations are in the root (its -lang package, which apko installs
+      # only when named).
+      - go run ./cmd/image check-langs
 
   initrd:
     desc: Build the initrd systemd runs in before the root, from image/initrd/apko.yaml, into _output/initrd.tar.

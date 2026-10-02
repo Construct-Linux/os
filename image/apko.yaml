@@ -1,5 +1,4 @@
 # The desktop's root filesystem: Wolfi, and what recipes/ builds into packages/ on top of it.
-# E2's image: enough for GDM to start a GNOME session in QEMU; nothing here is hardened yet.
 contents:
   repositories:
     - https://packages.wolfi.dev/os
@@ -189,6 +188,77 @@ contents:
     - containerd-service-2
     - runc
     - iptables-nft
+    # Translations: Wolfi and recipes/ put a package's catalogs in <name>-lang, which nothing
+    # installs unless it is named here. go run ./cmd/image check-langs (in task rootfs) fails the
+    # build when one is missing.
+    - at-spi2-core-lang
+    - cracklib-lang
+    - decibels-lang
+    - evolution-data-server-lang
+    - flatpak-lang
+    - folks-lang
+    - gcr4-lang
+    - gdk-pixbuf-lang
+    - gdm-lang
+    - glib-lang
+    - glib-networking-lang
+    - gnome-calculator-lang
+    - gnome-calendar-lang
+    - gnome-characters-lang
+    - gnome-clocks-lang
+    - gnome-connections-lang
+    - gnome-contacts-lang
+    - gnome-disk-utility-lang
+    - gnome-font-viewer-lang
+    - gnome-keyring-lang
+    - gnome-logs-lang
+    - gnome-maps-lang
+    - gnome-music-lang
+    - gnome-session-lang
+    - gnome-shell-extension-appindicator-lang
+    - gnome-shell-extension-caffeine-lang
+    - gnome-shell-extension-clipboard-indicator-lang
+    - gnome-shell-extension-just-perfection-lang
+    - gnome-shell-lang
+    - gnome-software-lang
+    - gnome-system-monitor-lang
+    - gnome-text-editor-lang
+    - gnome-weather-lang
+    - grilo-lang
+    - grilo-plugins-lang
+    - gst-plugins-base-lang
+    - gtk-3-lang
+    - gtk-4-lang
+    - gtk-vnc-lang
+    - gtksourceview5-lang
+    - gvfs-lang
+    - ibus-lang
+    - libadwaita-lang
+    - libgphoto2-lang
+    - libgweather4-lang
+    - libhandy1-lang
+    - libpwquality-lang
+    - libsecret-lang
+    - libshumate-lang
+    - libsoup3-lang
+    - libspelling-lang
+    - localsearch-lang
+    - loupe-lang
+    - mutter-lang
+    - nautilus-lang
+    - networkmanager-lang
+    - papers-lang
+    - polkit-lang
+    - popt-lang
+    - ptyxis-lang
+    - shared-mime-info-lang
+    - showtime-lang
+    - snapshot-lang
+    - tinysparql-lang
+    - totem-pl-parser-lang
+    - udisks2-lang
+    - vte3-lang
+    - xdg-user-dirs-lang
 
 accounts:
   run-as: root

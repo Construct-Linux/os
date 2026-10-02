@@ -170,3 +170,26 @@ func TestCmdline(t *testing.T) {
 		t.Errorf("cmdline with an option = %q", got)
 	}
 }
+
+// A package's translations are missing when its -lang package exists and is not installed; a
+// -lang package of something not installed, or one already installed, is not.
+func TestMissingLangs(t *testing.T) {
+	installed := map[string]bool{"gnome-shell": true, "gtk-4": true, "gtk-4-lang": true, "bash": true}
+	available := map[string]bool{"gnome-shell-lang": true, "gtk-4-lang": true, "nautilus-lang": true}
+	got := missingLangs(installed, available)
+	if len(got) != 1 || got[0] != "gnome-shell-lang" {
+		t.Errorf("missingLangs = %q, want [gnome-shell-lang]", got)
+	}
+}
+
+// The names come from an apk database or index's P: lines alone.
+func TestPackageNames(t *testing.T) {
+	names := map[string]bool{}
+	db := "C:Q1abc=\nP:glib\nV:2.90.0-r0\nD:so:libc.so.6\n\nP:glib-lang\nV:2.90.0-r0\n"
+	if err := packageNames(strings.NewReader(db), names); err != nil {
+		t.Fatal(err)
+	}
+	if len(names) != 2 || !names["glib"] || !names["glib-lang"] {
+		t.Errorf("names = %v", names)
+	}
+}
