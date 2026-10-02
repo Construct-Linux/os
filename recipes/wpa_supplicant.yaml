@@ -1,0 +1,97 @@
+# Wolfi has no Wi-Fi supplicant - neither wpa_supplicant nor iwd - and NetworkManager's Wi-Fi needs
+# one: without it the desktop cannot join a network (and geoclue's Wi-Fi source waits on its bus
+# name until systemd gives up on it). wpa_supplicant is NetworkManager's default backend and what
+# GNOME is tested with: WPA2/WPA3 (SAE, OWE), 802.1X enterprise networks, nl80211 drivers only.
+# Alpine's configuration, without WEXT (deprecated) and PC/SC smartcards (which need pcsc-lite).
+package:
+  name: wpa_supplicant
+  version: "2.12"
+  epoch: 0
+  description: IEEE 802.1X/WPA supplicant, for NetworkManager's Wi-Fi
+  copyright:
+    - license: BSD-3-Clause
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dbus-dev
+      - libnl3-dev
+      - linux-headers
+      - openssl-dev
+      - pkgconf
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://git.w1.fi/hostap.git
+      tag: hostap_2_12
+      expected-commit: 831364bf02710ad09c2f27d3efa92abeeb5634c0
+
+  - runs: |
+      cat > wpa_supplicant/.config <<'EOF'
+      CONFIG_DRIVER_NL80211=y
+      CONFIG_LIBNL32=y
+      CONFIG_DRIVER_WIRED=y
+      CONFIG_IEEE8021X_EAPOL=y
+      CONFIG_EAP_MD5=y
+      CONFIG_EAP_MSCHAPV2=y
+      CONFIG_EAP_TLS=y
+      CONFIG_EAP_PEAP=y
+      CONFIG_EAP_TTLS=y
+      CONFIG_EAP_FAST=y
+      CONFIG_EAP_GTC=y
+      CONFIG_EAP_OTP=y
+      CONFIG_EAP_PSK=y
+      CONFIG_EAP_PWD=y
+      CONFIG_EAP_PAX=y
+      CONFIG_EAP_LEAP=y
+      CONFIG_PKCS12=y
+      CONFIG_HT_OVERRIDES=y
+      CONFIG_VHT_OVERRIDES=y
+      CONFIG_HE_OVERRIDES=y
+      CONFIG_IPV6=y
+      CONFIG_CTRL_IFACE=y
+      CONFIG_SAE=y
+      CONFIG_BACKEND=file
+      CONFIG_IEEE80211W=y
+      CONFIG_OCV=y
+      CONFIG_TLS=openssl
+      CONFIG_TLSV11=y
+      CONFIG_TLSV12=y
+      CONFIG_CTRL_IFACE_DBUS_NEW=y
+      CONFIG_CTRL_IFACE_DBUS_INTRO=y
+      CONFIG_DEBUG_SYSLOG=y
+      CONFIG_DEBUG_SYSLOG_FACILITY=LOG_DAEMON
+      CONFIG_DELAYED_MIC_ERROR_REPORT=y
+      CONFIG_GETRANDOM=y
+      CONFIG_INTERWORKING=y
+      CONFIG_HS20=y
+      CONFIG_AP=y
+      CONFIG_P2P=y
+      CONFIG_WIFI_DISPLAY=y
+      CONFIG_AUTOSCAN_PERIODIC=y
+      CONFIG_FILS=y
+      CONFIG_FILS_SK_PFS=y
+      CONFIG_BGSCAN_SIMPLE=y
+      CONFIG_OWE=y
+      CONFIG_SUITEB=y
+      CONFIG_SUITEB192=y
+      CONFIG_IEEE80211N=y
+      EOF
+      # CFLAGS carries the x86-64-v3 flags (build/x86-64-v3.env); the Makefile adds its own.
+      make -C wpa_supplicant BINDIR=/usr/bin LIBDIR=/usr/lib -j$(nproc)
+
+  # make install puts only the programs; NetworkManager reaches it over D-Bus, activated through
+  # the bus's service file and systemd's unit, which the build made from their templates.
+  - runs: |
+      cd wpa_supplicant
+      make BINDIR=/usr/bin LIBDIR=/usr/lib DESTDIR=${{targets.destdir}} install
+      install -Dm644 dbus/dbus-wpa_supplicant.conf ${{targets.destdir}}/usr/share/dbus-1/system.d/fi.w1.wpa_supplicant1.conf
+      install -Dm644 dbus/fi.w1.wpa_supplicant1.service ${{targets.destdir}}/usr/share/dbus-1/system-services/fi.w1.wpa_supplicant1.service
+      install -Dm644 systemd/wpa_supplicant.service ${{targets.destdir}}/usr/lib/systemd/system/wpa_supplicant.service
+      grep -q "SystemdService=wpa_supplicant.service" ${{targets.destdir}}/usr/share/dbus-1/system-services/fi.w1.wpa_supplicant1.service
+      grep -q "^ExecStart=/usr/bin/wpa_supplicant" ${{targets.destdir}}/usr/lib/systemd/system/wpa_supplicant.service
+
+  - uses: strip

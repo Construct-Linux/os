@@ -65,8 +65,9 @@ func (in *installer) options(t *testing.T, source string, size int64) InstallOpt
 			return in.esp, func() error { return nil }, nil
 		},
 		Loader: loader, Vars: in.vars,
-		UUID: func() string { n++; return fmt.Sprintf("00000000-0000-4000-8000-%012d", n) },
-		Log:  slog.New(slog.DiscardHandler),
+		VarUUID: testVarUUID,
+		UUID:    func() string { n++; return fmt.Sprintf("00000000-0000-4000-8000-%012d", n) },
+		Log:     slog.New(slog.DiscardHandler),
 	}
 }
 
@@ -95,6 +96,9 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 		TypeRoot + " " + Empty, TypeRootVerity + " " + Empty, TypeVar + " " + VarName}
 	if !slices.Equal(got, want) {
 		t.Errorf("the partitions are %v", got)
+	}
+	if read.Partitions[5].UUID != testVarUUID {
+		t.Errorf("/var's UUID is %s, not its machine's", read.Partitions[5].UUID)
 	}
 	if read.Partitions[1].UUID != newRoot || read.Partitions[2].UUID != newVerity {
 		t.Errorf("slot A's UUIDs are %s and %s", read.Partitions[1].UUID, read.Partitions[2].UUID)
@@ -260,3 +264,6 @@ func TestTheMediumIsTheDiskUnderTheRoot(t *testing.T) {
 		t.Errorf("the medium is %q, %v", d, err)
 	}
 }
+
+// testVarUUID is /var's UUID for the machine id of TestVarUUIDIsSystemds.
+const testVarUUID = "cc7a4ffd-7252-425e-8a6a-2142f38a9264"

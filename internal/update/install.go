@@ -31,8 +31,8 @@ const (
 	firstSector = 1 << 20 / gpt.Sector
 )
 
-// The names of the installed disk's partitions besides the slots': spin-init mounts the one named
-// var (cmd/spin-init), and a person reading the table sees which is the ESP.
+// The names of the installed disk's partitions besides the slots', for a person reading the table:
+// systemd finds them by type (and /var by its UUID, VarUUID).
 const (
 	ESPName = "esp"
 	VarName = "var"
@@ -40,8 +40,9 @@ const (
 
 // Layout is the table the installer writes on a disk of size bytes for r: the ESP, slot A holding
 // r - labelled with its version and given the UUIDs its files name, which its kernel image's
-// command line names - slot B Empty for the first update, and /var. uuid makes every other GUID.
-func Layout(r Release, size int64, uuid func() string) (gpt.Table, error) {
+// command line names - slot B Empty for the first update, and /var, with varUUID (VarUUID: the
+// one its installation's machine id gives it). uuid makes every other GUID.
+func Layout(r Release, size int64, varUUID string, uuid func() string) (gpt.Table, error) {
 	at := int64(firstSector)
 	next := func(sectors int64) (int64, int64) {
 		first := at
@@ -68,7 +69,7 @@ func Layout(r Release, size int64, uuid func() string) (gpt.Table, error) {
 		return gpt.Table{}, fmt.Errorf("install: the disk is %s, and the desktop needs %s at least",
 			humanSize(size), humanSize((at+int64(minVar/gpt.Sector)+40)*gpt.Sector))
 	}
-	parts = append(parts, gpt.Partition{Type: TypeVar, UUID: uuid(), First: at, Last: last, Name: VarName})
+	parts = append(parts, gpt.Partition{Type: TypeVar, UUID: varUUID, First: at, Last: last, Name: VarName})
 	// Each entry's number is its place: what the kernel calls the partition once it reads the table.
 	for i := range parts {
 		parts[i].Number = i + 1
@@ -94,6 +95,8 @@ type InstallOptions struct {
 	// PrepareVar, when set, is given the new /var's device once it is made: who the machine is
 	// for goes there (cmd/drift).
 	PrepareVar func(ctx context.Context, dev string) error
+	// VarUUID is /var's partition UUID: VarUUID of the machine's id.
+	VarUUID string
 	// Loader is the running root's systemd-boot, which the ESP is given.
 	Loader string
 	// Vars are the firmware's variables, where the boot entry is written.
@@ -113,7 +116,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	table, err := Layout(r, o.Disk.Size, o.UUID)
+	table, err := Layout(r, o.Disk.Size, o.VarUUID, o.UUID)
 	if err != nil {
 		return gpt.Table{}, err
 	}
