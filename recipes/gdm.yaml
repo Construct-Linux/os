@@ -1,7 +1,7 @@
 package:
   name: gdm
   version: "51.0"
-  epoch: 1
+  epoch: 2
   description: GNOME display manager
   copyright:
     - license: GPL-2.0-or-later
@@ -44,7 +44,9 @@ pipeline:
       uri: https://download.gnome.org/sources/gdm/${{vars.series}}/gdm-${{package.version}}.tar.xz
       expected-sha256: 2ce5acf5a438b8f6dc1d14fd777a911be5eeb2f7ab9a7c4600166205b15d6536
 
-  # Wolfi's linux-pam ships base-{auth,account,password,session}, not common-*.
+  # Wolfi's linux-pam ships base-{auth,account,password,session}, not common-*. And GDM unlocks
+  # the login keyring with the password typed (pam_gnome_keyring, as upstream's Fedora and Arch
+  # files do), or everything using libsecret - Chrome, GNOME Online Accounts - finds it locked.
   - uses: patch
     with:
       patches: gdm/pam-base.patch

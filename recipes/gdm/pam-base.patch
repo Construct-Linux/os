@@ -1,15 +1,16 @@
 diff -ru a/data/pam-openembedded/gdm-autologin.pam b/data/pam-openembedded/gdm-autologin.pam
 --- a/data/pam-openembedded/gdm-autologin.pam	2026-09-14 21:18:03.000000000 -0300
 +++ b/data/pam-openembedded/gdm-autologin.pam	2026-09-30 23:14:08.571653671 -0300
-@@ -1,5 +1,5 @@
+@@ -1,5 +1,6 @@
  #%PAM-1.0
  auth       required    pam_permit.so
 -account    include     common-account
 -password   include     common-auth
 -session    include     common-session
 +account    include     base-account
-+password   include     base-auth
++password   include     base-password
 +session    include     base-session
++-session   optional    pam_gnome_keyring.so auto_start
 diff -ru a/data/pam-openembedded/gdm-launch-environment.pam b/data/pam-openembedded/gdm-launch-environment.pam
 --- a/data/pam-openembedded/gdm-launch-environment.pam	2026-09-14 21:18:03.000000000 -0300
 +++ b/data/pam-openembedded/gdm-launch-environment.pam	2026-09-30 23:14:08.571714138 -0300
@@ -25,13 +26,16 @@ diff -ru a/data/pam-openembedded/gdm-launch-environment.pam b/data/pam-openembed
 diff -ru a/data/pam-openembedded/gdm-password.pam b/data/pam-openembedded/gdm-password.pam
 --- a/data/pam-openembedded/gdm-password.pam	2026-09-14 21:18:03.000000000 -0300
 +++ b/data/pam-openembedded/gdm-password.pam	2026-09-30 23:14:08.571738461 -0300
-@@ -1,5 +1,5 @@
+@@ -1,5 +1,8 @@
  #%PAM-1.0
 -auth       include     common-auth
 -account    include     common-account
 -password   include     common-password
 -session    include     common-session
 +auth       include     base-auth
++-auth      optional    pam_gnome_keyring.so
 +account    include     base-account
 +password   include     base-password
++-password  optional    pam_gnome_keyring.so use_authtok
 +session    include     base-session
++-session   optional    pam_gnome_keyring.so auto_start
