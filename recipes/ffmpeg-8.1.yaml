@@ -1,0 +1,197 @@
+# Wolfi's ffmpeg-8.1, at 8.1.3 and with VA-API. Wolfi's security feed fixes eighteen advisories
+# (thirteen of them High, in libavcodec) in 8.1.3, which it has not published yet (task scan);
+# Firefox and GStreamer's libav plugin decode web and media files through these libraries. And
+# Wolfi builds without --enable-vaapi, which Firefox's video decoding on the GPU goes through.
+# Its package and subpackage names, so the image's dependents take it; its configure flags,
+# with vaapi added; its test pipelines (Wolfi CI's) dropped. Remove the recipe once Wolfi ships
+# a newer ffmpeg-8.1 than this.
+package:
+  name: ffmpeg-8.1
+  version: 8.1.3
+  epoch: 0
+  description: ffmpeg multimedia library
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - libavcodec62=${{package.full-version}}
+      - libavdevice62=${{package.full-version}}
+      - libavfilter11=${{package.full-version}}
+      - libavformat62=${{package.full-version}}
+      - libavutil60=${{package.full-version}}
+      - libswresample6=${{package.full-version}}
+      - libswscale9=${{package.full-version}}
+    provides:
+      - ffmpeg=${{package.full-version}}
+    provider-priority: "5"
+
+environment:
+  contents:
+    packages:
+      - aom-dev
+      - build-base
+      - busybox
+      - bzip2-dev
+      - dav1d-dev
+      - fontconfig-dev
+      - freetype-dev
+      - harfbuzz-dev
+      - lame-dev
+      - libdrm-dev
+      - libogg-dev
+      - libsdl2-dev
+      - libsrt
+      - libssh-dev
+      - libtheora-dev
+      - libva-dev
+      - libvorbis-dev
+      - libwebp-dev
+      - libxml2-dev
+      - nasm
+      - openjpeg-dev
+      - openssl-dev
+      - opus-dev
+      - perl
+      - pkgconf
+      - snappy-dev
+      - soxr-dev
+      - speex-dev
+      - svt-av1-dev
+      - x264-dev
+      - x265-dev
+      - xz-dev
+      - zeromq-dev
+      - zlib-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/FFmpeg/FFmpeg
+      tag: n${{package.version}}
+      expected-commit: 1041abdc962f4cc4f394aa8de9dc5236c0c3b9e7
+
+  # CFLAGS carries the x86-64-v3 flags (build/x86-64-v3.env); configure adds its own after them.
+  - runs: |
+      ./configure \
+        --prefix=/usr \
+        --libdir=/usr/lib \
+        --enable-shared \
+        --enable-libx264 \
+        --enable-libx265 \
+        --enable-libaom \
+        --enable-libtheora \
+        --enable-gpl \
+        --enable-version3 \
+        --enable-openssl \
+        --enable-libmp3lame \
+        --enable-ffplay \
+        --enable-libdav1d \
+        --enable-libharfbuzz \
+        --enable-libopus \
+        --enable-libsnappy \
+        --enable-libsrt \
+        --enable-libssh \
+        --enable-libsvtav1 \
+        --enable-libvorbis \
+        --enable-libwebp \
+        --enable-libxml2 \
+        --enable-lzma \
+        --enable-libfontconfig \
+        --enable-libfreetype \
+        --enable-libopenjpeg \
+        --enable-libspeex \
+        --enable-libsoxr \
+        --enable-libzmq \
+        --enable-vaapi
+      grep -q "^#define CONFIG_VAAPI 1" config.h
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: ffmpeg-8.1-libavcodec62
+    description: libavcodec.so.62 library
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libavcodec.so.62* ${{targets.subpkgdir}}/usr/lib/
+    dependencies:
+      provides:
+        - libavcodec62=${{package.full-version}}
+      provider-priority: "5"
+
+  - name: ffmpeg-8.1-libavdevice62
+    description: libavdevice.so.62 library
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libavdevice.so.62* ${{targets.subpkgdir}}/usr/lib/
+    dependencies:
+      provides:
+        - libavdevice62=${{package.full-version}}
+      provider-priority: "5"
+
+  - name: ffmpeg-8.1-libavfilter11
+    description: libavfilter.so.11 library
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libavfilter.so.11* ${{targets.subpkgdir}}/usr/lib/
+    dependencies:
+      provides:
+        - libavfilter11=${{package.full-version}}
+      provider-priority: "5"
+
+  - name: ffmpeg-8.1-libavformat62
+    description: libavformat.so.62 library
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libavformat.so.62* ${{targets.subpkgdir}}/usr/lib/
+    dependencies:
+      provides:
+        - libavformat62=${{package.full-version}}
+      provider-priority: "5"
+
+  - name: ffmpeg-8.1-libavutil60
+    description: libavutil.so.60 library
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libavutil.so.60* ${{targets.subpkgdir}}/usr/lib/
+    dependencies:
+      provides:
+        - libavutil60=${{package.full-version}}
+      provider-priority: "5"
+
+  - name: ffmpeg-8.1-libswresample6
+    description: libswresample.so.6 library
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libswresample.so.6* ${{targets.subpkgdir}}/usr/lib/
+    dependencies:
+      provides:
+        - libswresample6=${{package.full-version}}
+      provider-priority: "5"
+
+  - name: ffmpeg-8.1-libswscale9
+    description: libswscale.so.9 library
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/lib
+          mv ${{targets.destdir}}/usr/lib/libswscale.so.9* ${{targets.subpkgdir}}/usr/lib/
+    dependencies:
+      provides:
+        - libswscale9=${{package.full-version}}
+      provider-priority: "5"
+
+  - name: ffmpeg-8.1-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - ffmpeg-8.1
