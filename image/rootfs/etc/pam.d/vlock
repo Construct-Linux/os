@@ -1,0 +1,5 @@
+# vlock's (kbd), on Wolfi's PAM stack: kbd's file includes system-auth, Fedora's name for it.
+auth       include      base-auth
+account    include      base-account
+password   include      base-password
+session    include      base-session-noninteractive
