@@ -69,11 +69,10 @@ func lifecycle(args []string) error {
 		return err
 	}
 	start := time.Now()
-	// The person the machine is installed for, as the installer would be told; the password goes
-	// through a file, as --yes asks nothing.
-	outs, err := g.run(`set -e; mkdir -p /run/rel; mount -o ro /dev/disk/by-partlabel/spin-update /run/rel; `+
-		`printf '%s\n' '`+lifecyclePassword+`' > /run/pw; `+
-		`drift install --disk /dev/nvme0n1 --from /run/rel --yes --user `+lifecycleUser+` --real-name 'Ada Lovelace' --password-file /run/pw; rm /run/pw; umount /run/rel`, "")
+	// As a person installs: drift reads the release from the stick it runs from. The person is
+	// given as the installer would be told; the password goes through a file, as --yes asks nothing.
+	outs, err := g.run(`set -e; printf '%s\n' '`+lifecyclePassword+`' > /run/pw; `+
+		`drift install --disk /dev/nvme0n1 --yes --user `+lifecycleUser+` --real-name 'Ada Lovelace' --password-file /run/pw; rm /run/pw`, "")
 	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
 	// How long an install takes is part of what it is: the person waits on it.
 	r.add("install", err == nil, fmt.Sprintf("%s in %s%s", lastLine(outs), time.Since(start).Round(time.Second), errText(err)))

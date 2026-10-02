@@ -160,12 +160,8 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	}
 	u := p.user
 	u.HashedPassword = hash
-	dir, err := os.MkdirTemp("/run/spindrift", "var-")
+	dir, unmount, err := mountFS(ctx, "ext4", "noatime", dev)
 	if err != nil {
-		return err
-	}
-	if err := run(ctx, "mount", "-t", "ext4", dev, dir); err != nil {
-		_ = os.Remove(dir)
 		return err
 	}
 	upper := filepath.Join(dir, "lib", "spindrift", "etc", "upper")
@@ -175,10 +171,9 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	if err == nil {
 		err = account.MakeHome(dir, u)
 	}
-	if uerr := run(context.Background(), "umount", dir); err == nil {
+	if uerr := unmount(); err == nil {
 		err = uerr
 	}
-	_ = os.Remove(dir)
 	return err
 }
 

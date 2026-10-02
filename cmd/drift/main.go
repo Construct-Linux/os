@@ -7,9 +7,9 @@
 //	drift gtk4       [--from DIR] [--to DIR]             the image's GTK 4 theme, copied for a user
 //	drift live                                           the live user, on a root nobody is installed for
 //
-// install's release is a directory - a stick's spin-update partition, mounted read-only - checked
-// against the public key the root carries (internal/update's KeyringPath) before anything is
-// written.
+// install's release is the spin-update partition of the stick it runs from (or --from, a
+// directory), checked against the public key the root carries (internal/update's KeyringPath)
+// before anything is written.
 package main
 
 import (
@@ -72,21 +72,21 @@ func main() {
 // defaultKeyring is the public key the running root trusts releases by.
 var defaultKeyring = "/" + update.KeyringPath
 
-// mountVFAT mounts the FAT file system at dev under /run, and answers where and how to unmount it.
-func mountVFAT(ctx context.Context, dev string) (string, func() error, error) {
+// mountFS mounts the fstype file system at dev, with opts, on a directory of its own under
+// /run/spindrift, and answers it and how to unmount it.
+func mountFS(ctx context.Context, fstype, opts, dev string) (string, func() error, error) {
 	if err := os.MkdirAll("/run/spindrift", 0o700); err != nil {
 		return "", nil, err
 	}
-	dir, err := os.MkdirTemp("/run/spindrift", "esp-")
+	dir, err := os.MkdirTemp("/run/spindrift", fstype+"-")
 	if err != nil {
 		return "", nil, err
 	}
-	if err := run(ctx, "mount", "-t", "vfat", "-o", "umask=0077", dev, dir); err != nil {
+	if err := run(ctx, "mount", "-t", fstype, "-o", opts, dev, dir); err != nil {
 		_ = os.Remove(dir)
 		return "", nil, err
 	}
 	return dir, func() error {
-		unix.Sync()
 		if err := run(context.Background(), "umount", dir); err != nil {
 			return err
 		}
@@ -94,10 +94,38 @@ func mountVFAT(ctx context.Context, dev string) (string, func() error, error) {
 	}, nil
 }
 
+// mountVFAT mounts the new ESP, root's alone.
+func mountVFAT(ctx context.Context, dev string) (string, func() error, error) {
+	return mountFS(ctx, "vfat", "umask=0077", dev)
+}
+
+// mountStick mounts the release the stick this runs from carries: its spin-update partition,
+// read-only, as spindrift-update@ mounts it.
+func mountStick(ctx context.Context, medium string) (string, func() error, error) {
+	f, err := os.Open("/dev/" + medium)
+	if err != nil {
+		return "", nil, err
+	}
+	table, err := gpt.Read(f)
+	_ = f.Close()
+	if err != nil {
+		return "", nil, fmt.Errorf("%s: %w", medium, err)
+	}
+	p, err := table.Named("spin-update")
+	if err != nil {
+		return "", nil, fmt.Errorf("%s carries no release: %w", medium, err)
+	}
+	dev, err := update.PartitionDevice("/sys", medium, p.Number)
+	if err != nil {
+		return "", nil, err
+	}
+	return mountFS(ctx, "vfat", "ro,nodev,nosuid,noexec", dev)
+}
+
 func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
 	fl := flag.NewFlagSet("install", flag.ExitOnError)
 	diskFlag := fl.String("disk", "", "the disk to install on: /dev/nvme0n1, or a link under /dev/disk (default: the machine's first disk that is neither removable nor USB)")
-	from := fl.String("from", update.DefaultSource, "the release to install: an update stick's partition, mounted")
+	from := fl.String("from", "", "the release to install, a directory (default: the stick this runs from)")
 	yes := fl.Bool("yes", false, "do not ask: erase the disk")
 	keyring := fl.String("keyring", defaultKeyring, "the public key the release is checked against")
 	loader := fl.String("loader", "/usr/lib/systemd/boot/efi/systemd-bootx64.efi", "the systemd-boot the ESP is given")
@@ -152,6 +180,14 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	varUUID, err := update.VarUUID(string(machineID))
 	if err != nil {
 		return err
+	}
+	if *from == "" {
+		dir, unmount, err := mountStick(ctx, medium)
+		if err != nil {
+			return err
+		}
+		defer func() { _ = unmount() }() // read-only
+		*from = dir
 	}
 	_, err = update.Install(ctx, update.InstallOptions{
 		Keys: keys, Source: *from, Disk: disk,
