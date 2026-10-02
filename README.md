@@ -48,6 +48,10 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
   password. root has none and cannot log in.
 - **update**: plugged into an installed machine, it writes its release into the slot not running.
 
+An installed machine goes back to how it left the installer with `sudo systemctl start
+factory-reset.target`: it restarts, `/var` is made anew (every person, file, container and
+setting gone; the system slots untouched), and GNOME's Initial Setup asks who it is for.
+
 ## Test it
 
 `task test` drives the desktop in QEMU (every app, Settings, the shell's own views and the lock

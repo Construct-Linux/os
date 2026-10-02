@@ -95,6 +95,13 @@ func readDisk(sys, name string) (BlockDisk, error) {
 	return d, nil
 }
 
+// VerifiedRoot says whether the running root is a release's, under dm-verity - a stick's or an
+// installed disk's - rather than a development root such as the ext4 test disk.
+func VerifiedRoot(sys string) bool {
+	_, err := dmNamed(sys, "root")
+	return err == nil
+}
+
 // FromStick says whether the running root is read from a removable or USB disk - a live stick -
 // rather than from a disk of the machine's own.
 func FromStick(sys string) bool {

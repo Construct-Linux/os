@@ -140,6 +140,14 @@ func buildInitrd(osRelease, dst string) error {
 	if err := os.WriteFile(filepath.Join(stage, "etc/initrd-release"), []byte(osRelease), 0o644); err != nil {
 		return err
 	}
+	// The initrd is Spindrift's too: wolfi-baselayout's etc/os-release said Wolfi, and a tool that
+	// reads it there (systemd-factory-reset matching a request to this OS) took it for another.
+	for _, p := range []string{"etc/os-release", "usr/lib/os-release"} {
+		_ = os.Remove(filepath.Join(stage, p))
+	}
+	if err := os.Symlink("initrd-release", filepath.Join(stage, "etc/os-release")); err != nil {
+		return err
+	}
 	// The users and groups the initrd's udev rules and tmpfiles name (tss, systemd-journal, ...):
 	// its packages declare them, and nothing in the initrd runs systemd-sysusers.
 	if err := run("systemd-sysusers", "--root="+stage); err != nil {

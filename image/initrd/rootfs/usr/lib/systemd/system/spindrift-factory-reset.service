@@ -1,0 +1,24 @@
+# A factory reset: systemctl start factory-reset.target asks for one and reboots (systemd's
+# FactoryResetRequest), and in the initrd this unit, which /var's mount always pulls in, sees the
+# reset is on and makes /var's file system anew before it is mounted - the same
+# partition, its UUID kept, as the dissect builtin finds it - so the person, their files, the
+# /etc overlay's changes and the installed Flatpaks go; the release and its slots stay. With
+# nobody on the machine, GDM opens GNOME's Initial Setup to make its new person.
+# systemd's generator would pull factory-reset-now.target in here, but it runs before the kernel
+# registers its EFI variables (1.31 s against 1.30 s on the VM) and sees no request; the check is
+# made once /var's device is there. After the switch the root's generator sees the request and
+# marks it complete. (systemd-repart's FactoryReset= cannot do it: it does not take a /var it did
+# not make.)
+[Unit]
+Description=Factory reset: /var made anew
+DefaultDependencies=no
+Requires=dev-disk-by\x2ddesignator-var.device
+After=dev-disk-by\x2ddesignator-var.device
+Before=sysroot-var.mount factory-reset-now.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# status says "on", in the journal, with exit status 10.
+ExecCondition=/bin/sh -c '/usr/lib/systemd/systemd-factory-reset status; test $? -eq 10'
+ExecStart=mkfs.ext4 -q -F -L var /dev/disk/by-designator/var

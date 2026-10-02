@@ -7,7 +7,8 @@
 Description=/var, from the root's disk
 DefaultDependencies=no
 Requires=sysroot.mount
-After=sysroot.mount systemd-repart.service
+Wants=spindrift-factory-reset.service
+After=sysroot.mount systemd-repart.service spindrift-factory-reset.service
 Before=initrd-fs.target
 
 [Mount]

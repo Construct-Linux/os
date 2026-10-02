@@ -213,10 +213,16 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 // person's /etc from them.
 const factoryEtc = "/usr/share/factory/etc"
 
-// liveCmd gives a root nobody is installed for - a live stick, the test disk - the live user,
-// logged in at boot (spindrift-live.service, before GDM). An installed machine has its person,
-// written by drift install, and never gets it.
+// liveCmd gives a stick nobody is installed from the live user, logged in at boot
+// (spindrift-live.service, before GDM), and the installer; a development root (the ext4 test
+// disk) gets the live user too. An installed machine - a verified root that is no stick - has
+// its person, written by drift install, or after a factory reset left it nobody, GNOME's
+// Initial Setup makes one: it never gets the live user.
 func liveCmd(etc, varDir string) error {
+	stick := update.FromStick("/sys")
+	if !stick && update.VerifiedRoot("/sys") {
+		return nil
+	}
 	installed, err := account.HasPerson(etc)
 	if err != nil || installed {
 		return err
@@ -236,7 +242,7 @@ func liveCmd(etc, varDir string) error {
 	if err := ownedFile(home, ".config/gnome-initial-setup-done", []byte("yes"), account.Live.UID); err != nil {
 		return err
 	}
-	if !update.FromStick("/sys") {
+	if !stick {
 		return nil
 	}
 	return offerInstaller(home, installerEntry, account.Live.UID)

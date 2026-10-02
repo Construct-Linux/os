@@ -178,6 +178,22 @@ func lifecycle(args []string) error {
 	r.add("v3 is marked bad", strings.Contains(esp, "spindrift_"+versions["v3"]+"+0-3"), oneLine(esp))
 	kept, _ = g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/spindrift-marker`, "")
 	r.add("kept across the rollback", strings.Count(kept, "kept") == 2, oneLine(kept))
+
+	// 7. A factory reset, as systemd asks for one: the machine reboots, its /var made anew in the
+	// initrd - the release kept, the person and what they kept gone - and GDM opens GNOME's
+	// Initial Setup for the machine's new person.
+	_, _ = g.run(`systemctl start --no-block factory-reset.target`, "")
+	for down := time.Now().Add(3 * time.Minute); time.Now().Before(down); time.Sleep(time.Second) {
+		if _, err := g.run("true", ""); err != nil {
+			break
+		}
+	}
+	err = g.wait(10 * time.Minute)
+	r.add("factory reset reboots", err == nil && g.version() == versions["v2"], "running "+g.version()+errText(err))
+	gone, _ := g.run(`ls /var/home/; getent passwd `+lifecycleUser+`; cat /etc/spindrift-marker 2>&1`, "")
+	r.add("factory reset forgets the person", !strings.Contains(gone, lifecycleUser) && !strings.Contains(gone, "kept"), oneLine(gone))
+	setup, _ := g.run(`for i in $(seq 60); do loginctl list-sessions --no-legend | grep -q gnome-initial-setup && break; sleep 2; done; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
+	r.add("initial setup for the new person", strings.Contains(setup, "gnome-initial-setup"), "sessions: "+setup)
 	err = r.write(g)
 	v.powerOff(g)
 	return err
