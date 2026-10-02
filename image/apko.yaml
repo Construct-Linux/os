@@ -35,6 +35,9 @@ contents:
     # gpg it checks a release's SHA256SUMS.gpg with.
     - systemd-sysupdate
     - gpg
+    # /var is LUKS2, opened by spin-init with the TPM and the person's PIN: systemd-cryptsetup and
+    # systemd-cryptenroll load the TPM2 stack (libtss2-*) at run time, so nothing depends on it.
+    - tpm2-tss
     - shadow
     - coreutils
     - bash
