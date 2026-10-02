@@ -125,6 +125,7 @@ falling back from a release that does not come up.
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
 | install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, four forged sticks refused, update from a URL, rollback from a broken release, files in `/var` and `/etc` kept |
 | the kernel | `task kernel:config`, then `task kernel` | the assertion's output |
+| packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | a Critical or High a version fixes fails it; `_output/scan/grype.json` has the rest |
 | the boot's look (splash, Plymouth) | `go run ./cmd/image boot -usb -shots 30` | the frames in `_output/boot` |
 
 Tools for a boot that misbehaves: `go run ./cmd/image run [-usb | -vars -nvme -sticks] -- '<cmd>'`

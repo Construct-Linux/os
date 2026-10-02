@@ -152,6 +152,18 @@ tasks:
         docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
         '_output/bin/image usb-disk; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
 
+  scan:
+    desc: "Scan the stick's baked root (_output/usb/root, task usb) for vulnerabilities with Grype; fails on a Critical or High a version already fixes (build/grype.yaml). Everything found is in _output/scan/grype.json."
+    vars:
+      GRYPE:
+        sh: cd {{.AMI}} && go tool versions ref grype
+    cmds:
+      - mkdir -p _output/scan/grype-db _output/scan/tmp
+      - >-
+        docker run --rm -u {{.UID}} -v {{.ROOT_DIR}}/_output/usb/root:/root:ro -v {{.ROOT_DIR}}/_output/scan:/scan
+        -v {{.ROOT_DIR}}/build/grype.yaml:/grype.yaml:ro -e GRYPE_DB_CACHE_DIR=/scan/grype-db -e TMPDIR=/scan/tmp
+        {{.GRYPE}} -c /grype.yaml dir:/root -o table -o json=/scan/grype.json
+
   test:usb:
     desc: Build the USB disk with the test layer, signed by a throwaway key, and run the harness on it, booted by UEFI from a USB stick.
     deps: [keygen:test]

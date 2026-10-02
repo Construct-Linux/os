@@ -1,0 +1,14 @@
+# What task scan holds the root to. Grype decides it from this.
+
+# The root's os-release says Spindrift, which Grype knows nothing of; its packages are Wolfi's
+# and recipes/'s, and Wolfi's feed says which CVEs of Wolfi's packages are fixed.
+distro: wolfi:rolling
+
+# A Critical or High fails the scan only when a version already fixes it: a Wolfi package's by
+# rebuilding the root, a recipe's by updating it. One nobody has fixed has nothing to update to;
+# it is kept in scan/grype.json under ignoredMatches.
+only-fixed: true
+fail-on-severity: high
+
+# The pinned Grype; its database is fetched at every scan, its binary never.
+check-for-app-update: false
