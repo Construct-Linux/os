@@ -7,6 +7,13 @@
 enable systemd-resolved.service
 enable systemd-timesyncd.service
 enable NetworkManager.service
+# Printers, shares and devices on the local network, which Files and GNOME's dialogs browse
+# through gvfs (its Also= enables the socket, its Alias= the bus name).
+enable avahi-daemon.service
+# The machine: SSD TRIM weekly; memory pressure handled before the kernel's OOM killer
+# (usr/lib/systemd/oomd.conf.d).
+enable fstrim.timer
+enable systemd-oomd.service
 # The desktop.
 enable gdm.service
 enable bluetooth.service
