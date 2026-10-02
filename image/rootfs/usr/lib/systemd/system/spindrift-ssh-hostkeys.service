@@ -1,8 +1,8 @@
 # The host key systemd-ssh-generator's sshd needs - Ed25519, the only kind it offers - made on the
-# first boot in /var and kept: nothing in the image carries one, so every machine has its own. A
-# boot whose /var cannot be written - a stick spin-init could not give one - makes it in /run, for
-# that boot only. A key that is not one - empty, after a power cut caught it unwritten - is made
-# again, and a new one is synced before sshd may read it.
+# first boot in /etc/ssh, which the /etc overlay keeps on /var: nothing in the image carries one,
+# so every machine has its own. ssh-keygen -A would make RSA and ECDSA keys too. A key that is not
+# one - empty, after a power cut caught it unwritten - is made again, and a new one is synced
+# before sshd may read it.
 [Unit]
 Description=SSH host key
 DefaultDependencies=no
@@ -11,7 +11,7 @@ Before=sockets.target sshd-vsock.socket sshd-unix-local.socket
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'd=/var/lib/sshd; mkdir -p $d 2>/dev/null && touch $d/.w 2>/dev/null && rm $d/.w || d=/run/sshd-keys; mkdir -p $d; k=$d/ssh_host_ed25519_key; ssh-keygen -y -f $k >/dev/null 2>&1 && exit 0; rm -f $k $k.pub; ssh-keygen -q -N "" -t ed25519 -f $k && sync $k $k.pub $d'
+ExecStart=/bin/sh -c 'k=/etc/ssh/ssh_host_ed25519_key; ssh-keygen -y -f $k >/dev/null 2>&1 && exit 0; rm -f $k $k.pub; ssh-keygen -q -N "" -t ed25519 -f $k && sync $k $k.pub /etc/ssh'
 
 [Install]
 WantedBy=sysinit.target
