@@ -146,8 +146,8 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 ## Where to look next
 
 AutoFDO/Propeller profiles recorded on the NucBox; boot time (the initrd, units on the critical
-path); geoclue's start timeout on the USB disk; a services audit (what runs that need not, which
-units can be sandboxed further); Secure Boot and measured boot, as spin-ami does; an ISO medium.
+path); a services audit (what runs that need not, which units can be sandboxed further); Secure
+Boot and measured boot, as spin-ami does; an ISO medium.
 
 ## Two repositories
 
