@@ -1,0 +1,51 @@
+# Printing, part 3: the filters CUPS runs and driverless (IPP Everywhere) support, so a network
+# or USB printer works with no driver.
+package:
+  name: cups-filters
+  version: 2.0.1
+  epoch: 0
+  description: "OpenPrinting's CUPS filters: the programs CUPS runs to print"
+  copyright:
+    - license: Apache-2.0
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - pkgconf
+      - cups-dev
+      - libcupsfilters-dev
+      - libppd-dev
+      - ghostscript
+      - poppler-utils
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/OpenPrinting/cups-filters/releases/download/${{package.version}}/cups-filters-${{package.version}}.tar.xz
+      expected-sha256: 39e71de3ce06762b342749f1dc7cba6817738f7bf4d322c1bb9ab10b8569ab80
+
+  # foomatic-rip declares callbacks with an empty parameter list, which C23 - GCC 16's default -
+  # reads as (void): gnu17, after the x86-64-v3 flags.
+  - runs: |
+      CFLAGS="$CFLAGS -std=gnu17" ./configure \
+        --prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --disable-static --disable-mutool --enable-driverless
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: ${{package.name}}-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - ${{package.name}}

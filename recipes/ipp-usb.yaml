@@ -1,0 +1,38 @@
+# Printing, part 6: a USB printer that speaks IPP-over-USB (what driverless printers do) becomes
+# a network printer on localhost that CUPS and avahi find. udev starts it when one is plugged
+# in; it costs nothing otherwise. Wolfi has no recipe.
+package:
+  name: ipp-usb
+  version: 0.9.34
+  epoch: 0
+  description: IPP over USB for driverless printers and scanners
+  copyright:
+    - license: BSD-2-Clause
+
+environment:
+  contents:
+    packages:
+      - avahi-dev
+      - build-base
+      - busybox
+      - go
+      - libusb-dev
+      - pkgconf
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/OpenPrinting/ipp-usb
+      tag: ${{package.version}}
+      expected-commit: 057c7ac8739e557d12796378f3c180136cb3e274
+
+  # Its Makefile installs to /sbin and gzips a man page; the same files, where Wolfi puts them.
+  - runs: |
+      go build -ldflags "-s -w" -tags nethttpomithttp2 -mod=vendor
+      install -Dm755 ipp-usb ${{targets.destdir}}/usr/bin/ipp-usb
+      install -Dm644 -t ${{targets.destdir}}/usr/lib/udev/rules.d systemd-udev/71-ipp-usb.rules
+      install -Dm644 -t ${{targets.destdir}}/usr/lib/systemd/system systemd-udev/ipp-usb.service
+      sed -i 's|/sbin/ipp-usb|/usr/bin/ipp-usb|' ${{targets.destdir}}/usr/lib/systemd/system/ipp-usb.service
+      install -Dm644 -t ${{targets.destdir}}/etc/ipp-usb ipp-usb.conf
+      install -Dm644 -t ${{targets.destdir}}/usr/share/ipp-usb/quirks ipp-usb-quirks/*
+      grep -q '^ExecStart=/usr/bin/ipp-usb' ${{targets.destdir}}/usr/lib/systemd/system/ipp-usb.service

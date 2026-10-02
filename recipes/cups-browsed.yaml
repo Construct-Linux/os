@@ -1,0 +1,59 @@
+# Printing, part 4: the printers avahi announces on the network appear in GNOME's print dialogs
+# without anyone adding them.
+package:
+  name: cups-browsed
+  version: 2.1.1
+  epoch: 1
+  description: "Finds the network's printers and makes them CUPS queues"
+  copyright:
+    - license: Apache-2.0
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gettext
+      - pkgconf
+      - avahi-dev
+      - cups-dev
+      - glib-dev
+      - libcupsfilters-dev
+      - libppd-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/OpenPrinting/cups-browsed/releases/download/${{package.version}}/cups-browsed-${{package.version}}.tar.xz
+      expected-sha256: d185169a74e6a5731b6bd74cba8d269f34e5c71cb71ef1841f2fa91637ba1d58
+
+  - uses: autoconf/configure
+    with:
+      opts: --disable-static --sbindir=/usr/bin --with-cups-rundir=/run/cups --with-browseremoteprotocols=dnssd,cups
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  # The unit the source ships, which make install leaves out: from /usr/bin, and not after
+  # network-online.target, which would hold multi-user.target for the network at every boot (up
+  # to a minute without one) - cups-browsed follows printers through avahi as they come.
+  - runs: |
+      install -Dm644 daemon/cups-browsed.service ${{targets.destdir}}/usr/lib/systemd/system/cups-browsed.service
+      sed -i -e 's|/usr/sbin/cups-browsed|/usr/bin/cups-browsed|' \
+        -e 's|^After=.*|After=cups.service avahi-daemon.service|' \
+        -e 's|^Wants=.*|Wants=avahi-daemon.service|' \
+        ${{targets.destdir}}/usr/lib/systemd/system/cups-browsed.service
+      grep -q '^ExecStart=/usr/bin/cups-browsed$' ${{targets.destdir}}/usr/lib/systemd/system/cups-browsed.service
+      ! grep -q network-online ${{targets.destdir}}/usr/lib/systemd/system/cups-browsed.service
+
+  - uses: strip
+
+subpackages:
+  - name: ${{package.name}}-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - ${{package.name}}

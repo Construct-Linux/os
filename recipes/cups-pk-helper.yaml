@@ -1,0 +1,41 @@
+# Printing, part 5: the D-Bus service GNOME's Settings adds, removes and configures printers
+# through, with polkit deciding who may - so the person's own password does it, not a root
+# shell. Wolfi has no recipe.
+package:
+  name: cups-pk-helper
+  version: 0.2.7
+  epoch: 0
+  description: Lets a desktop administer CUPS through polkit
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cups-dev
+      - gettext
+      - glib-dev
+      - meson
+      - ninja
+      - polkit-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/cups-pk-helper/cups-pk-helper/-/archive/${{package.version}}/cups-pk-helper-${{package.version}}.tar.gz
+      expected-sha256: 8571a7d2fe459f340fc4031a374aced254305d09d96092c7951b90b1c493ab8d
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: cups-pk-helper-lang
+    pipeline:
+      - uses: split/locales
