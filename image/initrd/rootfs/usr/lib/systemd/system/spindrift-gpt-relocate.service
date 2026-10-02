@@ -6,13 +6,16 @@
 Description=The boot disk's partition table, stretched to its end
 DefaultDependencies=no
 BindsTo=dev-disk-spindrift\x2dboot.device
-After=dev-disk-spindrift\x2dboot.device
+# After the root is open: udev re-reads a disk's partition table when a writer closes it, which
+# succeeds while none of its partitions is in use - and a re-read under systemd-veritysetup made
+# opening the root fail with EBUSY, a first boot in emergency mode, 1 in 2 in the VM. With the
+# root held the re-read is refused and the partitions stay.
+After=dev-disk-spindrift\x2dboot.device sysroot.mount
 Before=systemd-repart.service
 ConditionPathExists=!/dev/disk/by-designator/var
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-# --no-reread: the partitions do not move, and a re-read would take them away from under
-# systemd-veritysetup, which may be opening the root at the same moment.
+# --no-reread: the partitions do not move, and the root's are in use.
 ExecStart=sfdisk --relocate gpt-bak-std --no-reread --no-tell-kernel /dev/disk/spindrift-boot
