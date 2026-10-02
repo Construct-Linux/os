@@ -43,7 +43,7 @@ pipeline:
 
   # udisks needs crypto, fs, loop, mdraid, nvme, part and swap. LVM,
   # btrfs, multipath, NVDIMM and SMART are server/storage-admin features
-  # with no user on a desktop VM; Python bindings and the CLI tools are
+  # with no user on a one-disk desktop; Python bindings and the CLI tools are
   # only for scripting.
   - uses: autoconf/configure
     with:

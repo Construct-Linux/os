@@ -57,7 +57,8 @@ pipeline:
       gen libebook-contacts-1.2 EBookContacts-1.2.gir camel-1.2 libedataserver-1.2 gio-2.0 libsoup-3.0 libxml-2.0 posix
       gen libebook-1.2 EBook-1.2.gir camel-1.2 libedataserver-1.2 libebook-contacts-1.2 gio-2.0 libsoup-3.0 libxml-2.0 posix
 
-  # Telepathy is not in Wolfi; the BlueZ backend needs OBEX (not shipped) and oFono is a modem
+  # Telepathy is not in Wolfi; the BlueZ backend (a phone's contacts over
+  # OBEX) is a feature the desktop does not offer, and oFono is a modem
   # stack the desktop does not run. The import and inspect tools are developer utilities.
   - uses: meson/configure
     with:

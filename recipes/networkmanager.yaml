@@ -44,7 +44,8 @@ pipeline:
       uri: https://gitlab.freedesktop.org/api/v4/projects/411/packages/generic/NetworkManager/${{package.version}}/NetworkManager-${{package.version}}.tar.xz
       expected-sha256: 262864cfd198123d3e5dbe91937441b97ee9059d6d712e1a5bfbb1c54668d14d
 
-  # crypto=gnutls: Wolfi has no Mozilla NSS development package.
+  # crypto=gnutls: certificates for 802.1X and VPNs through GnuTLS, which the image carries for
+  # glib-networking already.
   # ppp, modem_manager, ofono: PPP and ModemManager are deliberately not available.
   # ovs, teamdctl, nm_cloud_setup, ifupdown, ifcfg_rh: no Open vSwitch, teamd, cloud or distro config files on the desktop.
   # nmtui: Wolfi has no newt.

@@ -27,7 +27,7 @@ pipeline:
       tag: v${{package.version}}
       expected-commit: af22b0bb6a97fff89b0e11101de9fc4937832864
 
-  # idevice off: no iPhone battery reporting needed in a VM session
+  # idevice off: iPhone battery reporting needs libimobiledevice, which Wolfi has not.
   - uses: meson/configure
     with:
       opts: -Dintrospection=enabled -Dman=false -Dgtk-doc=false -Dinstalled_tests=false -Didevice=disabled -Dpolkit=enabled -Dos_backend=linux -Dsystemdsystemunitdir=/usr/lib/systemd/system -Dudevrulesdir=/usr/lib/udev/rules.d -Dudevhwdbdir=/usr/lib/udev/hwdb.d -Dzshcompletiondir=no

@@ -29,7 +29,7 @@ pipeline:
 
   # SMART needs libblockdev's smart plugin, built without it. LVM2,
   # BTRFS, iSCSI and LibStorageMgmt are storage-admin modules with no user
-  # on a desktop VM. umount.udisks2 goes to /usr/bin: Wolfi lints /usr/sbin
+  # on a one-disk desktop; an NVMe disk's health comes from the nvme module. umount.udisks2 goes to /usr/bin: Wolfi lints /usr/sbin
   # as a usrmerge violation.
   - uses: autoconf/configure
     with:

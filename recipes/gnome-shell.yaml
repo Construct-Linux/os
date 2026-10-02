@@ -65,9 +65,6 @@ environment:
       - mutter-dev
       - networkmanager-dev
       - ninja
-      # libcamel needs NSS at link time; the evolution-data-server package does not depend on it
-      - libnspr
-      - libnss
       - pango-dev
       - pipewire-dev
       - polkit-dev
