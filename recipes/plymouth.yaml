@@ -1,7 +1,11 @@
+# Upstream's main, after its last release (26.134.222): that release's plymouthd aborted during
+# boot on a pixel display gone from its list (the assert in ply_pixel_display_unpause_updates, a
+# core dump in the lifecycle's report); main routes display hotplug through one owner and fixes
+# the DRM backend's lifetime across device closure.
 package:
   name: plymouth
-  version: 26.134.222
-  epoch: 2
+  version: 26.134.222_git20260929
+  epoch: 0
   description: Graphical boot splash with KMS and frame-buffer renderers
   copyright:
     - license: GPL-2.0-or-later
@@ -12,6 +16,7 @@ package:
 environment:
   contents:
     packages:
+      - bash
       - build-base
       - busybox
       - cairo-dev
@@ -33,8 +38,8 @@ pipeline:
   - uses: git-checkout
     with:
       repository: https://gitlab.freedesktop.org/plymouth/plymouth.git
-      tag: ${{package.version}}
-      expected-commit: d15928a8e06c217aad0f2e3579df23fec93dc009
+      branch: main
+      expected-commit: 206cbcf7aa593d03f6f3070584537a6132b486b0
 
   # gtk off: it only builds the x11 renderer and the plymouth-x11 test tool. upstart-monitoring
   # off: systemd drives the boot. Tracing on: it writes only when plymouth.debug or --debug asks,
@@ -44,6 +49,10 @@ pipeline:
       opts: --sbindir=bin -Ddocs=false -Dgtk=disabled -Ddrm=true -Dpango=enabled -Dfreetype=enabled -Dudev=enabled -Dsystemd-integration=true -Dupstart-monitoring=false -Dtracing=true -Drelease-file=/etc/os-release
 
   - uses: meson/compile
+
+  # Main's tests cover the display hotplug and renderer lifetimes this build is taken for. The
+  # functional suites run the installed programs and initrd scripts, which a build has not.
+  - runs: meson test -C output --no-suite functional --print-errorlogs
 
   - uses: meson/install
 
