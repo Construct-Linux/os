@@ -1,7 +1,7 @@
 package:
   name: libcanberra
   version: "0.30"
-  epoch: 0
+  epoch: 1
   description: Simple audio library for GTK applications
   copyright:
     - license: LGPL-2.1-or-later
@@ -44,8 +44,11 @@ pipeline:
 
   - uses: autoconf/make-install
 
+  # Not its GNOME login sound: GNOME plays none, and the freedesktop theme has no desktop-login
+  # sound for it to play, so at every login it only logged "Failed to play sound".
   - runs: |
       rm -rf ${{targets.destdir}}/usr/share/doc ${{targets.destdir}}/usr/share/gtk-doc
+      rm ${{targets.destdir}}/usr/share/gnome/autostart/libcanberra-login-sound.desktop
       find ${{targets.destdir}} -name '*.la' -delete
 
   - uses: strip

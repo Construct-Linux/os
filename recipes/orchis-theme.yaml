@@ -1,7 +1,7 @@
 package:
   name: orchis-theme
   version: "20260914"
-  epoch: 1
+  epoch: 2
   description: Orchis GTK and GNOME Shell theme (blue and teal, light and dark)
   copyright:
     - license: GPL-3.0-only
@@ -22,7 +22,7 @@ pipeline:
     with:
       repository: https://github.com/aledbf/Orchis-theme
       branch: gnome-shell-51
-      expected-commit: e682b297f798affdd13e1bb68b561055f6850473
+      expected-commit: 4e829aae45bff1d1d12b937f775df97110e4d745
 
   # No -l (it links into a home directory; the image links libadwaita per user) and no -g (the
   # login screen keeps GNOME's look).
