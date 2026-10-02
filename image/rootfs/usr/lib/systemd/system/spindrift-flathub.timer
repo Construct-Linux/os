@@ -1,0 +1,11 @@
+# Flathub and Chrome a minute after boot, off the boot's path: a first boot does not wait for a
+# download, and a boot without network does not wait for one at all. The service stays done once
+# Chrome is installed (its ConditionPathExists).
+[Unit]
+Description=Set up Flathub after boot
+
+[Timer]
+OnBootSec=1min
+
+[Install]
+WantedBy=timers.target

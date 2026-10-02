@@ -1,5 +1,6 @@
 # Flathub as the system remote, and Chrome from it: apps the image does not build come from
-# Flathub. It needs the network, so it retries at every boot until it has both, then stays done.
+# Flathub. Started by spindrift-flathub.timer, off the boot's path; it needs the network, so it
+# tries again at every boot until it has both, then stays done.
 [Unit]
 Description=Flathub and the apps installed from it
 Wants=network-online.target
@@ -10,6 +11,3 @@ ConditionPathExists=!/var/lib/flatpak/app/com.google.Chrome
 Type=oneshot
 ExecStart=/usr/bin/flatpak remote-add --system --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
 ExecStart=/usr/bin/flatpak install --system --noninteractive -y flathub com.google.Chrome
-
-[Install]
-WantedBy=multi-user.target
