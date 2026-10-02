@@ -1,7 +1,7 @@
 package:
   name: ptyxis
   version: "50.1"
-  epoch: 0
+  epoch: 1
   description: Container-oriented terminal
   copyright:
     - license: GPL-3.0-or-later
@@ -17,6 +17,7 @@ environment:
       - gtk-4-dev
       - json-glib-dev
       - libadwaita-dev
+      - libportal-dev
       - meson
       - ninja
       - vte3-dev
@@ -26,11 +27,6 @@ pipeline:
     with:
       uri: https://download.gnome.org/sources/ptyxis/${{vars.series}}/ptyxis-${{package.version}}.tar.xz
       expected-sha256: 73f4b76480644b2840415859a51d20cd7487b0619714f8defcd38212c3ddcffe
-
-  # libportal is not part of this desktop; links then open through gtk_show_uri, the path upstream already uses off Linux.
-  - uses: patch
-    with:
-      patches: ptyxis/no-libportal.patch
 
   - uses: meson/configure
     with:

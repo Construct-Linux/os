@@ -1,7 +1,7 @@
 package:
   name: localsearch
   version: 3.12.0
-  epoch: 0
+  epoch: 1
   description: Filesystem indexer and metadata extractors for TinySPARQL
   copyright:
     - license: GPL-2.0-or-later
@@ -12,6 +12,7 @@ environment:
       - build-base
       - busybox
       - dbus-dev
+      - exempi-dev
       - ffmpeg-8.1-dev
       - giflib-dev
       - glib-dev
@@ -29,6 +30,7 @@ environment:
       - python-3.13
       - systemd-dev
       - tinysparql-dev
+      - totem-pl-parser-dev
       - upower-dev
       - zlib-dev
 
@@ -39,11 +41,11 @@ pipeline:
       expected-sha256: 4bf45440ce7a899f2eca4d20343d31fc620fa2a3fe53bb929de244305330e930
 
   # bash_completion stays on: with it off, the 3.12.0 summary references an undefined bash_completion_dir and configure fails.
-  # Off because Wolfi lacks the library: gexiv2 (raw, exif, iptc, and the jpeg, png, tiff and webp extractors, which include gexiv2 headers unconditionally), exempi (xmp), libosinfo (iso), totem-pl-parser (playlist), libcue (cue), libgxps (xps).
-  # libmediainfo off: libav already covers audio and video. writeback off: its XMP and audio-tag writers need exempi and taglib.
+  # XMP metadata (exempi) and playlists (totem-pl-parser), from recipes/. Off because Wolfi lacks the library: gexiv2 (raw, exif, iptc, and the jpeg, png, tiff and webp extractors, which include gexiv2 headers unconditionally), libosinfo (iso), libcue (cue), libgxps (xps).
+  # libmediainfo off: libav already covers audio and video. writeback off: its audio-tag writer needs taglib, which Wolfi lacks.
   - uses: meson/configure
     with:
-      opts: -Dman=false -Dfunctional_tests=false -Dsandbox_tests=false -Dsystemd_user_services=true -Dsystemd_user_services_dir=/usr/lib/systemd/user -Dminer_fs=true -Dextract=true -Dwriteback=false -Dseccomp=true -Dlandlock=enabled -Dfanotify=enabled -Dbattery_detection=upower -Dcharset_detection=icu -Dxmp=disabled -Draw=disabled -Diso=disabled -Dplaylist=disabled -Dcue=disabled -Dxps=disabled -Dlibav=enabled -Dlibmediainfo=disabled -Dexif=disabled -Dgif=enabled -Dgsf=enabled -Djpeg=disabled -Dpdf=enabled -Dpng=disabled -Dtiff=disabled -Dxml=enabled -Dwebp=disabled -Dzip=enabled -Diptc=disabled
+      opts: -Dman=false -Dfunctional_tests=false -Dsandbox_tests=false -Dsystemd_user_services=true -Dsystemd_user_services_dir=/usr/lib/systemd/user -Dminer_fs=true -Dextract=true -Dwriteback=false -Dseccomp=true -Dlandlock=enabled -Dfanotify=enabled -Dbattery_detection=upower -Dcharset_detection=icu -Dxmp=enabled -Draw=disabled -Diso=disabled -Dplaylist=enabled -Dcue=disabled -Dxps=disabled -Dlibav=enabled -Dlibmediainfo=disabled -Dexif=disabled -Dgif=enabled -Dgsf=enabled -Djpeg=disabled -Dpdf=enabled -Dpng=disabled -Dtiff=disabled -Dxml=enabled -Dwebp=disabled -Dzip=enabled -Diptc=disabled
 
   - uses: meson/compile
 

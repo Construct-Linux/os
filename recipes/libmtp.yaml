@@ -1,0 +1,47 @@
+# Media Transfer Protocol: how an Android phone, plugged in by USB, offers its files - gvfs's mtp
+# backend shows it in Files. Wolfi has no recipe. Its udev rules and hwdb entries let the person
+# at the seat open the device (uaccess) and tell udev it is a phone.
+package:
+  name: libmtp
+  version: 1.1.23
+  epoch: 0
+  description: Media Transfer Protocol library, for phones and players over USB
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - libusb-dev
+      - pkgconf
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/libmtp/libmtp/releases/download/v${{package.version}}/libmtp-${{package.version}}.tar.gz
+      expected-sha256: 74a2b6e8cb4a0304e95b995496ea3ac644c29371649b892b856e22f12a0bdeed
+
+  # MTPZ is Microsoft's Zune handshake, for players nobody plugs in any more; it needs libgcrypt.
+  - uses: autoconf/configure
+    with:
+      opts: --disable-static --disable-mtpz --disable-doxygen --with-udev=/usr/lib/udev
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: |
+      test -f ${{targets.destdir}}/usr/lib/udev/rules.d/69-libmtp.rules
+      rm -rf ${{targets.destdir}}/usr/share/doc
+
+  - uses: strip
+
+subpackages:
+  - name: libmtp-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - libmtp

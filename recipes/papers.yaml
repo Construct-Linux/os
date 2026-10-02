@@ -1,7 +1,7 @@
 package:
   name: papers
   version: "51.0"
-  epoch: 0
+  epoch: 1
   description: GNOME document viewer
   copyright:
     - license: GPL-2.0-or-later
@@ -26,6 +26,7 @@ environment:
       - libsecret-dev
       - libspelling-dev
       - meson
+      - nautilus-dev
       - ninja
       - poppler-dev
       - poppler-glib
@@ -38,11 +39,12 @@ pipeline:
       uri: https://download.gnome.org/sources/papers/${{vars.series}}/papers-${{package.version}}.tar.xz
       expected-sha256: 4b8caf527d85f7eabc63ebe9d2320e0490653c2e138b88fbf42e6f41dd3e451c
 
-  # nautilus is not in the desktop; djvu (djvulibre) and PostScript are formats left out to keep
-  # the image small; sysprof is not shipped; docs and tests are not part of the image.
+  # nautilus: the document properties tab in Files. djvu (djvulibre) and PostScript are formats
+  # left out to keep the image small; sysprof is not shipped; docs and tests are not part of the
+  # image.
   - uses: meson/configure
     with:
-      opts: -Dnautilus=false -Ddjvu=disabled -Dcomics=enabled -Dtiff=enabled -Dpdf=enabled -Dintrospection=enabled -Dsysprof=disabled -Dtests=false -Dfile_tests=false -Ddocumentation=false -Duser_doc=false
+      opts: -Dnautilus=true -Ddjvu=disabled -Dcomics=enabled -Dtiff=enabled -Dpdf=enabled -Dintrospection=enabled -Dsysprof=disabled -Dtests=false -Dfile_tests=false -Ddocumentation=false -Duser_doc=false
 
   - uses: meson/compile
 
