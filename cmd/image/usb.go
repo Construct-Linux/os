@@ -47,8 +47,7 @@ func usb(args []string) error {
 	}
 	esp := filepath.Join(stage, "esp")
 	label := "spindrift_" + version
-	v.extra = strings.Join(extra, " ")
-	if err := espTree(root, esp, label, v); err != nil {
+	if err := espTree(root, esp, label, v, strings.Join(extra, " ")); err != nil {
 		return err
 	}
 	rel, err := writeRelease(version, esp, label, v)
@@ -240,9 +239,7 @@ func bake(root, version string) error {
 			return err
 		}
 	}
-	// root has no password and is not locked: "*" rather than "!", which sshd without PAM takes for
-	// a locked account and refuses even a key for (spin-ami's keyOnly does the same).
-	if err := setPassword(root, "root", "*"); err != nil {
+	if err := rootLocked(root); err != nil {
 		return err
 	}
 	files := map[string]string{
@@ -356,39 +353,29 @@ func chroot(root string, cmds ...string) error {
 	return nil
 }
 
-// setPassword puts hash in /etc/shadow for user: on a read-only root nothing can set it later.
-func setPassword(root, user, hash string) error {
-	if hash != "*" && !strings.HasPrefix(hash, "$") {
-		return fmt.Errorf("the password hash is not crypt(3)'s (openssl passwd -6)")
-	}
-	p := filepath.Join(root, "etc/shadow")
-	b, err := os.ReadFile(p)
+// rootLocked fails unless root has no password in the root's /etc/shadow ("*", as Wolfi ships it):
+// on a read-only root nothing could take one away later, and sudo is how the person becomes root.
+func rootLocked(root string) error {
+	b, err := os.ReadFile(filepath.Join(root, "etc/shadow"))
 	if err != nil {
 		return err
 	}
-	lines := strings.Split(string(b), "\n")
-	found := false
-	for i, l := range lines {
-		f := strings.Split(l, ":")
-		if len(f) > 2 && f[0] == user {
-			f[1] = hash
-			lines[i] = strings.Join(f, ":")
-			found = true
+	for _, l := range strings.Split(string(b), "\n") {
+		if f := strings.Split(l, ":"); len(f) > 2 && f[0] == "root" {
+			if f[1] != "*" {
+				return fmt.Errorf("root's password in /etc/shadow is %q, not *", f[1])
+			}
+			return nil
 		}
 	}
-	if !found {
-		return fmt.Errorf("%s has no line in /etc/shadow", user)
-	}
-	return os.WriteFile(p, []byte(strings.Join(lines, "\n")), 0o640)
+	return fmt.Errorf("root has no line in /etc/shadow")
 }
 
 // verity is what the kernel needs to check the root, as spin-ami's internal/disk has it.
 type verity struct {
-	dataBlocks       int64
-	rootHash, salt   string
+	rootHash         string
 	rootUUID, vUUID  string
 	rootImg, treeImg string
-	extra            string
 }
 
 const verityBlock = 4096
@@ -437,7 +424,7 @@ func verifiedRoot(root, img, tree string) (verity, error) {
 	uuid := func(h string) string {
 		return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
 	}
-	return verity{dataBlocks: blocks, rootHash: rh, salt: salt, rootUUID: uuid(rh), vUUID: uuid(rh[32:]),
+	return verity{rootHash: rh, rootUUID: uuid(rh), vUUID: uuid(rh[32:]),
 		rootImg: img, treeImg: tree}, nil
 }
 
@@ -452,17 +439,17 @@ func verifiedRoot(root, img, tree string) (verity, error) {
 // hash (slot A's or slot B's), and systemd-veritysetup checks one against the other, reading the
 // rest from the tree's superblock. A block that does not match panics: panic=10 then reboots, and
 // boot counting falls back. Then the consoles, the machine's id from its firmware (/var's UUID is
-// derived from it), cgroup v2 only.
-func (v verity) cmdline() string {
+// derived from it), cgroup v2 only, and extra, options added for one build to diagnose a boot.
+func (v verity) cmdline(extra string) string {
 	return "roothash=" + v.rootHash + " systemd.verity_root_options=panic-on-corruption rootfstype=erofs ro" +
 		" console=ttyS0,115200n8 console=tty0 cgroup_no_v1=all,named" +
-		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" + strings.TrimRight(" "+v.extra, " ")
+		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" + strings.TrimRight(" "+extra, " ")
 }
 
 // espTree lays the ESP: systemd-boot at the removable-media path, which firmware boots from a
 // stick with no boot entry, and the kernel image with the microcode both vendors' processors load
 // before the kernel runs and the initrd systemd runs in before the root (buildInitrd).
-func espTree(root, esp, label string, v verity) error {
+func espTree(root, esp, label string, v verity, extra string) error {
 	boot, err := os.ReadFile(filepath.Join(root, "usr/lib/systemd/boot/efi/systemd-bootx64.efi"))
 	if err != nil {
 		return fmt.Errorf("the image's systemd-boot: %w", err)
@@ -508,7 +495,7 @@ func espTree(root, esp, label string, v verity) error {
 		"--linux", filepath.Join(out, "kernel", "bzImage"),
 		// The microcode first: the kernel looks for it at the start of the initrds.
 		"--initrd", ucode, "--initrd", initrd,
-		"--cmdline", v.cmdline(),
+		"--cmdline", v.cmdline(extra),
 		"--os-release", "@"+filepath.Join(root, "usr/lib/os-release"),
 		"--uname", strings.TrimSpace(readFile(filepath.Join(out, "kernel", "release"))),
 		"--output", filepath.Join(esp, "EFI", "Linux", label+".efi"))

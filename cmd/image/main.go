@@ -34,11 +34,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spin-stack/spindrift/internal/gpt"
 	"github.com/spin-stack/spindrift/internal/update"
 )
-
-var gptRead = gpt.Read
 
 const out = "_output"
 
@@ -360,14 +357,11 @@ type vm struct {
 // vsockCID is the guest's vsock address: the harness reaches its sshd as vsock/<cid>.
 const vsockCID = 4207
 
-// start boots the disk. With a public key, the guest gets a vsock device for
-// systemd-ssh-generator's sshd and the key as ssh.ephemeral-authorized_keys-all, the credential
-// that sshd's generated unit authorises - for this boot only, written nowhere on the disk.
-func start(mem, pubkey string) (*vm, error) { return startDisk(mem, pubkey, false) }
-
 // startDisk boots _output/disk.raw with the kernel given directly, or with stick the USB disk
 // (_output/usb/disk.raw) as a machine boots it: UEFI firmware with variables of its own, the image
-// on a USB stick of 32 GB, of which the first boot makes /var.
+// on a USB stick of 32 GB, of which the first boot makes /var. With a public key, the guest gets a
+// vsock device for systemd-ssh-generator's sshd and the key as ssh.ephemeral-authorized_keys-all,
+// the credential that sshd's generated unit authorises - for this boot only, written nowhere.
 func startDisk(mem, pubkey string, stick bool) (*vm, error) {
 	m := machine{mem: mem, pubkey: pubkey}
 	if stick {

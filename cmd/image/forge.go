@@ -7,6 +7,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
 // forge makes, from a release's stick, the sticks an update must refuse: its signature gone, its
@@ -102,7 +104,7 @@ func partitionOffset(img, name string) (int64, error) {
 		return 0, err
 	}
 	defer f.Close()
-	t, err := gptRead(f)
+	t, err := gpt.Read(f)
 	if err != nil {
 		return 0, err
 	}
