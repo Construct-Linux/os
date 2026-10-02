@@ -1,0 +1,47 @@
+# The signatures fwupd checks LVFS's metadata and firmware with (fwupd's recipe). Wolfi has no
+# recipe. PKCS#7 and Ed25519 through GnuTLS, which LVFS signs with; its GPG backend off.
+package:
+  name: libjcat
+  version: 0.2.6
+  epoch: 0
+  description: Library for reading and writing Jcat signature files
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - glib-gir
+      - gnutls-dev
+      - gobject-introspection-dev
+      - json-glib-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/hughsie/libjcat
+      tag: ${{package.version}}
+      expected-commit: 4f4bf849c1728ba291f28cea86d140785368fdd0
+
+  - uses: meson/configure
+    with:
+      opts: -Dgpg=false -Dgnutls_pkcs7=true -Dgnutls_ed25519=true -Dintrospection=true -Dvapi=false -Dgtkdoc=false -Dman=false -Dtests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libjcat-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - libjcat

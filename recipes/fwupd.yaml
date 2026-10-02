@@ -1,0 +1,70 @@
+# Firmware updates from LVFS for what supports them - NVMe disks, Thunderbolt, docks, USB
+# devices, many peripherals - which GNOME Software lists and installs. Wolfi has no recipe.
+# Without the EFI capsule binary (fwupd-efi, a project of its own, which BIOS updates need and
+# Secure Boot will have to sign); Passim and ModemManager are not in the image. GnuTLS alone.
+package:
+  name: fwupd
+  version: 2.1.8
+  epoch: 0
+  description: Firmware updates from LVFS
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - curl-dev
+      - gettext
+      - glib-dev
+      - glib-gir
+      - gobject-introspection-dev
+      - gnutls-dev
+      - json-glib-dev
+      - libarchive-dev
+      - libcbor-dev
+      - libdrm-dev
+      - libgusb-dev
+      - libjcat-dev
+      - libmnl-dev
+      - libxmlb-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - protobuf-c-dev
+      - py3.13-jinja2
+      - python-3.13
+      - sqlite-dev
+      - systemd-dev
+      - vala
+      - xz-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/fwupd/fwupd
+      tag: ${{package.version}}
+      expected-commit: 3b7eca282bbe6cb4e8d5b4e42f984d2a1679977f
+
+  - uses: meson/configure
+    with:
+      opts: -Dbuild=all -Dsystemd=enabled -Dpolkit=enabled -Dlogind=enabled -Dgnutls=enabled -Dopenssl=disabled -Dhsi=enabled -Dlvfs=true -Dlibdrm=enabled -Dlibmnl=enabled -Dbluez=enabled -Dintrospection=enabled -Dpassim=disabled -Dplugin_modem_manager=disabled -Defi_binary=false -Dplugin_uefi_capsule_splash=false -Dfirmware-packager=false -Ddocs=disabled -Dman=false -Dtests=false -Dumockdev_tests=disabled -Dvalgrind=disabled -Dfish_completion=false -Dqubes=false -Dsupported_build=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: fwupd-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - fwupd
+
+  - name: fwupd-lang
+    pipeline:
+      - uses: split/locales
