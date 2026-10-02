@@ -71,6 +71,8 @@ func TestRefsFindWhatIsMissing(t *testing.T) {
 		"usr/share/dbus-1/system-services/org.freedesktop.timesync1.service": "[D-BUS Service]\nExec=/bin/false\nSystemdService=dbus-org.freedesktop.timesync1.service\n",
 		// Fedora's PAM dialect, and a required module that is not installed.
 		"etc/pam.d/polkit-1": "auth include system-auth\nsession required pam_keyinit.so\n",
+		// CUPS's administrators, a group Wolfi's cups does not declare.
+		"etc/cups/cups-files.conf": "SystemGroup lpadmin\n",
 		// a udev rule for a group nobody declares.
 		"usr/lib/udev/rules.d/60-tpm.rules": `KERNEL=="tpmrm[0-9]*", OWNER="tss", GROUP="tss"` + "\n",
 	})
@@ -85,6 +87,7 @@ func TestRefsFindWhatIsMissing(t *testing.T) {
 		"60-tpm.rules: owner tss",
 		"60-tpm.rules: group tss",
 		"etc/shells does not name /bin/bash",
+		"cups-files.conf: SystemGroup lpadmin is declared nowhere",
 		"/bin/bash, a user's shell, is not in the root",
 	} {
 		if !strings.Contains(got, want) {

@@ -41,8 +41,8 @@ type User struct {
 const FirstUID = 1000
 
 // Groups are what a person of this machine is in: wheel (sudo, with their password), the devices
-// a desktop session uses, and docker.
-var Groups = []string{"wheel", "video", "audio", "input", "docker"}
+// a desktop session uses, docker, and lpadmin (CUPS's printer administration).
+var Groups = []string{"wheel", "video", "audio", "input", "docker", "lpadmin"}
 
 // Live is the user a root with nobody installed boots into.
 var Live = User{Name: "live", RealName: "Live session", UID: FirstUID, Groups: Groups, SudoNoPassword: true}

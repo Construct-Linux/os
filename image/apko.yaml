@@ -93,6 +93,22 @@ contents:
     - xwayland
     - networkmanager
     - networkmanager-wifi
+    # VPNs: WireGuard is NetworkManager's own (wireguard-tools for wg); OpenVPN is a plugin.
+    - networkmanager-openvpn
+    - wireguard-tools
+    # Printing: CUPS, OpenPrinting's filters and driverless support, the network's printers found
+    # (cups-browsed), USB ones that speak IPP (ipp-usb), Settings administering them (cups-pk-helper).
+    - cups
+    - cups-filters
+    - cups-browsed
+    - cups-pk-helper
+    - ipp-usb
+    # A person's first login: language, keyboard, privacy, online accounts.
+    - gnome-initial-setup
+    # Firmware updates from LVFS, which GNOME Software shows.
+    - fwupd
+    # util-linux's lsblk, which BusyBox's has no options of.
+    - lsblk
     # NetworkManager joins Wi-Fi through wpa_supplicant (recipes/wpa_supplicant: Wolfi has none).
     - wpa_supplicant
     - accountsservice
@@ -174,7 +190,10 @@ contents:
     - gst-plugins-bad
     # Apps Wolfi maintains itself.
     - firefox
-    # Development: a compiler, make, git, and Docker on containerd.
+    # Development: Visual Studio Code, a compiler, make, git, Docker on containerd, and distrobox
+    # for languages and tools in a Wolfi container (etc/distrobox/distrobox.conf).
+    - code
+    - distrobox
     - build-base
     - make
     - gcc
@@ -198,10 +217,12 @@ contents:
     # build when one is missing.
     - at-spi2-core-lang
     - cracklib-lang
+    - cups-pk-helper-lang
     - decibels-lang
     - evolution-data-server-lang
     - flatpak-lang
     - folks-lang
+    - fwupd-lang
     - gcr4-lang
     - gdk-pixbuf-lang
     - gdm-lang
@@ -215,6 +236,7 @@ contents:
     - gnome-contacts-lang
     - gnome-disk-utility-lang
     - gnome-font-viewer-lang
+    - gnome-initial-setup-lang
     - gnome-keyring-lang
     - gnome-logs-lang
     - gnome-maps-lang
@@ -252,6 +274,7 @@ contents:
     - mutter-lang
     - nautilus-lang
     - networkmanager-lang
+    - networkmanager-openvpn-lang
     - papers-lang
     - polkit-lang
     - popt-lang

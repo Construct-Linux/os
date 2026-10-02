@@ -230,10 +230,36 @@ func liveCmd(etc, varDir string) error {
 	if err := account.MakeHome(varDir, account.Live); err != nil {
 		return err
 	}
+	// GNOME's first-login setup is the person's, on the machine they installed: the live session
+	// has nothing to set up.
+	home := filepath.Join(varDir, "home", account.Live.Name)
+	if err := ownedFile(home, ".config/gnome-initial-setup-done", []byte("yes"), account.Live.UID); err != nil {
+		return err
+	}
 	if !update.FromStick("/sys") {
 		return nil
 	}
-	return offerInstaller(filepath.Join(varDir, "home", account.Live.Name), installerEntry, account.Live.UID)
+	return offerInstaller(home, installerEntry, account.Live.UID)
+}
+
+// ownedFile writes body to rel under home, each directory it makes on the way and the file
+// itself uid's: a home's dot-directories are its owner's.
+func ownedFile(home, rel string, body []byte, uid int) error {
+	dir := home
+	for _, part := range strings.Split(filepath.Dir(rel), string(filepath.Separator)) {
+		dir = filepath.Join(dir, part)
+		if err := os.Mkdir(dir, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		if err := os.Lchown(dir, uid, uid); err != nil {
+			return err
+		}
+	}
+	path := filepath.Join(home, rel)
+	if err := os.WriteFile(path, body, 0o644); err != nil {
+		return err
+	}
+	return os.Lchown(path, uid, uid)
 }
 
 // installerEntry is the graphical installer's desktop entry, which only a stick's live session
@@ -246,21 +272,8 @@ func offerInstaller(home, entry string, uid int) error {
 	if err != nil {
 		return err
 	}
-	for _, dir := range []string{".local", ".local/share", ".local/share/applications", ".config", ".config/autostart"} {
-		d := filepath.Join(home, dir)
-		if err := os.Mkdir(d, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
-			return err
-		}
-		if err := os.Lchown(d, uid, uid); err != nil {
-			return err
-		}
-	}
 	for _, dir := range []string{".local/share/applications", ".config/autostart"} {
-		path := filepath.Join(home, dir, filepath.Base(entry))
-		if err := os.WriteFile(path, b, 0o644); err != nil {
-			return err
-		}
-		if err := os.Lchown(path, uid, uid); err != nil {
+		if err := ownedFile(home, filepath.Join(dir, filepath.Base(entry)), b, uid); err != nil {
 			return err
 		}
 	}

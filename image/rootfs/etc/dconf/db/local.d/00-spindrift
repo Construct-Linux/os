@@ -21,6 +21,23 @@ name='Orchis-Teal-Dark'
 [org/gnome/shell]
 enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com']
 
+# The dock: Files, the browser, the editor, the terminal, Software, Calendar.
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'code.desktop', 'org.gnome.Ptyxis.desktop', 'org.gnome.Software.desktop', 'org.gnome.Calendar.desktop']
+
+# Ptyxis: the machine, and a tab in the Wolfi container (etc/distrobox/distrobox.conf), whose
+# first use creates it.
+[org/gnome/Ptyxis]
+profile-uuids=['5f0d1a6e2b3c4d8e9f0a1b2c3d4e5f60', '7a1b2c3d4e5f60718293a4b5c6d7e8f9']
+default-profile-uuid='5f0d1a6e2b3c4d8e9f0a1b2c3d4e5f60'
+
+[org/gnome/Ptyxis/Profiles/5f0d1a6e2b3c4d8e9f0a1b2c3d4e5f60]
+label='Spindrift'
+
+[org/gnome/Ptyxis/Profiles/7a1b2c3d4e5f60718293a4b5c6d7e8f9]
+label='Wolfi'
+use-custom-command=true
+custom-command='distrobox enter wolfi'
+
 [org/gnome/desktop/wm/preferences]
 button-layout='appmenu:minimize,maximize,close'
 

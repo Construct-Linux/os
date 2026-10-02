@@ -22,6 +22,7 @@ type app struct {
 // window, and leave no core dump behind.
 var apps = []app{
 	{"org.gnome.Ptyxis.desktop", 20 * time.Second},
+	{"code.desktop", 40 * time.Second},
 	{"org.gnome.Settings.desktop", 30 * time.Second},
 	{"org.gnome.Nautilus.desktop", 30 * time.Second},
 	{"org.gnome.TextEditor.desktop", 20 * time.Second},
@@ -126,6 +127,18 @@ func test(args []string) error {
 	// libva looks, and GStreamer must load its va plugin.
 	va, err := g.run(`test -f /usr/lib/dri/iHD_drv_video.so && gst-inspect-1.0 va 2>&1 | grep -m1 Filename`, "")
 	r.add("vaapi", err == nil && strings.Contains(va, "libgstva.so"), oneLine(va)+errText(err))
+	// Visual Studio Code: its command line answers (it needs no display).
+	code, err := g.run(`sudo -u live code --version 2>&1 | head -1`, "")
+	r.add("vscode", err == nil && strings.HasPrefix(strings.TrimSpace(code), "1."), oneLine(code)+errText(err))
+	// Printing: cupsd starts when asked, through its socket.
+	lp, err := g.run(`lpstat -r 2>&1`, "")
+	r.add("printing", err == nil && strings.Contains(lp, "scheduler is running"), oneLine(lp)+errText(err))
+	// Firmware and the system's own updates, which GNOME Software reaches over the bus.
+	bus, err := g.run(`busctl --system list --activatable --no-legend | awk '{print $1}' | grep -xE 'org.freedesktop.fwupd|org.freedesktop.sysupdate1' | sort | tr '\n' ' '`, "")
+	r.add("updates services", err == nil && strings.TrimSpace(bus) == "org.freedesktop.fwupd org.freedesktop.sysupdate1", oneLine(bus)+errText(err))
+	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it.
+	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- apk --version 2>&1 | tail -1`, "")
+	r.add("wolfi container", err == nil && strings.HasPrefix(strings.TrimSpace(box), "apk-tools"), oneLine(box)+errText(err))
 	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files

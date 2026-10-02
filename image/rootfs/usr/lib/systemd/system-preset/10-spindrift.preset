@@ -19,6 +19,12 @@ enable gdm.service
 enable bluetooth.service
 enable power-profiles-daemon.service
 enable scx.service
+# Printing: cupsd starts when a print dialog asks (its socket and path); cups-browsed finds the
+# network's printers. fwupd starts by D-Bus; its timer refreshes LVFS's metadata.
+enable cups.socket
+enable cups.path
+enable cups-browsed.service
+enable fwupd-refresh.timer
 # Containers.
 enable docker.socket
 enable containerd.service

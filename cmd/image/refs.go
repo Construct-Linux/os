@@ -28,6 +28,7 @@ func refs(root string) []string {
 	r.pam()
 	r.owners()
 	r.shells()
+	r.cups()
 	sort.Strings(r.problems)
 	return slices.Compact(r.problems)
 }
@@ -381,4 +382,27 @@ func (r *refChecker) shells() {
 			r.fail("%s, a user's shell, is not in the root", sh)
 		}
 	}
+}
+
+// cups checks the users and groups CUPS's configuration names: cupsd refuses to start on a
+// SystemGroup nobody declares, and Wolfi's cups declares none.
+func (r *refChecker) cups() {
+	eachLine(filepath.Join(r.root, "etc/cups/cups-files.conf"), func(line string) {
+		f := strings.Fields(line)
+		if len(f) < 2 {
+			return
+		}
+		switch f[0] {
+		case "User":
+			if !r.users[f[1]] {
+				r.fail("etc/cups/cups-files.conf: User %s is declared nowhere", f[1])
+			}
+		case "Group", "SystemGroup":
+			for _, g := range f[1:] {
+				if !r.groups[g] {
+					r.fail("etc/cups/cups-files.conf: %s %s is declared nowhere", f[0], g)
+				}
+			}
+		}
+	})
 }
