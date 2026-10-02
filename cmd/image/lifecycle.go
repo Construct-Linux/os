@@ -297,10 +297,9 @@ func (r *report) person(g *guest) {
 	// The password opened /var at boot: GDM logs the person in, and there is no live user.
 	r.add("logged in at boot", strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live"), "sessions: "+sessions)
 	// The password that opened /var made and unlocked their login keyring (gdm-autologin's
-	// pam_systemd_loadkey): no app asks for a keyring password.
-	keyring, _ := g.run(`sudo -u `+lifecycleUser+` env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/`+fmt.Sprint(1000)+`/bus `+
-		`busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked 2>&1`, "")
-	r.add("the login keyring is open", strings.TrimSpace(keyring) == "b false", oneLine(keyring))
+	// pam_systemd_loadkey): an app keeps and reads a secret with no prompt.
+	keyring, _ := g.run(keyringRoundTrip(lifecycleUser, 1000), "")
+	r.add("the login keyring is open", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
 	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")
 	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
 	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")

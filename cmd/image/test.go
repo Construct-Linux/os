@@ -95,11 +95,11 @@ func test(args []string) error {
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.installer(v, g, *stick)
-	// The live user's login keyring has no password (drift live): an app's first secret asks
-	// for none.
-	keyring, _ := g.run(`sudo -u live env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus `+
-		`busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked 2>&1`, "")
-	r.add("the login keyring is open", strings.TrimSpace(keyring) == "b false", oneLine(keyring))
+	// The live user's login keyring has no password (drift live): a secret is kept and read back
+	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
+	// does what an app does; a prompt would hang it until the timeout.
+	keyring, _ := g.run(keyringRoundTrip("live", 1000), "")
+	r.add("the login keyring is open", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
 	if *stick {
 		r.secureBoot(g)
 	}
@@ -385,6 +385,13 @@ func (r *report) shellViews(v *vm, g *guest) {
 func (r *report) locked(g *guest) {
 	n, err := g.eval(`String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.stateObj?._tilingManagers?.length ?? 0)`)
 	r.add("locked: tilingshell", err == nil && strings.Trim(n, `"`) == "0", "tiling managers alive while disabled: "+n)
+}
+
+// keyringRoundTrip is a shell command that keeps a secret in user's login keyring and reads it
+// back, printing "kept" when both work within a timeout - which a password prompt would outlast.
+func keyringRoundTrip(user string, uid int) string {
+	env := fmt.Sprintf("sudo -u %s env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/%d/bus timeout 20 ", user, uid)
+	return `echo kept | ` + env + `secret-tool store --label=harness harness probe 2>&1 && ` + env + `secret-tool lookup harness probe 2>&1`
 }
 
 // secureBoot checks the machine came up with Secure Boot on, in user mode - the keys systemd-boot

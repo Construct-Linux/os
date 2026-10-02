@@ -1,0 +1,47 @@
+# Replaces Wolfi's i2c-tools 4.4 (epoch 13), which installs into /usr/local - make's default,
+# no PREFIX - where libi2c is outside the linker's path: i2cdetect, i2cget and the rest could
+# not start (cmd/image check: "libi2c.so.0 not found"). Wolfi's recipe with PREFIX=/usr; its
+# Python bindings, which nothing here uses, are left out.
+package:
+  name: i2c-tools
+  version: "4.4"
+  epoch: 14
+  description: Tools for monitoring I2C devices
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      # decode-dimms and decode-edid are Perl.
+      - perl
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - linux-headers
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://git.kernel.org/pub/scm/utils/i2c-tools/i2c-tools.git
+      tag: v${{package.version}}
+      expected-commit: c20cd0b4be78e7b84104452b7fc9c570f00f92bf
+
+  - runs: |
+      # sbin into bin: Wolfi merges them (its usrmerge lint refuses a package with a /usr/sbin).
+      make PREFIX=/usr sbindir=/usr/bin
+      make PREFIX=/usr sbindir=/usr/bin DESTDIR="${{targets.destdir}}" install
+      test -x ${{targets.destdir}}/usr/bin/i2cdetect
+      test -e ${{targets.destdir}}/usr/lib/libi2c.so.0
+      rm -rf ${{targets.destdir}}/usr/share/man
+
+  - uses: strip
+
+subpackages:
+  - name: i2c-tools-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - i2c-tools
