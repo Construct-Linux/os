@@ -121,18 +121,32 @@ tasks:
       - go run ./cmd/image boot {{.CLI_ARGS}}
 
   keygen:test:
-    desc: A throwaway release key under .cache/test-gnupg, for the harness's disks.
-    status: [test -d .cache/test-gnupg]
+    desc: Throwaway release and PCR keys under .cache/test-gnupg, for the harness's disks.
     cmds:
       - mkdir -p -m 700 .cache/test-gnupg
-      - gpg --homedir .cache/test-gnupg --batch --passphrase '' --quick-generate-key "Spindrift test release" ed25519 sign never
+      - test -f .cache/test-gnupg/pubring.kbx || gpg --homedir .cache/test-gnupg --batch --passphrase '' --quick-generate-key "Spindrift test release" ed25519 sign never
+      - task: keygen:pcr
+        vars: {SIGNING_HOME: .cache/test-gnupg}
+
+  keygen:pcr:
+    desc: "The PCR key, {{.SIGNING_HOME}}/pcr.pem, beside the release key: it signs each kernel image's PCR 11 policy, which an installed machine's TPM releases /var's key to (cmd/image/pcrsig.go). RSA-2048, the one kind of key besides Ed25519: a TPM cannot verify Ed25519, and systemd verifies PCR policies as RSA."
+    status: ['test -f {{.SIGNING_HOME}}/pcr.pem']
+    cmds:
+      # In SIGNING_HOME, which is the owner's alone (0700).
+      - mkdir -p -m 700 {{.SIGNING_HOME}}
+      - openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out {{.SIGNING_HOME}}/pcr.pem
+      - chmod 600 {{.SIGNING_HOME}}/pcr.pem
 
   keygen:release:
     desc: "The release key, in {{.SIGNING_HOME}} - outside the repository; gpg asks for its passphrase. Back it up, or move it to a YubiKey."
-    status: ['test -d {{.SIGNING_HOME}}']
+    # Done once the keyring holds a secret key: a run cut short leaves an empty one behind.
+    status: ["gpg --homedir {{.SIGNING_HOME}} --list-secret-keys --with-colons 2>/dev/null | grep -q '^sec'"]
     cmds:
       - mkdir -p -m 700 {{.SIGNING_HOME}}
-      - gpg --homedir {{.SIGNING_HOME}} --quick-generate-key "Spindrift release" ed25519 sign never
+      # gpg asks for the passphrase itself, as a line on the terminal (loopback): pinentry's
+      # full-screen prompt fails on some consoles ("Screen or window too small").
+      - gpg --homedir {{.SIGNING_HOME}} --pinentry-mode loopback --quick-generate-key "Spindrift release" ed25519 sign never
+      - task: keygen:pcr
 
   usb:
     desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release (SIGNING_HOME=, the release key's by default) on its spin-update partition (task usb -- -test for the harness's)."
@@ -145,13 +159,19 @@ tasks:
       - go run ./cmd/image check-key _output/release-key/usr/share/spindrift/release.pgp
       - mkdir -p _output/release-key/usr/lib/systemd
       - cp _output/release-key/usr/share/spindrift/release.pgp _output/release-key/usr/lib/systemd/import-pubring.pgp
+      - openssl pkey -in {{.SIGNING_HOME}}/pcr.pem -pubout -out _output/release-key/pcr-public.pem
       - >-
         docker run --rm --privileged -e SPINDRIFT_UPDATE_URL -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
-        '_output/bin/image usb {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/release _output/root.tar; exit $rc'
+        '_output/bin/image usb -pcr-public _output/release-key/pcr-public.pem {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/root.tar; exit $rc'
+      # The kernel image's PCR policy, signed here by the PCR key: it never enters a container either.
+      - go run ./cmd/image sign-pcr -key {{.SIGNING_HOME}}/pcr.pem
+      - >-
+        docker run --rm --privileged -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
+        '_output/bin/image usb-release; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/release; exit $rc'
       # Signed here, by the key in SIGNING_HOME: it never enters a container.
       - >-
         rel=$(ls -d _output/release/*/ | sort | tail -1) &&
-        gpg --homedir {{.SIGNING_HOME}} --batch --yes --detach-sign -o "$rel/SHA256SUMS.gpg" "$rel/SHA256SUMS"
+        gpg --homedir {{.SIGNING_HOME}} --pinentry-mode loopback --yes --detach-sign -o "$rel/SHA256SUMS.gpg" "$rel/SHA256SUMS"
       - >-
         docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
         '_output/bin/image usb-disk; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
