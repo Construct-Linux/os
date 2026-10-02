@@ -1,6 +1,7 @@
 # The initrd systemd runs in before the root: Wolfi's systemd, and what it does there - verity
 # for the root (systemd-veritysetup, the dissect_image udev builtin finding the partitions by the
-# root hash), /var made on a stick's first boot (systemd-repart, mkfs.ext4), the /etc overlay
+# root hash), /var made on a stick's first boot (systemd-repart, mkfs.ext4) or opened on an
+# installed disk (systemd-cryptsetup, the TPM and the person's password), the /etc overlay
 # mounted before the switch, the boot splash. No modules: storage, EROFS, ext4 and overlayfs are
 # built into the kernel (kernel/desktop.config). cmd/image usb packs it as the UKI's initrd.
 contents:
@@ -33,9 +34,13 @@ contents:
     - device-mapper
     # 13-dm-disk.rules reads a device-mapper device's filesystem with blkid.
     - blkid
-    # systemd-cryptsetup's TPM2 unlocking, loaded at run time, for the encrypted /var to come.
+    # systemd-cryptsetup's TPM2 unlocking (recipes/systemd, built with TPM2), loaded at run time,
+    # for an installed machine's encrypted /var.
     - tpm2-tss
     - plymouth
+    # The font Plymouth writes the disk's password prompt in, GNOME's own (Adwaita Sans; the
+    # package's other faces are trimmed, cmd/image initrdTrim): without one the prompt is boxes.
+    - adwaita-fonts
     - bash
     - bash-binsh
     - coreutils

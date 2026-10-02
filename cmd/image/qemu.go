@@ -103,6 +103,14 @@ type machine struct {
 	// window shows the machine in a window on the host's desktop, with the GPU's 3D through the
 	// host's (virgl) and its sound on the host's speakers: a machine to use, not to test.
 	window bool
+	// tpm, when set, gives the machine a TPM 2.0 (swtpm) keeping its state in that directory: an
+	// install seals /var's key in it, and the next boots unseal it.
+	tpm string
+	// credentials are systemd credentials for this boot, name=value, as the firmware hands them.
+	credentials []string
+	// cmdline are kernel options for this boot, which systemd-stub adds to the kernel image's from
+	// the firmware's SMBIOS when Secure Boot is off: a boot to diagnose.
+	cmdline []string
 }
 
 // machineUUID is the test machine's firmware UUID: the same at every boot, as a board's.
@@ -163,12 +171,50 @@ func (m machine) start() (*vm, error) {
 			"-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", vsockCID),
 			"-smbios", "type=11,value=io.systemd.credential:ssh.ephemeral-authorized_keys-all="+strings.TrimSpace(m.pubkey))
 	}
+	for _, c := range m.credentials {
+		args = append(args, "-smbios", "type=11,value=io.systemd.credential:"+c)
+	}
+	if len(m.cmdline) > 0 {
+		args = append(args, "-smbios", "type=11,value=io.systemd.stub.kernel-cmdline-extra="+strings.Join(m.cmdline, " "))
+	}
+	if m.tpm != "" {
+		sock, err := startTPM(m.tpm)
+		if err != nil {
+			return nil, err
+		}
+		args = append(args, "-chardev", "socket,id=chrtpm,path="+sock,
+			"-tpmdev", "emulator,id=tpm0,chardev=chrtpm", "-device", "tpm-crb,tpmdev=tpm0")
+	}
 	cmd := exec.Command("qemu-system-x86_64", args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
 	return &vm{cmd: cmd, qmp: qmp, cid: vsockCID}, nil
+}
+
+// startTPM starts swtpm, a TPM 2.0 keeping its state in dir, and answers the socket QEMU connects
+// to; it ends when QEMU does (--terminate).
+func startTPM(dir string) (string, error) {
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		return "", err
+	}
+	sock := filepath.Join(dir, "swtpm.sock")
+	_ = os.Remove(sock)
+	cmd := exec.Command("swtpm", "socket", "--tpm2", "--tpmstate", "dir="+dir,
+		"--ctrl", "type=unixio,path="+sock, "--terminate")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("swtpm: %w", err)
+	}
+	go func() { _ = cmd.Wait() }()
+	for range 100 {
+		if _, err := os.Stat(sock); err == nil {
+			return sock, nil
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return "", fmt.Errorf("swtpm made no socket at %s", sock)
 }
 
 // freshVars is a variable store as the firmware ships it: no boot entries.
@@ -211,6 +257,24 @@ func (v *vm) key(qcode string) error {
 	return qmpRun(v.qmp, map[string]any{"execute": "send-key", "arguments": map[string]any{
 		"keys": []any{map[string]any{"type": "qcode", "data": qcode}},
 	}})
+}
+
+// typeText types text on the machine's keyboard, then Enter: lowercase letters, digits and spaces.
+func (v *vm) typeText(text string) error {
+	for _, r := range text {
+		code := string(r)
+		switch {
+		case r == ' ':
+			code = "spc"
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9':
+		default:
+			return fmt.Errorf("typeText: no key for %q", r)
+		}
+		if err := v.key(code); err != nil {
+			return err
+		}
+	}
+	return v.key("ret")
 }
 
 func (v *vm) stop() {
@@ -274,7 +338,7 @@ func (v *vm) powerOff(g *guest) {
 }
 
 // play boots a stick in a window on the host's desktop, with an empty disk to install on: the
-// machine a person would use. What it holds - the stick, the disk, the firmware's variables -
+// machine a person would use. What it holds - the stick, the disk, the firmware's variables, its TPM -
 // is kept in _output/play between runs, so an install, its reboot and its updates carry on.
 func play(args []string) error {
 	fl := flag.NewFlagSet("play", flag.ExitOnError)
@@ -311,7 +375,8 @@ func play(args []string) error {
 			return err
 		}
 	}
-	m := machine{mem: *mem, vars: vars, nvme: nvme, window: true}
+	// With a TPM, as a laptop has: the install seals /var's key in it.
+	m := machine{mem: *mem, vars: vars, nvme: nvme, window: true, tpm: filepath.Join(dir, "tpm")}
 	if *withStick {
 		m.sticks = []string{stick}
 	}

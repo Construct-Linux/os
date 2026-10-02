@@ -208,6 +208,8 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		return err
 	}
 	defer func() { _ = dev.Close() }() // every write is synced where it is made
+	tpm := hasTPM2("/sys")
+	var recovery string
 	_, err = update.Install(ctx, update.InstallOptions{
 		Keys: keys, Source: *from, Disk: disk, Device: dev,
 		// BLKRRPART, which every partitioning tool asks.
@@ -217,8 +219,9 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		},
 		Run:      run,
 		MountESP: mountVFAT,
-		PrepareVar: func(ctx context.Context, dev string) error {
-			return prepareVar(ctx, dev, who)
+		MakeVar: func(ctx context.Context, partition string) (err error) {
+			recovery, err = makeVar(ctx, log, partition, who, tpm)
+			return err
 		},
 		VarUUID: varUUID, Progress: progress,
 		Loader: *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: log,
@@ -226,11 +229,13 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	if err != nil {
 		return err
 	}
+	// The recovery key goes where the person reads it, never to the journal.
 	if *jsonOut {
-		log.Info("done", "disk", disk.Path(), "user", who.user.Name)
+		log.Info("done", "disk", disk.Path(), "user", who.user.Name, "tpm", tpm, "recovery_key", recovery)
 		return nil
 	}
-	fmt.Fprintf(out, "installed on %s for %s: remove the stick and reboot\n", disk.Path(), who.user.Name)
+	fmt.Fprintf(out, "installed on %s for %s: remove the stick and reboot\n\n", disk.Path(), who.user.Name)
+	fmt.Fprintf(out, "Recovery key, which opens the disk in place of the password if it is lost or\nforgotten - write it down and keep it away from the computer:\n\n    %s\n", recovery)
 	return nil
 }
 
@@ -340,14 +345,9 @@ func waitPartition(ctx context.Context, disk string, n int) (string, error) {
 	}
 }
 
-// run runs a program, its output where the caller's goes, and says what failed.
+// run runs a program, its output on drift's standard error, and says what failed.
 func run(ctx context.Context, name string, args ...string) error {
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
-	}
-	return nil
+	return cmd(ctx, nil, nil, name, args...)
 }
 
 // journal is a logger for a unit's output, which journald stamps and names.

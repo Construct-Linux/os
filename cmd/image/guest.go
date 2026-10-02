@@ -220,12 +220,17 @@ func runIn(args []string) error {
 	nvme := fl.String("nvme", "", "with -vars: boot this NVMe disk image (the lifecycle's), with -sticks plugged in")
 	vars := fl.String("vars", "", "the firmware's variable store to boot with")
 	sticks := fl.String("sticks", "", "comma-separated stick images to plug in")
+	tpm := fl.String("tpm", "", "with -vars: the swtpm state directory to give the machine (the lifecycle's)")
+	var creds appendFlag
+	fl.Var(&creds, "cred", "a systemd credential for the boot, name=value; repeatable")
+	var extra appendFlag
+	fl.Var(&extra, "append", "with -vars: a kernel option for this boot, which systemd-stub takes from the firmware without Secure Boot (systemd.log_level=debug); repeatable")
 	_ = fl.Parse(args)
 	_, pub, err := testKey()
 	if err != nil {
 		return err
 	}
-	m := machine{mem: "6G", pubkey: pub, vars: *vars, nvme: *nvme}
+	m := machine{mem: "6G", pubkey: pub, vars: *vars, nvme: *nvme, tpm: *tpm, credentials: creds, cmdline: extra}
 	if *vars == "" {
 		if m, err = testMachine("6G", pub, *stick); err != nil {
 			return err

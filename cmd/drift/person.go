@@ -197,11 +197,13 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 		return err
 	}
 	upper := filepath.Join(dir, "lib", "spindrift", "etc", "upper")
-	// No autologin: /var is not encrypted yet, so the password GDM asks for is all that stands
-	// between whoever powers the machine on and the person's desktop.
 	err = account.Write(upper, factoryEtc, u)
 	if err == nil {
 		err = account.MakeHome(dir, u)
+	}
+	// Logged in at boot: nothing of the person's opens without their password, typed for /var.
+	if err == nil {
+		err = account.Autologin(upper, u.Name)
 	}
 	if uerr := unmount(); err == nil {
 		err = uerr

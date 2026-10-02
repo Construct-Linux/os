@@ -59,6 +59,10 @@ func (in *installer) options(t *testing.T, source string, size int64) InstallOpt
 			must(t, os.MkdirAll(in.esp, 0o755))
 			return in.esp, func() error { return nil }, nil
 		},
+		MakeVar: func(_ context.Context, partition string) error {
+			in.ran = append(in.ran, "make /var on "+partition)
+			return nil
+		},
 		Loader: loader, Vars: in.vars,
 		VarUUID: testVarUUID,
 		UUID:    func() string { n++; return fmt.Sprintf("00000000-0000-4000-8000-%012d", n) },
@@ -104,7 +108,7 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 	if !bytes.Equal(slotA, body) {
 		t.Error("slot A does not hold the release's root")
 	}
-	if !slices.Equal(in.ran, []string{"mkfs.vfat -F 32 -n ESP /dev/nvme0n1p1", "mkfs.ext4 -q -F -L var /dev/nvme0n1p6"}) {
+	if !slices.Equal(in.ran, []string{"mkfs.vfat -F 32 -n ESP /dev/nvme0n1p1", "make /var on /dev/nvme0n1p6"}) {
 		t.Errorf("ran %v", in.ran)
 	}
 	for _, f := range []string{"EFI/BOOT/BOOTX64.EFI", "EFI/systemd/systemd-bootx64.efi", "loader/loader.conf", Linux + "/" + label + ".efi"} {

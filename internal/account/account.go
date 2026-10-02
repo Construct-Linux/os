@@ -152,10 +152,10 @@ func withUser(lines []string, name string, isGroups bool, groups []string) ([]st
 	return out, joined
 }
 
-// Autologin makes GDM log name in at boot: only the live user, which has no password and nothing
-// of anyone's to protect. A person is asked for their password.
+// Autologin makes GDM log name in at boot: the live user, which has nothing of anyone's to
+// protect, or the person whose password opened the encrypted /var moments before (cmd/drift).
 func Autologin(etc, name string) error {
-	conf := "# The live session, logged in at boot: nobody is installed on this root.\n" +
+	conf := "# Logged in at boot: the live session, or the person whose password opened /var.\n" +
 		"[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=" + name + "\n"
 	return writeFile(filepath.Join(etc, "gdm", "custom.conf"), []byte(conf), 0o644)
 }

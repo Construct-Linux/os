@@ -44,6 +44,7 @@ BackgroundEndColor=0x000000
 ProgressBarBackgroundColor=0x000000
 ProgressBarForegroundColor=0x000000
 MessageBelowAnimation=true
+Font=Adwaita Sans 14
 `
 	if err := os.WriteFile(filepath.Join(dir, "spin.plymouth"), []byte(conf), 0o644); err != nil {
 		return err

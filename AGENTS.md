@@ -50,10 +50,20 @@ falling back from a release that does not come up.
 
 - **Ed25519 only.** SSH host and client keys (`sshd_config.d/10-spindrift.conf`), and release
   signing keys: `image check-key` (internal/update `ParseKeyring`) refuses a keyring with any other
-  signing key, at build. No RSA, no ECDSA.
-- **The release key never enters the repository or a container.** It lives in `SIGNING_HOME`
-  (`task keygen:release`, outside the repo); `task usb` signs `SHA256SUMS` on the host. Tests use a
-  throwaway key in `.cache/test-gnupg`.
+  signing key, at build. No ECDSA, and RSA-2048 only where the firmware and the TPM take nothing
+  else: the PCR key (`SIGNING_HOME/pcr.pem`, `task keygen:pcr`), because a TPM cannot verify
+  Ed25519 and systemd verifies PCR policies as RSA. It signs kernel images' PCR 11 policies and
+  nothing else (`image sign-pcr` refuses any other kind of key). Secure Boot's keys, when they
+  come, are RSA-2048 for the same reason: UEFI verifies nothing else.
+- **The release and PCR keys never enter the repository or a container.** They live in
+  `SIGNING_HOME` (`task keygen:release`, outside the repo). `task usb` signs `SHA256SUMS` on the
+  host, and the PCR policy too (ukify computes its digests in the container, `image sign-pcr`
+  signs them on the host, `image usb-release` joins the signature). Tests use throwaway keys in
+  `.cache/test-gnupg`.
+- **An installed machine's `/var` is LUKS2** (cmd/drift `makeVar`). The person's password opens
+  it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
+  the passphrase when it has none. A recovery key is shown once at
+  install. GDM then logs the person in, and sudo and the lock screen ask for the password again.
 - **Updates come only through url-file transfers.** systemd-sysupdate checks `SHA256SUMS.gpg` and
   every file's digest only for `url-file` sources (via systemd-pull); a `regular-file` source is
   written unchecked. A stick is read as `file:///run/spindrift/update`, GitHub Releases as
@@ -66,7 +76,8 @@ falling back from a release that does not come up.
   (`internal/account`, starting from the image's own files in `usr/share/factory/etc`), where
   passwd and GNOME's Settings change them later; a root with nobody installed boots the
   passwordless `live` user `drift live` adds (spindrift-live.service). root stays locked (`*`).
-  GDM asks the person's password, and sudo (wheel, 15 minutes); only `live` is logged in at boot.
+  The person is logged in at boot once their password has opened `/var`; sudo (wheel, 15
+  minutes) and the lock screen ask for it.
 
 ## What the root is, and what it implies
 
@@ -159,8 +170,8 @@ AutoFDO/Propeller profiles recorded on the NucBox; boot time measured on the Nuc
 stick 13.1 s, most of it GDM's first frame over emulated USB); the initrd's size (38 MB
 compressed): the NSS and PAM modules it never uses, systemd-networkd and its kin, lvm2's
 `lvm` that device-mapper's udev rules pull in with it; a services audit (`systemd-analyze
-security` rates gdm, sshd and docker UNSAFE); Secure Boot and measured boot, as spin-ami does;
-an ISO medium; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
+security` rates gdm, sshd and docker UNSAFE); Secure Boot (RSA-2048 keys)
+as spin-ami does; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
 resolver meanwhile), to fix in `recipes/libproxy`.
 
 ## Two repositories

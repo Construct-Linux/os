@@ -44,13 +44,18 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
 - **installer**: the live session opens *Install Spindrift* (or `sudo drift install` in a
   terminal), which asks for the disk and who the machine is for - a name, a login and one
   password - then erases the machine's first internal disk (never the stick) and lays two system
-  slots and `/var` on it. GDM, sudo and the lock screen ask for the
-  password. root has none and cannot log in.
+  slots and `/var` on it. `/var` holds everything of the person's and is encrypted (LUKS2): at
+  boot the password opens it - as the TPM's PIN where the machine has a TPM 2.0, which only
+  releases the key to kernel images Spindrift signed - and the desktop starts logged in. sudo and
+  the lock screen ask for it again. The installer shows a recovery key once, which opens the disk
+  in place of a forgotten password. root has no password and cannot log in.
 - **update**: plugged into an installed machine, it writes its release into the slot not running.
 
 An installed machine goes back to how it left the installer with `sudo systemctl start
 factory-reset.target`: it restarts, `/var` is made anew (every person, file, container and
-setting gone; the system slots untouched), and GNOME's Initial Setup asks who it is for.
+setting gone; the system slots untouched), and GNOME's Initial Setup asks who it is for. The
+disk still opens with the password it was installed with: to give the machine to someone else,
+install it again from the stick.
 
 ## Test it
 

@@ -3,7 +3,10 @@
 # reset is on and makes /var's file system anew before it is mounted - the same
 # partition, its UUID kept, as the dissect builtin finds it - so the person, their files, the
 # /etc overlay's changes and the installed Flatpaks go; the release and its slots stay. With
-# nobody on the machine, GDM opens GNOME's Initial Setup to make its new person.
+# nobody on the machine, GDM opens GNOME's Initial Setup to make its new person. An encrypted
+# /var is made anew inside its encryption, opened first: what opens it - the password it was
+# installed with, the recovery key - stays, so a reset starts the machine over for whoever has
+# that password; to hand the machine to someone else, install it again from the stick.
 # systemd's generator would pull factory-reset-now.target in here, but it runs before the kernel
 # registers its EFI variables (1.31 s against 1.30 s on the VM) and sees no request; the check is
 # made once /var's device is there. After the switch the root's generator sees the request and

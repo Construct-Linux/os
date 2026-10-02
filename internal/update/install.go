@@ -88,13 +88,13 @@ type InstallOptions struct {
 	Device    Disk
 	Reread    func() error
 	Partition func(n int) (string, error)
-	// Run runs a program - mkfs.vfat, mkfs.ext4 - and MountESP mounts the new ESP, answering where
-	// and how to unmount it.
+	// Run runs a program - mkfs.vfat - and MountESP mounts the new ESP, answering where and how to
+	// unmount it.
 	Run      func(ctx context.Context, name string, args ...string) error
 	MountESP func(ctx context.Context, dev string) (string, func() error, error)
-	// PrepareVar, when set, is given the new /var's device once it is made: who the machine is
-	// for goes there (cmd/drift).
-	PrepareVar func(ctx context.Context, dev string) error
+	// MakeVar is given /var's partition to make /var on: its encryption, its file system, and who
+	// the machine is for are the caller's (cmd/drift).
+	MakeVar func(ctx context.Context, partition string) error
 	// Progress, when set, is told how far slot A's files are written: done of total bytes of the
 	// file as fetched (total -1 when the source does not say), for an installer to show.
 	Progress func(file string, done, total int64)
@@ -113,7 +113,7 @@ type InstallOptions struct {
 // its digests, labelled with its version only once both are; slot B is left Empty for
 // systemd-sysupdate's first update, the ESP gets systemd-boot and the
 // release's kernel image, blessed - a fresh install is known good, there is nothing to fall back
-// to - /var is made empty, and the firmware boots the disk first. It answers the table written.
+// to - /var is made by o.MakeVar, and the firmware boots the disk first. It answers the table written.
 func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	r, fetch, err := Newest(ctx, o.Source, o.Keys)
 	if err != nil {
@@ -169,18 +169,13 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	log.Info("making the ESP and /var")
+	log.Info("making the ESP")
 	if err := o.Run(ctx, "mkfs.vfat", "-F", "32", "-n", "ESP", esp); err != nil {
 		return gpt.Table{}, err
 	}
-	if err := o.Run(ctx, "mkfs.ext4", "-q", "-F", "-L", VarName, vardev); err != nil {
-		return gpt.Table{}, err
-	}
-	if o.PrepareVar != nil {
-		log.Info("preparing /var")
-		if err := o.PrepareVar(ctx, vardev); err != nil {
-			return gpt.Table{}, fmt.Errorf("install: preparing /var: %w", err)
-		}
+	log.Info("making /var")
+	if err := o.MakeVar(ctx, vardev); err != nil {
+		return gpt.Table{}, fmt.Errorf("install: making /var: %w", err)
 	}
 	dir, unmount, err := o.MountESP(ctx, esp)
 	if err != nil {

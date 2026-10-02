@@ -34,8 +34,11 @@ func lifecycle(args []string) error {
 	if err != nil {
 		return err
 	}
-	nvme, vars := filepath.Join(*dir, "nvme.raw"), filepath.Join(*dir, "OVMF_VARS.fd")
+	nvme, vars, tpm := filepath.Join(*dir, "nvme.raw"), filepath.Join(*dir, "OVMF_VARS.fd"), filepath.Join(*dir, "tpm")
 	_ = os.Remove(nvme)
+	if err := os.RemoveAll(tpm); err != nil {
+		return err
+	}
 	if err := copyCmd("truncate", "-s", "64G", nvme); err != nil {
 		return err
 	}
@@ -47,8 +50,16 @@ func lifecycle(args []string) error {
 		return s, stickCopy(filepath.Join(*dir, v+".raw"), s)
 	}
 	r := &report{dir: *dir}
+	// The machine has a TPM, and every boot after the first of its disk is handed the person's
+	// password as the TPM's PIN, as if typed: systemd-cryptsetup asks for it through libcryptsetup's
+	// token plugin, which reads cryptsetup.luks2-pin. No passphrase credential: a TPM that refuses
+	// leaves the boot waiting, and the check fails.
+	m := machine{mem: "6G", pubkey: pub, vars: vars, nvme: nvme, tpm: tpm,
+		credentials: []string{"cryptsetup.luks2-pin=" + lifecyclePassword}}
 	boot := func(sticks ...string) (*vm, *guest, error) {
-		return machine{mem: "6G", pubkey: pub, vars: vars, sticks: sticks, nvme: nvme}.bootGuest(5 * time.Minute)
+		m := m
+		m.sticks = sticks
+		return m.bootGuest(5 * time.Minute)
 	}
 
 	// 1. The live stick installs onto the NVMe disk.
@@ -77,20 +88,43 @@ func lifecycle(args []string) error {
 		}
 	}
 	r.add("install", err == nil, fmt.Sprintf("%s in %s%s", oneLine(said), time.Since(start).Round(time.Second), errText(err)))
+	r.add("a recovery key is shown", strings.Contains(said, `"recovery_key":"`) && !strings.Contains(said, `"recovery_key":""`), "")
 	v.powerOff(g)
 	if err != nil {
 		return r.write(nil)
 	}
 
-	// 2. The machine boots its disk: v1, /var on the NVMe, and what the person keeps.
-	v, g, err = boot()
+	// 2. The machine boots its disk: the boot waits for the person's password, typed at the
+	// prompt - the TPM's PIN - then v1, /var on the NVMe and encrypted, and what the person keeps.
+	first := m
+	first.credentials = nil
+	if v, err = first.start(); err != nil {
+		return err
+	}
+	g = &guest{cid: v.cid}
+	asked := g.wait(45*time.Second) != nil
+	_ = v.screenshot(filepath.Join(*dir, "password.ppm"))
+	time.Sleep(500 * time.Millisecond)
+	_ = ppmToPNG(filepath.Join(*dir, "password.ppm"), filepath.Join(*dir, "password.png"))
+	r.add("the disk asks for the password", asked, "screen: password.png")
+	err = v.typeText(lifecyclePassword)
+	if err == nil {
+		err = g.wait(5 * time.Minute)
+	}
+	r.add("the password opens the disk", err == nil, errText(err))
 	if err != nil {
-		r.add("boot the disk", false, err.Error())
+		v.stop()
 		return r.write(nil)
 	}
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
-	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts`, "")
-	r.add("/var on the disk", strings.Contains(src, "nvme0n1"), oneLine(src))
+	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts; cryptsetup status var | grep -E 'type|device'`, "")
+	r.add("/var on the disk, encrypted", strings.Contains(src, "/dev/mapper/var") && strings.Contains(src, "LUKS2") && strings.Contains(src, "nvme0n1p6"), oneLine(src))
+	slots, _ := g.run(`systemd-cryptenroll /dev/nvme0n1p6`, "")
+	r.add("the TPM, the password and the recovery key open it", strings.Contains(slots, "tpm2") && strings.Contains(slots, "password") && strings.Contains(slots, "recovery"), oneLine(slots))
+	// The PIN typed is cached for the passphrase prompt that follows a TPM refusal, so a boot that
+	// came up says nothing: the unit's log does.
+	unlocked, err := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -o cat -u systemd-cryptsetup@var.service | grep -iE 'unseal|falling back|failed' | tail -3`, "")
+	r.add("the TPM unlocked it", err == nil && strings.HasPrefix(unlocked, "active") && strings.TrimSpace(strings.TrimPrefix(unlocked, "active")) == "", oneLine(unlocked))
 	_, err = g.run(`echo kept > /var/home/`+lifecycleUser+`/marker && echo kept > /etc/spindrift-marker`, "")
 	r.add("keep a file in /var and one in /etc", err == nil, errText(err))
 	r.person(g)
@@ -246,12 +280,12 @@ const (
 	lifecyclePassword = "correct horse battery staple"
 )
 
-// person checks who an installed machine is for: GDM asks for their password, there is no live
+// person checks who an installed machine is for: logged in once their password opened /var, no live
 // user, and sudo asks for their password and takes it.
 func (r *report) person(g *guest) {
 	sessions, _ := g.run(`sleep 20; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
-	// GDM asks for the person's password: nobody is logged in at boot, and there is no live user.
-	r.add("asked for a password at boot", !strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live") && strings.Contains(sessions, "gdm"), "sessions: "+sessions)
+	// The password opened /var at boot: GDM logs the person in, and there is no live user.
+	r.add("logged in at boot", strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live"), "sessions: "+sessions)
 	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")
 	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
 	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")
