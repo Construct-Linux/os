@@ -28,14 +28,8 @@ func usb(args []string) error {
 	test := fl.Bool("test", false, "add image/test/rootfs, as task disk -- -test does")
 	extra := fl.String("append", "", "more of the kernel's command line, to diagnose a boot (plymouth.debug)")
 	broken := fl.Bool("broken", false, "add image/test/broken: a release whose GDM fails, for the lifecycle test's rollback")
-	hashFile := fl.String("password-hash", filepath.Join(".cache", "spin-password.hash"),
-		"the user's password, as crypt(3) makes it (openssl passwd -6): the screen locks, and sudo asks")
 	_ = fl.Parse(args)
 
-	hash, err := os.ReadFile(*hashFile)
-	if err != nil {
-		return fmt.Errorf("%w: write one with: openssl passwd -6 > %s", err, *hashFile)
-	}
 	stage := filepath.Join(out, "usb")
 	root := filepath.Join(stage, "root")
 	if err := os.RemoveAll(stage); err != nil {
@@ -66,7 +60,7 @@ func usb(args []string) error {
 		return err
 	}
 	version := time.Now().UTC().Format("20060102.150405")
-	if err := bake(root, strings.TrimSpace(string(hash)), version); err != nil {
+	if err := bake(root, version); err != nil {
 		return err
 	}
 	v, err := verifiedRoot(root, filepath.Join(stage, "root.img"), filepath.Join(stage, "root.verity"))
@@ -184,7 +178,7 @@ func usbDisk(args []string) error {
 // bake makes now what a boot would otherwise write into a root it can no longer write: the
 // packages' triggers apko does not run, the users sysusers.d declares, the factory files tmpfiles.d
 // makes, the hardware database; and the /var partition, /tmp and the user's password.
-func bake(root, passwordHash, version string) error {
+func bake(root, version string) error {
 	// The image's own programs, in the image: they read and write its paths.
 	if err := chroot(root,
 		"glib-compile-schemas /usr/share/glib-2.0/schemas",
@@ -210,9 +204,6 @@ func bake(root, passwordHash, version string) error {
 		if err := run(args[0], args[1:]...); err != nil {
 			return err
 		}
-	}
-	if err := setPassword(root, "spin", passwordHash); err != nil {
-		return err
 	}
 	// root has no password and is not locked: "*" rather than "!", which sshd without PAM takes for
 	// a locked account and refuses even a key for (spin-ami's keyOnly does the same).

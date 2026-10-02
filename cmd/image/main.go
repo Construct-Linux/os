@@ -198,8 +198,8 @@ var keyDir = filepath.Join(out, "release-key")
 var initDir = filepath.Join(out, "spin-init")
 
 // buildInit builds this repository's programs for the root, static, into initDir: cmd/spin-init
-// at /usr/lib/spindrift/init, which the USB disk's kernel runs first (init=; the ext4 test
-// disk boots systemd directly), and cmd/drift at /usr/bin/drift.
+// at /usr/lib/spindrift/init, which every disk's kernel runs first (init=), and cmd/drift at
+// /usr/bin/drift.
 func buildInit() error {
 	for pkg, dst := range map[string]string{
 		"./cmd/spin-init": "usr/lib/spindrift/init",
@@ -490,7 +490,7 @@ func (m machine) start() (*vm, error) {
 	} else {
 		args = append(args,
 			"-kernel", filepath.Join(out, "kernel", "bzImage"),
-			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
+			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off init=/usr/lib/spindrift/init",
 			"-drive", "file="+filepath.Join(out, "disk.raw")+",if=virtio,format=raw")
 	}
 	args = append(args,

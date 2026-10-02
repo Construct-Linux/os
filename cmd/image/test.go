@@ -103,11 +103,11 @@ func test(args []string) error {
 	r.add("shell", true, "org.gnome.Shell.Eval answers in unsafe mode")
 	// The run takes longer than GNOME's idle delay: with the display blanked, every screenshot
 	// after it is a black "Display output is not active".
-	_, _ = g.run(`sudo -u spin DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
+	_, _ = g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.shot(v, "desktop")
-	sinks, err := g.run(`sudo -u spin XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
+	sinks, err := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
 	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched))
@@ -123,7 +123,7 @@ func test(args []string) error {
 		_ = os.WriteFile(filepath.Join(dir, "dns.txt"), []byte(diag), 0o644)
 		r.add("dns", false, "no answer for dl.flathub.org; see dns.txt")
 	}
-	dock, err := g.run(`sudo -u spin docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
+	dock, err := g.run(`sudo -u live docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
 	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
@@ -131,7 +131,7 @@ func test(args []string) error {
 	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files
 	// (drift gtk4), which a Flatpak reads through the image's read-only override. The marker is
 	// the dark styles' media query, which only the Orchis fork's light gtk.css carries.
-	gtk4, err := g.run(`f=/var/home/spin/.config/gtk-4.0/gtk.css; test -f "$f" && ! test -L "$f" && sudo -u spin XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c 'grep -c "prefers-color-scheme" "$HOME/.config/gtk-4.0/gtk.css"' 2>&1`, "")
+	gtk4, err := g.run(`f=/var/home/live/.config/gtk-4.0/gtk.css; test -f "$f" && ! test -L "$f" && sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c 'grep -c "prefers-color-scheme" "$HOME/.config/gtk-4.0/gtk.css"' 2>&1`, "")
 	r.add("gtk4 theme in flatpak", err == nil && strings.TrimSpace(lastLine(gtk4)) != "0", "Chrome's sandbox reads the copied gtk.css: "+lastLine(gtk4))
 
 	want := map[string]bool{}
@@ -233,7 +233,7 @@ func (g *guest) wait(d time.Duration) error {
 
 // evalScript calls org.gnome.Shell.Eval in the test user's session with the JavaScript on stdin,
 // so nothing in it needs quoting for a shell.
-const evalScript = `js=$(cat); exec sudo -u spin env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus ` +
+const evalScript = `js=$(cat); exec sudo -u live env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus ` +
 	`gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval "$js"`
 
 // eval runs JavaScript in GNOME Shell and returns its JSON-encoded result.
@@ -394,8 +394,13 @@ func (r *report) write(g *guest) error {
 // system adds what the machine says about itself: failed units, core dumps, the journal's errors.
 func (r *report) system(g *guest) {
 	failed, _ := g.run(`systemctl --failed --no-legend --plain | awk '{print $1}'`, "")
-	userFailed, _ := g.run(`systemctl --user -M spin@ --failed --no-legend --plain 2>/dev/null | awk '{print $1}'`, "")
-	dumps, _ := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $NF}' | sort | uniq -c`, "")
+	userFailed, _ := g.run(`systemctl --user -M live@ --failed --no-legend --plain 2>/dev/null | awk '{print $1}'`, "")
+	// EXE is the next-to-last column; the last is the core's size.
+	dumps, _ := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $(NF-1)}' | sort | uniq -c`, "")
+	if strings.TrimSpace(dumps) != "" {
+		info, _ := g.run(`coredumpctl --no-pager info 2>&1`, "")
+		_ = os.WriteFile(filepath.Join(r.dir, "coredumps.txt"), []byte(info), 0o644)
+	}
 	errs, _ := g.run(`journalctl -b -p err --no-pager -o short-monotonic`, "")
 	// What GNOME Shell logs below error priority but is a bug all the same: an extension's
 	// exception, an actor used after it was destroyed (both typical of a lock/unlock cycle, which
@@ -570,7 +575,7 @@ func (e extension) detail() string {
 // enabled-extensions, which the image's dconf defaults set), each with the state the running shell
 // gives it: an extension that broke with this shell, or is not there, fails the test.
 func (g *guest) extensions() []extension {
-	list, err := g.run(`sudo -u spin DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.shell enabled-extensions`, "")
+	list, err := g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.shell enabled-extensions`, "")
 	if err != nil {
 		return []extension{{uuid: "(enabled-extensions)", err: err.Error()}}
 	}

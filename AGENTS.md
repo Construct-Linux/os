@@ -53,8 +53,12 @@ that does not come up.
 - **The test layer never reaches a real disk.** `image/test/` (unsafe-mode shell, the broken GDM)
   goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot credential
   (`ssh.ephemeral-authorized_keys-all`) and is written nowhere.
-- **No password or private key in the repository.** The user's password hash is read from
-  `.cache/spin-password.hash` at build.
+- **No person, password or private key in the image or the repository.** `drift install` asks
+  who a machine is for and writes them into the installed `/var` (`internal/account`: userdb
+  records, the hash in a root-only companion file); a root with nobody installed boots the
+  passwordless `live` user spin-init writes. root stays locked (`*`). sudo asks the person's
+  password (wheel, 15 minutes) - with GDM logging them in, it is what stands between their
+  programs and root.
 
 ## What the root is, and what it implies
 

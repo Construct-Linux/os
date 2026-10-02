@@ -97,7 +97,11 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	yes := fl.Bool("yes", false, "do not ask: erase the disk")
 	keyring := fl.String("keyring", defaultKeyring, "the public key the release is checked against")
 	loader := fl.String("loader", "/usr/lib/systemd/boot/efi/systemd-bootx64.efi", "the systemd-boot the ESP is given")
+	user := fl.String("user", "", "the login of whom the machine is for (default: asked)")
+	realName := fl.String("real-name", "", "their full name (default: asked, or the login)")
+	passwordFile := fl.String("password-file", "", "a file holding their password (default: asked)")
 	_ = fl.Parse(args)
+	ask := bufio.NewReader(in)
 
 	keys, err := update.ReadKeyring(*keyring)
 	if err != nil {
@@ -125,9 +129,16 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		return fmt.Errorf("%s has sectors of %q bytes; its table is written in %d", disk.Path(), strings.TrimSpace(string(size)), gpt.Sector)
 	}
 	if !*yes {
-		if err := confirm(in, out, disk); err != nil {
+		if err := confirm(ask, out, disk); err != nil {
 			return err
 		}
+	} else if *user == "" {
+		return errors.New("--yes asks nothing: give --user and --password-file")
+	}
+	// Everything is asked before anything is written: the long part runs unattended.
+	who, err := personFrom(ask, out, *user, *realName, *passwordFile)
+	if err != nil {
+		return err
 	}
 	_, err = update.Install(ctx, update.InstallOptions{
 		Keys: keys, Source: *from, Disk: disk,
@@ -138,17 +149,20 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		},
 		Run:      run,
 		MountESP: mountVFAT,
-		Loader:   *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: journal(),
+		PrepareVar: func(ctx context.Context, dev string) error {
+			return prepareVar(ctx, dev, who)
+		},
+		Loader: *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: journal(),
 	})
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "installed on %s: remove the stick and reboot\n", disk.Path())
+	fmt.Fprintf(out, "installed on %s for %s: remove the stick and reboot\n", disk.Path(), who.user.Name)
 	return nil
 }
 
 // confirm shows disk and what is on it, and asks for its name typed back: everything on it goes.
-func confirm(in io.Reader, out io.Writer, disk update.BlockDisk) error {
+func confirm(in *bufio.Reader, out io.Writer, disk update.BlockDisk) error {
 	fmt.Fprintf(out, "Spindrift is to be installed on\n\n  %s\n\n", disk)
 	if f, err := os.Open(disk.Path()); err == nil {
 		if t, err := gpt.Read(f); err == nil {
@@ -161,7 +175,7 @@ func confirm(in io.Reader, out io.Writer, disk update.BlockDisk) error {
 		_ = f.Close()
 	}
 	fmt.Fprintf(out, "Everything on it is erased. Type %s to go on: ", disk.Name)
-	line, err := bufio.NewReader(in).ReadString('\n')
+	line, err := in.ReadString('\n')
 	if err != nil && !errors.Is(err, io.EOF) {
 		return err
 	}

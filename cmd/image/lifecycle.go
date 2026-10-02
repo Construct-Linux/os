@@ -68,10 +68,15 @@ func lifecycle(args []string) error {
 	if err != nil {
 		return err
 	}
+	start := time.Now()
+	// The person the machine is installed for, as the installer would be told; the password goes
+	// through a file, as --yes asks nothing.
 	outs, err := g.run(`set -e; mkdir -p /run/rel; mount -o ro /dev/disk/by-partlabel/spin-update /run/rel; `+
-		`drift install --disk /dev/nvme0n1 --from /run/rel --yes; umount /run/rel`, "")
+		`printf '%s\n' '`+lifecyclePassword+`' > /run/pw; `+
+		`drift install --disk /dev/nvme0n1 --from /run/rel --yes --user `+lifecycleUser+` --real-name 'Ada Lovelace' --password-file /run/pw; rm /run/pw; umount /run/rel`, "")
 	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
-	r.add("install", err == nil, lastLine(outs)+errText(err))
+	// How long an install takes is part of what it is: the person waits on it.
+	r.add("install", err == nil, fmt.Sprintf("%s in %s%s", lastLine(outs), time.Since(start).Round(time.Second), errText(err)))
 	v.powerOff(g)
 	if err != nil {
 		return r.write(nil)
@@ -86,8 +91,9 @@ func lifecycle(args []string) error {
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
 	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts`, "")
 	r.add("/var on the disk", strings.Contains(src, "nvme0n1"), oneLine(src))
-	_, err = g.run(`echo kept > /var/home/spin/marker && echo kept > /etc/spindrift-marker`, "")
+	_, err = g.run(`echo kept > /var/home/`+lifecycleUser+`/marker && echo kept > /etc/spindrift-marker`, "")
 	r.add("keep a file in /var and one in /etc", err == nil, errText(err))
+	r.person(g)
 	ok, detail := g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v1 comes up", ok, detail)
 	v.powerOff(g)
@@ -137,7 +143,7 @@ func lifecycle(args []string) error {
 		return r.write(nil)
 	}
 	r.add("reboot into v2", g.version() == versions["v2"], "running "+g.version())
-	kept, _ := g.run(`cat /var/home/spin/marker /etc/spindrift-marker`, "")
+	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/spindrift-marker`, "")
 	r.add("kept across the update", strings.Count(kept, "kept") == 2, oneLine(kept))
 	ok, detail = g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v2 comes up", ok, detail)
@@ -168,7 +174,7 @@ func lifecycle(args []string) error {
 	r.add("v3 rolls back to v2", g.version() == versions["v2"], "running "+g.version())
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v3 is marked bad", strings.Contains(esp, "spindrift_"+versions["v3"]+"+0-3"), oneLine(esp))
-	kept, _ = g.run(`cat /var/home/spin/marker /etc/spindrift-marker`, "")
+	kept, _ = g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/spindrift-marker`, "")
 	r.add("kept across the rollback", strings.Count(kept, "kept") == 2, oneLine(kept))
 	err = r.write(g)
 	v.powerOff(g)
@@ -267,4 +273,23 @@ func serve(dir string) (*http.Server, string, error) {
 	srv := &http.Server{Handler: http.FileServer(http.Dir(dir))}
 	go func() { _ = srv.Serve(l) }()
 	return srv, fmt.Sprintf("http://10.0.2.2:%d", l.Addr().(*net.TCPAddr).Port), nil
+}
+
+// The person test:lifecycle installs for.
+const (
+	lifecycleUser     = "ada"
+	lifecyclePassword = "correct horse battery staple"
+)
+
+// person checks who an installed machine is for: GDM logged them in, there is no live user, and
+// sudo asks for their password and takes it.
+func (r *report) person(g *guest) {
+	sessions, _ := g.run(`sleep 20; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
+	r.add("logged in at boot", strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live"), "sessions: "+sessions)
+	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")
+	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
+	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")
+	r.add("sudo takes the password", strings.Contains(withPw, "0\nrc=0") || strings.HasPrefix(strings.TrimSpace(withPw), "0"), oneLine(withPw))
+	root, _ := g.run(`getent shadow root | cut -d: -f2`, "")
+	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
 }

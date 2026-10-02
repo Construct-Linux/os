@@ -91,6 +91,9 @@ type InstallOptions struct {
 	// and how to unmount it.
 	Run      func(ctx context.Context, name string, args ...string) error
 	MountESP func(ctx context.Context, dev string) (string, func() error, error)
+	// PrepareVar, when set, is given the new /var's device once it is made: who the machine is
+	// for goes there (cmd/drift).
+	PrepareVar func(ctx context.Context, dev string) error
 	// Loader is the running root's systemd-boot, which the ESP is given.
 	Loader string
 	// Vars are the firmware's variables, where the boot entry is written.
@@ -173,6 +176,12 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	}
 	if err := o.Run(ctx, "mkfs.ext4", "-q", "-F", "-L", VarName, vardev); err != nil {
 		return gpt.Table{}, err
+	}
+	if o.PrepareVar != nil {
+		log.Info("preparing /var")
+		if err := o.PrepareVar(ctx, vardev); err != nil {
+			return gpt.Table{}, fmt.Errorf("install: preparing /var: %w", err)
+		}
 	}
 	dir, unmount, err := o.MountESP(ctx, esp)
 	if err != nil {

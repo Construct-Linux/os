@@ -7,8 +7,9 @@
 // /var is looked for only on the disk the root was set up from - the slave of /dev/dm-0 - never
 // by its label across every disk: a live stick and an installed disk both have one called var.
 // With none there yet - a live stick's first boot - spin-init makes it with systemd-repart, on that
-// disk alone. If that fails /var, and with it the changes to /etc, are in memory for this boot. On a writable root (the QEMU
-// test disk) it only becomes systemd.
+// disk alone. If that fails /var, and with it the changes to /etc, are in memory for this boot. On a
+// writable root (the QEMU test disk) it mounts nothing. Either way, a root nobody is installed for
+// gets the live user (internal/account) before systemd reads who there is.
 package main
 
 import (
@@ -22,6 +23,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
+	"github.com/spin-stack/spindrift/internal/account"
 	"github.com/spin-stack/spindrift/internal/gpt"
 )
 
@@ -67,7 +69,8 @@ func setup() error {
 		return err
 	}
 	if st.Flags&unix.ST_RDONLY == 0 {
-		return nil
+		// The QEMU test disk: /var and /etc are the root's own, and nobody is installed on it.
+		return livePerson()
 	}
 	if err := unix.Mount("sysfs", "/sys", "sysfs", unix.MS_NOSUID|unix.MS_NOEXEC|unix.MS_NODEV, ""); err != nil && err != unix.EBUSY {
 		return fmt.Errorf("mount /sys: %w", err)
@@ -128,7 +131,24 @@ func setup() error {
 	if err := unix.Mount("overlay", "/etc", "overlay", 0, opts); err != nil {
 		return fmt.Errorf("overlay on /etc: %w", err)
 	}
-	return nil
+	return livePerson()
+}
+
+// livePerson gives a root nobody is installed for - a live stick, the test disk - its Live user,
+// logged in at boot, before systemd reads who there is. An installed machine has its person,
+// written by drift install, and never gets Live.
+func livePerson() error {
+	installed, err := account.HasPerson("/etc")
+	if err != nil || installed {
+		return err
+	}
+	if err := account.Write("/etc", account.Live); err != nil {
+		return fmt.Errorf("the live user: %w", err)
+	}
+	if err := account.Autologin("/etc", account.Live.Name); err != nil {
+		return err
+	}
+	return account.MakeHome("/var", account.Live)
 }
 
 // growTable moves dev's backup table to the disk's end, if the image it holds was smaller.

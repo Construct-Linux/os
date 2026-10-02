@@ -28,19 +28,22 @@ Developer tools ship with it: Docker and containerd, gcc and make, git.
 
 ## Use it
 
-Everything is a task (`task --list`); the build needs Docker, Go, QEMU and `../spin-ami`.
+Everything is a task (`task --list`); the build needs Docker, Go, QEMU (and swtpm) and
+`../spin-ami`.
 
 ```sh
 task keygen:release                      # once: the release key, outside this repository
-openssl passwd -6 > .cache/spin-password.hash   # the user's password
 task usb                                  # -> _output/usb/disk.raw
 ```
 
 Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three things:
 
-- **live**: the desktop runs from it; its first boot makes `/var` in the rest of the stick.
-- **installer**: `sudo drift install` erases the machine's first internal disk (never the
-  stick) and lays two system slots and `/var` on it.
+- **live**: the desktop runs from it, as the user `live`; its first boot makes `/var` in the rest
+  of the stick.
+- **installer**: `sudo drift install` asks who the machine is for - a name, a login and one
+  password - then erases the machine's first internal disk (never the stick) and lays two system
+  slots and `/var` on it. That person is logged in at boot; sudo and the lock screen ask for the
+  password. root has none and cannot log in.
 - **update**: plugged into an installed machine, it writes its release into the slot not running.
 
 ## Test it
