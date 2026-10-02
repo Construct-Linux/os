@@ -91,7 +91,11 @@ tasks:
   tools:
     desc: The container the root is laid in, and this repository's programs for it (cmd/image) and for the root (cmd/drift).
     cmds:
-      - docker build -q -t spindrift-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
+      # packages/ and its public key, for systemd (build/tools/Dockerfile).
+      - mkdir -p _output/tools-keys && cp melange.rsa.pub _output/tools-keys/
+      - >-
+        docker build -q -t spindrift-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base)
+        --build-context packages=packages --build-context keys=_output/tools-keys build/tools
       - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
       - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/drift/usr/bin/drift ./cmd/drift
 

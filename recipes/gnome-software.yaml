@@ -47,7 +47,7 @@ pipeline:
       expected-sha256: 834b6035e61e36dd72339eb3e15d299b472ae0b393467a5bb36bb0045e0ba123
 
   # Flatpak is the source of apps; fwupd brings firmware updates and systemd-sysupdated
-  # (recipes/systemd-sysupdate) the system's own, both shown and installed here. There is no
+  # (recipes/systemd) the system's own, both shown and installed here. There is no
   # PackageKit, snapd or malcontent on this image. Web apps install into Epiphany, which needs
   # webkitgtk. sysprof is not available.
   - uses: meson/configure

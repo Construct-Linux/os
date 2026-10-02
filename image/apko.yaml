@@ -34,13 +34,17 @@ contents:
     - umount
     - dosfstools
     - e2fsprogs
-    # Updates: systemd-sysupdate (recipes/systemd-sysupdate; Wolfi's systemd has none), and the
+    # Updates: systemd-sysupdate (recipes/systemd's subpackage; Wolfi's systemd has none), and the
     # gpg it checks a release's SHA256SUMS.gpg with.
     - systemd-sysupdate
     - gpg
-    # The TPM2 stack (libtss2-*), which systemd-cryptsetup and systemd-cryptenroll load at run time,
-    # so nothing depends on it: the encrypted /var (TPM2 and a PIN) that comes next unlocks with it.
+    # The TPM2 stack (libtss2-*), which systemd (recipes/systemd, built with TPM2) loads at run time,
+    # so nothing depends on it: drift install enrolls /var's key with systemd-cryptenroll.
     - tpm2-tss
+    # libbpf, which systemd (recipes/systemd, built with BPF) loads at run time for its cgroup BPF
+    # features (RestrictFileSystems=, IP accounting and filters), so nothing depends on it.
+    # Without it every unit's start logs that libbpf.so.0 is missing.
+    - libbpf
     # device-mapper's udev rules, which make /dev/mapper/* for the root's verity device.
     - device-mapper
     - shadow
