@@ -1,0 +1,42 @@
+# The initrd systemd runs in before the root: Wolfi's systemd, and what it does there - verity
+# for the root (systemd-veritysetup, the dissect_image udev builtin finding the partitions by the
+# root hash), /var made on a stick's first boot (systemd-repart, mkfs.ext4), the /etc overlay
+# mounted before the switch, the boot splash. No modules: storage, EROFS, ext4 and overlayfs are
+# built into the kernel (kernel/desktop.config). cmd/image usb packs it as the UKI's initrd.
+contents:
+  repositories:
+    - https://packages.wolfi.dev/os
+    - /work/packages
+  keyring:
+    - https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
+    - /work/melange.rsa.pub
+  packages:
+    - wolfi-baselayout
+    - systemd
+    - udev
+    - kmod
+    - mount
+    - umount
+    - util-linux
+    # sulogin, for the emergency shell; sfdisk moves a stick's backup GPT to its end before
+    # systemd-repart looks for room for /var (spindrift-gpt-relocate.service).
+    - util-linux-login
+    - sfdisk
+    - e2fsprogs
+    - cryptsetup
+    # device-mapper's udev rules: without them no /dev/mapper/root appears for the verity device
+    # systemd-veritysetup makes, and sysroot.mount waits for it until it times out.
+    - device-mapper
+    # 13-dm-disk.rules reads a device-mapper device's filesystem with blkid.
+    - blkid
+    - tpm2-tss
+    - plymouth
+    - bash
+    - bash-binsh
+    - coreutils
+
+accounts:
+  run-as: root
+
+archs:
+  - x86_64

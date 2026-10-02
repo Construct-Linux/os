@@ -108,9 +108,9 @@ func test(args []string) error {
 	time.Sleep(time.Second)
 	r.shot(v, "desktop")
 	sinks, err := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
-	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks))
+	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
-	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched))
+	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched)+errText(err))
 	for _, e := range g.extensions() {
 		r.add("extension "+e.uuid, e.ok(), e.detail())
 	}
@@ -126,6 +126,10 @@ func test(args []string) error {
 	dock, err := g.run(`sudo -u live docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
+	// NetworkManager's Wi-Fi is wpa_supplicant, started by the bus when it is asked for: a VM has
+	// no Wi-Fi card to join a network with, but the supplicant must be there to be started.
+	wifi, err := g.run(`busctl call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus StartServiceByName su fi.w1.wpa_supplicant1 0 2>&1`, "")
+	r.add("wifi supplicant", err == nil && strings.HasPrefix(strings.TrimSpace(wifi), "u "), oneLine(wifi)+errText(err))
 	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files
@@ -419,6 +423,10 @@ func (r *report) system(g *guest) {
 	}
 	r.add("user units", strings.TrimSpace(userFailed) == "", "failed: "+oneLine(userFailed))
 	r.add("core dumps", strings.TrimSpace(dumps) == "", oneLine(dumps))
+	// A PAM file that includes one the image does not have fails every authentication through it,
+	// and says so only in the journal.
+	pam, _ := g.run(`journalctl -b --no-pager -o cat | grep -E 'unable to open config for' | sort -u || true`, "")
+	r.add("pam", strings.TrimSpace(pam) == "", oneLine(pam))
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
 	// Plymouth's own log, when the disk was built to boot with plymouth.debug.
 	if ply, err := g.run("cat /var/log/plymouth-debug.log", ""); err == nil && ply != "" {

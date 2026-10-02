@@ -194,16 +194,14 @@ func checkKey(args []string) error {
 // keyDir holds the release key's public half at usr/share/spindrift/release.pgp (task usb).
 var keyDir = filepath.Join(out, "release-key")
 
-// initDir holds cmd/spin-init, built for the root as a layer of its own.
+// initDir holds cmd/drift, built for the root as a layer of its own.
 var initDir = filepath.Join(out, "spin-init")
 
-// buildInit builds this repository's programs for the root, static, into initDir: cmd/spin-init
-// at /usr/lib/spindrift/init, which every disk's kernel runs first (init=), and cmd/drift at
+// buildInit builds this repository's programs for the root, static, into initDir: cmd/drift at
 // /usr/bin/drift.
 func buildInit() error {
 	for pkg, dst := range map[string]string{
-		"./cmd/spin-init": "usr/lib/spindrift/init",
-		"./cmd/drift":     "usr/bin/drift",
+		"./cmd/drift": "usr/bin/drift",
 	} {
 		cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(initDir, dst), pkg)
 		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOAMD64=v3")
@@ -248,6 +246,7 @@ func rootLayers(test bool) []layer {
 			"etc/systemd/system/multi-user.target.wants/spindrift-flathub.service":                "/usr/lib/systemd/system/spindrift-flathub.service",
 			"etc/systemd/system/multi-user.target.wants/NetworkManager-wait-online.service":       "/usr/lib/systemd/system/NetworkManager-wait-online.service",
 			"etc/systemd/user/default.target.wants/xdg-user-dirs.service":                         "/usr/lib/systemd/user/xdg-user-dirs.service",
+			"etc/systemd/system/multi-user.target.wants/spindrift-live.service":                   "/usr/lib/systemd/system/spindrift-live.service",
 			"etc/systemd/user/default.target.wants/spindrift-gtk4.service":                        "/usr/lib/systemd/user/spindrift-gtk4.service",
 			"etc/systemd/system/multi-user.target.wants/scx.service":                              "/usr/lib/systemd/system/scx.service",
 			"etc/systemd/system/sysinit.target.wants/spindrift-ssh-hostkeys.service":              "/usr/lib/systemd/system/spindrift-ssh-hostkeys.service",
@@ -490,7 +489,7 @@ func (m machine) start() (*vm, error) {
 	} else {
 		args = append(args,
 			"-kernel", filepath.Join(out, "kernel", "bzImage"),
-			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off init=/usr/lib/spindrift/init",
+			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
 			"-drive", "file="+filepath.Join(out, "disk.raw")+",if=virtio,format=raw")
 	}
 	args = append(args,

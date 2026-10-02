@@ -152,7 +152,7 @@ func hashPassword(ctx context.Context, pw string) (string, error) {
 }
 
 // prepareVar lays p on the new /var at dev: their record, GNOME logging them in, their home.
-// What goes in /etc is written into the overlay's upper layer spin-init mounts /etc with.
+// What goes in /etc is written into the overlay's upper layer the initrd mounts /etc with.
 func prepareVar(ctx context.Context, dev string, p person) error {
 	hash, err := hashPassword(ctx, p.password)
 	if err != nil {
@@ -181,4 +181,21 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	}
 	_ = os.Remove(dir)
 	return err
+}
+
+// liveCmd gives a root nobody is installed for - a live stick, the test disk - the live user,
+// logged in at boot (spindrift-live.service, before GDM). An installed machine has its person,
+// written by drift install, and never gets it.
+func liveCmd(etc, varDir string) error {
+	installed, err := account.HasPerson(etc)
+	if err != nil || installed {
+		return err
+	}
+	if err := account.Write(etc, account.Live); err != nil {
+		return fmt.Errorf("the live user: %w", err)
+	}
+	if err := account.Autologin(etc, account.Live.Name); err != nil {
+		return err
+	}
+	return account.MakeHome(varDir, account.Live)
 }

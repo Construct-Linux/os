@@ -26,7 +26,8 @@ import (
 func usb(args []string) error {
 	fl := flag.NewFlagSet("usb", flag.ExitOnError)
 	test := fl.Bool("test", false, "add image/test/rootfs, as task disk -- -test does")
-	extra := fl.String("append", "", "more of the kernel's command line, to diagnose a boot (plymouth.debug)")
+	var extra appendFlag
+	fl.Var(&extra, "append", "more of the kernel's command line, to diagnose a boot: one option each, repeatable (plymouth.debug)")
 	broken := fl.Bool("broken", false, "add image/test/broken: a release whose GDM fails, for the lifecycle test's rollback")
 	_ = fl.Parse(args)
 
@@ -45,8 +46,8 @@ func usb(args []string) error {
 		return err
 	}
 	// Built on the host by task usb: this container has no Go.
-	if _, err := os.Stat(filepath.Join(initDir, "usr/lib/spindrift/init")); err != nil {
-		return fmt.Errorf("spin-init: %w", err)
+	if _, err := os.Stat(filepath.Join(initDir, "usr/bin/drift")); err != nil {
+		return fmt.Errorf("drift: %w", err)
 	}
 	merged := filepath.Join(out, "root.tar")
 	layers := rootLayers(*test)
@@ -69,7 +70,7 @@ func usb(args []string) error {
 	}
 	esp := filepath.Join(stage, "esp")
 	label := "spindrift_" + version
-	v.extra = *extra
+	v.extra = strings.Join(extra, " ")
 	if err := espTree(root, esp, label, v); err != nil {
 		return err
 	}
@@ -179,6 +180,21 @@ func usbDisk(args []string) error {
 // packages' triggers apko does not run, the users sysusers.d declares, the factory files tmpfiles.d
 // makes, the hardware database; and the /var partition, /tmp and the user's password.
 func bake(root, version string) error {
+	// What a person or a program writes outside /var on a writable root lives in /var here, as on
+	// Fedora's image-based desktops: the read-only root links there (image/rootfs's tmpfiles.d makes
+	// the targets). Laid first: systemd-tmpfiles below would make /root/.ssh in a /root still a
+	// directory. /usr/local stays the image's: Wolfi's gcc puts cc and c++ in its bin.
+	for link, target := range map[string]string{
+		"home": "var/home", "opt": "var/opt", "srv": "var/srv", "mnt": "var/mnt", "root": "var/roothome",
+	} {
+		p := filepath.Join(root, link)
+		if err := os.Remove(p); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("%s holds what the packages put there: %w", p, err)
+		}
+		if err := os.Symlink(target, p); err != nil {
+			return err
+		}
+	}
 	// The image's own programs, in the image: they read and write its paths.
 	if err := chroot(root,
 		"glib-compile-schemas /usr/share/glib-2.0/schemas",
@@ -217,15 +233,9 @@ func bake(root, version string) error {
 		// boot, bake has done: without this file they run at every first boot of an image.
 		"etc/.updated": "",
 		"etc/fstab": `# / is the kernel's: EROFS under dm-verity, read-only, set up from the command line before
-# anything runs (cmd/image usb). /var is mounted by spin-init (cmd/spin-init), from the root's own
-# disk, before systemd starts; it lays /etc over it.
+# anything runs (cmd/image usb). The initrd mounts /var, from the root's own disk, and lays /etc
+# over it before it switches to the root (image/initrd).
 tmpfs /tmp tmpfs mode=1777,nosuid,nodev 0 0
-`,
-		"usr/lib/repart.d/60-var.conf": `# /var, made by spin-init at a stick's first boot in whatever it has beyond the image.
-[Partition]
-Type=var
-Label=var
-Format=ext4
 `,
 		"usr/lib/os-release": fmt.Sprintf(`NAME="Spindrift"
 ID=spindrift
@@ -250,19 +260,13 @@ HOME_URL="https://github.com/spin-stack"
 	if err := varSkeleton(root); err != nil {
 		return err
 	}
-	// spin-init makes /var on the root's disk; systemd-repart's own unit would look at every
-	// disk's free space, an installed machine's included.
-	_ = os.Remove(filepath.Join(root, "etc/systemd/system/systemd-repart.service"))
-	if err := os.Symlink("/dev/null", filepath.Join(root, "etc/systemd/system/systemd-repart.service")); err != nil {
-		return err
-	}
 	_ = os.Remove(filepath.Join(root, "etc/os-release"))
 	if err := os.Symlink("../usr/lib/os-release", filepath.Join(root, "etc/os-release")); err != nil {
 		return err
 	}
 	// Mount points a read-only root cannot make at boot: /boot is where systemd's gpt-auto mounts
 	// the ESP of the disk the machine booted from, which systemd-bless-boot and updates write.
-	for _, d := range []string{"var", "tmp", "home", "boot", "efi"} {
+	for _, d := range []string{"var", "tmp", "boot", "efi"} {
 		_ = os.MkdirAll(filepath.Join(root, d), 0o755)
 	}
 	return os.Chmod(filepath.Join(root, "tmp"), os.ModeSticky|0o777)
@@ -400,7 +404,7 @@ func verifiedRoot(root, img, tree string) (verity, error) {
 		return verity{}, err
 	}
 	blocks := fi.Size() / verityBlock
-	outb, err := exec.Command("veritysetup", "format", img, tree, "--no-superblock", "--hash=sha256",
+	outb, err := exec.Command("veritysetup", "format", img, tree, "--hash=sha256",
 		fmt.Sprintf("--data-block-size=%d", verityBlock), fmt.Sprintf("--hash-block-size=%d", verityBlock),
 		fmt.Sprintf("--data-blocks=%d", blocks), "--salt="+salt).CombinedOutput()
 	if err != nil {
@@ -424,22 +428,21 @@ func verifiedRoot(root, img, tree string) (verity, error) {
 // and the boot shows text instead. And with a serial console on the command line Plymouth runs as
 // text on every console and looks for no screen at all, unless told to leave serial ones out.
 //
-// spin-ami's bare metal's root - dm-verity over the root partition, checked against the tree
-// partition, both found by the partition UUIDs the root hash gives them - and its consoles, the
-// machine's id from its firmware, cgroup v2 only, and a reboot ten seconds after a panic.
+// The root is systemd's to find: roothash= is all the initrd needs - the dissect_image udev builtin
+// picks, on the disk the machine booted from, the root and verity partitions whose UUIDs halve the
+// hash (slot A's or slot B's), and systemd-veritysetup checks one against the other, reading the
+// rest from the tree's superblock. A block that does not match panics: panic=10 then reboots, and
+// boot counting falls back. Then the consoles, the machine's id from its firmware (/var's UUID is
+// derived from it), cgroup v2 only.
 func (v verity) cmdline() string {
-	data, hash := "PARTUUID="+v.rootUUID, "PARTUUID="+v.vUUID
-	table := fmt.Sprintf("0 %d verity 1 %s %s %d %d %d 0 sha256 %s %s 1 panic_on_corruption",
-		v.dataBlocks*verityBlock/512, data, hash, verityBlock, verityBlock, v.dataBlocks, v.rootHash, v.salt)
-	return `dm-mod.create="root,,,ro,` + table + `" dm-mod.waitfor=` + data + "," + hash +
-		" root=/dev/dm-0 rootfstype=erofs ro init=/usr/lib/spindrift/init" +
+	return "roothash=" + v.rootHash + " systemd.verity_root_options=panic-on-corruption rootfstype=erofs ro" +
 		" console=ttyS0,115200n8 console=tty0 cgroup_no_v1=all,named" +
 		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" + strings.TrimRight(" "+v.extra, " ")
 }
 
 // espTree lays the ESP: systemd-boot at the removable-media path, which firmware boots from a
 // stick with no boot entry, and the kernel image with the microcode both vendors' processors load
-// before the kernel runs.
+// before the kernel runs and the initrd systemd runs in before the root (buildInitrd).
 func espTree(root, esp, label string, v verity) error {
 	boot, err := os.ReadFile(filepath.Join(root, "usr/lib/systemd/boot/efi/systemd-bootx64.efi"))
 	if err != nil {
@@ -465,6 +468,14 @@ func espTree(root, esp, label string, v verity) error {
 	if err != nil {
 		return err
 	}
+	rel, err := initrdRelease(root)
+	if err != nil {
+		return err
+	}
+	initrd := filepath.Join(filepath.Dir(esp), "initrd.cpio.zst")
+	if err := buildInitrd(rel, initrd); err != nil {
+		return err
+	}
 	shown, err := splash(splashLine{"Spindrift", 4}, splashLine{strings.TrimPrefix(label, "spindrift_"), 2})
 	if err != nil {
 		return err
@@ -476,7 +487,8 @@ func espTree(root, esp, label string, v verity) error {
 	return run("ukify", "build",
 		"--splash", bmpFile,
 		"--linux", filepath.Join(out, "kernel", "bzImage"),
-		"--initrd", ucode,
+		// The microcode first: the kernel looks for it at the start of the initrds.
+		"--initrd", ucode, "--initrd", initrd,
 		"--cmdline", v.cmdline(),
 		"--os-release", "@"+filepath.Join(root, "usr/lib/os-release"),
 		"--uname", strings.TrimSpace(readFile(filepath.Join(out, "kernel", "release"))),
@@ -579,3 +591,14 @@ func readFile(p string) string {
 }
 
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
+
+// appendFlag collects -append's options, one per flag: a value with spaces does not survive the
+// quoting task usb passes it through.
+type appendFlag []string
+
+func (a *appendFlag) String() string { return strings.Join(*a, " ") }
+
+func (a *appendFlag) Set(v string) error {
+	*a = append(*a, v)
+	return nil
+}

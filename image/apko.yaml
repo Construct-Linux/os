@@ -38,6 +38,8 @@ contents:
     # /var is LUKS2, opened by spin-init with the TPM and the person's PIN: systemd-cryptsetup and
     # systemd-cryptenroll load the TPM2 stack (libtss2-*) at run time, so nothing depends on it.
     - tpm2-tss
+    # device-mapper's udev rules, which make /dev/mapper/* for the root's verity and /var's LUKS.
+    - device-mapper
     - shadow
     - coreutils
     - bash
@@ -84,6 +86,8 @@ contents:
     - xwayland
     - networkmanager
     - networkmanager-wifi
+    # NetworkManager joins Wi-Fi through wpa_supplicant (recipes/wpa_supplicant: Wolfi has none).
+    - wpa_supplicant
     - accountsservice
     - upower
     - udisks2

@@ -5,6 +5,7 @@
 //	drift boot-check                                     reboot a counted boot that did not come up
 //	drift pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
 //	drift gtk4       [--from DIR] [--to DIR]             the image's GTK 4 theme, copied for a user
+//	drift live                                           the live user, on a root nobody is installed for
 //
 // install's release is a directory - a stick's spin-update partition, mounted read-only - checked
 // against the public key the root carries (internal/update's KeyringPath) before anything is
@@ -37,7 +38,8 @@ const usage = `usage:
   drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--loader FILE]
   drift boot-check
   drift pending    [--esp DIR] [--mark FILE]
-  drift gtk4       [--from DIR] [--to DIR]`
+  drift gtk4       [--from DIR] [--to DIR]
+  drift live`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -56,6 +58,8 @@ func main() {
 		err = pendingCmd(os.Args[2:], os.Stdout)
 	case "gtk4":
 		err = gtk4Cmd(os.Args[2:], os.Stdout)
+	case "live":
+		err = liveCmd("/etc", "/var")
 	default:
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
@@ -140,6 +144,15 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	if err != nil {
 		return err
 	}
+	// /var is bound to this machine: the live system's id is the firmware's, as the installed one's.
+	machineID, err := os.ReadFile("/etc/machine-id")
+	if err != nil {
+		return err
+	}
+	varUUID, err := update.VarUUID(string(machineID))
+	if err != nil {
+		return err
+	}
 	_, err = update.Install(ctx, update.InstallOptions{
 		Keys: keys, Source: *from, Disk: disk,
 		Open:   openDisk,
@@ -152,7 +165,8 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		PrepareVar: func(ctx context.Context, dev string) error {
 			return prepareVar(ctx, dev, who)
 		},
-		Loader: *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: journal(),
+		VarUUID: varUUID,
+		Loader:  *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: journal(),
 	})
 	if err != nil {
 		return err
