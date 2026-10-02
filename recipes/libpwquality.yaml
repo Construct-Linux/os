@@ -1,7 +1,7 @@
 package:
   name: libpwquality
   version: 1.4.5
-  epoch: 0
+  epoch: 1
   description: Password quality checking library
   copyright:
     - license: BSD-3-Clause
@@ -12,6 +12,7 @@ environment:
       - build-base
       - busybox
       - cracklib-dev
+      - gettext
       - linux-pam-dev
 
 pipeline:
@@ -20,11 +21,11 @@ pipeline:
       uri: https://github.com/libpwquality/libpwquality/releases/download/libpwquality-${{package.version}}/libpwquality-${{package.version}}.tar.bz2
       expected-sha256: 6fcf18b75d305d99d04d2e42982ed5b787a081af2842220ed63287a2d6a10988
 
-  # Python bindings off: accountsservice and gnome-control-center only link the C library.
-  # NLS off: melange has no built-in split/lang pipeline to carry the catalogs.
+  # Python bindings off: accountsservice and gnome-control-center only link the C library. Its
+  # verdicts on a new password are shown to the person, translated (libpwquality-lang).
   - uses: autoconf/configure
     with:
-      opts: --disable-static --disable-nls --disable-python-bindings --enable-pam --with-securedir=/usr/lib/security
+      opts: --disable-static --disable-python-bindings --enable-pam --with-securedir=/usr/lib/security
 
   - uses: autoconf/make
 
@@ -39,3 +40,7 @@ subpackages:
   - name: libpwquality-dev
     pipeline:
       - uses: split/dev
+
+  - name: libpwquality-lang
+    pipeline:
+      - uses: split/locales

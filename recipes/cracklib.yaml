@@ -1,7 +1,7 @@
 package:
   name: cracklib
   version: 2.10.3
-  epoch: 0
+  epoch: 1
   description: Library used to enforce strong passwords
   copyright:
     - license: LGPL-2.1-or-later
@@ -11,6 +11,7 @@ environment:
     packages:
       - build-base
       - busybox
+      - gettext
       # cracklib-format calls gzip -cdf on plain text, which busybox gzip rejects.
       - gzip
       - zlib-dev
@@ -21,10 +22,11 @@ pipeline:
       uri: https://github.com/cracklib/cracklib/releases/download/v${{package.version}}/cracklib-${{package.version}}.tar.xz
       expected-sha256: 1d1b83676b5673051b9373e1ca0db81c1fa88faf9a195a3c1af984fd9c250d66
 
-  # Python bindings off: libpwquality only links the C library.
+  # Python bindings off: libpwquality only links the C library. Its messages ("it is based on a
+  # dictionary word") reach the person through GNOME's password dialogs, translated.
   - uses: autoconf/configure
     with:
-      opts: --disable-nls --disable-static --without-python --sbindir=/usr/bin
+      opts: --disable-static --without-python --sbindir=/usr/bin
 
   - uses: autoconf/make
 
@@ -46,3 +48,7 @@ subpackages:
   - name: cracklib-dev
     pipeline:
       - uses: split/dev
+
+  - name: cracklib-lang
+    pipeline:
+      - uses: split/locales

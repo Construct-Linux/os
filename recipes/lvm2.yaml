@@ -1,8 +1,10 @@
 # Wolfi's lvm2, with --enable-udev_sync and without --enable-static_link. Without udev_sync
 # libdevmapper makes the /dev/mapper/* nodes itself, udev cannot lay its links there, and systemd
-# never sees dev-mapper-root.device: the verity root (and /var's LUKS) are set up and never
-# mounted. Its static binaries go with it - there is no static libudev to link them with. Wolfi's
-# test blocks are dropped (their pipelines are Wolfi CI's); the rest is Wolfi's recipe as it is.
+# never sees dev-mapper-root.device: the verity root is set up and never mounted. Its static
+# binaries go with it - there is no static libudev to link them with. Wolfi's test blocks are
+# dropped (their pipelines are Wolfi CI's); the rest is Wolfi's recipe as it is,
+# --disable-nls included: lvm2's po/Makefile builds no catalog (its TARGETS line is commented out
+# upstream) and its install then fails on the one translation it names.
 package:
   name: lvm2
   version: "2.03.43"
