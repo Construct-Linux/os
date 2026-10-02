@@ -458,6 +458,12 @@ func (r *report) system(g *guest) {
 	pam, pamErr := g.run(`journalctl -b --no-pager -o cat | grep -E 'unable to open config for' | sort -u || true`, "")
 	r.add("pam", pamErr == nil && strings.TrimSpace(pam) == "", oneLine(pam)+errText(pamErr))
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
+	// Where the boot's time went, for every build: the total in the report, the chain to the
+	// desktop and the slowest units in boot.txt. Not a gate - a VM's numbers are not a machine's -
+	// but a baseline to compare builds by.
+	boot, bootErr := g.run(`systemd-analyze time; echo; systemd-analyze critical-chain graphical.target; echo; systemd-analyze blame | head -30`, "")
+	_ = os.WriteFile(filepath.Join(r.dir, "boot.txt"), []byte(boot), 0o644)
+	r.add("boot time", bootErr == nil, oneLine(firstLine(boot))+errText(bootErr))
 	// Plymouth's own log, when the disk was built to boot with plymouth.debug.
 	if ply, err := g.run("cat /var/log/plymouth-debug.log", ""); err == nil && ply != "" {
 		_ = os.WriteFile(filepath.Join(r.dir, "plymouth-debug.log"), []byte(ply), 0o644)
