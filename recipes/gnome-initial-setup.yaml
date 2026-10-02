@@ -1,0 +1,62 @@
+# GNOME's first-run setup. Spindrift's installer creates the person, so it runs at their first
+# login (its existing-user mode): language, keyboard, privacy, online accounts, a welcome. Wolfi
+# has no recipe. WebKitGTK (web sign-ins for some online accounts) and malcontent (parental
+# controls) are not in the image.
+package:
+  name: gnome-initial-setup
+  version: "51.0"
+  epoch: 0
+  description: GNOME's first-run setup
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - accountsservice-dev
+      - build-base
+      - busybox
+      # Its install script links with ln --relative, which BusyBox lacks.
+      - coreutils
+      - gdm-dev
+      - geoclue-dev
+      - geocode-glib-dev
+      - gettext
+      - glib-dev
+      - gnome-desktop-dev
+      - gsettings-desktop-schemas-dev
+      - gtk-4-dev
+      - ibus-dev
+      - json-glib-dev
+      - krb5-dev
+      - libadwaita-dev
+      - libgweather4-dev
+      - libnma-dev
+      - libpwquality-dev
+      - libsecret-dev
+      - meson
+      - networkmanager-dev
+      - ninja
+      - polkit-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/gnome-initial-setup/51/gnome-initial-setup-${{package.version}}.tar.xz
+      expected-sha256: 22a1b61fccf9e4da9f925452984e458d85b34323f4399125cd36854f5eb66cc4
+
+  - uses: meson/configure
+    with:
+      opts: -Dwebkitgtk=disabled -Dparental_controls=disabled -Dibus=enabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: gnome-initial-setup-lang
+    pipeline:
+      - uses: split/locales
