@@ -198,7 +198,9 @@ func (v *vm) powerOff(g *guest) {
 	select {
 	case <-done:
 	case <-time.After(3 * time.Minute):
-		v.stop()
+		// The goroutine above is already in Wait; stop() would wait a second time.
+		_ = qmpRun(v.qmp, map[string]any{"execute": "quit"})
+		<-done
 	}
 }
 

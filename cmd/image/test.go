@@ -148,6 +148,19 @@ func test(args []string) error {
 			want[n] = true
 		}
 	}
+	// A name -only gives that nothing answers to would run nothing, and pass.
+	known := map[string]bool{"views": true}
+	for _, a := range apps {
+		known[a.id] = true
+	}
+	for _, p := range panels {
+		known["panel:"+p] = true
+	}
+	for n := range want {
+		if !known[n] {
+			r.add("-only "+n, false, "no app, panel:<name> or views is called that")
+		}
+	}
 	for _, a := range apps {
 		if len(want) > 0 && !want[a.id] {
 			continue
@@ -365,15 +378,20 @@ func (r *report) add(name string, ok bool, detail string) {
 	fmt.Printf("%s %-36s %s\n", mark, name, detail)
 }
 
+// shot saves the screen as name.png; one it cannot take is a failure of its own, since the report
+// names the file for a person to look at.
 func (r *report) shot(v *vm, name string) {
 	ppm := filepath.Join(r.dir, name+".ppm")
-	if err := v.screenshot(ppm); err != nil {
+	err := v.screenshot(ppm)
+	if err == nil {
+		time.Sleep(500 * time.Millisecond)
+		err = ppmToPNG(ppm, strings.TrimSuffix(ppm, ".ppm")+".png")
+	}
+	if err != nil {
+		r.add("screenshot "+name, false, err.Error())
 		return
 	}
-	time.Sleep(500 * time.Millisecond)
-	if err := ppmToPNG(ppm, strings.TrimSuffix(ppm, ".ppm")+".png"); err == nil {
-		_ = os.Remove(ppm)
-	}
+	_ = os.Remove(ppm)
 }
 
 // write adds what the system says about itself - failed units, core dumps, the journal's errors
