@@ -11,6 +11,12 @@ import (
 	"testing"
 )
 
+// Partition types the tests lay besides the ESP, as UEFI has them.
+const (
+	TypeLinuxData = "0fc63daf-8483-4772-8e79-3d69d8477de4"
+	TypeBasicData = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+)
+
 func disk(t *testing.T, size int64) *os.File {
 	f, err := os.Create(filepath.Join(t.TempDir(), "disk"))
 	if err != nil {
@@ -246,150 +252,5 @@ func TestAChangedTableIsNotRead(t *testing.T) {
 	}
 	if _, err := Read(disk(t, size)); err == nil {
 		t.Error("an empty disk has a table")
-	}
-}
-
-// The two slots of slotDisk, by their partitions' GUIDs, and the size of the disk.
-const (
-	slotA    = "a201682a-bb1c-9d0b-7b31-5d957af007b9"
-	slotB    = "0a1b2c3d-4e5f-6071-8293-a4b5c6d7e8f9"
-	slotSize = 64 << 20
-)
-
-// slotDisk is a disk of an ESP and two slots, the second empty, read-only (bit 60) and never
-// mounted by gpt-auto (bit 63) in both tables: attributes the table writer does not know of.
-func slotDisk(t *testing.T) *os.File {
-	t.Helper()
-	f := disk(t, slotSize)
-	if err := Write(f, slotSize, Table{Disk: "0b6d8f0e-1b1a-4f55-9d6c-9f1e5c7b3a21", Partitions: []Partition{
-		{Type: TypeESP, UUID: "8db37c3e-fa8d-e299-a792-c04533fff123", First: 2048, Last: 4095, Name: "esp"},
-		{Type: TypeLinuxData, UUID: slotA, First: 4096, Last: 8191, Name: "spindrift_20261001.090000"},
-		{Type: TypeLinuxData, UUID: slotB, First: 8192, Last: 12287, Name: "_empty"},
-	}}); err != nil {
-		t.Fatal(err)
-	}
-	for _, lba := range []int64{1, slotSize/Sector - 1} {
-		h, table, err := readTable(f, lba)
-		if err != nil {
-			t.Fatal(err)
-		}
-		binary.LittleEndian.PutUint64(table[2*entrySize+48:], 1<<60|1<<63)
-		if err := writeTable(f, h, table); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return f
-}
-
-// bothEntries is the primary table's entries of f, and fails t unless the backup's are the same.
-func bothEntries(t *testing.T, f *os.File) []byte {
-	t.Helper()
-	_, primary, err := readTable(f, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, backup, err := readTable(f, slotSize/Sector-1)
-	if err != nil {
-		t.Fatalf("the backup table: %v", err)
-	}
-	if !bytes.Equal(primary, backup) {
-		t.Error("the backup table is not the primary's")
-	}
-	return primary
-}
-
-// Renaming a partition changes its GUID and its name, in both tables, and nothing else of the
-// disk: not its type, sectors or attributes - a root's read-only flag among them - not another
-// partition, not the checksums' validity; and a shorter name leaves nothing of a longer one.
-func TestRenamingAPartitionChangesItsGUIDAndNameAlone(t *testing.T) {
-	f := slotDisk(t)
-	before := bothEntries(t, f)
-	const newUUID = "3f3c0a48-7b27-5b3b-73c2-385422d45830"
-	if err := Rename(f, slotB, newUUID, "spindrift_20261001.134321"); err != nil {
-		t.Fatal(err)
-	}
-	after := bothEntries(t, f)
-	for i := range after {
-		entry, field := i/entrySize, i%entrySize
-		changes := entry == 2 && ((field >= 16 && field < 32) || field >= 56)
-		if !changes && after[i] != before[i] {
-			t.Errorf("byte %d of entry %d changed", field, entry)
-		}
-	}
-	got, err := Read(f)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if p := got.Partitions[2]; p.UUID != newUUID || p.Name != "spindrift_20261001.134321" || p.First != 8192 || p.Last != 12287 || p.Type != TypeLinuxData {
-		t.Errorf("slot B is %+v", p)
-	}
-	if err := Rename(f, newUUID, newUUID, "_empty"); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := Read(f); err != nil || got.Partitions[2].Name != "_empty" {
-		t.Errorf("slot B renamed _empty is %+v, %v", got.Partitions[2], err)
-	}
-}
-
-// The first entry is renamed as any other, and a name can be none.
-func TestTheFirstEntryIsRenamedAsAnyOther(t *testing.T) {
-	f := slotDisk(t)
-	if err := Rename(f, "8db37c3e-fa8d-e299-a792-c04533fff123", "8db37c3e-fa8d-e299-a792-c04533fff124", ""); err != nil {
-		t.Fatal(err)
-	}
-	if got, err := Read(f); err != nil || got.Partitions[0].Name != "" || got.Partitions[0].UUID != "8db37c3e-fa8d-e299-a792-c04533fff124" {
-		t.Errorf("the ESP renamed is %+v, %v", got.Partitions[0], err)
-	}
-}
-
-// A GUID another partition has, one no partition has, a GUID that is none, and a name past 36
-// characters are refused, and change nothing.
-func TestARenameThatCannotBeIsRefused(t *testing.T) {
-	f := slotDisk(t)
-	before := bothEntries(t, f)
-	for name, rename := range map[string]func() error{
-		"another's GUID": func() error { return Rename(f, slotB, slotA, "x") },
-		"no one's GUID":  func() error { return Rename(f, "00000000-0000-0000-0000-000000000009", slotB, "x") },
-		"an unused entry's": func() error {
-			return Rename(f, "00000000-0000-0000-0000-000000000000", "3f3c0a48-7b27-5b3b-73c2-385422d45830", "x")
-		},
-		"a long name":       func() error { return Rename(f, slotB, slotB, strings.Repeat("n", 37)) },
-		"a GUID that isn't": func() error { return Rename(f, slotB, "slot-b", "x") },
-	} {
-		if err := rename(); err == nil {
-			t.Errorf("a rename to %s was made", name)
-		}
-	}
-	if !bytes.Equal(bothEntries(t, f), before) {
-		t.Error("a refused rename changed the table")
-	}
-}
-
-func TestGrowMovesTheBackupTableToTheEndOfALargerDisk(t *testing.T) {
-	f := disk(t, 64<<20)
-	want := Table{Disk: "0b6d8f0e-1b1a-4f55-9d6c-9f1e5c7b3a21", Partitions: []Partition{
-		{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "root", Attrs: 1 << 60, Number: 1},
-	}}
-	if err := Write(f, 32<<20, want); err != nil {
-		t.Fatal(err)
-	}
-	// An image of 32 MiB written onto a disk of 64: its backup table is in the middle.
-	moved, err := Grow(f, 64<<20)
-	if err != nil || !moved {
-		t.Fatalf("Grow = %v, %v; want it to move the backup table", moved, err)
-	}
-	got, err := Read(f)
-	if err != nil || !reflect.DeepEqual(got, want) {
-		t.Fatalf("read %+v, %v\nwant %+v", got, err, want)
-	}
-	h := make([]byte, Sector)
-	if _, err := f.ReadAt(h, Sector); err != nil {
-		t.Fatal(err)
-	}
-	if alt := int64(binary.LittleEndian.Uint64(h[32:])); alt != 64<<20/Sector-1 {
-		t.Errorf("the backup table is at sector %d, not the disk's last", alt)
-	}
-	if moved, err := Grow(f, 64<<20); err != nil || moved {
-		t.Errorf("Grow on a table already at the end = %v, %v; want nothing moved", moved, err)
 	}
 }

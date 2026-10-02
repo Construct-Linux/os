@@ -154,10 +154,9 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err := d.Sync(); err != nil {
 		return gpt.Table{}, err
 	}
-	for _, p := range table.Partitions[1:3] {
-		if err := gpt.Rename(d, p.UUID, p.UUID, p.Name); err != nil {
-			return gpt.Table{}, err
-		}
+	// Slot A is checked: the table again, now with its labels.
+	if err := gpt.Write(d, o.Disk.Size, table); err != nil {
+		return gpt.Table{}, err
 	}
 	if err := d.Sync(); err != nil {
 		return gpt.Table{}, err

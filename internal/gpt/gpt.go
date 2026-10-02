@@ -1,6 +1,5 @@
-// Package gpt reads and writes a GUID partition table on 512-byte sectors: a machine's disk as the
-// installer lays it - its slots where the kernel image's command line says they are, by the UUIDs
-// a release names - and the table an update renames the slot it writes in (internal/update).
+// Package gpt reads and writes a GUID partition table on 512-byte sectors: the table the installer
+// lays on a machine's disk (internal/update), and the stick's that cmd/image forges and reads.
 // spin-ami's, from the commit that carried bare metal's updates (4cafd47).
 package gpt
 
@@ -17,7 +16,7 @@ import (
 )
 
 // Sector is the table's sector: the disks it is read and written on have 512-byte logical
-// sectors, which the update (FindRoot) and the installer check before they touch one.
+// sectors, which the installer checks before it touches one.
 const Sector = 512
 
 const (
@@ -33,10 +32,7 @@ const (
 // Partition types this repository names, as the Discoverable Partitions Specification and UEFI
 // have them.
 const (
-	TypeESP       = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
-	TypeLinuxData = "0fc63daf-8483-4772-8e79-3d69d8477de4"
-	// TypeBasicData is what Windows and macOS mount, so a person can put a file on it anywhere.
-	TypeBasicData = "ebd0a0a2-b9e5-4433-87c0-68b6b72699c7"
+	TypeESP = "c12a7328-f81f-11d2-ba4b-00a0c93ec93b"
 )
 
 // Partition is one entry: its type and unique GUIDs, lowercase, its first and last sector, its
@@ -186,25 +182,6 @@ func protectiveMBR(size int64) []byte {
 	return m
 }
 
-// Grow writes d's table again for a disk of size bytes when its backup is not at the disk's end -
-// an image written onto a larger disk, a USB stick from cmd/image's disk.raw - so the space after
-// the image is the table's to give: what systemd-repart makes /var in. It answers whether it moved
-// anything.
-func Grow(d Disk, size int64) (bool, error) {
-	h, _, err := readTable(d, 1)
-	if err != nil {
-		return false, err
-	}
-	if int64(binary.LittleEndian.Uint64(h[32:])) == size/Sector-1 {
-		return false, nil
-	}
-	t, err := Read(d)
-	if err != nil {
-		return false, err
-	}
-	return true, Write(d, size, t)
-}
-
 // Read is the primary table of r. Its checksums are checked: the installer copies what it finds by
 // it onto a machine's disk.
 func Read(r io.ReaderAt) (Table, error) {
@@ -276,77 +253,6 @@ func readTable(r io.ReaderAt, lba int64) (header, table []byte, err error) {
 		return nil, nil, errors.New("gpt: the entries' checksum is wrong")
 	}
 	return h, table, nil
-}
-
-// Disk is what Rename reads and writes: a disk, or a file holding one.
-type Disk interface {
-	io.ReaderAt
-	io.WriterAt
-}
-
-// Rename gives the partition whose unique GUID is uuid the GUID to and the name name, in the
-// primary table and the backup alike, and leaves the rest of it - its type, its sectors, its
-// attributes, the place of its entry, which is its number - as it was: what systemd-sysupdate
-// changes of a slot it writes. A GUID another partition has is refused: two partitions of one GUID
-// are two roots a command line cannot tell apart.
-func Rename(d Disk, uuid, to, name string) error {
-	from, err := GUID(uuid)
-	if err != nil {
-		return err
-	}
-	into, err := GUID(to)
-	if err != nil {
-		return err
-	}
-	if len(utf16.Encode([]rune(name))) > nameUnits {
-		return fmt.Errorf("gpt: %q is longer than a partition's name may be", name)
-	}
-	primary, table, err := readTable(d, 1)
-	if err != nil {
-		return err
-	}
-	size := int(binary.LittleEndian.Uint32(primary[84:]))
-	at := -1 // mutate-exempt: any place before the first entry is none
-	for i := 0; i+size <= len(table); i += size {
-		switch id := table[i+16 : i+32]; {
-		case bytes.Equal(table[i:i+16], make([]byte, 16)):
-		case bytes.Equal(id, from):
-			at = i
-		case bytes.Equal(id, into):
-			return fmt.Errorf("gpt: another partition is %s already", to)
-		}
-	}
-	if at < 0 {
-		return fmt.Errorf("gpt: no partition is %s", uuid)
-	}
-	copy(table[at+16:], into)
-	clear(table[at+56 : at+56+2*nameUnits])
-	for j, u := range utf16.Encode([]rune(name)) {
-		binary.LittleEndian.PutUint16(table[at+56+2*j:], u)
-	}
-	backup := int64(binary.LittleEndian.Uint64(primary[32:]))
-	if err := writeTable(d, primary, table); err != nil {
-		return err
-	}
-	h, _, err := readTable(d, backup)
-	if err != nil {
-		return fmt.Errorf("gpt: the backup table: %w", err)
-	}
-	return writeTable(d, h, table)
-}
-
-// writeTable writes table where the header h says its entries are, and h after it with the
-// checksums of both made again.
-func writeTable(d Disk, h, table []byte) error {
-	le := binary.LittleEndian
-	le.PutUint32(h[88:], crc32.ChecksumIEEE(table))
-	le.PutUint32(h[16:], 0)
-	le.PutUint32(h[16:], crc32.ChecksumIEEE(h[:headerSize]))
-	if _, err := d.WriteAt(table, int64(le.Uint64(h[72:]))*Sector); err != nil {
-		return err
-	}
-	_, err := d.WriteAt(h, int64(le.Uint64(h[24:]))*Sector)
-	return err
 }
 
 // guid is b as a GUID is written: its first three fields are stored little-endian.

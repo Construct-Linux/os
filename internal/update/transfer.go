@@ -16,7 +16,8 @@ import (
 
 // Disk is the disk an install writes, open to be read and written.
 type Disk interface {
-	gpt.Disk
+	io.ReaderAt
+	io.WriterAt
 	Sync() error
 }
 
@@ -24,7 +25,7 @@ type Disk interface {
 // when it does not).
 type Fetch func(ctx context.Context, name string) (io.ReadCloser, int64, error)
 
-// maxImage is the most a kernel image may be: the ESP holds two, and is 512 MiB.
+// maxImage is the most a kernel image may be: the ESP holds two, and is 1 GiB.
 const maxImage = 200 << 20
 
 // writePartition writes the release's file a - an xz-compressed partition image - into the
