@@ -5,9 +5,14 @@ is checked. `README.md` says what the desktop is; `task --list` is the catalogue
 history. Nothing here is a changelog.
 
 Spindrift is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on spin-ami's
-kernel and boot design: a unified kernel image, a read-only EROFS root under dm-verity, no
-initrd, A/B slots updated by systemd-sysupdate, and systemd-boot falling back from a release
-that does not come up.
+kernel, booted the way systemd's image-based distributions boot: a unified kernel image with a
+systemd initrd, a read-only EROFS root under dm-verity found by its root hash, partitions of the
+Discoverable Partitions Specification, A/B slots updated by systemd-sysupdate, and systemd-boot
+falling back from a release that does not come up.
+
+- **Standards before our own code.** Before writing something, look for how systemd, or the
+  image-based distributions (ParticleOS, GNOME OS, SteamOS, Fedora's), do it, and do that: a
+  generator, a unit, a repart definition, a udev rule. Our own code is for what nobody does.
 
 ## The rules
 
@@ -23,8 +28,9 @@ that does not come up.
   `task build -- <recipe>` builds a recipe, `task rootfs`, `task kernel`, `task firmware`,
   `task usb`, `task test`, `task test:usb`, `task test:lifecycle`. Do not run `docker`/`melange`
   /`apko` by hand for something a task does; add or fix the task instead.
-- **Decisions are Go, not shell.** `cmd/image` (disks, the harness, releases), `cmd/spin-init`
-  (PID 1 before systemd), `cmd/drift` (install, boot-check), `internal/` (gpt, update).
+- **Decisions are Go, not shell.** `cmd/image` (disks, the initrd, the harness, releases),
+  `cmd/drift` (install, boot-check, the live user, the GTK 4 theme), `internal/` (gpt, update,
+  account).
   The Taskfile runs steps and containers, in short blocks; a unit's `ExecStart=` stays a command,
   not a program.
 - **Keep looking for performance and for security**, and measure both. Every change is a chance
@@ -56,7 +62,7 @@ that does not come up.
 - **No person, password or private key in the image or the repository.** `drift install` asks
   who a machine is for and writes them into the installed `/var` (`internal/account`: userdb
   records, the hash in a root-only companion file); a root with nobody installed boots the
-  passwordless `live` user spin-init writes. root stays locked (`*`). sudo asks the person's
+  passwordless `live` user `drift live` writes (spindrift-live.service). root stays locked (`*`). sudo asks the person's
   password (wheel, 15 minutes) - with GDM logging them in, it is what stands between their
   programs and root.
 
@@ -65,15 +71,15 @@ that does not come up.
 - The root is **read-only and verified block by block**. Whatever a package's install trigger
   would write at boot (GSettings schemas, icon/font/MIME caches, users, hwdb, ld.so.cache) is baked
   at build (`cmd/image/usb.go` `bake`); add to it when a new package needs one.
-- **Mutable state lives in `/var`**, a partition on the root's own disk: `cmd/spin-init` makes it
-  on a stick's first boot (moving the GPT's backup to the disk's end first) and mounts it before
-  systemd, then lays `/etc` as an overlay on it. Home is `/var/home`; NetworkManager's connections,
-  SSH host keys, Flatpaks and Docker are on `/var`. A path a service writes in `/etc` or `/usr`
-  works only through the overlay - check it on the USB disk, not only on the ext4 test disk.
-- **Never mount `/run` for systemd** (spin-init unmounts the one systemd-repart needs): a `/run`
-  systemd finds mounted breaks its services' journal sockets.
-- `/var` and partitions are found by **reading the GPT** of the root's disk, never by label across
-  all disks: a live stick and an installed disk both have a `var`.
+- **Mutable state lives in `/var`**, a partition on the root's own disk: systemd-repart makes it
+  in the initrd on a stick's first boot, `drift install` on an installed disk - its UUID derived
+  from the machine id, as the Discoverable Partitions Specification asks, so the dissect_image udev
+  builtin designates it only on its own machine and never on another disk. The initrd mounts it and
+  lays `/etc` over it before the switch (image/initrd: systemd mounts /var itself only after). Home
+  is `/var/home` (`/home`, `/opt`, `/srv`, `/mnt` and `/root` link into `/var`); NetworkManager's
+  connections, SSH host keys, Flatpaks and Docker are on `/var`. A path a service writes in `/etc`
+  or `/usr` works only through the overlay - check it on the USB disk, not only on the ext4 test
+  disk.
 
 ## Recipes (`recipes/`, melange)
 
@@ -111,15 +117,15 @@ that does not come up.
 | Go | `go vet ./... && go test ./internal/... ./cmd/...` | a test for the behaviour, not for the lines |
 | a recipe | `task build -- <name>`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files and `.PKGINFO` depends/provides |
 | anything in the image or a package | `task test` (ext4 disk, kernel given directly) | the report, **and the screenshots in `_output/test`** - a PASS means a window opened, not that it looks right |
-| boot, `/var`, `/etc`, spin-init, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
+| boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
 | install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, four forged sticks refused, update from a URL, rollback from a broken release, files in `/var` and `/etc` kept |
 | the kernel | `task kernel:config`, then `task kernel` | the assertion's output |
 | the boot's look (splash, Plymouth) | `go run ./cmd/image boot -usb -shots 30` | the frames in `_output/boot` |
 
 Tools for a boot that misbehaves: `go run ./cmd/image run [-usb | -vars -nvme -sticks] -- '<cmd>'`
 runs a command as root in a booted VM; the harness saves failed units' logs in `units/`; `task usb
--- -append <cmdline>` adds kernel options (one token) for one build; a disk's journal can be read
-with `debugfs -c`. spin-init's errors go to the kernel log at a level a quiet boot shows.
+-- -append <option> [-append <option>...]` adds kernel options for one build; a disk's journal can be read
+with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shell` gets a shell there.
 
 ## Traps already fallen into
 
@@ -136,7 +142,7 @@ with `debugfs -c`. spin-init's errors go to the kernel log at a level a quiet bo
 
 ## Where to look next
 
-AutoFDO/Propeller profiles recorded on the NucBox; boot time (spin-init, units on the critical
+AutoFDO/Propeller profiles recorded on the NucBox; boot time (the initrd, units on the critical
 path); geoclue's start timeout on the USB disk; a services audit (what runs that need not, which
 units can be sandboxed further); Secure Boot and measured boot, as spin-ami does; an ISO medium.
 

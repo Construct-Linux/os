@@ -18,8 +18,9 @@ slot, and rolled back by itself when a new version does not come up.
   PipeWire with Bluetooth audio, systemd-sysupdate, ...).
 - **Its own kernel**: spin-ami's, with modules signed by a key that exists only in its build, built
   with Clang ThinLTO for x86-64-v3, sched_ext with scx_lavd.
-- **Boot**: UEFI, systemd-boot, a unified kernel image with SpinBot's splash and Plymouth, no
-  initrd. `/var` holds everything a machine keeps; `/etc` is an overlay on it, so settings persist.
+- **Boot**: UEFI, systemd-boot, a unified kernel image with SpinBot's splash and Plymouth and a
+  systemd initrd, the way systemd's image-based distributions boot. `/var` holds everything a
+  machine keeps; `/etc` is an overlay on it, so settings persist.
 - **Updates**: signed (Ed25519) releases from GitHub Releases, checked daily, written into the slot
   not running; or from a release's USB stick. Nothing reboots by itself; a version that does not
   bring the desktop up three times is dropped for the one before it.
@@ -62,7 +63,7 @@ rolls back from a broken release. `AGENTS.md` says what each change needs.
 | `image/` | the root: `apko.yaml`, and `rootfs/` laid over it; `test/` is the harness's only |
 | `kernel/`, `firmware/` | the desktop's kernel fragment and firmware selection, over spin-ami's |
 | `cmd/image` | disks, the USB stick, releases, the QEMU harness and lifecycle |
-| `cmd/spin-init` | the first process: `/var`, and `/etc` over it, before systemd |
+| `image/initrd/` | the initrd: Wolfi's systemd, `/var` and the `/etc` overlay mounted before the switch |
 | `cmd/drift` | `install` and `boot-check` on the machine |
 | `internal/` | GPT, and installing a signed release |
 | `cmd/gap` | how far Wolfi is from a desktop profile, in recipes to own |
