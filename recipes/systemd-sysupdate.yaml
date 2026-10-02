@@ -1,7 +1,7 @@
 package:
   name: systemd-sysupdate
   version: "261.3"
-  epoch: 1
+  epoch: 2
   description: systemd-sysupdate, systemd-sysupdated and updatectl, standalone, for the systemd Wolfi builds without them
   copyright:
     - license: LGPL-2.1-or-later
@@ -285,6 +285,8 @@ pipeline:
         install -Dm644 units/$u ${{targets.destdir}}/usr/lib/systemd/system/$u
       done
       install -Dm644 output/units/systemd-sysupdated.service ${{targets.destdir}}/usr/lib/systemd/system/systemd-sysupdated.service
+      # The name D-Bus activates it by, as meson links it.
+      ln -s systemd-sysupdated.service ${{targets.destdir}}/usr/lib/systemd/system/dbus-org.freedesktop.sysupdate1.service
       install -Dm644 src/sysupdate/org.freedesktop.sysupdate1.conf ${{targets.destdir}}/usr/share/dbus-1/system.d/org.freedesktop.sysupdate1.conf
       install -Dm644 src/sysupdate/org.freedesktop.sysupdate1.service ${{targets.destdir}}/usr/share/dbus-1/system-services/org.freedesktop.sysupdate1.service
       install -Dm644 src/sysupdate/org.freedesktop.sysupdate1.policy ${{targets.destdir}}/usr/share/polkit-1/actions/org.freedesktop.sysupdate1.policy
