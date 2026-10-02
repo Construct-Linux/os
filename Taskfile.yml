@@ -85,15 +85,26 @@ tasks:
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/initrd/apko.yaml _output/initrd.tar
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/initrd.tar
 
-  disk:
-    desc: "Merge rootfs, modules, firmware and image/rootfs into _output/disk.raw (ext4); task disk -- -test adds image/test/rootfs."
+  tools:
+    desc: The container the root is laid in, and this repository's programs for it (cmd/image) and for the root (cmd/drift).
     cmds:
-      - go run ./cmd/image disk {{.CLI_ARGS}}
+      - docker build -q -t spindrift-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
+      - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
+      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/drift/usr/bin/drift ./cmd/drift
+
+  disk:
+    desc: "The ext4 test disk, _output/disk.raw: the same baked root as the USB disk's, booted by its kernel directly (task disk -- -test adds image/test/rootfs)."
+    deps: [tools]
+    cmds:
+      - >-
+        docker run --rm --privileged -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
+        '_output/bin/image disk {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/disk _output/disk.raw _output/root.tar; exit $rc'
 
   test:
     desc: "Build the test disk and drive the session: every app and Settings panel, failed units, core dumps (task test -- -only org.gnome.Ptyxis.desktop)."
     cmds:
-      - go run ./cmd/image disk -test
+      - task: disk
+        vars: {CLI_ARGS: -test}
       - go run ./cmd/image check
       - go run ./cmd/image test {{.CLI_ARGS}}
 
@@ -118,10 +129,8 @@ tasks:
 
   usb:
     desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release (SIGNING_HOME=, the release key's by default) on its spin-update partition (task usb -- -test for the harness's)."
+    deps: [tools]
     cmds:
-      - docker build -q -t spindrift-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
-      - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
-      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/bin/drift ./cmd/drift
       - mkdir -p _output/release-key/usr/share/spindrift
       - gpg --homedir {{.SIGNING_HOME}} --export > _output/release-key/usr/share/spindrift/release.pgp
       # Releases are Ed25519 alone: gpg checks them on the machine (systemd-sysupdate), so the

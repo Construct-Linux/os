@@ -161,22 +161,6 @@ func (l dirLayer) walk(fn func(*tar.Header, io.Reader) error) error {
 	})
 }
 
-// links are the root's symlinks that enable units: what `systemctl enable` and a preset would
-// write, which nothing runs at build time.
-type links map[string]string
-
-func (l links) name() string { return "enabled units" }
-
-func (l links) walk(fn func(*tar.Header, io.Reader) error) error {
-	for name, target := range l {
-		h := &tar.Header{Typeflag: tar.TypeSymlink, Name: clean(name), Linkname: target, Mode: 0o777}
-		if err := fn(h, nil); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 // checkKey refuses a release keyring with a signing key that is not Ed25519: the machine checks
 // releases with gpg (systemd-sysupdate), which would take any key in it.
 func checkKey(args []string) error {
@@ -194,24 +178,9 @@ func checkKey(args []string) error {
 // keyDir holds the release key's public half at usr/share/spindrift/release.pgp (task usb).
 var keyDir = filepath.Join(out, "release-key")
 
-// initDir holds cmd/drift, built for the root as a layer of its own.
-var initDir = filepath.Join(out, "spin-init")
-
-// buildInit builds this repository's programs for the root, static, into initDir: cmd/drift at
-// /usr/bin/drift.
-func buildInit() error {
-	for pkg, dst := range map[string]string{
-		"./cmd/drift": "usr/bin/drift",
-	} {
-		cmd := exec.Command("go", "build", "-trimpath", "-ldflags=-s -w", "-o", filepath.Join(initDir, dst), pkg)
-		cmd.Env = append(os.Environ(), "CGO_ENABLED=0", "GOAMD64=v3")
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		if err := cmd.Run(); err != nil {
-			return err
-		}
-	}
-	return nil
-}
+// driftDir holds cmd/drift at usr/bin/drift, which task tools builds for the root (the tools
+// container that lays the root has no Go): a layer of its own.
+var driftDir = filepath.Join(out, "drift")
 
 func clean(name string) string {
 	return strings.TrimPrefix(path.Clean("/"+name), "/")
@@ -226,44 +195,8 @@ func rootLayers(test bool) []layer {
 		tarLayer{file: filepath.Join(out, "firmware", "firmware.tar"), prefix: "usr/lib/firmware"},
 		dirLayer{dir: "image/rootfs"},
 		dirLayer{dir: themeDir},
-		dirLayer{dir: initDir},
+		dirLayer{dir: driftDir},
 		dirLayer{dir: transfersDir},
-		links{
-			"home": "var/home",
-			// Names are resolved by systemd-resolved, which NetworkManager hands each link's DNS to:
-			// systemd's tmpfiles points /etc/resolv.conf at its stub.
-			"etc/systemd/system/multi-user.target.wants/systemd-resolved.service":     "/usr/lib/systemd/system/systemd-resolved.service",
-			"etc/systemd/system/dbus-org.freedesktop.resolve1.service":                "/usr/lib/systemd/system/systemd-resolved.service",
-			"etc/systemd/system/multi-user.target.wants/spindrift-boot-check.service": "/usr/lib/systemd/system/spindrift-boot-check.service",
-			"etc/systemd/system/timers.target.wants/spindrift-update.timer":           "/usr/lib/systemd/system/spindrift-update.timer",
-			"etc/systemd/user/default.target.wants/spindrift-reboot-notice.path":      "/usr/lib/systemd/user/spindrift-reboot-notice.path",
-			"etc/systemd/system/default.target":                                       "/usr/lib/systemd/system/graphical.target",
-			"etc/systemd/system/sysinit.target.wants/spindrift-caches.service":        "/usr/lib/systemd/system/spindrift-caches.service",
-			"etc/localtime": "/usr/share/zoneinfo/America/Argentina/Buenos_Aires",
-			"etc/systemd/system/sockets.target.wants/docker.socket":                               "/usr/lib/systemd/system/docker.socket",
-			"etc/systemd/system/multi-user.target.wants/containerd.service":                       "/usr/lib/systemd/system/containerd.service",
-			"etc/systemd/system/multi-user.target.wants/power-profiles-daemon.service":            "/usr/lib/systemd/system/power-profiles-daemon.service",
-			"etc/systemd/system/timers.target.wants/spindrift-flathub.timer":                      "/usr/lib/systemd/system/spindrift-flathub.timer",
-			"etc/systemd/system/network-online.target.wants/NetworkManager-wait-online.service":   "/usr/lib/systemd/system/NetworkManager-wait-online.service",
-			"etc/systemd/user/default.target.wants/xdg-user-dirs.service":                         "/usr/lib/systemd/user/xdg-user-dirs.service",
-			"etc/systemd/system/multi-user.target.wants/spindrift-live.service":                   "/usr/lib/systemd/system/spindrift-live.service",
-			"etc/systemd/user/default.target.wants/spindrift-gtk4.service":                        "/usr/lib/systemd/user/spindrift-gtk4.service",
-			"etc/systemd/system/multi-user.target.wants/scx.service":                              "/usr/lib/systemd/system/scx.service",
-			"etc/systemd/system/sysinit.target.wants/spindrift-ssh-hostkeys.service":              "/usr/lib/systemd/system/spindrift-ssh-hostkeys.service",
-			"etc/systemd/system/display-manager.service":                                          "/usr/lib/systemd/system/gdm.service",
-			"etc/systemd/system/multi-user.target.wants/NetworkManager.service":                   "/usr/lib/systemd/system/NetworkManager.service",
-			"etc/systemd/system/dbus-org.freedesktop.nm-dispatcher.service":                       "/usr/lib/systemd/system/NetworkManager-dispatcher.service",
-			"etc/systemd/system/bluetooth.target.wants/bluetooth.service":                         "/usr/lib/systemd/system/bluetooth.service",
-			"etc/systemd/system/dbus-org.freedesktop.Bluetooth.service":                           "/usr/lib/systemd/system/bluetooth.service",
-			"etc/systemd/user/pipewire.service.wants/wireplumber.service":                         "/usr/lib/systemd/user/wireplumber.service",
-			"etc/systemd/user/sockets.target.wants/pipewire.socket":                               "/usr/lib/systemd/user/pipewire.socket",
-			"etc/systemd/user/sockets.target.wants/pipewire-pulse.socket":                         "/usr/lib/systemd/user/pipewire-pulse.socket",
-			"etc/systemd/system/sysinit.target.wants/systemd-timesyncd.service":                   "/usr/lib/systemd/system/systemd-timesyncd.service",
-			"etc/systemd/system/systemd-networkd-wait-online.service":                             "/dev/null",
-			"etc/systemd/system/multi-user.target.wants/systemd-networkd.service":                 "/dev/null",
-			"etc/systemd/system/sockets.target.wants/systemd-networkd.socket":                     "/dev/null",
-			"etc/systemd/system/network-online.target.wants/systemd-networkd-wait-online.service": "/dev/null",
-		},
 	}
 	// The key a release's signature is checked against, as task usb exported it from the signing
 	// keyring: absent from a disk built without one, which then can verify no update.
@@ -282,23 +215,14 @@ func disk(args []string) error {
 	test := fl.Bool("test", false, "add image/test/rootfs: what lets cmd/image test drive the session")
 	_ = fl.Parse(args)
 
-	if err := plymouthTheme(); err != nil {
-		return err
-	}
-	if err := buildInit(); err != nil {
-		return err
-	}
-	if err := writeTransfers(); err != nil {
-		return err
-	}
-	layers := rootLayers(*test)
-	merged := filepath.Join(out, "root.tar")
-	if err := merge(layers, merged); err != nil {
+	stage := filepath.Join(out, "disk")
+	root := filepath.Join(stage, "root")
+	if _, err := bakedRoot(stage, root, rootLayers(*test)); err != nil {
 		return err
 	}
 	img := filepath.Join(out, "disk.raw")
 	_ = os.Remove(img)
-	cmd := exec.Command("mke2fs", "-q", "-t", "ext4", "-L", "root", "-d", merged, img, *size)
+	cmd := exec.Command("mke2fs", "-q", "-t", "ext4", "-L", "root", "-d", root, img, *size)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("mke2fs: %w", err)
@@ -471,10 +395,16 @@ type machine struct {
 	nvme        string
 }
 
+// machineUUID is the test machine's firmware UUID: the same at every boot, as a board's.
+const machineUUID = "5f1d2c3a-7b8e-4c6d-9a0b-1c2d3e4f5a6b"
+
 func (m machine) start() (*vm, error) {
 	qmp := filepath.Join(out, "qmp.sock")
 	_ = os.Remove(qmp)
-	args := []string{"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", m.mem}
+	// A firmware product UUID, as a real board has: systemd.machine_id=firmware makes the
+	// machine's id from it, and /var's partition UUID from that, so without one every boot would
+	// be another machine's and none would find its /var.
+	args := []string{"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", m.mem, "-uuid", machineUUID}
 	if m.vars != "" {
 		args = append(args, "-machine", "q35",
 			"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",

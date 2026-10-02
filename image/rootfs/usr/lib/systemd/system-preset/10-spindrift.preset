@@ -1,0 +1,25 @@
+# What the image runs, enabled the way systemd enables units (cmd/image usb's bake runs
+# systemctl preset-all): each unit's [Install] decides where it is wanted and which Alias= names
+# it answers to, as a package's maintainer wrote them. The first match wins, so this file, before
+# the packages' own presets, decides alone: what is not listed is off.
+
+# Names, time, the network (NetworkManager's Also= enables its dispatcher and wait-online).
+enable systemd-resolved.service
+enable systemd-timesyncd.service
+enable NetworkManager.service
+# The desktop.
+enable gdm.service
+enable bluetooth.service
+enable power-profiles-daemon.service
+enable scx.service
+# Containers.
+enable docker.socket
+enable containerd.service
+# Spindrift's own.
+enable spindrift-boot-check.service
+enable spindrift-ssh-hostkeys.service
+enable spindrift-live.service
+enable spindrift-update.timer
+enable spindrift-flathub.timer
+
+disable *

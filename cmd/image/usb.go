@@ -33,35 +33,12 @@ func usb(args []string) error {
 
 	stage := filepath.Join(out, "usb")
 	root := filepath.Join(stage, "root")
-	if err := os.RemoveAll(stage); err != nil {
-		return err
-	}
-	if err := os.MkdirAll(root, 0o755); err != nil {
-		return err
-	}
-	if err := plymouthTheme(); err != nil {
-		return err
-	}
-	if err := writeTransfers(); err != nil {
-		return err
-	}
-	// Built on the host by task usb: this container has no Go.
-	if _, err := os.Stat(filepath.Join(initDir, "usr/bin/drift")); err != nil {
-		return fmt.Errorf("drift: %w", err)
-	}
-	merged := filepath.Join(out, "root.tar")
 	layers := rootLayers(*test)
 	if *broken {
 		layers = append(layers, dirLayer{dir: "image/test/broken"})
 	}
-	if err := merge(layers, merged); err != nil {
-		return err
-	}
-	if err := run("tar", "--numeric-owner", "--xattrs", "-xpf", merged, "-C", root); err != nil {
-		return err
-	}
-	version := time.Now().UTC().Format("20060102.150405")
-	if err := bake(root, version); err != nil {
+	version, err := bakedRoot(stage, root, layers)
+	if err != nil {
 		return err
 	}
 	v, err := verifiedRoot(root, filepath.Join(stage, "root.img"), filepath.Join(stage, "root.verity"))
@@ -176,6 +153,43 @@ func usbDisk(args []string) error {
 	return nil
 }
 
+// bakedRoot lays the root a disk is made of in root, under a fresh stage: the layers merged,
+// unpacked, and baked. The USB disk and the ext4 test disk are made from the same tree, so what
+// the harness boots is what a machine boots. It answers the version it is baked as.
+func bakedRoot(stage, root string, layers []layer) (string, error) {
+	if err := os.RemoveAll(stage); err != nil {
+		return "", err
+	}
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		return "", err
+	}
+	if err := plymouthTheme(); err != nil {
+		return "", err
+	}
+	if err := writeTransfers(); err != nil {
+		return "", err
+	}
+	// Built on the host by task tools: this container has no Go.
+	if _, err := os.Stat(filepath.Join(driftDir, "usr/bin/drift")); err != nil {
+		return "", fmt.Errorf("drift (task tools builds it): %w", err)
+	}
+	merged := filepath.Join(out, "root.tar")
+	if err := merge(layers, merged); err != nil {
+		return "", err
+	}
+	if err := run("tar", "--numeric-owner", "--xattrs", "-xpf", merged, "-C", root); err != nil {
+		return "", err
+	}
+	version := time.Now().UTC().Format("20060102.150405")
+	if err := bake(root, version); err != nil {
+		return "", err
+	}
+	if problems := refs(root); len(problems) > 0 {
+		return "", fmt.Errorf("the root's configuration names what it does not have:\n  %s", strings.Join(problems, "\n  "))
+	}
+	return version, nil
+}
+
 // bake makes now what a boot would otherwise write into a root it can no longer write: the
 // packages' triggers apko does not run, the users sysusers.d declares, the factory files tmpfiles.d
 // makes, the hardware database; and the /var partition, /tmp and the user's password.
@@ -216,6 +230,11 @@ func bake(root, version string) error {
 			"--exclude-prefix=/var", "--exclude-prefix=/run", "--exclude-prefix=/tmp",
 			"--exclude-prefix=/dev", "--exclude-prefix=/proc", "--exclude-prefix=/sys", "--exclude-prefix=/home"},
 		{"systemd-hwdb", "update", "--root=" + root, "--usr"},
+		// The units the image runs, enabled from its presets (usr/lib/systemd/*-preset): systemd
+		// links each where its [Install] says, Alias= names included.
+		{"systemctl", "--root=" + root, "preset-all"},
+		{"systemctl", "--root=" + root, "--global", "preset-all"},
+		{"systemctl", "--root=" + root, "set-default", "graphical.target"},
 	} {
 		if err := run(args[0], args[1:]...); err != nil {
 			return err

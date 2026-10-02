@@ -69,7 +69,11 @@ falling back from a release that does not come up.
 
 - The root is **read-only and verified block by block**. Whatever a package's install trigger
   would write at boot (GSettings schemas, icon/font/MIME caches, users, hwdb, ld.so.cache) is baked
-  at build (`cmd/image/usb.go` `bake`); add to it when a new package needs one.
+  at build (`cmd/image/usb.go` `bake`); add to it when a new package needs one. The USB disk and
+  the ext4 test disk are made from the same baked tree.
+- **Units are enabled by preset**, never by a hand-made link: `usr/lib/systemd/system-preset/` and
+  `user-preset/10-spindrift.preset` list what runs (everything else is off), and `bake` runs
+  `systemctl preset-all`, which follows each unit's `[Install]` and makes its `Alias=` names.
 - **Mutable state lives in `/var`**, a partition on the root's own disk: systemd-repart makes it
   in the initrd on a stick's first boot, `drift install` on an installed disk - its UUID derived
   from the machine id, as the Discoverable Partitions Specification asks, so the dissect_image udev
