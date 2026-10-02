@@ -1,6 +1,6 @@
 package:
   name: mozjs140
-  version: 140.15.0
+  version: 140.17.0
   epoch: 0
   description: SpiderMonkey, the Mozilla JavaScript engine (ESR), for gjs
   copyright:
@@ -29,7 +29,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://ftp.mozilla.org/pub/firefox/releases/${{package.version}}esr/source/firefox-${{package.version}}esr.source.tar.xz
-      expected-sha256: 358bb03c550f95172f1e31694e4287da3411560df91e931cb25210efdf90e524
+      expected-sha256: 4d6ed3b18b2069c55bab12d8ba95da6013ac0b036d8a031df8b9f39a25d05c33
 
   # mozjs-140.pc lacks -DXP_UNIX, which gjs needs for UniquePtrExtensions.h (bug 1973994).
   - uses: patch
