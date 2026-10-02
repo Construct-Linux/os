@@ -1,16 +1,17 @@
-// Command image makes E2's disk and boots it: apko's root filesystem, the kernel's signed modules,
-// the firmware and image/rootfs merged into one tree - a later layer's file replacing an earlier
-// one's - written as an ext4 image by mke2fs straight from the tar, so nothing needs root; then
-// QEMU boots it with the kernel given directly, a virtio GPU behind VNC, and QMP to take
+// Command image makes Spindrift's disks and boots them: apko's root filesystem, the kernel's signed
+// modules, the firmware and image/rootfs merged into one tree - a later layer's file replacing an
+// earlier one's - and baked; then QEMU boots it, a virtio GPU behind VNC and QMP to take
 // screenshots with.
 //
-//	image disk  [-size 12G]                     _output/rootfs.tar ... -> _output/disk.raw
+//	image disk  [-test]                         the baked root as an ext4 test disk, booted with the kernel given directly
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
-//	image usb   [-test]                         the USB stick's root, kernel image and release, in build/tools as root
+//	image usb   [-test] [-append opt]           the stick's verified root, kernel image and release, in build/tools as root
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
+//	image forge                                 the forged sticks the lifecycle must refuse
+//	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
 //	image check                                 every ELF's NEEDED libraries are in the root
 package main
 
@@ -64,8 +65,6 @@ func main() {
 		err = forge(os.Args[2:])
 	case "check-key":
 		err = checkKey(os.Args[2:])
-	case "theme":
-		err = plymouthTheme()
 	case "check":
 		err = check(filepath.Join(out, "root.tar"))
 	default:

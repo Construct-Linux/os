@@ -17,10 +17,10 @@ import (
 	"time"
 )
 
-// usb makes _output/usb/disk.raw: a disk a machine boots from a USB stick, laid out as spin-ami's
-// bare metal is - an ESP with systemd-boot and a unified kernel image, a read-only EROFS root under
-// dm-verity that the kernel sets up itself from the image's command line (no initrd), its hash
-// tree, and /var made by systemd-repart at first boot in the rest of the stick. It runs as root in
+// usb makes the release a machine boots from a USB stick: an ESP with systemd-boot and a unified
+// kernel image (its systemd initrd finds the root by the root hash on its command line), a
+// read-only EROFS root under dm-verity and its hash tree, signed with task usb; usb-disk lays them
+// on a disk, where systemd-repart makes /var at first boot in the rest of the stick. It runs as root in
 // build/tools' container: it extracts the root with its owners and runs the image's own programs
 // in it.
 func usb(args []string) error {
@@ -118,20 +118,18 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 // installs from, and updates from when the stick is plugged into one already installed.
 func usbDisk(args []string) error {
 	fl := flag.NewFlagSet("usb-disk", flag.ExitOnError)
-	version := fl.String("version", "", "the release to lay (default: the newest in _output/release)")
 	_ = fl.Parse(args)
-	if *version == "" {
-		entries, err := os.ReadDir(filepath.Join(out, "release"))
-		if err != nil || len(entries) == 0 {
-			return fmt.Errorf("no release in %s: run image usb first", filepath.Join(out, "release"))
-		}
-		*version = entries[len(entries)-1].Name()
+	// writeRelease keeps one release: usb's.
+	entries, err := os.ReadDir(filepath.Join(out, "release"))
+	if err != nil || len(entries) != 1 {
+		return fmt.Errorf("want the one release in %s: run image usb first", filepath.Join(out, "release"))
 	}
-	rel := releaseDir(*version)
+	version := entries[0].Name()
+	rel := releaseDir(version)
 	if _, err := os.Stat(filepath.Join(rel, "SHA256SUMS.gpg")); err != nil {
 		return fmt.Errorf("%s is not signed: %w", rel, err)
 	}
-	label := "spindrift_" + *version
+	label := "spindrift_" + version
 	stage := filepath.Join(out, "usb")
 	// The stick boots the uncompressed root and tree the build left in its stage; the release
 	// names the partition UUIDs they take.
@@ -191,7 +189,7 @@ func bakedRoot(stage, root string, layers []layer) (string, error) {
 
 // bake makes now what a boot would otherwise write into a root it can no longer write: the
 // packages' triggers apko does not run, the users sysusers.d declares, the factory files tmpfiles.d
-// makes, the hardware database; and the /var partition, /tmp and the user's password.
+// makes, the hardware database, the units the presets enable; and fstab and os-release.
 func bake(root, version string) error {
 	// What a person or a program writes outside /var on a writable root lives in /var here, as on
 	// Fedora's image-based desktops: the read-only root links there (image/rootfs's tmpfiles.d makes
@@ -248,8 +246,8 @@ func bake(root, version string) error {
 		// What ConditionNeedsUpdate=/etc units (ldconfig, hwdb, the journal's catalog) would do at
 		// boot, bake has done: without this file they run at every first boot of an image.
 		"etc/.updated": "",
-		"etc/fstab": `# / is the kernel's: EROFS under dm-verity, read-only, set up from the command line before
-# anything runs (cmd/image usb). The initrd mounts /var, from the root's own disk, and lays /etc
+		"etc/fstab": `# / is the initrd's: EROFS under dm-verity, read-only, found and checked by the root hash on
+# the command line (cmd/image usb). The initrd mounts /var, from the root's own disk, and lays /etc
 # over it before it switches to the root (image/initrd).
 tmpfs /tmp tmpfs mode=1777,nosuid,nodev 0 0
 `,

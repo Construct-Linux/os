@@ -1,15 +1,9 @@
-// Package update is how the desktop moves to its next version: drift update, when a stick
-// carrying a release is plugged in. It reads a release - SHA256SUMS, and its OpenPGP signature by
-// the key the machine's root trusts - and writes the version it names into the root slot the
-// machine did not boot, and its kernel image beside the booted one's, counted, for systemd-boot to
-// try three times and fall back from. The person reboots into it when they will.
-//
-// What it writes is what systemd-sysupdate would: the slot's two partitions labelled
-// <IMAGE_ID>_<version> with the UUIDs the root hash gives them, the kernel image as
-// <IMAGE_ID>_<version>+3.efi, two versions at most, never the booted one's. Wolfi builds systemd
-// without systemd-sysupdate, so its transfers are this package's Go, on the layout sysupdate reads.
-// spin-ami's bare metal carried it first (spin-ami 4cafd47); the desktop's is that, read from a
-// stick instead of a URL and checked with OpenPGP instead of KMS.
+// Package update is the half of a machine's versions systemd does not do. The installer reads a
+// signed release - SHA256SUMS and its OpenPGP signature by the key the root trusts - and lays the
+// disk systemd-sysupdate's transfers expect: the slots labelled <IMAGE_ID>_<version> with the UUIDs
+// the root hash gives them, the kernel image counted for systemd-boot, /var with the machine's
+// UUID. Updates after that are systemd-sysupdate's; boot-check marks a release that came up good,
+// and Pending tells the person a newer one waits for a reboot.
 package update
 
 // Compare orders two versions as systemd does (strverscmp_improved, the UAPI group's version
