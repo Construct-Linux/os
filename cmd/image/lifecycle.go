@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -60,13 +61,22 @@ func lifecycle(args []string) error {
 		return err
 	}
 	start := time.Now()
-	// As a person installs: drift reads the release from the stick it runs from. The person is
-	// given as the installer would be told; the password goes through a file, as --yes asks nothing.
-	outs, err := g.run(`set -e; printf '%s\n' '`+lifecyclePassword+`' > /run/pw; `+
-		`drift install --disk /dev/nvme0n1 --yes --user `+lifecycleUser+` --real-name 'Ada Lovelace' --password-file /run/pw; rm /run/pw`, "")
+	// As a person installs: the graphical installer's command, from the live session it runs in
+	// - pkexec, which the session's polkit rule lets through, drift install --json, the password
+	// on standard input - read from the stick it runs from.
+	outs, err := g.installAsTheInstaller()
 	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
+	if err == nil && (!strings.Contains(outs, `"percent":100`) || !strings.Contains(outs, `"msg":"done"`)) {
+		err = fmt.Errorf("no 100%% or done record")
+	}
 	// How long an install takes is part of what it is: the person waits on it.
-	r.add("install", err == nil, fmt.Sprintf("%s in %s%s", lastLine(outs), time.Since(start).Round(time.Second), errText(err)))
+	said := lastLine(outs)
+	for _, line := range strings.Split(outs, "\n") {
+		if strings.Contains(line, `"msg":"done"`) {
+			said = line
+		}
+	}
+	r.add("install", err == nil, fmt.Sprintf("%s in %s%s", oneLine(said), time.Since(start).Round(time.Second), errText(err)))
 	v.powerOff(g)
 	if err != nil {
 		return r.write(nil)
@@ -239,4 +249,31 @@ func (r *report) person(g *guest) {
 	r.add("sudo takes the new password", strings.HasPrefix(strings.TrimSpace(newPw), "0"), oneLine(newPw))
 	root, _ := g.run(`getent shadow root | cut -d: -f2`, "")
 	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
+}
+
+// installAsTheInstaller runs what spindrift-installer runs, from inside the live session (GNOME
+// Shell starts it, so polkit sees the session's process), and answers what drift printed: its
+// JSON records, then its errors.
+func (g *guest) installAsTheInstaller() (string, error) {
+	if _, err := g.waitShell(5 * time.Minute); err != nil {
+		return "", err
+	}
+	run := "/run/user/1000/install"
+	script := `printf '%s\n' '` + lifecyclePassword + `' | pkexec /usr/bin/drift install --yes --json --disk /dev/nvme0n1 ` +
+		`--user ` + lifecycleUser + ` --real-name 'Ada Lovelace' --password-file - > ` + run + `.json 2> ` + run + `.err; echo $? > ` + run + `.rc`
+	if _, err := g.eval(`GLib.spawn_async(null, ["sh", "-c", ` + strconv.Quote(script) + `], null, GLib.SpawnFlags.SEARCH_PATH, null); "started"`); err != nil {
+		return "", err
+	}
+	deadline := time.Now().Add(15 * time.Minute)
+	for time.Now().Before(deadline) {
+		if rc, err := g.run(`cat `+run+`.rc 2>/dev/null`, ""); err == nil && strings.TrimSpace(rc) != "" {
+			outs, _ := g.run(`cat `+run+`.json `+run+`.err`, "")
+			if strings.TrimSpace(rc) != "0" {
+				return outs, fmt.Errorf("drift install exited %s", strings.TrimSpace(rc))
+			}
+			return outs, nil
+		}
+		time.Sleep(5 * time.Second)
+	}
+	return "", fmt.Errorf("drift install did not end")
 }

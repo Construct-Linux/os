@@ -152,6 +152,19 @@ tasks:
         docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
         '_output/bin/image usb-disk; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
 
+  play:
+    desc: "Use Spindrift in a window on this desktop: the stick plugged in, an empty 64 GB disk to install it on, sound and 3D. What it holds stays in _output/play between runs (task play -- -fresh starts over; task play -- -stick=false boots what is installed). The stick comes from task play:stick, or task usb."
+    cmds:
+      - go run ./cmd/image play {{.CLI_ARGS}}
+
+  play:stick:
+    desc: "Build the stick task play copies: the image as a machine gets it - no test layer - signed with the throwaway test key."
+    deps: [keygen:test]
+    cmds:
+      - task: usb
+        vars: {SIGNING_HOME: .cache/test-gnupg}
+      - rm -rf _output/play
+
   scan:
     desc: "Scan the stick's baked root (_output/usb/root, task usb) for vulnerabilities with Grype; fails on a Critical or High a version already fixes (build/grype.yaml). Everything found is in _output/scan/grype.json."
     vars:

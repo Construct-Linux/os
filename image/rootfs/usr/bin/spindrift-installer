@@ -1,0 +1,242 @@
+#!/usr/bin/python3
+# Install Spindrift: the live session's graphical installer. A front-end only - which disk can
+# be installed on, checking the release, writing it, the person's records - is drift's
+# (cmd/drift): this asks, runs `pkexec drift install --json` and shows what it says.
+
+import gettext
+import json
+import re
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+_ = gettext.translation("spindrift-installer", fallback=True).gettext
+
+APP_ID = "org.spindrift.Installer"
+DRIFT = "/usr/bin/drift"
+
+# What drift install says as it goes, as the person reads it, and how far along that is.
+STEPS = {
+    "writing the partition table": (_("Preparing the disk"), 0.03),
+    "writing slot A": (_("Copying Spindrift"), 0.05),
+    "making the ESP and /var": (_("Making room for your files"), 0.92),
+    "preparing /var": (_("Setting up your account"), 0.95),
+    "installed: the firmware boots the disk first": (_("Making the disk start first"), 0.99),
+}
+
+
+def human_size(n):
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1000 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1000
+
+
+def suggest_login(name):
+    first = name.strip().split(" ")[0].lower() if name.strip() else ""
+    return re.sub(r"[^a-z0-9_-]", "", first)
+
+
+class Installer(Adw.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title=_("Install Spindrift"), default_width=640, default_height=620)
+        self.disks = self.read_disks()
+        self.disk = next((d for d in self.disks if d["default"]), self.disks[0] if self.disks else None)
+        self.login_edited = False
+        self.nav = Adw.NavigationView()
+        self.set_content(self.nav)
+        self.nav.add(self.welcome_page())
+
+    # drift's disk list: never the stick this runs from.
+    def read_disks(self):
+        try:
+            proc = Gio.Subprocess.new([DRIFT, "disks", "--json"], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            _ok, out, _err = proc.communicate_utf8(None, None)
+            return json.loads(out) if proc.get_successful() and out else []
+        except (GLib.Error, ValueError):
+            return []
+
+    def page(self, title, child, tag):
+        toolbar = Adw.ToolbarView()
+        toolbar.add_top_bar(Adw.HeaderBar())
+        toolbar.set_content(child)
+        return Adw.NavigationPage(title=title, child=toolbar, tag=tag)
+
+    def button(self, label, style, callback):
+        b = Gtk.Button(label=label, halign=Gtk.Align.CENTER)
+        b.add_css_class("pill")
+        b.add_css_class(style)
+        b.connect("clicked", callback)
+        return b
+
+    def welcome_page(self):
+        status = Adw.StatusPage(
+            icon_name="system-software-install-symbolic",
+            title=_("Install Spindrift"),
+            description=_("Spindrift is running from this stick. Install it on this computer to keep it, "
+                          "or close this window and keep trying it."),
+        )
+        if self.disk is None:
+            status.set_description(_("This computer has no disk Spindrift can be installed on."))
+        else:
+            status.set_child(self.button(_("Install…"), "suggested-action", lambda *_: self.nav.push(self.disk_page())))
+        return self.page(_("Welcome"), status, "welcome")
+
+    def disk_page(self):
+        group = Adw.PreferencesGroup(
+            title=_("Where to install"),
+            description=_("Everything on the disk you choose is erased."),
+        )
+        first = None
+        for d in self.disks:
+            check = Gtk.CheckButton(active=d is self.disk)
+            if first is None:
+                first = check
+            else:
+                check.set_group(first)
+            check.connect("toggled", lambda c, d=d: c.get_active() and setattr(self, "disk", d))
+            row = Adw.ActionRow(
+                title=d["model"] or d["path"],
+                subtitle=f'{human_size(d["size"])} · {d["path"]}' + (" · " + _("removable") if d["removable"] or d["usb"] else ""),
+                activatable_widget=check,
+            )
+            row.add_prefix(check)
+            group.add(row)
+        box = self.form(group, self.button(_("Next"), "suggested-action", lambda *_: self.nav.push(self.person_page())))
+        return self.page(_("Disk"), box, "disk")
+
+    def person_page(self):
+        group = Adw.PreferencesGroup(title=_("Who uses this computer"),
+                                     description=_("Your password unlocks your session and lets you change the system."))
+        self.name = Adw.EntryRow(title=_("Full name"))
+        self.login = Adw.EntryRow(title=_("Login name"))
+        self.password = Adw.PasswordEntryRow(title=_("Password"))
+        self.again = Adw.PasswordEntryRow(title=_("Password again"))
+        self.name.connect("changed", self.on_name)
+        self.login.connect("changed", lambda *_: setattr(self, "login_edited", self.login.has_focus()))
+        for row in (self.name, self.login, self.password, self.again):
+            group.add(row)
+            row.connect("changed", self.check_person)
+        self.person_next = self.button(_("Next"), "suggested-action", lambda *_: self.nav.push(self.confirm_page()))
+        self.person_next.set_sensitive(False)
+        self.person_hint = Gtk.Label(css_classes=["dim-label"], wrap=True)
+        return self.page(_("You"), self.form(group, self.person_hint, self.person_next), "person")
+
+    def on_name(self, *_):
+        if not self.login_edited:
+            self.login.set_text(suggest_login(self.name.get_text()))
+
+    def check_person(self, *_):
+        hint = ""
+        if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", self.login.get_text()):
+            hint = _("A login name is lowercase letters, digits, - and _, starting with a letter.")
+        elif not self.password.get_text():
+            hint = _("Choose a password.")
+        elif self.password.get_text() != self.again.get_text():
+            hint = _("The passwords do not match.")
+        self.person_hint.set_text(hint)
+        self.person_next.set_sensitive(hint == "" and self.name.get_text().strip() != "")
+
+    def confirm_page(self):
+        status = Adw.StatusPage(
+            icon_name="dialog-warning-symbolic",
+            title=_("Erase %s?") % (self.disk["model"] or self.disk["path"]),
+            description=_("Everything on %(path)s (%(size)s) is erased and Spindrift is installed in its place, "
+                          "for %(name)s.") % {"path": self.disk["path"], "size": human_size(self.disk["size"]),
+                                                "name": self.name.get_text().strip()},
+        )
+        status.set_child(self.button(_("Erase and Install"), "destructive-action", self.install))
+        return self.page(_("Confirm"), status, "confirm")
+
+    def install(self, *_):
+        self.progress = Gtk.ProgressBar(show_text=False)
+        self.step = Gtk.Label(label=_("Starting"), css_classes=["title-4"])
+        status = Adw.StatusPage(icon_name="system-software-install-symbolic", title=_("Installing Spindrift"))
+        status.set_child(self.form(self.step, self.progress))
+        page = self.page(_("Installing"), status, "installing")
+        page.set_can_pop(False)
+        self.nav.push(page)
+        self.errors = []
+        try:
+            proc = Gio.Subprocess.new(
+                ["pkexec", DRIFT, "install", "--yes", "--json", "--disk", self.disk["path"],
+                 "--user", self.login.get_text(), "--real-name", self.name.get_text().strip(), "--password-file", "-"],
+                Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
+            )
+        except GLib.Error as e:
+            return self.failed(e.message)
+        stdin = proc.get_stdin_pipe()
+        stdin.write_all(self.password.get_text().encode() + b"\n", None)
+        stdin.close(None)
+        self.read_lines(Gio.DataInputStream.new(proc.get_stdout_pipe()), self.on_record)
+        self.read_lines(Gio.DataInputStream.new(proc.get_stderr_pipe()), self.errors.append)
+        proc.wait_async(None, self.on_exit)
+
+    def read_lines(self, stream, handle):
+        def got(s, result):
+            line, _len = s.read_line_finish_utf8(result)
+            if line is not None:
+                handle(line)
+                s.read_line_async(GLib.PRIORITY_DEFAULT, None, got)
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, got)
+
+    def on_record(self, line):
+        try:
+            rec = json.loads(line)
+        except ValueError:
+            return
+        msg = rec.get("msg", "")
+        if msg in STEPS:
+            text, at = STEPS[msg]
+            self.step.set_label(text)
+            self.progress.set_fraction(max(self.progress.get_fraction(), at))
+        elif msg == "progress" and rec.get("file", "").endswith(".root.raw.xz"):
+            self.progress.set_fraction(0.05 + 0.85 * rec.get("percent", 0) / 100)
+
+    def on_exit(self, proc, result):
+        proc.wait_finish(result)
+        if proc.get_successful():
+            self.done()
+        else:
+            self.failed("\n".join(self.errors[-6:]) or _("The installer stopped."))
+
+    def done(self):
+        status = Adw.StatusPage(
+            icon_name="object-select-symbolic",
+            title=_("Spindrift is installed"),
+            description=_("Remove the stick, then restart: the computer starts Spindrift from its disk."),
+        )
+        status.set_child(self.button(_("Restart"), "suggested-action", lambda *_: Gio.Subprocess.new(["systemctl", "reboot"], 0)))
+        page = self.page(_("Done"), status, "done")
+        page.set_can_pop(False)
+        self.nav.push(page)
+
+    def failed(self, detail):
+        status = Adw.StatusPage(icon_name="dialog-error-symbolic", title=_("Spindrift was not installed"),
+                                description=detail.replace("drift: ", ""))
+        status.set_child(self.button(_("Back"), "pill", lambda *_: self.nav.pop_to_tag("person")))
+        self.nav.push(self.page(_("Error"), status, "error"))
+
+    def form(self, *children):
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=24, margin_top=24, margin_bottom=24,
+                      margin_start=12, margin_end=12)
+        for c in children:
+            box.append(c)
+        clamp = Adw.Clamp(maximum_size=480, child=box)
+        return Gtk.ScrolledWindow(child=clamp, vexpand=True)
+
+
+class App(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID)
+
+    def do_activate(self):
+        (self.props.active_window or Installer(self)).present()
+
+
+if __name__ == "__main__":
+    sys.exit(App().run(sys.argv))

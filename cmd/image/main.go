@@ -10,6 +10,7 @@
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
+//	image play  [-fresh] [-stick=false]          the stick in a window on the host, with a disk to install on
 //	image forge                                 the forged sticks the lifecycle must refuse
 //	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
 //	image check-langs                           every package in the root comes with its translations
@@ -51,6 +52,8 @@ func main() {
 		err = forge(os.Args[2:])
 	case "check-key":
 		err = checkKey(os.Args[2:])
+	case "play":
+		err = play(os.Args[2:])
 	case "check-langs":
 		err = checkLangs(filepath.Join(out, "rootfs.tar"))
 	case "check":

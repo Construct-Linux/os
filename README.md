@@ -41,7 +41,8 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
 
 - **live**: the desktop runs from it, as the user `live`; its first boot makes `/var` in the rest
   of the stick.
-- **installer**: `sudo drift install` asks who the machine is for - a name, a login and one
+- **installer**: the live session opens *Install Spindrift* (or `sudo drift install` in a
+  terminal), which asks for the disk and who the machine is for - a name, a login and one
   password - then erases the machine's first internal disk (never the stick) and lays two system
   slots and `/var` on it. GDM, sudo and the lock screen ask for the
   password. root has none and cannot log in.
@@ -52,6 +53,8 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
 `task test` drives the desktop in QEMU (every app, Settings, the shell's own views and the lock
 screen, each extension's state, audio, Docker, failed units, core dumps, the shell's log, with a
 screenshot of each); `task test:usb` does the same booted from a USB stick by UEFI;
+`task play` boots the stick in a window on your desktop with an empty disk to install it on -
+the way to try the installer and live with the result (`task play:stick` builds that stick).
 `task test:lifecycle` installs onto an NVMe disk, refuses forged updates, updates from a URL and
 rolls back from a broken release. `AGENTS.md` says what each change needs.
 
@@ -64,6 +67,7 @@ rolls back from a broken release. `AGENTS.md` says what each change needs.
 | `kernel/`, `firmware/` | the desktop's kernel fragment and firmware selection, over spin-ami's |
 | `cmd/image` | disks, the USB stick, releases, the QEMU harness and lifecycle |
 | `image/initrd/` | the initrd: Wolfi's systemd, `/var` and the `/etc` overlay mounted before the switch |
-| `cmd/drift` | `install` and `boot-check` on the machine |
+| `cmd/drift` | `install`, `disks` and `boot-check` on the machine |
+| `image/rootfs/usr/bin/spindrift-installer` | the graphical installer: a libadwaita front-end to `drift install --json` |
 | `internal/` | GPT, and installing a signed release |
 | `cmd/gap` | how far Wolfi is from a desktop profile, in recipes to own |

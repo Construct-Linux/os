@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,6 +16,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/spin-stack/spindrift/internal/account"
+	"github.com/spin-stack/spindrift/internal/update"
 )
 
 // person is who the machine is installed for, and the password that unlocks it and logs them in.
@@ -225,5 +227,42 @@ func liveCmd(etc, varDir string) error {
 	if err := account.Autologin(etc, account.Live.Name); err != nil {
 		return err
 	}
-	return account.MakeHome(varDir, account.Live)
+	if err := account.MakeHome(varDir, account.Live); err != nil {
+		return err
+	}
+	if !update.FromStick("/sys") {
+		return nil
+	}
+	return offerInstaller(filepath.Join(varDir, "home", account.Live.Name), installerEntry, account.Live.UID)
+}
+
+// installerEntry is the graphical installer's desktop entry, which only a stick's live session
+// shows: an installed machine has no live user, and the test disk is no stick.
+const installerEntry = "/usr/share/spindrift/org.spindrift.Installer.desktop"
+
+// offerInstaller puts the installer in home's applications and starts it at login, as uid's.
+func offerInstaller(home, entry string, uid int) error {
+	b, err := os.ReadFile(entry)
+	if err != nil {
+		return err
+	}
+	for _, dir := range []string{".local", ".local/share", ".local/share/applications", ".config", ".config/autostart"} {
+		d := filepath.Join(home, dir)
+		if err := os.Mkdir(d, 0o755); err != nil && !errors.Is(err, fs.ErrExist) {
+			return err
+		}
+		if err := os.Lchown(d, uid, uid); err != nil {
+			return err
+		}
+	}
+	for _, dir := range []string{".local/share/applications", ".config/autostart"} {
+		path := filepath.Join(home, dir, filepath.Base(entry))
+		if err := os.WriteFile(path, b, 0o644); err != nil {
+			return err
+		}
+		if err := os.Lchown(path, uid, uid); err != nil {
+			return err
+		}
+	}
+	return nil
 }

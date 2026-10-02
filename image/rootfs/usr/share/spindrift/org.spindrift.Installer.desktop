@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install Spindrift
+Comment=Install Spindrift on this computer's disk
+Icon=system-software-install
+Exec=spindrift-installer
+Categories=System;
+StartupNotify=true
+X-GNOME-Autostart-Delay=3

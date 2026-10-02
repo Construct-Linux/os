@@ -95,6 +95,17 @@ func readDisk(sys, name string) (BlockDisk, error) {
 	return d, nil
 }
 
+// FromStick says whether the running root is read from a removable or USB disk - a live stick -
+// rather than from a disk of the machine's own.
+func FromStick(sys string) bool {
+	medium, err := MediumDisk(sys)
+	if err != nil {
+		return false
+	}
+	d, err := readDisk(sys, medium)
+	return err == nil && (d.Removable || d.USB)
+}
+
 // Default is the disk the installer picks when it is not told: the first of disks that is neither
 // removable nor on USB - the machine's own, never a stick plugged into it.
 func Default(disks []BlockDisk) (BlockDisk, error) {

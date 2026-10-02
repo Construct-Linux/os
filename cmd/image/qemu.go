@@ -9,6 +9,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -98,6 +100,9 @@ type machine struct {
 	vars        string
 	sticks      []string
 	nvme        string
+	// window shows the machine in a window on the host's desktop, with the GPU's 3D through the
+	// host's (virgl) and its sound on the host's speakers: a machine to use, not to test.
+	window bool
 }
 
 // machineUUID is the test machine's firmware UUID: the same at every boot, as a board's.
@@ -109,7 +114,11 @@ func (m machine) start() (*vm, error) {
 	// A firmware product UUID, as a real board has: systemd.machine_id=firmware makes the
 	// machine's id from it, and /var's partition UUID from that, so without one every boot would
 	// be another machine's and none would find its /var.
-	args := []string{"-enable-kvm", "-cpu", "host", "-smp", "4", "-m", m.mem, "-uuid", machineUUID}
+	cpus := "4"
+	if m.window {
+		cpus = strconv.Itoa(max(4, runtime.NumCPU()/2))
+	}
+	args := []string{"-enable-kvm", "-cpu", "host", "-smp", cpus, "-m", m.mem, "-uuid", machineUUID}
 	if m.vars != "" {
 		args = append(args, "-machine", "q35",
 			"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
@@ -127,13 +136,17 @@ func (m machine) start() (*vm, error) {
 			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
 			"-drive", "file="+filepath.Join(out, "disk.raw")+",if=virtio,format=raw")
 	}
+	// An HDA card, so the sound stack - the kernel's driver, PipeWire, WirePlumber - has a device
+	// to find; its output goes nowhere unless the machine is in a window.
+	display := []string{"-device", "virtio-vga", "-display", "none", "-vnc", "127.0.0.1:7", "-audiodev", "none,id=snd0"}
+	if m.window {
+		display = []string{"-device", "virtio-vga-gl", "-display", "gtk,gl=on,show-cursor=on", "-audiodev", "pipewire,id=snd0"}
+	}
+	args = append(args, display...)
 	args = append(args,
-		"-device", "virtio-vga", "-display", "none", "-vnc", "127.0.0.1:7",
 		"-device", "virtio-net-pci,netdev=n0", "-netdev", "user,id=n0",
 		"-device", "qemu-xhci,id=xhci", "-device", "usb-tablet",
-		// An HDA card, so the sound stack - the kernel's driver, PipeWire, WirePlumber - has a
-		// device to find; its output goes nowhere.
-		"-audiodev", "none,id=snd0", "-device", "ich9-intel-hda", "-device", "hda-duplex,audiodev=snd0",
+		"-device", "ich9-intel-hda", "-device", "hda-duplex,audiodev=snd0",
 		"-serial", "file:"+filepath.Join(out, "serial.log"),
 		"-qmp", "unix:"+qmp+",server,nowait",
 	)
@@ -258,4 +271,53 @@ func (v *vm) powerOff(g *guest) {
 		_ = qmpRun(v.qmp, map[string]any{"execute": "quit"})
 		<-done
 	}
+}
+
+// play boots a stick in a window on the host's desktop, with an empty disk to install on: the
+// machine a person would use. What it holds - the stick, the disk, the firmware's variables -
+// is kept in _output/play between runs, so an install, its reboot and its updates carry on.
+func play(args []string) error {
+	fl := flag.NewFlagSet("play", flag.ExitOnError)
+	fresh := fl.Bool("fresh", false, "start over: a new stick from _output/usb/disk.raw, an empty disk, no boot entries")
+	withStick := fl.Bool("stick", true, "plug the stick in; without it the machine boots what is installed on its disk")
+	mem := fl.String("m", "8G", "memory")
+	_ = fl.Parse(args)
+	dir := filepath.Join(out, "play")
+	stick, nvme, vars := filepath.Join(dir, "stick.raw"), filepath.Join(dir, "nvme.raw"), filepath.Join(dir, "OVMF_VARS.fd")
+	if *fresh {
+		if err := os.RemoveAll(dir); err != nil {
+			return err
+		}
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	if _, err := os.Stat(stick); err != nil {
+		src := filepath.Join(out, "usb", "disk.raw")
+		if _, err := os.Stat(src); err != nil {
+			return fmt.Errorf("no stick to copy: build one with task usb (%w)", err)
+		}
+		if err := stickCopy(src, stick); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(nvme); err != nil {
+		if err := copyCmd("truncate", "-s", "64G", nvme); err != nil {
+			return err
+		}
+	}
+	if _, err := os.Stat(vars); err != nil {
+		if err := freshVars(vars); err != nil {
+			return err
+		}
+	}
+	m := machine{mem: *mem, vars: vars, nvme: nvme, window: true}
+	if *withStick {
+		m.sticks = []string{stick}
+	}
+	v, err := m.start()
+	if err != nil {
+		return err
+	}
+	return v.cmd.Wait()
 }

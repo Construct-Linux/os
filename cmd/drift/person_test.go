@@ -81,3 +81,20 @@ func TestCrypt64(t *testing.T) {
 		t.Errorf("crypt64(ff ff ff) = %q", got)
 	}
 }
+
+// The installer is in the live user's applications and autostart, theirs.
+func TestOfferInstaller(t *testing.T) {
+	home := t.TempDir()
+	entry := filepath.Join(t.TempDir(), "org.spindrift.Installer.desktop")
+	if err := os.WriteFile(entry, []byte("[Desktop Entry]\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := offerInstaller(home, entry, os.Getuid()); err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{".local/share/applications", ".config/autostart"} {
+		if b, err := os.ReadFile(filepath.Join(home, dir, "org.spindrift.Installer.desktop")); err != nil || string(b) != "[Desktop Entry]\n" {
+			t.Errorf("%s: %q %v", dir, b, err)
+		}
+	}
+}

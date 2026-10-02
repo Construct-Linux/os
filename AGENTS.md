@@ -129,6 +129,11 @@ falling back from a release that does not come up.
 | packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | a Critical or High a version fixes fails it; `_output/scan/grype.json` has the rest |
 | the boot's look (splash, Plymouth) | `go run ./cmd/image boot -usb -shots 30` | the frames in `_output/boot` |
 
+To use it as a person does: `task play` (a window, the stick, a disk to install on; state in
+`_output/play`). The graphical installer is UI only (Python, libadwaita): what it shows comes from
+`drift disks --json` and `drift install --json`, and test:lifecycle installs through exactly its
+command, pkexec included.
+
 Tools for a boot that misbehaves: `go run ./cmd/image run [-usb | -vars -nvme -sticks] -- '<cmd>'`
 runs a command as root in a booted VM; the harness saves failed units' logs in `units/`; `task usb
 -- -append <option> [-append <option>...]` adds kernel options for one build; a disk's journal can be read

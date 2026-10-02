@@ -93,6 +93,7 @@ func test(args []string) error {
 	_, _ = g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
+	r.installer(v, g, *stick)
 	r.shot(v, "desktop")
 	sinks, err := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
@@ -363,4 +364,31 @@ func (r *report) shellViews(v *vm, g *guest) {
 func (r *report) locked(g *guest) {
 	n, err := g.eval(`String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.stateObj?._tilingManagers?.length ?? 0)`)
 	r.add("locked: tilingshell", err == nil && strings.Trim(n, `"`) == "0", "tiling managers alive while disabled: "+n)
+}
+
+// installerWindows counts the graphical installer's windows on the live session's screen.
+const installerWindows = `global.get_window_actors().map(a => a.meta_window).filter(w => w.get_wm_class() === "org.spindrift.Installer")`
+
+// installer checks the live session offers the graphical installer at login on a stick, and
+// nowhere else; its window is shot and closed, so it covers nothing after.
+func (r *report) installer(v *vm, g *guest, stick bool) {
+	n := "0"
+	deadline := time.Now().Add(time.Minute)
+	for stick && time.Now().Before(deadline) {
+		if n, _ = g.eval(`String(` + installerWindows + `.length)`); strings.Trim(n, `"`) == "1" {
+			break
+		}
+		time.Sleep(2 * time.Second)
+	}
+	if !stick {
+		n, _ = g.eval(`String(` + installerWindows + `.length)`)
+	}
+	want := map[bool]string{true: "1", false: "0"}[stick]
+	r.add("installer offered", strings.Trim(n, `"`) == want, fmt.Sprintf("%s installer windows on a stick=%v", n, stick))
+	if stick && strings.Trim(n, `"`) == "1" {
+		time.Sleep(2 * time.Second)
+		r.shot(v, "installer")
+		_, _ = g.eval(installerWindows + `.forEach(w => w.delete(global.get_current_time())); true`)
+		time.Sleep(time.Second)
+	}
 }
