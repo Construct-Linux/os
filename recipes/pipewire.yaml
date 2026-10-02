@@ -2,7 +2,7 @@ package:
   name: pipewire
   version: "1.6.9"
   # Replaces Wolfi's pipewire 1.6.9 (epoch 0), which lacks the bluez5 and GStreamer plugins.
-  epoch: 1
+  epoch: 2
   description: Server and user space API to deal with multimedia pipelines
   copyright:
     - license: MIT
@@ -22,6 +22,7 @@ environment:
       - glib-dev
       - gst-plugins-base-dev
       - gstreamer-dev
+      - libcamera-dev
       - libsndfile-dev
       - meson
       - ninja
@@ -39,12 +40,14 @@ pipeline:
 
   # Bluetooth codecs: SBC and Opus only; Wolfi has no libldac, libfreeaptx, fdk-aac or liblc3.
   # bluez5-backend-native-mm needs ModemManager, which the desktop does not ship.
-  # JACK (both directions), v4l2, libcamera, roc, ffado, vulkan, ffmpeg, avahi, raop, webrtc
-  # echo-cancel, lv2, sofa, ebur128, onnx and libpulse tunnels: nothing in the GNOME session uses them.
+  # Cameras: v4l2 for USB webcams, libcamera for laptops' MIPI ones; Snapshot and the camera portal
+  # take video only through PipeWire.
+  # JACK (both directions), roc, ffado, vulkan, ffmpeg, avahi, raop, webrtc echo-cancel, lv2, sofa,
+  # ebur128, onnx and libpulse tunnels: nothing in the GNOME session uses them.
   # x11 and libcanberra serve only the X11 bell module, which a Wayland session never loads.
   - uses: meson/configure
     with:
-      opts: -Dsession-managers=[] -Ddocs=disabled -Dman=disabled -Dtests=disabled -Dinstalled_tests=disabled -Dexamples=disabled -Dgstreamer=enabled -Dgstreamer-device-provider=enabled -Dlibsystemd=enabled -Dlogind=enabled -Dlogind-provider=libsystemd -Dsystemd-system-service=disabled -Dsystemd-user-service=enabled -Dsystemd-user-unit-dir=/usr/lib/systemd/user -Dudev=enabled -Dalsa=enabled -Dpipewire-alsa=enabled -Dpipewire-jack=disabled -Djack=disabled -Djack-devel=false -Dpipewire-v4l2=disabled -Dv4l2=disabled -Dlibcamera=disabled -Dbluez5=enabled -Dbluez5-backend-native-mm=disabled -Dbluez5-backend-ofono=disabled -Dbluez5-backend-hsphfpd=disabled -Dbluez5-codec-aptx=disabled -Dbluez5-codec-ldac=disabled -Dbluez5-codec-ldac-dec=disabled -Dbluez5-codec-aac=disabled -Dbluez5-codec-lc3plus=disabled -Dbluez5-codec-lc3=disabled -Dbluez5-codec-opus=enabled -Dbluez5-codec-g722=disabled -Dbluez5-plc-spandsp=disabled -Dopus=enabled -Dlibusb=disabled -Dvulkan=disabled -Dffmpeg=disabled -Dpw-cat-ffmpeg=disabled -Dsdl2=disabled -Dsndfile=enabled -Dlibmysofa=disabled -Dlibpulse=disabled -Droc=disabled -Davahi=disabled -Decho-cancel-webrtc=disabled -Draop=disabled -Dlv2=disabled -Dx11=disabled -Dx11-xfixes=disabled -Dlibcanberra=disabled -Dflatpak=disabled -Dreadline=enabled -Dselinux=disabled -Dlibffado=disabled -Dsnap=disabled -Debur128=disabled -Dfftw=disabled -Donnxruntime=disabled -Dcompress-offload=disabled -Devl=disabled
+      opts: -Dsession-managers=[] -Ddocs=disabled -Dman=disabled -Dtests=disabled -Dinstalled_tests=disabled -Dexamples=disabled -Dgstreamer=enabled -Dgstreamer-device-provider=enabled -Dlibsystemd=enabled -Dlogind=enabled -Dlogind-provider=libsystemd -Dsystemd-system-service=disabled -Dsystemd-user-service=enabled -Dsystemd-user-unit-dir=/usr/lib/systemd/user -Dudev=enabled -Dalsa=enabled -Dpipewire-alsa=enabled -Dpipewire-jack=disabled -Djack=disabled -Djack-devel=false -Dpipewire-v4l2=disabled -Dv4l2=enabled -Dlibcamera=enabled -Dbluez5=enabled -Dbluez5-backend-native-mm=disabled -Dbluez5-backend-ofono=disabled -Dbluez5-backend-hsphfpd=disabled -Dbluez5-codec-aptx=disabled -Dbluez5-codec-ldac=disabled -Dbluez5-codec-ldac-dec=disabled -Dbluez5-codec-aac=disabled -Dbluez5-codec-lc3plus=disabled -Dbluez5-codec-lc3=disabled -Dbluez5-codec-opus=enabled -Dbluez5-codec-g722=disabled -Dbluez5-plc-spandsp=disabled -Dopus=enabled -Dlibusb=disabled -Dvulkan=disabled -Dffmpeg=disabled -Dpw-cat-ffmpeg=disabled -Dsdl2=disabled -Dsndfile=enabled -Dlibmysofa=disabled -Dlibpulse=disabled -Droc=disabled -Davahi=disabled -Decho-cancel-webrtc=disabled -Draop=disabled -Dlv2=disabled -Dx11=disabled -Dx11-xfixes=disabled -Dlibcanberra=disabled -Dflatpak=disabled -Dreadline=enabled -Dselinux=disabled -Dlibffado=disabled -Dsnap=disabled -Debur128=disabled -Dfftw=disabled -Donnxruntime=disabled -Dcompress-offload=disabled -Devl=disabled
 
   - uses: meson/compile
 

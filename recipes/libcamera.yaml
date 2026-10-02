@@ -1,0 +1,60 @@
+# libcamera: what makes a laptop's own camera - a MIPI sensor behind Intel's IPU6 or IPU7 - a camera
+# PipeWire and the camera portal offer apps, its images processed in software (SoftISP, on the GPU
+# where it can). Wolfi has no recipe. Master, not 0.7.2: the ThinkPad X9's Sony IMX471 needs its
+# sensor helper (e64b507d, 2026-08-03), which no release has yet.
+package:
+  name: libcamera
+  version: 0.7.2_git20261001
+  epoch: 1
+  description: A complex camera support library for Linux
+  copyright:
+    - license: LGPL-2.1-or-later AND GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - gst-plugins-base-dev
+      - gstreamer-dev
+      - mesa-dev
+      - meson
+      - ninja
+      # The IPA modules are signed at build, so libcamera loads them into the process using the
+      # camera instead of isolating them in one of their own.
+      - openssl-dev
+      - py3-jinja2
+      - py3-ply
+      - py3-pyyaml
+      - python3
+      - systemd-dev
+      - yaml-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.freedesktop.org/camera/libcamera.git
+      branch: master
+      expected-commit: c0049ea0605c1492c99b8f82bb04661a04cf1bf1
+
+  # simple: Intel's IPU6 and IPU7 input systems (and others) with the software ISP. Not uvcvideo:
+  # USB webcams reach PipeWire through its v4l2 support, and through both they would be listed
+  # twice. The apps, the Python and Android layers, tracing and the tests are for developing
+  # libcamera.
+  - uses: meson/configure
+    with:
+      opts: -Dpipelines=simple -Dipas=softisp -Dgstreamer=enabled -Dudev=enabled -Dcam=disabled -Dqcam=disabled -Dlc-compliance=disabled -Dpycamera=disabled -Ddocumentation=disabled -Dtracing=disabled -Dtest=false -Dlibdw=disabled -Dlibunwind=disabled -Drpi-awb-nn=disabled
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - uses: strip
+
+subpackages:
+  - name: libcamera-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - libcamera

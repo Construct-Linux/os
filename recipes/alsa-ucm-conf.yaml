@@ -1,0 +1,32 @@
+# ALSA's Use Case Manager profiles: how a card whose DSP routes audio (SOF over SoundWire, the
+# ThinkPad X9's among them) is set up - which device is the speakers, the headphones, the
+# microphones. PipeWire's ALSA support reads them; without them such a card has no usable output.
+# Wolfi has no recipe. The release that matches Wolfi's alsa-lib.
+package:
+  name: alsa-ucm-conf
+  version: 1.2.16.1
+  epoch: 0
+  description: ALSA Use Case Manager configuration
+  copyright:
+    - license: BSD-3-Clause
+  dependencies:
+    runtime:
+      - alsa-lib
+
+environment:
+  contents:
+    packages:
+      - busybox
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/alsa-project/alsa-ucm-conf
+      tag: v${{package.version}}
+      expected-commit: c68dcb174f432234dd224a3dc5270fa1f4856afd
+
+  - runs: |
+      mkdir -p ${{targets.destdir}}/usr/share/alsa ${{targets.destdir}}/usr/share/licenses/alsa-ucm-conf
+      cp -a ucm ucm2 ${{targets.destdir}}/usr/share/alsa/
+      test -d ${{targets.destdir}}/usr/share/alsa/ucm2/sof-soundwire
+      cp LICENSE ${{targets.destdir}}/usr/share/licenses/alsa-ucm-conf/

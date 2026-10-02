@@ -1,0 +1,34 @@
+# Intel's Sound Open Firmware: the audio DSP's firmware and topologies from Tiger Lake to Panther
+# Lake, which a laptop with its codecs on SoundWire (the ThinkPad X9's) has no sound without.
+# linux-firmware stopped carrying it; Wolfi has no recipe. sof-bin's release, laid out where the
+# kernel looks (intel/sof-ipc4/ptl/..., as its install.sh does), without its debugging tools.
+# Uncompressed: the root's EROFS compresses it.
+package:
+  name: sof-firmware
+  version: 2026.09.1
+  epoch: 0
+  description: Sound Open Firmware and topologies for Intel's audio DSP
+  copyright:
+    - license: BSD-3-Clause
+  dependencies:
+    runtime: []
+
+environment:
+  contents:
+    packages:
+      - busybox
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/thesofproject/sof-bin/releases/download/v${{package.version}}/sof-bin-${{package.version}}.tar.gz
+      expected-sha256: 42ce40ec98f366365eab8e046d779b416d80b6ff2513b8f6be2a61a88e679b73
+
+  - runs: |
+      dest=${{targets.destdir}}/usr/lib/firmware/intel
+      mkdir -p "$dest" ${{targets.destdir}}/usr/share/licenses/sof-firmware
+      for d in sof sof-tplg sof-ipc4 sof-ipc4-lib sof-ipc4-tplg sof-ace-tplg; do
+        cp -a "$d" "$dest/"
+      done
+      test -f "$dest/sof-ipc4/ptl/intel-signed/sof-ptl.ri"
+      cp LICENCE.Intel LICENCE.NXP Notice.NXP ${{targets.destdir}}/usr/share/licenses/sof-firmware/
