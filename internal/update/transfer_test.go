@@ -74,8 +74,19 @@ func TestAPartitionIsWrittenDecompressedAndHeldToItsDigestAndRoom(t *testing.T) 
 	}
 	good := xzOf(t, body)
 	d := disk(t)
-	if err := writePartition(t.Context(), d, p, Artifact{Name: "root", SHA256: sumOf(good)}, fetchOf(good)); err != nil {
+	// The installer's progress reaches the whole file, as fetched, and says which.
+	var last, total int64
+	progress := func(file string, done, all int64) {
+		if file != "root" || done < last {
+			t.Errorf("progress went %s %d after %d", file, done, last)
+		}
+		last, total = done, all
+	}
+	if err := writePartition(t.Context(), d, p, Artifact{Name: "root", SHA256: sumOf(good)}, fetchOf(good), progress); err != nil {
 		t.Fatalf("a partition of exactly its room: %v", err)
+	}
+	if last != int64(len(good)) || total != int64(len(good)) {
+		t.Errorf("progress ended at %d of %d; the file is %d", last, total, len(good))
 	}
 	got := make([]byte, room)
 	_, err := d.ReadAt(got, p.Offset())
@@ -97,7 +108,7 @@ func TestAPartitionIsWrittenDecompressedAndHeldToItsDigestAndRoom(t *testing.T) 
 		"a byte more than its room": {longer, sumOf(longer), "more than"},
 		"not xz":                    {body, sumOf(body), "not xz"},
 	} {
-		err := writePartition(t.Context(), disk(t), p, Artifact{Name: "root", SHA256: tc.sum}, fetchOf(tc.file))
+		err := writePartition(t.Context(), disk(t), p, Artifact{Name: "root", SHA256: tc.sum}, fetchOf(tc.file), nil)
 		if err == nil || !strings.Contains(err.Error(), tc.says) {
 			t.Errorf("%s: %v, want an error saying %q", name, err, tc.says)
 		}

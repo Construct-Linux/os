@@ -95,6 +95,9 @@ type InstallOptions struct {
 	// PrepareVar, when set, is given the new /var's device once it is made: who the machine is
 	// for goes there (cmd/drift).
 	PrepareVar func(ctx context.Context, dev string) error
+	// Progress, when set, is told how far slot A's files are written: done of total bytes of the
+	// file as fetched (total -1 when the source does not say), for an installer to show.
+	Progress func(file string, done, total int64)
 	// VarUUID is /var's partition UUID: VarUUID of the machine's id.
 	VarUUID string
 	// Loader is the running root's systemd-boot, which the ESP is given.
@@ -141,7 +144,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 		file Artifact
 	}{{table.Partitions[1], r.Root}, {table.Partitions[2], r.Verity}} {
 		log.Info("writing slot A", "file", w.file.Name)
-		if err := writePartition(ctx, d, w.part, w.file, fetch); err != nil {
+		if err := writePartition(ctx, d, w.part, w.file, fetch, o.Progress); err != nil {
 			return gpt.Table{}, err
 		}
 	}

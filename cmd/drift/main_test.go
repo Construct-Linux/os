@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"log/slog"
 	"strings"
 	"testing"
 
@@ -24,5 +25,22 @@ func TestAnInstallAsksForTheDisksName(t *testing.T) {
 		if err := confirm(bufio.NewReader(strings.NewReader(typed)), &out, disk); err == nil {
 			t.Errorf("%q was taken for the disk's name", typed)
 		}
+	}
+}
+
+// The graphical installer sees whole percents, each once, per file; a file of unknown length
+// shows none.
+func TestPercents(t *testing.T) {
+	var b strings.Builder
+	p := percents(slog.New(slog.NewJSONHandler(&b, &slog.HandlerOptions{ReplaceAttr: dropTime})))
+	for _, done := range []int64{0, 0, 1, 50, 50, 100} {
+		p("root", done, 100)
+	}
+	p("verity", 5, -1)
+	if got, want := strings.Count(b.String(), `"msg":"progress"`), 4; got != want {
+		t.Errorf("%d progress records, want %d:\n%s", got, want, b.String())
+	}
+	if !strings.Contains(b.String(), `{"level":"INFO","msg":"progress","file":"root","percent":100}`) {
+		t.Errorf("no 100%%:\n%s", b.String())
 	}
 }

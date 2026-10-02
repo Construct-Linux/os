@@ -32,12 +32,16 @@ const maxImage = 200 << 20
 // partition p of disk, decompressed: the compressed bytes as read hash to a's digest, and what they
 // decompress to fits p. Bytes are written before the digest is known, so a caller leaves the
 // partition labelled Empty until this returns nil: what it wrote is nothing that boots otherwise.
-func writePartition(ctx context.Context, disk Disk, p gpt.Partition, a Artifact, fetch Fetch) error {
-	body, _, err := fetch(ctx, a.Name)
+func writePartition(ctx context.Context, disk Disk, p gpt.Partition, a Artifact, fetch Fetch, progress func(file string, done, total int64)) error {
+	rc, total, err := fetch(ctx, a.Name)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = body.Close() }() // read to its end or given up on
+	defer func() { _ = rc.Close() }() // read to its end or given up on
+	var body io.Reader = rc
+	if progress != nil {
+		body = &counting{r: rc, report: func(n int64) { progress(a.Name, n, total) }}
+	}
 	h := sha256.New()
 	// xz(1), with liblzma's threads: a release is compressed in blocks (xz -T0), which it
 	// decompresses in parallel. Go's pure xz reader took 7m43s for a 1.4 GB root that xz -T0
@@ -75,6 +79,20 @@ func writePartition(ctx context.Context, disk Disk, p gpt.Partition, a Artifact,
 		return fmt.Errorf("update: %s is %s, and %s says %s", a.Name, got, SumsFile, a.SHA256)
 	}
 	return nil
+}
+
+// counting is a reader that reports how many bytes have been read through it.
+type counting struct {
+	r      io.Reader
+	n      int64
+	report func(n int64)
+}
+
+func (c *counting) Read(b []byte) (int, error) {
+	n, err := c.r.Read(b)
+	c.n += int64(n)
+	c.report(c.n)
+	return n, err
 }
 
 // copyChecked copies body, the release's file a, into w: no more than limit bytes, and what it

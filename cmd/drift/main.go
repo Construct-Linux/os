@@ -15,6 +15,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -36,6 +37,8 @@ import (
 
 const usage = `usage:
   drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--loader FILE]
+                   [--user NAME --real-name NAME --password-file FILE|-] [--json]
+  drift disks      [--json]
   drift boot-check
   drift pending    [--esp DIR] [--mark FILE]
   drift gtk4       [--from DIR] [--to DIR]
@@ -54,6 +57,8 @@ func main() {
 		err = update.BootCheck(ctx, systemctl{}, update.Vars(update.EFIVars), journal())
 	case "install":
 		err = installCmd(ctx, os.Args[2:], os.Stdin, os.Stdout)
+	case "disks":
+		err = disksCmd(os.Args[2:], os.Stdout)
 	case "pending":
 		err = pendingCmd(os.Args[2:], os.Stdout)
 	case "gtk4":
@@ -131,8 +136,14 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	loader := fl.String("loader", "/usr/lib/systemd/boot/efi/systemd-bootx64.efi", "the systemd-boot the ESP is given")
 	user := fl.String("user", "", "the login of whom the machine is for (default: asked)")
 	realName := fl.String("real-name", "", "their full name (default: asked, or the login)")
-	passwordFile := fl.String("password-file", "", "a file holding their password (default: asked)")
+	passwordFile := fl.String("password-file", "", "a file holding their password, - for standard input (default: asked)")
+	jsonOut := fl.Bool("json", false, "tell what is done as JSON lines on standard output, progress included: what the graphical installer reads")
 	_ = fl.Parse(args)
+	log, progress := journal(), func(string, int64, int64) {}
+	if *jsonOut {
+		log = slog.New(slog.NewJSONHandler(out, &slog.HandlerOptions{ReplaceAttr: dropTime}))
+		progress = percents(log)
+	}
 	ask := bufio.NewReader(in)
 
 	keys, err := update.ReadKeyring(*keyring)
@@ -209,13 +220,70 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		PrepareVar: func(ctx context.Context, dev string) error {
 			return prepareVar(ctx, dev, who)
 		},
-		VarUUID: varUUID,
-		Loader:  *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: journal(),
+		VarUUID: varUUID, Progress: progress,
+		Loader: *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: log,
 	})
 	if err != nil {
 		return err
 	}
+	if *jsonOut {
+		log.Info("done", "disk", disk.Path(), "user", who.user.Name)
+		return nil
+	}
 	fmt.Fprintf(out, "installed on %s for %s: remove the stick and reboot\n", disk.Path(), who.user.Name)
+	return nil
+}
+
+// percents is a Progress that logs each whole percent of a file once, as "progress" records.
+func percents(log *slog.Logger) func(file string, done, total int64) {
+	last := map[string]int64{}
+	return func(file string, done, total int64) {
+		if total <= 0 {
+			return
+		}
+		pct := done * 100 / total
+		if p, ok := last[file]; ok && p == pct {
+			return
+		}
+		last[file] = pct
+		log.Info("progress", "file", file, "percent", pct)
+	}
+}
+
+// disksCmd lists the disks drift install can install on - never the stick it runs from - and
+// the one it picks by itself, as text or, for the graphical installer, JSON.
+func disksCmd(args []string, out io.Writer) error {
+	fl := flag.NewFlagSet("disks", flag.ExitOnError)
+	jsonOut := fl.Bool("json", false, "JSON: a list of {path, model, size, serial, removable, usb, default}")
+	_ = fl.Parse(args)
+	medium, err := update.MediumDisk("/sys")
+	if err != nil {
+		return err
+	}
+	disks, err := update.Disks("/sys", medium)
+	if err != nil {
+		return err
+	}
+	def, _ := update.Default(disks)
+	type row struct {
+		Path      string `json:"path"`
+		Model     string `json:"model"`
+		Size      int64  `json:"size"`
+		Serial    string `json:"serial"`
+		Removable bool   `json:"removable"`
+		USB       bool   `json:"usb"`
+		Default   bool   `json:"default"`
+	}
+	rows := []row{}
+	for _, d := range disks {
+		rows = append(rows, row{d.Path(), d.Model, d.Size, d.Serial, d.Removable, d.USB, d.Name == def.Name})
+	}
+	if *jsonOut {
+		return json.NewEncoder(out).Encode(rows)
+	}
+	for _, d := range disks {
+		fmt.Fprintln(out, d)
+	}
 	return nil
 }
 
@@ -284,12 +352,15 @@ func run(ctx context.Context, name string, args ...string) error {
 
 // journal is a logger for a unit's output, which journald stamps and names.
 func journal() *slog.Logger {
-	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{ReplaceAttr: func(_ []string, a slog.Attr) slog.Attr {
-		if a.Key == slog.TimeKey {
-			return slog.Attr{}
-		}
-		return a
-	}}))
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{ReplaceAttr: dropTime}))
+}
+
+// dropTime leaves a record's time out: the journal stamps it, and a reader of JSON needs none.
+func dropTime(_ []string, a slog.Attr) slog.Attr {
+	if a.Key == slog.TimeKey {
+		return slog.Attr{}
+	}
+	return a
 }
 
 // systemctl is the machine's systemd, as a boot check asks it.

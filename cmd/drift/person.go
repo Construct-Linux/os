@@ -29,7 +29,14 @@ func personFrom(in *bufio.Reader, out io.Writer, name, realName, passwordFile st
 		if name == "" || passwordFile == "" {
 			return person{}, errors.New("--user and --password-file go together")
 		}
-		b, err := os.ReadFile(passwordFile)
+		var b []byte
+		var err error
+		if passwordFile == "-" {
+			// The graphical installer's pipe: a password never on a command line.
+			b, err = io.ReadAll(in)
+		} else {
+			b, err = os.ReadFile(passwordFile)
+		}
 		if err != nil {
 			return person{}, err
 		}
