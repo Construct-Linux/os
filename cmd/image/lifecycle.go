@@ -107,10 +107,12 @@ func lifecycle(args []string) error {
 			r.add("refuse "+bad, false, err.Error())
 			return r.write(nil)
 		}
-		ok, detail = g.waitUpdate(15 * time.Minute)
+		u := g.waitUpdate(15 * time.Minute)
 		esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
-		refused := !ok && !strings.Contains(esp, versions["v2"]) && g.version() == versions["v1"]
-		r.add("refuse a stick: "+bad, refused, detail+"; ESP: "+oneLine(esp))
+		// Refused by systemd-sysupdate itself: a unit that never ran, or failed before sysupdate
+		// read the stick (its mount), refused nothing.
+		refused := u.ended && !u.ok && u.sysupdate != "" && !strings.Contains(esp, versions["v2"]) && g.version() == versions["v1"]
+		r.add("refuse a stick: "+bad, refused, u.detail()+"; ESP: "+oneLine(esp))
 		v.powerOff(g)
 	}
 
@@ -160,8 +162,8 @@ func lifecycle(args []string) error {
 		r.add("boot with v3's stick", false, err.Error())
 		return r.write(nil)
 	}
-	ok, detail = g.waitUpdate(15 * time.Minute)
-	r.add("v3's stick updates", ok, detail)
+	u := g.waitUpdate(15 * time.Minute)
+	r.add("v3's stick updates", u.ok, u.detail())
 	g.reboot()
 	deadline := time.Now().Add(20 * time.Minute)
 	for time.Now().Before(deadline) {
@@ -246,20 +248,33 @@ func (g *guest) waitUnit2Active(unit string, d time.Duration) (bool, string) {
 	return state == "active", unit + ": " + state
 }
 
-// waitUpdate waits for the spindrift-update@ unit a plugged stick started to end, and says how.
-// It reads the journal: a oneshot that already ended is unloaded, and no longer listed.
-func (g *guest) waitUpdate(d time.Duration) (bool, string) {
+// updateEnd is how the spindrift-update@ unit a plugged stick started ended: whether it did, and
+// well, systemd's line for it, and what systemd-sysupdate last said.
+type updateEnd struct {
+	ended, ok       bool
+	unit, sysupdate string
+}
+
+func (u updateEnd) detail() string {
+	if !u.ended {
+		return "no spindrift-update@ unit ended"
+	}
+	return u.unit + ": systemd-sysupdate: " + oneLine(u.sysupdate)
+}
+
+// waitUpdate waits for the spindrift-update@ unit a plugged stick started to end. It reads the
+// journal: a oneshot that already ended is unloaded, and no longer listed.
+func (g *guest) waitUpdate(d time.Duration) updateEnd {
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
 		log, _ := g.run(`journalctl -b --no-pager -o cat -u 'spindrift-update@*' | grep -E '^(Finished|Failed to start) Update' | tail -1`, "")
-		log = strings.TrimSpace(log)
-		if log != "" {
-			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'spindrift-update@*' -t drift | tail -2`, "")
-			return strings.HasPrefix(log, "Finished"), log + ": " + oneLine(tail)
+		if log = strings.TrimSpace(log); log != "" {
+			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'spindrift-update@*' -t systemd-sysupdate | tail -3`, "")
+			return updateEnd{ended: true, ok: strings.HasPrefix(log, "Finished"), unit: log, sysupdate: strings.TrimSpace(tail)}
 		}
 		time.Sleep(3 * time.Second)
 	}
-	return false, "no spindrift-update@ unit ended"
+	return updateEnd{}
 }
 
 // serve answers dir's files over HTTP on this host, where a guest reaches it at 10.0.2.2 (QEMU's

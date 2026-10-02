@@ -88,7 +88,7 @@ func test(args []string) error {
 	}
 	defer v.stop()
 
-	r := &report{dir: dir}
+	r := &report{dir: dir, user: "live"}
 	g := &guest{cid: v.cid}
 	if err := g.wait(4 * time.Minute); err != nil {
 		return fmt.Errorf("guest never answered over vsock: %w", err)
@@ -349,7 +349,10 @@ type result struct {
 }
 
 type report struct {
-	dir     string
+	dir string
+	// user is whose session the user-unit check reads: live on the test disk; none on the
+	// lifecycle's installed machine, where GDM waits for the person's password.
+	user    string
 	results []result
 }
 
@@ -400,11 +403,13 @@ func (r *report) write(g *guest) error {
 }
 
 // system adds what the machine says about itself: failed units, core dumps, the journal's errors.
+//
+// Each check passes only on an answer: a guest that no longer answers over SSH says nothing, which
+// is not that nothing failed.
 func (r *report) system(g *guest) {
-	failed, _ := g.run(`systemctl --failed --no-legend --plain | awk '{print $1}'`, "")
-	userFailed, _ := g.run(`systemctl --user -M live@ --failed --no-legend --plain 2>/dev/null | awk '{print $1}'`, "")
+	failed, failedErr := g.run(`systemctl --failed --no-legend --plain | awk '{print $1}'`, "")
 	// EXE is the next-to-last column; the last is the core's size.
-	dumps, _ := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $(NF-1)}' | sort | uniq -c`, "")
+	dumps, dumpsErr := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $(NF-1)}' | sort | uniq -c`, "")
 	if strings.TrimSpace(dumps) != "" {
 		info, _ := g.run(`coredumpctl --no-pager info 2>&1`, "")
 		_ = os.WriteFile(filepath.Join(r.dir, "coredumps.txt"), []byte(info), 0o644)
@@ -413,11 +418,11 @@ func (r *report) system(g *guest) {
 	// What GNOME Shell logs below error priority but is a bug all the same: an extension's
 	// exception, an actor used after it was destroyed (both typical of a lock/unlock cycle, which
 	// disables and enables every extension), a cursor the theme lacks.
-	shell, _ := g.run(`journalctl -b --no-pager -o cat _COMM=gnome-shell | grep -E 'JS ERROR|already disposed|Could not load cursor' || true`, "")
+	shell, shellErr := g.run(`journalctl -b --no-pager -o cat _COMM=gnome-shell | grep -E 'JS ERROR|already disposed|Could not load cursor' || true`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "shell-log.txt"), []byte(shell), 0o644)
 	lines := strings.Fields(strings.ReplaceAll(strings.TrimSpace(shell), " ", "_"))
-	r.add("shell log", len(lines) == 0, fmt.Sprintf("%d lines in shell-log.txt: %s", len(lines), oneLine(firstLine(shell))))
-	r.add("system units", strings.TrimSpace(failed) == "", "failed: "+oneLine(failed))
+	r.add("shell log", shellErr == nil && len(lines) == 0, fmt.Sprintf("%d lines in shell-log.txt: %s", len(lines), oneLine(firstLine(shell)))+errText(shellErr))
+	r.add("system units", failedErr == nil && strings.TrimSpace(failed) == "", "failed: "+oneLine(failed)+errText(failedErr))
 	// Each failed unit's own log, while the machine that has it is still up.
 	units := filepath.Join(r.dir, "units")
 	for _, u := range strings.Fields(failed) {
@@ -425,12 +430,15 @@ func (r *report) system(g *guest) {
 		_ = os.MkdirAll(units, 0o755)
 		_ = os.WriteFile(filepath.Join(units, u+".log"), []byte(log), 0o644)
 	}
-	r.add("user units", strings.TrimSpace(userFailed) == "", "failed: "+oneLine(userFailed))
-	r.add("core dumps", strings.TrimSpace(dumps) == "", oneLine(dumps))
+	if r.user != "" {
+		userFailed, err := g.run(`set -o pipefail; systemctl --user -M `+r.user+`@ --failed --no-legend --plain | awk '{print $1}'`, "")
+		r.add("user units", err == nil && strings.TrimSpace(userFailed) == "", "failed: "+oneLine(userFailed)+errText(err))
+	}
+	r.add("core dumps", dumpsErr == nil && strings.TrimSpace(dumps) == "", oneLine(dumps)+errText(dumpsErr))
 	// A PAM file that includes one the image does not have fails every authentication through it,
 	// and says so only in the journal.
-	pam, _ := g.run(`journalctl -b --no-pager -o cat | grep -E 'unable to open config for' | sort -u || true`, "")
-	r.add("pam", strings.TrimSpace(pam) == "", oneLine(pam))
+	pam, pamErr := g.run(`journalctl -b --no-pager -o cat | grep -E 'unable to open config for' | sort -u || true`, "")
+	r.add("pam", pamErr == nil && strings.TrimSpace(pam) == "", oneLine(pam)+errText(pamErr))
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
 	// Plymouth's own log, when the disk was built to boot with plymouth.debug.
 	if ply, err := g.run("cat /var/log/plymouth-debug.log", ""); err == nil && ply != "" {
