@@ -47,16 +47,7 @@ func lifecycle(args []string) error {
 	}
 	r := &report{dir: *dir}
 	boot := func(sticks ...string) (*vm, *guest, error) {
-		v, err := machine{mem: "6G", pubkey: pub, vars: vars, sticks: sticks, nvme: nvme}.start()
-		if err != nil {
-			return nil, nil, err
-		}
-		g := &guest{cid: v.cid}
-		if err := g.wait(5 * time.Minute); err != nil {
-			v.stop()
-			return nil, nil, fmt.Errorf("never answered over vsock: %w", err)
-		}
-		return v, g, nil
+		return machine{mem: "6G", pubkey: pub, vars: vars, sticks: sticks, nvme: nvme}.bootGuest(5 * time.Minute)
 	}
 
 	// 1. The live stick installs onto the NVMe disk.

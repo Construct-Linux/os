@@ -69,17 +69,17 @@ func test(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, err := startDisk(*mem, pub, *stick)
+	m, err := testMachine(*mem, pub, *stick)
+	if err != nil {
+		return err
+	}
+	v, g, err := m.bootGuest(4 * time.Minute)
 	if err != nil {
 		return err
 	}
 	defer v.stop()
 
 	r := &report{dir: dir, user: "live"}
-	g := &guest{cid: v.cid}
-	if err := g.wait(4 * time.Minute); err != nil {
-		return fmt.Errorf("guest never answered over vsock: %w", err)
-	}
 	r.add("boot", true, "sshd over vsock answered")
 	if _, err := g.waitShell(3 * time.Minute); err != nil {
 		r.add("shell", false, err.Error())

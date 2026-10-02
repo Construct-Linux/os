@@ -22,7 +22,11 @@ func boot(args []string) error {
 	shots := fl.Int("shots", 0, "take this many screenshots, one a second from the start, into _output/boot/, then stop")
 	_ = fl.Parse(args)
 
-	v, err := startDisk(*mem, "", *stick)
+	m, err := testMachine(*mem, "", *stick)
+	if err != nil {
+		return err
+	}
+	v, err := m.start()
 	if err != nil {
 		return err
 	}
@@ -63,26 +67,27 @@ type vm struct {
 // vsockCID is the guest's vsock address: the harness reaches its sshd as vsock/<cid>.
 const vsockCID = 4207
 
-// startDisk boots _output/disk.raw with the kernel given directly, or with stick the USB disk
-// (_output/usb/disk.raw) as a machine boots it: UEFI firmware with variables of its own, the image
-// on a USB stick of 32 GB, of which the first boot makes /var. With a public key, the guest gets a
-// vsock device for systemd-ssh-generator's sshd and the key as ssh.ephemeral-authorized_keys-all,
-// the credential that sshd's generated unit authorises - for this boot only, written nowhere.
-func startDisk(mem, pubkey string, stick bool) (*vm, error) {
+// testMachine is the machine that boots _output/disk.raw with the kernel given directly, or with
+// stick the USB disk (_output/usb/disk.raw) as a machine boots it: UEFI firmware with variables of
+// its own, the image on a USB stick of 32 GB, of which the first boot makes /var. With a public
+// key, the guest gets a vsock device for systemd-ssh-generator's sshd and the key as
+// ssh.ephemeral-authorized_keys-all, the credential that sshd's generated unit authorises - for
+// this boot only, written nowhere.
+func testMachine(mem, pubkey string, stick bool) (machine, error) {
 	m := machine{mem: mem, pubkey: pubkey}
 	if stick {
 		dir := filepath.Join(out, "usb")
 		m.vars = filepath.Join(dir, "OVMF_VARS.fd")
 		s := filepath.Join(dir, "stick.raw")
 		if err := freshVars(m.vars); err != nil {
-			return nil, err
+			return machine{}, err
 		}
 		if err := stickCopy(filepath.Join(dir, "disk.raw"), s); err != nil {
-			return nil, err
+			return machine{}, err
 		}
 		m.sticks = []string{s}
 	}
-	return m.start()
+	return m, nil
 }
 
 // machine is a QEMU of this repository's disks: with vars, UEFI firmware keeping its variables in

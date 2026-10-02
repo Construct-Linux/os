@@ -65,6 +65,20 @@ func (g *guest) run(script string, stdin string) (string, error) {
 	return outb.String(), nil
 }
 
+// bootGuest starts m and waits up to d for its sshd to answer, stopping it when it does not.
+func (m machine) bootGuest(d time.Duration) (*vm, *guest, error) {
+	v, err := m.start()
+	if err != nil {
+		return nil, nil, err
+	}
+	g := &guest{cid: v.cid}
+	if err := g.wait(d); err != nil {
+		v.stop()
+		return nil, nil, fmt.Errorf("the guest never answered over vsock: %w", err)
+	}
+	return v, g, nil
+}
+
 func (g *guest) wait(d time.Duration) error {
 	deadline := time.Now().Add(d)
 	var err error
@@ -205,24 +219,19 @@ func runIn(args []string) error {
 	if err != nil {
 		return err
 	}
-	var v *vm
-	if *vars != "" {
-		m := machine{mem: "6G", pubkey: pub, vars: *vars, nvme: *nvme}
-		if *sticks != "" {
-			m.sticks = strings.Split(*sticks, ",")
+	m := machine{mem: "6G", pubkey: pub, vars: *vars, nvme: *nvme}
+	if *vars == "" {
+		if m, err = testMachine("6G", pub, *stick); err != nil {
+			return err
 		}
-		v, err = m.start()
-	} else {
-		v, err = startDisk("6G", pub, *stick)
+	} else if *sticks != "" {
+		m.sticks = strings.Split(*sticks, ",")
 	}
+	v, g, err := m.bootGuest(4 * time.Minute)
 	if err != nil {
 		return err
 	}
 	defer v.stop()
-	g := &guest{cid: v.cid}
-	if err := g.wait(4 * time.Minute); err != nil {
-		return err
-	}
 	time.Sleep(*wait)
 	outs, err := g.run(strings.Join(fl.Args(), " "), "")
 	fmt.Print(outs)
