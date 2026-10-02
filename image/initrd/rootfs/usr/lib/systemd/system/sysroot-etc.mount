@@ -1,0 +1,15 @@
+# /etc as an overlay: the image's below, read-only and verified with the root; what this machine
+# changed above, on /var (as SteamOS keeps its /etc). An update brings a new lower /etc; what the
+# person changed stays theirs.
+[Unit]
+Description=/etc, the image's under this machine's changes
+DefaultDependencies=no
+Requires=sysroot-var.mount spindrift-etc-dirs.service
+After=sysroot-var.mount spindrift-etc-dirs.service
+Before=initrd-fs.target
+
+[Mount]
+What=overlay
+Where=/sysroot/etc
+Type=overlay
+Options=lowerdir=/sysroot/etc,upperdir=/sysroot/var/lib/spindrift/etc/upper,workdir=/sysroot/var/lib/spindrift/etc/work

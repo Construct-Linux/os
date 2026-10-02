@@ -1,0 +1,8 @@
+# polkit's, on Wolfi's PAM stack. Upstream's file includes system-auth, Fedora's name for it, which
+# Wolfi does not have (its stack is base-auth, base-account, base-password, base-session): every
+# polkit authentication - GNOME asking for the password to change a setting or mount a disk -
+# failed with "unable to open config for system-auth".
+auth       include      base-auth
+account    include      base-account
+password   include      base-password
+session    include      base-session-noninteractive

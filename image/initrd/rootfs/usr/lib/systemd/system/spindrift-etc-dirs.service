@@ -1,0 +1,11 @@
+# The /etc overlay's upper and work directories, on /var: a new /var has neither yet.
+[Unit]
+Description=The /etc overlay's directories on /var
+DefaultDependencies=no
+Requires=sysroot-var.mount
+After=sysroot-var.mount
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=mkdir -p /sysroot/var/lib/spindrift/etc/upper /sysroot/var/lib/spindrift/etc/work

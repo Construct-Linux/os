@@ -1,0 +1,15 @@
+# A root nobody is installed for - a live stick, the test disk - boots into the live user: drift
+# live writes it (internal/account), with GDM logging it in, unless drift install has written the
+# machine's person. Before GDM and logins, after /var and the /etc overlay are up.
+[Unit]
+Description=The live user, when nobody is installed
+After=local-fs.target systemd-sysusers.service
+Before=systemd-user-sessions.service display-manager.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/drift live
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,3 @@
+# The disk the machine booted from - the one udev marks for gpt-auto (ID_PART_GPT_AUTO_ROOT_DISK,
+# after 90-image-dissect.rules reads it) - by a name the initrd's units can wait for.
+ENV{DEVTYPE}=="disk", ENV{ID_PART_GPT_AUTO_ROOT_DISK}=="1", SYMLINK+="disk/spindrift-boot"

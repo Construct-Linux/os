@@ -1,0 +1,18 @@
+# A stick is written with an image smaller than itself: its GPT ends where the image ended, and
+# systemd-repart, which takes the room the table declares, finds none for /var. sfdisk moves the
+# backup table to the disk's real end first. Only while there is no /var - a stick's first boot -
+# so an installed disk's table is never rewritten at boot.
+[Unit]
+Description=The boot disk's partition table, stretched to its end
+DefaultDependencies=no
+BindsTo=dev-disk-spindrift\x2dboot.device
+After=dev-disk-spindrift\x2dboot.device
+Before=systemd-repart.service
+ConditionPathExists=!/dev/disk/by-designator/var
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# --no-reread: the partitions do not move, and a re-read would take them away from under
+# systemd-veritysetup, which may be opening the root at the same moment.
+ExecStart=sfdisk --relocate gpt-bak-std --no-reread --no-tell-kernel /dev/disk/spindrift-boot
