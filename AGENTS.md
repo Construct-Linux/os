@@ -53,12 +53,14 @@ falling back from a release that does not come up.
   signing key, at build. No ECDSA, and RSA-2048 only where the firmware and the TPM take nothing
   else: the PCR key (`SIGNING_HOME/pcr.pem`, `task keygen:pcr`), because a TPM cannot verify
   Ed25519 and systemd verifies PCR policies as RSA. It signs kernel images' PCR 11 policies and
-  nothing else (`image sign-pcr` refuses any other kind of key). Secure Boot's keys, when they
-  come, are RSA-2048 for the same reason: UEFI verifies nothing else.
-- **The release and PCR keys never enter the repository or a container.** They live in
+  nothing else (`image sign-pcr` refuses any other kind of key). Secure Boot's keys are RSA-2048
+  for the same reason: UEFI verifies nothing else.
+- **The release, PCR and Secure Boot keys never enter the repository or a container.** They live in
   `SIGNING_HOME` (`task keygen:release`, outside the repo). `task usb` signs `SHA256SUMS` on the
   host, and the PCR policy too (ukify computes its digests in the container, `image sign-pcr`
-  signs them on the host, `image usb-release` joins the signature). Tests use throwaway keys in
+  signs them on the host, `image usb-join` joins the signature), and Secure Boot's db key
+  (`SIGNING_HOME/secureboot`, `task keygen:secureboot`) signs systemd-boot and the kernel image
+  there too (`image usb-sign`). Tests use throwaway keys in
   `.cache/test-gnupg`.
 - **An installed machine's `/var` is LUKS2** (cmd/drift `makeVar`). The person's password opens
   it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
@@ -170,8 +172,8 @@ AutoFDO/Propeller profiles recorded on the NucBox; boot time measured on the Nuc
 stick 13.1 s, most of it GDM's first frame over emulated USB); the initrd's size (38 MB
 compressed): the NSS and PAM modules it never uses, systemd-networkd and its kin, lvm2's
 `lvm` that device-mapper's udev rules pull in with it; a services audit (`systemd-analyze
-security` rates gdm, sshd and docker UNSAFE); Secure Boot (RSA-2048 keys)
-as spin-ami does; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
+security` rates gdm, sshd and docker UNSAFE); fwupd's UEFI capsule updates, which need
+fwupd-efi built and its binary signed with db's key; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
 resolver meanwhile), to fix in `recipes/libproxy`.
 
 ## Two repositories

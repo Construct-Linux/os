@@ -23,7 +23,7 @@ import (
 // verify Ed25519, and systemd verifies a PCR policy's signature as RSA only (RSASSA, SHA-256) - and
 // like the release key it never enters a container: ukify computes the
 // policy's digests in build/tools' container (image usb), the host signs them here (image
-// sign-pcr), and ukify joins the signature to the kernel image (image usb-release).
+// sign-pcr), and ukify joins the signature to the kernel image (image usb-join).
 
 // Where the stage holds the policy between those steps.
 const (

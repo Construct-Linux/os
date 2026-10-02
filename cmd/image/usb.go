@@ -33,9 +33,10 @@ func usb(args []string) error {
 	fl.Var(&extra, "append", "more of the kernel's command line, to diagnose a boot: one option each, repeatable (plymouth.debug)")
 	broken := fl.Bool("broken", false, "add image/test/broken: a release whose GDM fails, for the lifecycle test's rollback")
 	pcrPub := fl.String("pcr-public", "", "the PCR key's public half, PEM (pcrsig.go)")
+	sbKeys := fl.String("secureboot", "", "the Secure Boot variables to enroll, PK.auth, KEK.auth and db.auth (secureboot.go)")
 	_ = fl.Parse(args)
-	if *pcrPub == "" {
-		return fmt.Errorf("usb: -pcr-public is required")
+	if *pcrPub == "" || *sbKeys == "" {
+		return fmt.Errorf("usb: -pcr-public and -secureboot are required")
 	}
 
 	stage := filepath.Join(out, "usb")
@@ -61,7 +62,7 @@ func usb(args []string) error {
 	}
 	esp := filepath.Join(stage, "esp")
 	label := update.ImageID + "_" + version
-	if err := espTree(root, esp, label, v, strings.Join(extra, " "), filepath.Join(stage, pcrPublic)); err != nil {
+	if err := espTree(root, esp, label, v, strings.Join(extra, " "), filepath.Join(stage, pcrPublic), *sbKeys); err != nil {
 		return err
 	}
 	b, err := json.Marshal(built{Version: version, RootHash: v.rootHash})
@@ -71,11 +72,11 @@ func usb(args []string) error {
 	if err := os.WriteFile(filepath.Join(stage, builtFile), b, 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("%s, root hash %s: sign its PCR policy (image sign-pcr), then image usb-release\n", label, v.rootHash)
+	fmt.Printf("%s, root hash %s: sign its PCR policy (image sign-pcr), then image usb-join\n", label, v.rootHash)
 	return nil
 }
 
-// built is what image usb leaves for image usb-release, in the stage's builtFile.
+// built is what image usb leaves for the steps after it, in the stage's builtFile.
 type built struct {
 	Version  string `json:"version"`
 	RootHash string `json:"root_hash"`
@@ -83,12 +84,35 @@ type built struct {
 
 const builtFile = "built.json"
 
-// usbRelease finishes the last usb's release once the host has signed its PCR policy: the
-// signature joined to the kernel image, which goes into the ESP, and the release written, its
-// SHA256SUMS for the host to sign before image usb-disk.
-func usbRelease(args []string) error {
-	fl := flag.NewFlagSet("usb-release", flag.ExitOnError)
+// usbJoin joins the PCR policy's signature, which the host made, to the last usb's kernel image,
+// in the stage: still without its Secure Boot signature, which image usb-sign adds.
+func usbJoin(args []string) error {
+	fl := flag.NewFlagSet("usb-join", flag.ExitOnError)
 	_ = fl.Parse(args)
+	stage := filepath.Join(out, "usb")
+	if _, err := os.Stat(filepath.Join(stage, pcrSignature)); err != nil {
+		return fmt.Errorf("the PCR policy is not signed (image sign-pcr): %w", err)
+	}
+	return run("ukify", "build",
+		"--join-pcrsig", filepath.Join(stage, unsignedUKI),
+		"--pcrsig", "@"+filepath.Join(stage, pcrSignature),
+		"--output", filepath.Join(stage, joinedUKI))
+}
+
+// joinedUKI is the kernel image in the stage once its PCR policy's signature is joined.
+const joinedUKI = "uki.joined.efi"
+
+// usbSign finishes the last usb's release on the host, with db's key from -keys: the kernel image
+// and systemd-boot signed for Secure Boot, the kernel image put in the ESP, and the release
+// written, its SHA256SUMS for gpg to sign before image usb-disk.
+func usbSign(args []string) error {
+	fl := flag.NewFlagSet("usb-sign", flag.ExitOnError)
+	keys := fl.String("keys", "", "the Secure Boot key set (SIGNING_HOME/secureboot)")
+	_ = fl.Parse(args)
+	key, cert, err := readDBKey(*keys)
+	if err != nil {
+		return err
+	}
 	stage := filepath.Join(out, "usb")
 	raw, err := os.ReadFile(filepath.Join(stage, builtFile))
 	if err != nil {
@@ -98,18 +122,18 @@ func usbRelease(args []string) error {
 	if err := json.Unmarshal(raw, &b); err != nil {
 		return err
 	}
-	if _, err := os.Stat(filepath.Join(stage, pcrSignature)); err != nil {
-		return fmt.Errorf("the PCR policy is not signed (image sign-pcr): %w", err)
-	}
-	v := verityOf(b.RootHash, filepath.Join(stage, "root.img"), filepath.Join(stage, "root.verity"))
 	esp := filepath.Join(stage, "esp")
 	label := update.ImageID + "_" + b.Version
-	if err := run("ukify", "build",
-		"--join-pcrsig", filepath.Join(stage, unsignedUKI),
-		"--pcrsig", "@"+filepath.Join(stage, pcrSignature),
-		"--output", filepath.Join(esp, "EFI", "Linux", label+".efi")); err != nil {
-		return err
+	uki := filepath.Join(esp, "EFI", "Linux", label+".efi")
+	if err := os.Rename(filepath.Join(stage, joinedUKI), uki); err != nil {
+		return fmt.Errorf("the joined kernel image (image usb-join): %w", err)
 	}
+	for _, p := range []string{uki, filepath.Join(esp, "EFI/BOOT/BOOTX64.EFI"), filepath.Join(esp, "EFI/systemd/systemd-bootx64.efi")} {
+		if err := signPE(p, key, cert); err != nil {
+			return err
+		}
+	}
+	v := verityOf(b.RootHash, filepath.Join(stage, "root.img"), filepath.Join(stage, "root.verity"))
 	rel, err := writeRelease(b.Version, esp, label, v)
 	if err != nil {
 		return err
@@ -509,11 +533,12 @@ func (v verity) cmdline(extra string) string {
 }
 
 // espTree lays the ESP: systemd-boot at the removable-media path, which firmware boots from a
-// stick with no boot entry. The kernel image - with the microcode both vendors' processors load
-// before the kernel runs, the initrd systemd runs in before the root (buildInitrd), and pcrPub,
-// the PCR key's public half - is left in the stage unsigned, with its PCR 11 policy's digests,
-// for the host to sign (pcrsig.go); image usb-release puts it in the ESP.
-func espTree(root, esp, label string, v verity, extra, pcrPub string) error {
+// stick with no boot entry, and the Secure Boot variables in sbKeys for it to enroll
+// (secureboot.go). The kernel image - with the microcode both vendors' processors load before the
+// kernel runs, the initrd systemd runs in before the root (buildInitrd), and pcrPub, the PCR key's
+// public half - is left in the stage unsigned, with its PCR 11 policy's digests, for the host to
+// sign (pcrsig.go); image usb-sign signs it and systemd-boot and puts it in the ESP.
+func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) error {
 	boot, err := os.ReadFile(filepath.Join(root, "usr/lib/systemd/boot/efi/systemd-bootx64.efi"))
 	if err != nil {
 		return fmt.Errorf("the image's systemd-boot: %w", err)
@@ -521,13 +546,30 @@ func espTree(root, esp, label string, v verity, extra, pcrPub string) error {
 	for p, b := range map[string][]byte{
 		"EFI/BOOT/BOOTX64.EFI":            boot,
 		"EFI/systemd/systemd-bootx64.efi": boot,
-		"loader/loader.conf":              []byte("timeout 3\neditor no\n"),
+		// Enroll the keys by itself in a VM, and offer it in the menu on a machine whose
+		// firmware is in setup mode.
+		"loader/loader.conf": []byte("timeout 3\neditor no\nsecure-boot-enroll if-safe\n"),
 	} {
 		full := filepath.Join(esp, p)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
 			return err
 		}
 		if err := os.WriteFile(full, b, 0o644); err != nil {
+			return err
+		}
+	}
+	// "auto": the one name systemd-boot enrolls from by itself (in a VM); on a machine it is the
+	// menu's "Enroll Secure Boot keys: auto".
+	keys := filepath.Join(esp, "loader", "keys", "auto")
+	if err := os.MkdirAll(keys, 0o755); err != nil {
+		return err
+	}
+	for _, name := range sbVariables {
+		b, err := os.ReadFile(filepath.Join(sbKeys, name))
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(keys, name), b, 0o644); err != nil {
 			return err
 		}
 	}

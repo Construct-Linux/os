@@ -117,6 +117,7 @@ func lifecycle(args []string) error {
 		return r.write(nil)
 	}
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
+	r.secureBoot(g)
 	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts; cryptsetup status var | grep -E 'type|device'`, "")
 	r.add("/var on the disk, encrypted", strings.Contains(src, "/dev/mapper/var") && strings.Contains(src, "LUKS2") && strings.Contains(src, "nvme0n1p6"), oneLine(src))
 	slots, _ := g.run(`systemd-cryptenroll /dev/nvme0n1p6`, "")

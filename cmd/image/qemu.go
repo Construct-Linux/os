@@ -128,8 +128,12 @@ func (m machine) start() (*vm, error) {
 	}
 	args := []string{"-enable-kvm", "-cpu", "host", "-smp", cpus, "-m", m.mem, "-uuid", machineUUID}
 	if m.vars != "" {
-		args = append(args, "-machine", "q35",
-			"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd",
+		// Secure Boot's firmware, its variables in setup mode until systemd-boot enrolls the
+		// stick's keys (by itself in a VM): every machine with UEFI boots signed or not at all.
+		// The variables are written in SMM, which only the firmware may enter.
+		args = append(args, "-machine", "q35,smm=on",
+			"-global", "driver=cfi.pflash01,property=secure,value=on",
+			"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd",
 			"-drive", "if=pflash,format=raw,file="+m.vars)
 		for i, s := range m.sticks {
 			args = append(args, "-drive", fmt.Sprintf("if=none,id=stick%d,format=raw,file=%s", i, s))

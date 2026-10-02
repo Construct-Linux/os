@@ -121,12 +121,20 @@ tasks:
       - go run ./cmd/image boot {{.CLI_ARGS}}
 
   keygen:test:
-    desc: Throwaway release and PCR keys under .cache/test-gnupg, for the harness's disks.
+    desc: Throwaway release, PCR and Secure Boot keys under .cache/test-gnupg, for the harness's disks.
     cmds:
       - mkdir -p -m 700 .cache/test-gnupg
       - test -f .cache/test-gnupg/pubring.kbx || gpg --homedir .cache/test-gnupg --batch --passphrase '' --quick-generate-key "Spindrift test release" ed25519 sign never
       - task: keygen:pcr
         vars: {SIGNING_HOME: .cache/test-gnupg}
+      - task: keygen:secureboot
+        vars: {SIGNING_HOME: .cache/test-gnupg}
+
+  keygen:secureboot:
+    desc: "The Secure Boot keys, {{.SIGNING_HOME}}/secureboot: db's key, which signs systemd-boot and the kernel images, and the PK, KEK and db variables systemd-boot enrolls (cmd/image/secureboot.go). RSA-2048: UEFI verifies nothing else."
+    status: ['test -f {{.SIGNING_HOME}}/secureboot/db.key']
+    cmds:
+      - go run ./cmd/image secureboot-keys -dir {{.SIGNING_HOME}}/secureboot
 
   keygen:pcr:
     desc: "The PCR key, {{.SIGNING_HOME}}/pcr.pem, beside the release key: it signs each kernel image's PCR 11 policy, which an installed machine's TPM releases /var's key to (cmd/image/pcrsig.go). RSA-2048, the one kind of key besides Ed25519: a TPM cannot verify Ed25519, and systemd verifies PCR policies as RSA."
@@ -147,6 +155,7 @@ tasks:
       # full-screen prompt fails on some consoles ("Screen or window too small").
       - gpg --homedir {{.SIGNING_HOME}} --pinentry-mode loopback --quick-generate-key "Spindrift release" ed25519 sign never
       - task: keygen:pcr
+      - task: keygen:secureboot
 
   usb:
     desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release (SIGNING_HOME=, the release key's by default) on its spin-update partition (task usb -- -test for the harness's)."
@@ -160,14 +169,21 @@ tasks:
       - mkdir -p _output/release-key/usr/lib/systemd
       - cp _output/release-key/usr/share/spindrift/release.pgp _output/release-key/usr/lib/systemd/import-pubring.pgp
       - openssl pkey -in {{.SIGNING_HOME}}/pcr.pem -pubout -out _output/release-key/pcr-public.pem
+      # The Secure Boot variables the ESP carries for systemd-boot to enroll: signed, public.
+      - mkdir -p _output/release-key/secureboot
+      - cp {{.SIGNING_HOME}}/secureboot/PK.auth {{.SIGNING_HOME}}/secureboot/KEK.auth {{.SIGNING_HOME}}/secureboot/db.auth _output/release-key/secureboot/
       - >-
         docker run --rm --privileged -e SPINDRIFT_UPDATE_URL -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
-        '_output/bin/image usb -pcr-public _output/release-key/pcr-public.pem {{.CLI_ARGS}}; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/root.tar; exit $rc'
-      # The kernel image's PCR policy, signed here by the PCR key: it never enters a container either.
+        '_output/bin/image usb -pcr-public _output/release-key/pcr-public.pem -secureboot _output/release-key/secureboot {{.CLI_ARGS}};
+        rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/root.tar; exit $rc'
+      # The PCR key and db's key sign here, on the host: they never enter a container. The PCR
+      # policy first, which ukify joins to the kernel image; then Secure Boot's signatures over
+      # the kernel image and systemd-boot, and the release.
       - go run ./cmd/image sign-pcr -key {{.SIGNING_HOME}}/pcr.pem
       - >-
         docker run --rm --privileged -v {{.ROOT_DIR}}:/work -w /work spindrift-tools -c
-        '_output/bin/image usb-release; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/release; exit $rc'
+        '_output/bin/image usb-join; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
+      - go run ./cmd/image usb-sign -keys {{.SIGNING_HOME}}/secureboot
       # Signed here, by the key in SIGNING_HOME: it never enters a container.
       - >-
         rel=$(ls -d _output/release/*/ | sort | tail -1) &&

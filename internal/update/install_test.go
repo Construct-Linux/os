@@ -42,8 +42,9 @@ func newInstaller(t *testing.T, size int64) *installer {
 
 func (in *installer) options(t *testing.T, source string, size int64) InstallOptions {
 	t.Helper()
-	loader := filepath.Join(t.TempDir(), "systemd-bootx64.efi")
-	write(t, loader, "systemd-boot")
+	stick := t.TempDir()
+	write(t, filepath.Join(stick, "EFI/systemd/systemd-bootx64.efi"), "systemd-boot")
+	write(t, filepath.Join(stick, "loader/keys/auto/db.auth"), "db")
 	n := 0
 	return InstallOptions{
 		Keys: trusted(t), Source: source,
@@ -63,7 +64,7 @@ func (in *installer) options(t *testing.T, source string, size int64) InstallOpt
 			in.ran = append(in.ran, "make /var on "+partition)
 			return nil
 		},
-		Loader: loader, Vars: in.vars,
+		BootFrom: stick, Vars: in.vars,
 		VarUUID: testVarUUID,
 		UUID:    func() string { n++; return fmt.Sprintf("00000000-0000-4000-8000-%012d", n) },
 		Log:     slog.New(slog.DiscardHandler),
@@ -111,7 +112,7 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 	if !slices.Equal(in.ran, []string{"mkfs.vfat -F 32 -n ESP /dev/nvme0n1p1", "make /var on /dev/nvme0n1p6"}) {
 		t.Errorf("ran %v", in.ran)
 	}
-	for _, f := range []string{"EFI/BOOT/BOOTX64.EFI", "EFI/systemd/systemd-bootx64.efi", "loader/loader.conf", Linux + "/" + label + ".efi"} {
+	for _, f := range []string{"EFI/BOOT/BOOTX64.EFI", "EFI/systemd/systemd-bootx64.efi", "loader/loader.conf", "loader/keys/auto/db.auth", Linux + "/" + label + ".efi"} {
 		if _, err := os.Stat(filepath.Join(in.esp, f)); err != nil {
 			t.Errorf("the ESP lacks %s", f)
 		}

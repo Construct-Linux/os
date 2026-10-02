@@ -6,9 +6,11 @@
 //	image disk  [-test]                         the baked root as an ext4 test disk, booted with the kernel given directly
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
-//	image usb   -pcr-public pem [-test] [-append opt]  the stick's verified root and kernel image, in build/tools as root
+//	image usb   -pcr-public pem -secureboot dir [-test] [-append opt]  the stick's verified root and kernel image, in build/tools as root
 //	image sign-pcr -key pem                     on the host: sign the kernel image's PCR 11 policy (cmd/image/pcrsig.go)
-//	image usb-release                           the kernel image with its signed policy, and the release, in build/tools
+//	image usb-join                              the kernel image with its signed policy, in build/tools
+//	image usb-sign -keys dir                    on the host: Secure Boot signatures, and the release (cmd/image/secureboot.go)
+//	image secureboot-keys -dir dir              on the host: PK, KEK and db, once
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
@@ -46,8 +48,12 @@ func main() {
 		err = usb(os.Args[2:])
 	case "sign-pcr":
 		err = signPCR(os.Args[2:])
-	case "usb-release":
-		err = usbRelease(os.Args[2:])
+	case "usb-join":
+		err = usbJoin(os.Args[2:])
+	case "usb-sign":
+		err = usbSign(os.Args[2:])
+	case "secureboot-keys":
+		err = secureBootKeys(os.Args[2:])
 	case "usb-disk":
 		err = usbDisk(os.Args[2:])
 	case "lifecycle":

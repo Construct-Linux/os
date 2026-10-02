@@ -51,6 +51,13 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
   in place of a forgotten password. root has no password and cannot log in.
 - **update**: plugged into an installed machine, it writes its release into the slot not running.
 
+Secure Boot: systemd-boot and every kernel image are signed with Spindrift's key, which the
+stick carries for the firmware. Put the firmware's Secure Boot in setup mode (its menu calls it
+"clear keys", "reset to setup mode" or "delete all keys"), boot the stick and choose *Enroll
+Secure Boot keys: auto*; the machine restarts and from then on boots only what Spindrift signed.
+The keys keep Microsoft's certificates for graphics and network cards' own firmware, not
+Windows'.
+
 An installed machine goes back to how it left the installer with `sudo systemctl start
 factory-reset.target`: it restarts, `/var` is made anew (every person, file, container and
 setting gone; the system slots untouched), and GNOME's Initial Setup asks who it is for. The

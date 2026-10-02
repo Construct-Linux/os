@@ -100,8 +100,9 @@ type InstallOptions struct {
 	Progress func(file string, done, total int64)
 	// VarUUID is /var's partition UUID: VarUUID of the machine's id.
 	VarUUID string
-	// Loader is the running root's systemd-boot, which the ESP is given.
-	Loader string
+	// BootFrom is the ESP the install is made from - the stick's: its systemd-boot, signed for
+	// Secure Boot, and the Secure Boot variables under loader/keys, which the new ESP is given.
+	BootFrom string
 	// Vars are the firmware's variables, where the boot entry is written.
 	Vars Vars
 	UUID func() string
@@ -181,7 +182,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	err = layESP(ctx, dir, o.Loader, r, fetch)
+	err = layESP(ctx, dir, o.BootFrom, r, fetch)
 	if uerr := unmount(); err == nil {
 		err = uerr
 	}
@@ -197,17 +198,37 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 }
 
 // loaderConf is systemd-boot's configuration on the installed ESP: three seconds to choose another
-// version - the one to fall back to by hand - and no editing of a command line, which with Secure
-// Boot off would be anybody at the keyboard's root.
-const loaderConf = "timeout 3\neditor no\n"
+// version - the one to fall back to by hand - no editing of a command line, which with Secure Boot
+// off would be anybody at the keyboard's root, and the Secure Boot keys offered for enrolling
+// while the firmware is in setup mode (by itself in a VM).
+const loaderConf = "timeout 3\neditor no\nsecure-boot-enroll if-safe\n"
 
-// layESP puts on the ESP mounted at dir systemd-boot - at systemd's path, which the boot entry
-// starts, and the removable one, which firmware boots without an entry - its configuration, and
-// r's kernel image, blessed, held to its digest and to naming slot A.
-func layESP(ctx context.Context, dir, loader string, r Release, fetch Fetch) error {
-	boot, err := os.ReadFile(loader)
+// layESP puts on the ESP mounted at dir systemd-boot from the ESP at from - at systemd's path,
+// which the boot entry starts, and the removable one, which firmware boots without an entry - its
+// configuration, from's Secure Boot variables, and r's kernel image, blessed, held to its digest
+// and to naming slot A.
+func layESP(ctx context.Context, dir, from string, r Release, fetch Fetch) error {
+	boot, err := os.ReadFile(filepath.Join(from, "EFI/systemd/systemd-bootx64.efi"))
 	if err != nil {
-		return fmt.Errorf("install: the running root's systemd-boot: %w", err)
+		return fmt.Errorf("install: the stick's systemd-boot: %w", err)
+	}
+	keys, err := filepath.Glob(filepath.Join(from, "loader/keys/*/*.auth"))
+	if err != nil || len(keys) == 0 {
+		return fmt.Errorf("install: the stick carries no Secure Boot variables (loader/keys): %v", err)
+	}
+	for _, k := range keys {
+		b, err := os.ReadFile(k)
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(from, k)
+		full := filepath.Join(dir, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+			return err
+		}
+		if err := os.WriteFile(full, b, 0o644); err != nil {
+			return err
+		}
 	}
 	for p, body := range map[string][]byte{
 		"EFI/systemd/systemd-bootx64.efi": boot,

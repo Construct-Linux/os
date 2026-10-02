@@ -95,6 +95,9 @@ func test(args []string) error {
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.installer(v, g, *stick)
+	if *stick {
+		r.secureBoot(g)
+	}
 	r.shot(v, "desktop")
 	sinks, err := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
@@ -377,6 +380,13 @@ func (r *report) shellViews(v *vm, g *guest) {
 func (r *report) locked(g *guest) {
 	n, err := g.eval(`String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.stateObj?._tilingManagers?.length ?? 0)`)
 	r.add("locked: tilingshell", err == nil && strings.Trim(n, `"`) == "0", "tiling managers alive while disabled: "+n)
+}
+
+// secureBoot checks the machine came up with Secure Boot on, in user mode - the keys systemd-boot
+// enrolled from the ESP - and the kernel locked down for it.
+func (r *report) secureBoot(g *guest) {
+	out, _ := g.run(`bootctl status 2>/dev/null | grep -E 'Secure Boot:'; cat /sys/kernel/security/lockdown`, "")
+	r.add("secure boot", strings.Contains(out, "Secure Boot: enabled (user)") && strings.Contains(out, "[integrity]"), oneLine(out))
 }
 
 // installerWindows counts the graphical installer's windows on the live session's screen.

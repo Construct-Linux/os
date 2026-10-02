@@ -14,6 +14,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -36,7 +37,7 @@ import (
 )
 
 const usage = `usage:
-  drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--loader FILE]
+  drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE]
                    [--user NAME --real-name NAME --password-file FILE|-] [--json]
   drift disks      [--json]
   drift boot-check
@@ -133,7 +134,6 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	from := fl.String("from", "", "the release to install, a directory (default: the stick this runs from)")
 	yes := fl.Bool("yes", false, "do not ask: erase the disk")
 	keyring := fl.String("keyring", defaultKeyring, "the public key the release is checked against")
-	loader := fl.String("loader", "/usr/lib/systemd/boot/efi/systemd-bootx64.efi", "the systemd-boot the ESP is given")
 	user := fl.String("user", "", "the login of whom the machine is for (default: asked)")
 	realName := fl.String("real-name", "", "their full name (default: asked, or the login)")
 	passwordFile := fl.String("password-file", "", "a file holding their password, - for standard input (default: asked)")
@@ -203,6 +203,13 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		defer func() { _ = unmount() }() // read-only
 		*from = dir
 	}
+	// systemd-boot, signed for Secure Boot, and the keys to enroll: the ESP this booted from -
+	// the stick's - which systemd mounts (gpt-auto) and bootctl finds.
+	var espPath bytes.Buffer
+	if err := cmdOut(ctx, nil, nil, &espPath, "bootctl", "--print-esp-path"); err != nil {
+		return err
+	}
+	esp := strings.TrimSpace(espPath.String())
 	dev, err := os.OpenFile(disk.Path(), os.O_RDWR, 0)
 	if err != nil {
 		return err
@@ -224,7 +231,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 			return err
 		},
 		VarUUID: varUUID, Progress: progress,
-		Loader: *loader, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: log,
+		BootFrom: esp, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: log,
 	})
 	if err != nil {
 		return err
