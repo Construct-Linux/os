@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -29,4 +31,20 @@ func VarUUID(machineID string) (string, error) {
 	id[8] = id[8]&0x3f | 0x80
 	h := hex.EncodeToString(id)
 	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32], nil
+}
+
+// FirmwareID checks that the machine has an id of its own to bind /var to: the image boots with
+// systemd.machine_id=firmware, which takes the firmware's product UUID, and on a board without
+// a usable one (none, all zeros, all ones) gives every boot a random id - an installed /var would
+// be found by no boot after the first.
+func FirmwareID(sys string) error {
+	b, err := os.ReadFile(filepath.Join(sys, "class", "dmi", "id", "product_uuid"))
+	if err != nil {
+		return fmt.Errorf("install: the firmware gives this machine no UUID to bind /var to: %w", err)
+	}
+	id := strings.ReplaceAll(strings.TrimSpace(string(b)), "-", "")
+	if len(id) != 32 || strings.Trim(id, "0") == "" || strings.Trim(strings.ToLower(id), "f") == "" {
+		return fmt.Errorf("install: the firmware's UUID %q is no machine's own: /var could not be bound to it", strings.TrimSpace(string(b)))
+	}
+	return nil
 }

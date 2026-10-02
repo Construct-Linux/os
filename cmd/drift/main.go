@@ -173,6 +173,9 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		return err
 	}
 	// /var is bound to this machine: the live system's id is the firmware's, as the installed one's.
+	if err := update.FirmwareID("/sys"); err != nil {
+		return err
+	}
 	machineID, err := os.ReadFile("/etc/machine-id")
 	if err != nil {
 		return err
