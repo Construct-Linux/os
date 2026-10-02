@@ -21,6 +21,10 @@ contents:
     # sulogin, for the emergency shell; sfdisk moves a stick's backup GPT to its end before
     # systemd-repart looks for room for /var (spindrift-gpt-relocate.service).
     - util-linux-login
+    # util-linux's su, by name: util-linux-login needs a cmd:su, and Heimdal's Kerberos su
+    # declares a higher version of it (7.8 against 2.42), so the resolver picked that one as the
+    # setuid su - with Kerberos in tow.
+    - util-linux-su
     - sfdisk
     - e2fsprogs
     - cryptsetup

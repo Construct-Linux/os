@@ -25,6 +25,10 @@ contents:
     - kmod
     - util-linux
     - util-linux-misc
+    # util-linux's su, by name: util-linux-login needs a cmd:su, and Heimdal's Kerberos su
+    # declares a higher version of it (7.8 against 2.42), so the resolver picked that one as the
+    # setuid su - with Kerberos in tow.
+    - util-linux-su
     # What drift install and update run: mount and umount (their own packages in Wolfi),
     # and the ESP's and /var's mkfs.
     - mount
