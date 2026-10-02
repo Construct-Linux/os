@@ -149,10 +149,14 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 
 ## Where to look next
 
-AutoFDO/Propeller profiles recorded on the NucBox; boot time (the initrd, units on the critical
-path); a services audit (what runs that need not, which units can be sandboxed further); Secure
-Boot and measured boot, as spin-ami does; an ISO medium; the lock libproxy's GIO resolver blocks
-geoclue on (its unit uses GLib's dummy resolver meanwhile), to fix in `recipes/libproxy`.
+AutoFDO/Propeller profiles recorded on the NucBox; boot time measured on the NucBox itself
+(every report's `boot.txt` has the VM's: an installed disk 8.0 s, of it the initrd 1.6 s; the
+stick 13.1 s, most of it GDM's first frame over emulated USB); the initrd's size (38 MB
+compressed): the NSS and PAM modules it never uses, systemd-networkd and its kin, lvm2's
+`lvm` that device-mapper's udev rules pull in with it; a services audit (`systemd-analyze
+security` rates gdm, sshd and docker UNSAFE); Secure Boot and measured boot, as spin-ami does;
+an ISO medium; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
+resolver meanwhile), to fix in `recipes/libproxy`.
 
 ## Two repositories
 

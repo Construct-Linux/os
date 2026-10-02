@@ -11,17 +11,19 @@ import (
 	"strings"
 )
 
-// check reads the merged root and reports every ELF whose NEEDED libraries the dynamic loader
-// would not find in it: a package whose dependency was not declared - a provider that publishes
-// no so: names, a library in a private directory - shows up here, not as a crash at boot.
-func check(root string) error {
+// checkELF reads a root - the merged one, the initrd's - and reports every ELF whose NEEDED
+// libraries the dynamic loader would not find in it: a package whose dependency was not declared
+// - a provider that publishes no so: names, a library in a private directory - or a library
+// trimmed from the initrd that something there still links, shows up here, not as a crash at
+// boot.
+func checkELF(root layer) error {
 	type obj struct {
 		needed, runpath []string
 	}
 	files := map[string]bool{}
 	links := map[string]string{}
 	objs := map[string]obj{}
-	err := tarLayer{file: root}.walk(func(h *tar.Header, r io.Reader) error {
+	err := root.walk(func(h *tar.Header, r io.Reader) error {
 		switch h.Typeflag {
 		case tar.TypeSymlink:
 			links[h.Name] = h.Linkname

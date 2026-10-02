@@ -54,7 +54,7 @@ func main() {
 	case "check-langs":
 		err = checkLangs(filepath.Join(out, "rootfs.tar"))
 	case "check":
-		err = check(filepath.Join(out, "root.tar"))
+		err = checkELF(tarLayer{file: filepath.Join(out, "root.tar")})
 	default:
 		err = fmt.Errorf("unknown command %q", os.Args[1])
 	}

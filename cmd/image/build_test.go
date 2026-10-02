@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"syscall"
 	"testing"
 
 	"github.com/spin-stack/spindrift/internal/update"
@@ -191,5 +192,44 @@ func TestPackageNames(t *testing.T) {
 	}
 	if len(names) != 2 || !names["glib"] || !names["glib-lang"] {
 		t.Errorf("names = %v", names)
+	}
+}
+
+// A dropped package's files go, by the apk database's F:/R: lines; another package's stay.
+func TestDropPackages(t *testing.T) {
+	root := tree(t, map[string]string{
+		"usr/lib/apk/db/installed": "P:curl\nV:8-r0\nF:usr/bin\nR:curl\n\nP:bash\nV:5-r0\nF:usr/bin\nR:bash\n",
+		"usr/bin/curl":             "x",
+		"usr/bin/bash":             "y",
+	})
+	if err := dropPackages(root, []string{"curl"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "usr/bin/curl")); !os.IsNotExist(err) {
+		t.Errorf("curl is still there: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(root, "usr/bin/bash")); err != nil {
+		t.Errorf("bash went too: %v", err)
+	}
+}
+
+// Files with the same contents and mode become one inode; a file that differs stays its own.
+func TestLinkDuplicates(t *testing.T) {
+	root := tree(t, map[string]string{"a/lib.so": "same", "b/lib.so": "same", "c/other.so": "different"})
+	if err := linkDuplicates(root); err != nil {
+		t.Fatal(err)
+	}
+	ino := func(p string) uint64 {
+		fi, err := os.Stat(filepath.Join(root, p))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return fi.Sys().(*syscall.Stat_t).Ino
+	}
+	if ino("a/lib.so") != ino("b/lib.so") {
+		t.Error("identical files were not linked")
+	}
+	if ino("c/other.so") == ino("a/lib.so") {
+		t.Error("a different file was linked")
 	}
 }
