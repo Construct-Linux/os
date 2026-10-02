@@ -1,0 +1,14 @@
+#%PAM-1.0
+# GDM logs the person in at boot once their password has opened /var (cmd/drift makeVar). That
+# password, cached in the kernel's keyring by systemd-cryptsetup - as the TPM's PIN (luks2-pin) or
+# as the passphrase (cryptsetup) - is what pam_gnome_keyring unlocks their login keyring with, and
+# makes it with on the first login: no app asks for a keyring password. The live user has no
+# password and a login keyring without one (drift live).
+auth       optional    pam_systemd_loadkey.so keyname=luks2-pin
+auth       optional    pam_systemd_loadkey.so keyname=cryptsetup
+auth       optional    pam_gnome_keyring.so
+auth       required    pam_permit.so
+account    include     base-account
+password   include     base-password
+session    include     base-session
+-session   optional    pam_gnome_keyring.so auto_start

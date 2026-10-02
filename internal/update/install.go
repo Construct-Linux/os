@@ -100,6 +100,9 @@ type InstallOptions struct {
 	Progress func(file string, done, total int64)
 	// VarUUID is /var's partition UUID: VarUUID of the machine's id.
 	VarUUID string
+	// Credentials go on the new ESP, as loader/credentials/<name>.cred, for systemd-stub to hand
+	// the initrd: encrypted, as systemd takes nothing else from the ESP.
+	Credentials map[string][]byte
 	// BootFrom is the ESP the install is made from - the stick's: its systemd-boot, signed for
 	// Secure Boot, and the Secure Boot variables under loader/keys, which the new ESP is given.
 	BootFrom string
@@ -183,6 +186,9 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 		return gpt.Table{}, err
 	}
 	err = layESP(ctx, dir, o.BootFrom, r, fetch)
+	if err == nil {
+		err = writeCredentials(dir, o.Credentials)
+	}
 	if uerr := unmount(); err == nil {
 		err = uerr
 	}
@@ -260,6 +266,21 @@ func layESP(ctx context.Context, dir, from string, r Release, fetch Fetch) error
 		return err
 	}
 	return syncDir(linux)
+}
+
+// writeCredentials puts creds on the ESP mounted at dir, where systemd-stub reads the ones every
+// kernel image is given.
+func writeCredentials(dir string, creds map[string][]byte) error {
+	d := filepath.Join(dir, "loader", "credentials")
+	if err := os.MkdirAll(d, 0o755); err != nil {
+		return err
+	}
+	for name, b := range creds {
+		if err := os.WriteFile(filepath.Join(d, name+".cred"), b, 0o644); err != nil {
+			return err
+		}
+	}
+	return syncDir(d)
 }
 
 // RandomUUID is a random (version 4) UUID, as a GPT's GUIDs are made.

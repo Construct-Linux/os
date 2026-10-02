@@ -108,6 +108,9 @@ type machine struct {
 	tpm string
 	// credentials are systemd credentials for this boot, name=value, as the firmware hands them.
 	credentials []string
+	// dir is where its QMP socket and serial log go: _output without one; task play's own, so it
+	// runs beside a test.
+	dir string
 	// cmdline are kernel options for this boot, which systemd-stub adds to the kernel image's from
 	// the firmware's SMBIOS when Secure Boot is off: a boot to diagnose.
 	cmdline []string
@@ -117,7 +120,11 @@ type machine struct {
 const machineUUID = "5f1d2c3a-7b8e-4c6d-9a0b-1c2d3e4f5a6b"
 
 func (m machine) start() (*vm, error) {
-	qmp := filepath.Join(out, "qmp.sock")
+	dir := m.dir
+	if dir == "" {
+		dir = out
+	}
+	qmp := filepath.Join(dir, "qmp.sock")
 	_ = os.Remove(qmp)
 	// A firmware product UUID, as a real board has: systemd.machine_id=firmware makes the
 	// machine's id from it, and /var's partition UUID from that, so without one every boot would
@@ -159,7 +166,7 @@ func (m machine) start() (*vm, error) {
 		"-device", "virtio-net-pci,netdev=n0", "-netdev", "user,id=n0",
 		"-device", "qemu-xhci,id=xhci", "-device", "usb-tablet",
 		"-device", "ich9-intel-hda", "-device", "hda-duplex,audiodev=snd0",
-		"-serial", "file:"+filepath.Join(out, "serial.log"),
+		"-serial", "file:"+filepath.Join(dir, "serial.log"),
 		"-qmp", "unix:"+qmp+",server,nowait",
 	)
 	// After the xHCI controller they plug into; the firmware boots the first stick first.
@@ -380,7 +387,7 @@ func play(args []string) error {
 		}
 	}
 	// With a TPM, as a laptop has: the install seals /var's key in it.
-	m := machine{mem: *mem, vars: vars, nvme: nvme, window: true, tpm: filepath.Join(dir, "tpm")}
+	m := machine{mem: *mem, vars: vars, nvme: nvme, window: true, tpm: filepath.Join(dir, "tpm"), dir: dir}
 	if *withStick {
 		m.sticks = []string{stick}
 	}

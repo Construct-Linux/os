@@ -6,6 +6,7 @@
 //	drift pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
 //	drift gtk4       [--from DIR] [--to DIR]             the image's GTK 4 theme, copied for a user
 //	drift live                                           the live user, on a root nobody is installed for
+//	drift firmware   ish FILE                            a laptop maker's sensor hub firmware, for this machine
 //
 // install's release is the spin-update partition of the stick it runs from (or --from, a
 // directory), checked against the public key the root carries (internal/update's KeyringPath)
@@ -37,13 +38,14 @@ import (
 )
 
 const usage = `usage:
-  drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE]
+  drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--locale LANG] [--keyboard LAYOUT]
                    [--user NAME --real-name NAME --password-file FILE|-] [--json]
   drift disks      [--json]
   drift boot-check
   drift pending    [--esp DIR] [--mark FILE]
   drift gtk4       [--from DIR] [--to DIR]
-  drift live`
+  drift live
+  drift firmware   ish FILE`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -66,6 +68,8 @@ func main() {
 		err = gtk4Cmd(os.Args[2:], os.Stdout)
 	case "live":
 		err = liveCmd("/etc", "/var")
+	case "firmware":
+		err = firmwareCmd(ctx, os.Args[2:], os.Stdout)
 	default:
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
@@ -137,6 +141,8 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	user := fl.String("user", "", "the login of whom the machine is for (default: asked)")
 	realName := fl.String("real-name", "", "their full name (default: asked, or the login)")
 	passwordFile := fl.String("password-file", "", "a file holding their password, - for standard input (default: asked)")
+	locale := fl.String("locale", "", "their language, a locale: es_AR.UTF-8 (default: $LANG)")
+	keyboard := fl.String("keyboard", "", "their keyboard layout, as GNOME's input sources write it: es, us+intl (default: /etc/vconsole.conf's)")
 	jsonOut := fl.Bool("json", false, "tell what is done as JSON lines on standard output, progress included: what the graphical installer reads")
 	_ = fl.Parse(args)
 	log, progress := journal(), func(string, int64, int64) {}
@@ -183,6 +189,9 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	if err != nil {
 		return err
 	}
+	if who.lang, err = languageFrom(*locale, *keyboard); err != nil {
+		return err
+	}
 	// /var is bound to this machine: the live system's id is the firmware's, as the installed one's.
 	if err := update.FirmwareID("/sys"); err != nil {
 		return err
@@ -216,6 +225,10 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	}
 	defer func() { _ = dev.Close() }() // every write is synced where it is made
 	tpm := hasTPM2("/sys")
+	creds, err := bootCredentials(ctx, who.lang, tpm)
+	if err != nil {
+		return err
+	}
 	var recovery string
 	_, err = update.Install(ctx, update.InstallOptions{
 		Keys: keys, Source: *from, Disk: disk, Device: dev,
@@ -231,7 +244,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 			return err
 		},
 		VarUUID: varUUID, Progress: progress,
-		BootFrom: esp, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: log,
+		BootFrom: esp, Credentials: creds, Vars: update.Vars(update.EFIVars), UUID: update.RandomUUID, Log: log,
 	})
 	if err != nil {
 		return err

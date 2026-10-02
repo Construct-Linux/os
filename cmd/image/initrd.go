@@ -17,14 +17,16 @@ var initrdTar = filepath.Join(out, "initrd.tar")
 // initrdTrim is what the initrd carries from its packages and never reads: documentation,
 // translations, headers and static libraries, hwdb's sources (udev in the initrd needs no
 // hardware database), the shell completions, tpm2-tss's FAPI library, which systemd does not
-// load (it loads ESYS, RC and MU) and which alone links libcurl, and every face of Adwaita but
-// the one Plymouth writes in. Globs are filepath.Match's.
+// load (it loads ESYS, RC and MU) and which alone links libcurl, every face of Adwaita but the
+// one Plymouth writes in, and the keyboard layouts' descriptions for settings screens, which
+// xkbcommon does not read. Globs are filepath.Match's.
 var initrdTrim = []string{
 	"usr/share/doc", "usr/share/man", "usr/share/info", "usr/share/locale", "usr/share/i18n",
 	"usr/share/bash-completion", "usr/share/zsh", "usr/share/fish", "usr/share/gtk-doc",
 	"usr/include", "usr/lib/pkgconfig", "usr/share/pkgconfig", "usr/lib/udev/hwdb.d",
 	"var/lib/db/sbom", "usr/lib/libtss2-fapi.so*",
 	"usr/share/fonts/Adwaita/AdwaitaMono-*", "usr/share/fonts/Adwaita/AdwaitaSans-Italic.ttf",
+	"usr/share/xkeyboard-config-2/rules/*.xml", "usr/share/xkeyboard-config-2/rules/*.lst",
 }
 
 // initrdDrop are packages the initrd's own pull in and it never runs: tpm2-tss's FAPI library

@@ -29,6 +29,7 @@ func refs(root string) []string {
 	r.owners()
 	r.shells()
 	r.cups()
+	r.tmpfilesOverrides()
 	sort.Strings(r.problems)
 	return slices.Compact(r.problems)
 }
@@ -380,6 +381,27 @@ func (r *refChecker) shells() {
 		}
 		if !r.exists(sh) {
 			r.fail("%s, a user's shell, is not in the root", sh)
+		}
+	}
+}
+
+// tmpfilesOverrides checks the tmpfiles.d files the image replaces by name (etc/tmpfiles.d) still
+// say what the package's do, but for root's home, which is /var/roothome here: a copy left behind
+// when systemd changes its own would quietly drop what the new one makes.
+func (r *refChecker) tmpfilesOverrides() {
+	ours, _ := filepath.Glob(filepath.Join(r.root, "etc/tmpfiles.d/*.conf"))
+	for _, f := range ours {
+		vendor := filepath.Join(r.root, "usr/lib/tmpfiles.d", filepath.Base(f))
+		if _, err := os.Stat(vendor); err != nil {
+			continue
+		}
+		var want, got []string
+		eachLine(vendor, func(line string) {
+			want = append(want, strings.ReplaceAll(line, " /root", " /var/roothome"))
+		})
+		eachLine(f, func(line string) { got = append(got, line) })
+		if !slices.Equal(want, got) {
+			r.fail("etc/tmpfiles.d/%s no longer matches the package's usr/lib/tmpfiles.d/%s", filepath.Base(f), filepath.Base(f))
 		}
 	}
 }

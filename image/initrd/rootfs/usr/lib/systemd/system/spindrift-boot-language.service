@@ -1,0 +1,16 @@
+# The disk's password prompt in the person's language and keyboard layout, before Plymouth
+# starts: systemd-tmpfiles writes the credentials drift install left on the ESP
+# (/usr/lib/spindrift/boot-language.conf). They come from the ESP, so they are encrypted - to the
+# TPM where there is one - and imported decrypted here.
+[Unit]
+Description=The boot screen in the person's language and keyboard layout
+DefaultDependencies=no
+After=tpm2.target
+Before=plymouth-start.service systemd-vconsole-setup.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ImportCredential=spindrift.vconsole
+ImportCredential=spindrift.plymouth
+ExecStart=systemd-tmpfiles --create /usr/lib/spindrift/boot-language.conf

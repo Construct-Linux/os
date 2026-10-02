@@ -79,6 +79,16 @@ contents:
     - pipewire
     - pipewire-pulse
     - wireplumber
+    # Laptops whose audio goes through Intel's DSP over SoundWire (the ThinkPad X9's): its firmware
+    # and topologies, and the UCM profiles that say which device is the speakers, the headphones
+    # and the microphones (recipes/sof-firmware, recipes/alsa-ucm-conf).
+    - sof-firmware
+    - alsa-ucm-conf
+    # lm-sensors (sensors, sensors-detect) and i2c-tools: the temperatures, fans and voltages the
+    # kernel's hwmon drivers report, and the I2C buses they sit on.
+    - lm-sensors
+    - lm-sensors-detect
+    - i2c-tools
     - bluez
     - polkit
     # GNOME Shell's JavaScript reaches GLib, GObject, Gio and cairo through their typelibs: glib's

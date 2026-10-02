@@ -49,7 +49,7 @@ func usb(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, err := verifiedRoot(root, filepath.Join(stage, "root.img"), filepath.Join(stage, "root.verity"))
+	v, err := verifiedRoot(root, filepath.Join(stage, "root.img"), filepath.Join(stage, "root.verity"), version)
 	if err != nil {
 		return err
 	}
@@ -374,17 +374,23 @@ HOME_URL="https://github.com/spin-stack"
 // varSkeleton records the directories and links the packages put in /var, with their owners and
 // modes, as tmpfiles.d lines systemd-tmpfiles makes at every boot: /var is a partition of its own,
 // which hides what the image has there (spin-ami's internal/disk does the same). Files are not
-// carried; a package that needs one in /var makes it itself.
+// carried; a package that needs one in /var makes it itself. A path another tmpfiles.d file
+// already makes (systemd's var.conf: /var/log, /var/lib...) is left to it: systemd-tmpfiles takes
+// the first line for a path and warns of every other.
 func varSkeleton(root string) error {
+	declared, err := tmpfilesPaths(filepath.Join(root, "usr/lib/tmpfiles.d"))
+	if err != nil {
+		return err
+	}
 	var b strings.Builder
 	b.WriteString("# Written by cmd/image usb: the /var the packages made, which the /var partition hides.\n")
 	base := filepath.Join(root, "var")
-	err := filepath.Walk(base, func(p string, fi os.FileInfo, err error) error {
+	err = filepath.Walk(base, func(p string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		rel := "/" + strings.TrimPrefix(p, root+"/")
-		if p == base || rel == "/var/tmp" {
+		if p == base || rel == "/var/tmp" || declared[rel] {
 			return nil
 		}
 		st, ok := fi.Sys().(*syscall.Stat_t)
@@ -414,6 +420,28 @@ func varSkeleton(root string) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(root, "usr/lib/tmpfiles.d/00-var-skeleton.conf"), []byte(b.String()), 0o644)
+}
+
+// tmpfilesPaths are the paths the tmpfiles.d files in dir make lines for.
+func tmpfilesPaths(dir string) (map[string]bool, error) {
+	files, err := filepath.Glob(filepath.Join(dir, "*.conf"))
+	if err != nil {
+		return nil, err
+	}
+	paths := map[string]bool{}
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			return nil, err
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 && !strings.HasPrefix(fields[0], "#") {
+				paths[fields[1]] = true
+			}
+		}
+	}
+	return paths, nil
 }
 
 // chroot runs each shell command inside root, with /dev and /proc bound in for the programs that
@@ -467,8 +495,16 @@ var rootHashLine = regexp.MustCompile(`(?m)^Root hash:\s+([0-9a-f]{64})$`)
 
 // verifiedRoot writes root as an EROFS image, and its dm-verity tree to a file of its own for a
 // partition of its own; the salt is the image's SHA-256, so the same tree is the same root.
-func verifiedRoot(root, img, tree string) (verity, error) {
-	if err := run("mkfs.erofs", "-zlz4hc", "-T0", "--ignore-mtime", img, root); err != nil {
+func verifiedRoot(root, img, tree, version string) (verity, error) {
+	// Every file's time is the release's: the same tree is the same image, and the time a cache
+	// keys on changes with each release. Mesa's shader cache keys on its drivers' times where a
+	// library has no build ID (Wolfi's libLLVM, which AMD's radeonsi hashes), and a time of 0 turns
+	// it off - every launch compiled every shader again.
+	built, err := time.Parse("20060102.150405", version)
+	if err != nil {
+		return verity{}, fmt.Errorf("version %q: %w", version, err)
+	}
+	if err := run("mkfs.erofs", "-zlz4hc", fmt.Sprintf("-T%d", built.Unix()), "--ignore-mtime", img, root); err != nil {
 		return verity{}, err
 	}
 	fi, err := os.Stat(img)
@@ -525,11 +561,14 @@ func verityOf(rh, img, tree string) verity {
 // hash (slot A's or slot B's), and systemd-veritysetup checks one against the other, reading the
 // rest from the tree's superblock. A block that does not match panics: panic=10 then reboots, and
 // boot counting falls back. Then the consoles, the machine's id from its firmware (/var's UUID is
-// derived from it), cgroup v2 only, and extra, options added for one build to diagnose a boot.
+// derived from it), cgroup v2 only, firmware a person installed for their own machine searched
+// first (drift firmware: /var, root's to write), and extra, options added for one build to
+// diagnose a boot.
 func (v verity) cmdline(extra string) string {
 	return "roothash=" + v.rootHash + " systemd.verity_root_options=panic-on-corruption rootfstype=erofs ro" +
 		" console=ttyS0,115200n8 console=tty0 cgroup_no_v1=all,named" +
-		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" + strings.TrimRight(" "+extra, " ")
+		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" +
+		" firmware_class.path=/var/lib/spindrift/firmware" + strings.TrimRight(" "+extra, " ")
 }
 
 // espTree lays the ESP: systemd-boot at the removable-media path, which firmware boots from a

@@ -95,6 +95,11 @@ func test(args []string) error {
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.installer(v, g, *stick)
+	// The live user's login keyring has no password (drift live): an app's first secret asks
+	// for none.
+	keyring, _ := g.run(`sudo -u live env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus `+
+		`busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked 2>&1`, "")
+	r.add("the login keyring is open", strings.TrimSpace(keyring) == "b false", oneLine(keyring))
 	if *stick {
 		r.secureBoot(g)
 	}
@@ -408,6 +413,10 @@ func (r *report) installer(v *vm, g *guest, stick bool) {
 	}
 	want := map[bool]string{true: "1", false: "0"}[stick]
 	r.add("installer offered", strings.Trim(n, `"`) == want, fmt.Sprintf("%s installer windows on a stick=%v", n, stick))
+	// Its pages, walked as a person does (image/test/rootfs/usr/lib/spindrift-test).
+	walked, err := g.run(`sudo -u live env XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 `+
+		`DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /usr/lib/spindrift-test/walk-installer.py 2>&1`, "")
+	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), oneLine(walked)+errText(err))
 	if stick && strings.Trim(n, `"`) == "1" {
 		time.Sleep(2 * time.Second)
 		r.shot(v, "installer")

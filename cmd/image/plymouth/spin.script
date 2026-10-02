@@ -1,0 +1,108 @@
+# Spindrift's boot screen (cmd/image plymouth.go writes it): SpinBot, a ring turning under it, and
+# when the disk asks for its password a field of our own - the words GNOME's, in {{.Lang}}.
+password_text = "{{.Password}}";
+caps_text = "{{.Caps}}";
+retry_text = "{{.Retry}}";
+font = "Adwaita Sans 14";
+
+Window.SetBackgroundTopColor(0, 0, 0);
+Window.SetBackgroundBottomColor(0, 0, 0);
+Plymouth.SetRefreshRate(30);
+
+center_x = Window.GetX() + Window.GetWidth() / 2;
+
+logo.image = Image("watermark.png");
+logo.sprite = Sprite(logo.image);
+logo.sprite.SetPosition(center_x - logo.image.GetWidth() / 2, Window.GetY() + Window.GetHeight() * 0.42 - logo.image.GetHeight() / 2, 1);
+below_logo = logo.sprite.GetY() + logo.image.GetHeight();
+
+frames = {{.Frames}};
+for (i = 0; i < frames; i++)
+  ring[i] = Image("ring-" + i + ".png");
+ring_sprite = Sprite(ring[0]);
+ring_sprite.SetPosition(center_x - ring[0].GetWidth() / 2, below_logo + 48, 1);
+frame = 0;
+
+# The prompt, hidden until asked for: a title, the field, a dot per character, and two notes.
+title.image = Image.Text(password_text, 1, 1, 1, 1, font);
+title.sprite = Sprite(title.image);
+title.sprite.SetPosition(center_x - title.image.GetWidth() / 2, below_logo + 32, 2);
+
+entry.image = Image("entry.png");
+entry.sprite = Sprite(entry.image);
+entry.x = center_x - entry.image.GetWidth() / 2;
+entry.y = title.sprite.GetY() + title.image.GetHeight() + 12;
+entry.sprite.SetPosition(entry.x, entry.y, 2);
+
+bullet.image = Image("bullet.png");
+bullet.max = 24;
+for (i = 0; i < bullet.max; i++)
+{
+  bullets[i] = Sprite(bullet.image);
+  bullets[i].SetPosition(entry.x + 14 + i * (bullet.image.GetWidth() + 6), entry.y + (entry.image.GetHeight() - bullet.image.GetHeight()) / 2, 3);
+}
+
+note_y = entry.y + entry.image.GetHeight() + 14;
+caps.image = Image.Text(caps_text, 0.95, 0.75, 0.3, 1, font);
+caps.sprite = Sprite(caps.image);
+caps.sprite.SetPosition(center_x - caps.image.GetWidth() / 2, note_y, 2);
+
+retry.image = Image.Text(retry_text, 0.95, 0.45, 0.45, 1, font);
+retry.sprite = Sprite(retry.image);
+retry.sprite.SetPosition(center_x - retry.image.GetWidth() / 2, note_y + caps.image.GetHeight() + 6, 2);
+
+asking = 0;
+typed = 0;
+wrong = 0;
+
+fun show_prompt(opacity)
+{
+  title.sprite.SetOpacity(opacity);
+  entry.sprite.SetOpacity(opacity);
+  ring_sprite.SetOpacity(1 - opacity);
+  if (!opacity)
+  {
+    caps.sprite.SetOpacity(0);
+    retry.sprite.SetOpacity(0);
+    for (i = 0; i < bullet.max; i++)
+      bullets[i].SetOpacity(0);
+  }
+}
+
+fun refresh()
+{
+  if (asking)
+  {
+    caps.sprite.SetOpacity(Plymouth.GetCapslockState());
+  }
+  else
+  {
+    frame++;
+    ring_sprite.SetImage(ring[frame % frames]);
+  }
+}
+
+# A prompt that comes back empty after one was answered is the same one asked again: what was
+# typed did not open the disk.
+fun display_password(prompt, count)
+{
+  if (asking && count == 0 && typed > 0)
+    wrong = 1;
+  asking = 1;
+  typed = count;
+  show_prompt(1);
+  retry.sprite.SetOpacity(wrong);
+  for (i = 0; i < bullet.max; i++)
+    bullets[i].SetOpacity(i < count);
+}
+
+fun display_normal()
+{
+  asking = 0;
+  show_prompt(0);
+}
+
+show_prompt(0);
+Plymouth.SetRefreshFunction(refresh);
+Plymouth.SetDisplayPasswordFunction(display_password);
+Plymouth.SetDisplayNormalFunction(display_normal);

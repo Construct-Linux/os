@@ -41,6 +41,9 @@ contents:
     # The font Plymouth writes the disk's password prompt in, GNOME's own (Adwaita Sans; the
     # package's other faces are trimmed, cmd/image initrdTrim): without one the prompt is boxes.
     - adwaita-fonts
+    # The keyboard layouts Plymouth reads the password with (XKBLAYOUT in /etc/vconsole.conf, from
+    # spindrift-boot-language.service): without them every key is a US keyboard's.
+    - xkeyboard-config
     - bash
     - bash-binsh
     - coreutils

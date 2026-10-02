@@ -23,6 +23,7 @@ import (
 type person struct {
 	user     account.User
 	password string
+	lang     language
 }
 
 // personFrom is the person the flags name, or, with neither, the one asked for at the terminal.
@@ -205,6 +206,12 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	if err == nil {
 		err = account.Autologin(upper, u.Name)
 	}
+	// Their language and keyboard, which GDM, GNOME and the console start from.
+	for name, body := range map[string][]byte{"locale.conf": p.lang.localeConf(), "vconsole.conf": p.lang.vconsole()} {
+		if err == nil {
+			err = os.WriteFile(filepath.Join(upper, name), body, 0o644)
+		}
+	}
 	if uerr := unmount(); err == nil {
 		err = uerr
 	}
@@ -242,6 +249,23 @@ func liveCmd(etc, varDir string) error {
 	// has nothing to set up.
 	home := filepath.Join(varDir, "home", account.Live.Name)
 	if err := ownedFile(home, ".config/gnome-initial-setup-done", []byte("yes"), account.Live.UID); err != nil {
+		return err
+	}
+	// A login keyring without a password, as GNOME Keyring keeps one in the clear: the live user
+	// logs in with none, so no app's first secret makes GNOME ask for a password for a new one.
+	for rel, body := range map[string]string{
+		".local/share/keyrings/login.keyring": "[keyring]\ndisplay-name=Login\nctime=0\nmtime=0\nlock-on-idle=false\nlock-after=false\n",
+		".local/share/keyrings/default":       "login\n",
+	} {
+		if err := ownedFile(home, rel, []byte(body), account.Live.UID); err != nil {
+			return err
+		}
+		// The secrets it comes to hold are its owner's alone, as GNOME Keyring makes them.
+		if err := os.Chmod(filepath.Join(home, rel), 0o600); err != nil {
+			return err
+		}
+	}
+	if err := os.Chmod(filepath.Join(home, ".local/share/keyrings"), 0o700); err != nil {
 		return err
 	}
 	if !stick {

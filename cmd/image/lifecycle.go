@@ -45,6 +45,8 @@ func lifecycle(args []string) error {
 	if err := freshVars(vars); err != nil {
 		return err
 	}
+	// A stick is a 32 GB copy of a release's image, one per boot that plugs it in: removed once
+	// that boot is over, or the copies fill the host's disk.
 	stick := func(v string) (string, error) {
 		s := filepath.Join(*dir, v+".stick")
 		return s, stickCopy(filepath.Join(*dir, v+".raw"), s)
@@ -90,6 +92,7 @@ func lifecycle(args []string) error {
 	r.add("install", err == nil, fmt.Sprintf("%s in %s%s", oneLine(said), time.Since(start).Round(time.Second), errText(err)))
 	r.add("a recovery key is shown", strings.Contains(said, `"recovery_key":"`) && !strings.Contains(said, `"recovery_key":""`), "")
 	v.powerOff(g)
+	_ = os.Remove(s1)
 	if err != nil {
 		return r.write(nil)
 	}
@@ -125,6 +128,10 @@ func lifecycle(args []string) error {
 	// The PIN typed is cached for the passphrase prompt that follows a TPM refusal, so a boot that
 	// came up says nothing: the unit's log does.
 	unlocked, err := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -o cat -u systemd-cryptsetup@var.service | grep -iE 'unseal|falling back|failed' | tail -3`, "")
+	lang, _ := g.run(`cat /etc/locale.conf /etc/vconsole.conf; ls /boot/loader/credentials/; journalctl -b -o cat -u spindrift-boot-language.service | tail -2`, "")
+	r.add("the person's language and keyboard, at boot too", strings.Contains(lang, "LANG=es_ES.UTF-8") && strings.Contains(lang, "XKBLAYOUT=es") &&
+		strings.Contains(lang, "spindrift.vconsole.cred") && strings.Contains(lang, "spindrift.plymouth.cred") &&
+		strings.Contains(lang, "Finished") && !strings.Contains(lang, "Failed"), oneLine(lang))
 	r.add("the TPM unlocked it", err == nil && strings.HasPrefix(unlocked, "active") && strings.TrimSpace(strings.TrimPrefix(unlocked, "active")) == "", oneLine(unlocked))
 	_, err = g.run(`echo kept > /var/home/`+lifecycleUser+`/marker && echo kept > /etc/spindrift-marker`, "")
 	r.add("keep a file in /var and one in /etc", err == nil, errText(err))
@@ -150,6 +157,7 @@ func lifecycle(args []string) error {
 		refused := u.ended && !u.ok && u.sysupdate != "" && !strings.Contains(esp, versions["v2"]) && g.version() == versions["v1"]
 		r.add("refuse a stick: "+bad, refused, u.detail()+"; ESP: "+oneLine(esp))
 		v.powerOff(g)
+		_ = os.Remove(s)
 	}
 
 	// 4. v2 comes from where releases are published - an HTTP server on this host here, which the
@@ -231,6 +239,7 @@ func lifecycle(args []string) error {
 	r.add("initial setup for the new person", strings.Contains(setup, "gnome-initial-setup"), "sessions: "+setup)
 	err = r.write(g)
 	v.powerOff(g)
+	_ = os.Remove(s3)
 	return err
 }
 
@@ -287,6 +296,11 @@ func (r *report) person(g *guest) {
 	sessions, _ := g.run(`sleep 20; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
 	// The password opened /var at boot: GDM logs the person in, and there is no live user.
 	r.add("logged in at boot", strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live"), "sessions: "+sessions)
+	// The password that opened /var made and unlocked their login keyring (gdm-autologin's
+	// pam_systemd_loadkey): no app asks for a keyring password.
+	keyring, _ := g.run(`sudo -u `+lifecycleUser+` env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/`+fmt.Sprint(1000)+`/bus `+
+		`busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/collection/login org.freedesktop.Secret.Collection Locked 2>&1`, "")
+	r.add("the login keyring is open", strings.TrimSpace(keyring) == "b false", oneLine(keyring))
 	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")
 	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
 	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")
@@ -311,7 +325,10 @@ func (g *guest) installAsTheInstaller() (string, error) {
 	}
 	run := "/run/user/1000/install"
 	script := `printf '%s\n' '` + lifecyclePassword + `' | pkexec /usr/bin/drift install --yes --json --disk /dev/nvme0n1 ` +
-		`--user ` + lifecycleUser + ` --real-name 'Ada Lovelace' --password-file - > ` + run + `.json 2> ` + run + `.err; echo $? > ` + run + `.rc`
+		`--user ` + lifecycleUser + ` --real-name 'Ada Lovelace' --password-file - ` +
+		// The session's language and layout, as the installer passes them: Spanish, so the
+		// machine's boot screen and keyboard are checked to be the person's, not the image's.
+		`--locale es_ES.UTF-8 --keyboard es > ` + run + `.json 2> ` + run + `.err; echo $? > ` + run + `.rc`
 	if _, err := g.eval(`GLib.spawn_async(null, ["sh", "-c", ` + strconv.Quote(script) + `], null, GLib.SpawnFlags.SEARCH_PATH, null); "started"`); err != nil {
 		return "", err
 	}

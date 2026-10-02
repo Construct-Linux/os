@@ -5,6 +5,7 @@
 
 import gettext
 import json
+import os
 import re
 import sys
 
@@ -14,6 +15,8 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
+# _ is gettext's, for every string a person reads: never a name for unused arguments (*args),
+# which would hide it.
 _ = gettext.translation("spindrift-installer", fallback=True).gettext
 
 APP_ID = "org.spindrift.Installer"
@@ -29,6 +32,24 @@ STEPS = {
     "preparing /var": (_("Setting up your account"), 0.97),
     "installed: the firmware boots the disk first": (_("Making the disk start first"), 0.99),
 }
+
+
+def session_language():
+    """The live session's language and keyboard layout, which the installed machine keeps - and
+    which its disk's password prompt speaks and reads keys with."""
+    locale = os.environ.get("LANG", "")
+    keyboard = ""
+    try:
+        sources = Gio.Settings.new("org.gnome.desktop.input-sources").get_value("sources").unpack()
+        keyboard = next((ident for kind, ident in sources if kind == "xkb"), "")
+    except GLib.Error:
+        pass
+    args = []
+    if locale:
+        args += ["--locale", locale]
+    if keyboard:
+        args += ["--keyboard", keyboard]
+    return args
 
 
 def human_size(n):
@@ -85,7 +106,7 @@ class Installer(Adw.ApplicationWindow):
         if self.disk is None:
             status.set_description(_("This computer has no disk Spindrift can be installed on."))
         else:
-            status.set_child(self.button(_("Install…"), "suggested-action", lambda *_: self.nav.push(self.disk_page())))
+            status.set_child(self.button(_("Install…"), "suggested-action", lambda *args: self.nav.push(self.disk_page())))
         return self.page(_("Welcome"), status, "welcome")
 
     def disk_page(self):
@@ -108,7 +129,7 @@ class Installer(Adw.ApplicationWindow):
             )
             row.add_prefix(check)
             group.add(row)
-        box = self.form(group, self.button(_("Next"), "suggested-action", lambda *_: self.nav.push(self.person_page())))
+        box = self.form(group, self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.person_page())))
         return self.page(_("Disk"), box, "disk")
 
     def person_page(self):
@@ -119,20 +140,20 @@ class Installer(Adw.ApplicationWindow):
         self.password = Adw.PasswordEntryRow(title=_("Password"))
         self.again = Adw.PasswordEntryRow(title=_("Password again"))
         self.name.connect("changed", self.on_name)
-        self.login.connect("changed", lambda *_: setattr(self, "login_edited", self.login.has_focus()))
+        self.login.connect("changed", lambda *args: setattr(self, "login_edited", self.login.has_focus()))
         for row in (self.name, self.login, self.password, self.again):
             group.add(row)
             row.connect("changed", self.check_person)
-        self.person_next = self.button(_("Next"), "suggested-action", lambda *_: self.nav.push(self.confirm_page()))
+        self.person_next = self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.confirm_page()))
         self.person_next.set_sensitive(False)
         self.person_hint = Gtk.Label(css_classes=["dim-label"], wrap=True)
         return self.page(_("You"), self.form(group, self.person_hint, self.person_next), "person")
 
-    def on_name(self, *_):
+    def on_name(self, *args):
         if not self.login_edited:
             self.login.set_text(suggest_login(self.name.get_text()))
 
-    def check_person(self, *_):
+    def check_person(self, *args):
         hint = ""
         if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", self.login.get_text()):
             hint = _("A login name is lowercase letters, digits, - and _, starting with a letter.")
@@ -154,7 +175,7 @@ class Installer(Adw.ApplicationWindow):
         status.set_child(self.button(_("Erase and Install"), "destructive-action", self.install))
         return self.page(_("Confirm"), status, "confirm")
 
-    def install(self, *_):
+    def install(self, *args):
         self.progress = Gtk.ProgressBar(show_text=False)
         self.step = Gtk.Label(label=_("Starting"), css_classes=["title-4"])
         status = Adw.StatusPage(icon_name="system-software-install-symbolic", title=_("Installing Spindrift"))
@@ -167,7 +188,8 @@ class Installer(Adw.ApplicationWindow):
         try:
             proc = Gio.Subprocess.new(
                 ["pkexec", DRIFT, "install", "--yes", "--json", "--disk", self.disk["path"],
-                 "--user", self.login.get_text(), "--real-name", self.name.get_text().strip(), "--password-file", "-"],
+                 "--user", self.login.get_text(), "--real-name", self.name.get_text().strip(), "--password-file", "-"]
+                + session_language(),
                 Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
             )
         except GLib.Error as e:
@@ -220,13 +242,13 @@ class Installer(Adw.ApplicationWindow):
         key = Gtk.Label(label=self.recovery_key, selectable=True, wrap=True, css_classes=["monospace", "title-4"])
         copy = Gtk.Button(icon_name="edit-copy-symbolic", tooltip_text=_("Copy"), halign=Gtk.Align.CENTER,
                           css_classes=["flat"])
-        copy.connect("clicked", lambda *_: self.get_clipboard().set(self.recovery_key))
+        copy.connect("clicked", lambda *args: self.get_clipboard().set(self.recovery_key))
         note = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"],
                          label=_("This recovery key opens the disk if you forget your password. Write it down "
                                  "and keep it away from the computer: it is not shown again."))
         status.set_child(self.form(note, key, copy,
                                    self.button(_("Restart"), "suggested-action",
-                                               lambda *_: Gio.Subprocess.new(["systemctl", "reboot"], 0))))
+                                               lambda *args: Gio.Subprocess.new(["systemctl", "reboot"], 0))))
         page = self.page(_("Done"), status, "done")
         page.set_can_pop(False)
         self.nav.push(page)
@@ -234,7 +256,7 @@ class Installer(Adw.ApplicationWindow):
     def failed(self, detail):
         status = Adw.StatusPage(icon_name="dialog-error-symbolic", title=_("Spindrift was not installed"),
                                 description=detail.replace("drift: ", ""))
-        status.set_child(self.button(_("Back"), "pill", lambda *_: self.nav.pop_to_tag("person")))
+        status.set_child(self.button(_("Back"), "pill", lambda *args: self.nav.pop_to_tag("person")))
         self.nav.push(self.page(_("Error"), status, "error"))
 
     def form(self, *children):
