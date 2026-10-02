@@ -3,7 +3,7 @@
 //
 // The image carries no person. The installer writes the one it asks for into the installed
 // disk's /etc (the overlay's upper layer, on /var); a root that boots with nobody there - a live
-// stick, the test disk - gets Live, whom spin-init writes. Records are files of their own beside
+// stick, the test disk - gets Live, whom drift live writes. Records are files of their own beside
 // the image's /etc/passwd rather than lines in a copy of it: a copy in the overlay's upper layer
 // would hide every later image's passwd for good.
 package account
