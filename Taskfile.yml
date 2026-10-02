@@ -78,6 +78,13 @@ tasks:
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/apko.yaml _output/rootfs.tar
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/rootfs.tar
 
+  initrd:
+    desc: Build the initrd systemd runs in before the root, from image/initrd/apko.yaml, into _output/initrd.tar.
+    cmds:
+      - mkdir -p _output
+      - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/initrd/apko.yaml _output/initrd.tar
+      - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/initrd.tar
+
   disk:
     desc: "Merge rootfs, modules, firmware and image/rootfs into _output/disk.raw (ext4); task disk -- -test adds image/test/rootfs."
     cmds:
@@ -114,7 +121,6 @@ tasks:
     cmds:
       - docker build -q -t spindrift-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base) build/tools
       - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
-      - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/lib/spindrift/init ./cmd/spin-init
       - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/spin-init/usr/bin/drift ./cmd/drift
       - mkdir -p _output/release-key/usr/share/spindrift
       - gpg --homedir {{.SIGNING_HOME}} --export > _output/release-key/usr/share/spindrift/release.pgp
