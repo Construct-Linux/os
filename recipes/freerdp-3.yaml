@@ -1,10 +1,10 @@
 package:
   name: freerdp-3
   version: "3.32.1"
-  # Replaces Wolfi's freerdp-3 3.32.1 (epoch 0), whose libraries pull X11, Wayland, CUPS, ALSA,
+  # Replaces Wolfi's freerdp-3 3.32.1, whose libraries pull X11, Wayland, CUPS, ALSA,
   # FUSE, libusb and FFmpeg's swscale into the image. gtk-frdp only needs the client libraries:
   # it draws the session itself and opens no audio, printer, drive or USB redirection.
-  epoch: 1
+  epoch: 2
   description: FreeRDP client libraries
   copyright:
     - license: Apache-2.0

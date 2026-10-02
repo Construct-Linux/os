@@ -1,7 +1,7 @@
 package:
   name: libdbusmenu-glib
   version: 16.04.0
-  epoch: 0
+  epoch: 1
   description: Library for passing menus over DBus
   copyright:
     - license: LGPL-3.0-or-later OR LGPL-2.1-or-later
@@ -17,8 +17,6 @@ environment:
       - intltool
       - perl-xml-parser
   environment:
-    # Upstream builds with -Werror and does not compile cleanly with current GCC.
-    CFLAGS: -Wno-error
     # configure defines the HAVE_VALGRIND conditional only when tests are on, then fails
     # its own sanity check with tests off.
     HAVE_VALGRIND_TRUE: "#"
@@ -31,9 +29,14 @@ pipeline:
 
   # gtk: the GTK binding is not needed by the shell, only the GLib library.
   # dumper: needs gtk+-2.0. tests: need json-glib and dbus-test-runner. vala, gtk-doc: not shipped.
-  - uses: autoconf/configure
-    with:
-      opts: --disable-static --disable-gtk --disable-dumper --disable-tests --disable-vala --disable-gtk-doc --enable-introspection=yes
+  # Upstream builds with -Werror and does not compile cleanly with current GCC: -Wno-error goes
+  # after the x86-64-v3 flags, which an environment CFLAGS would replace.
+  - runs: |
+      CFLAGS="$CFLAGS -Wno-error" ./configure \
+        --prefix=/usr \
+        --sysconfdir=/etc \
+        --localstatedir=/var \
+        --disable-static --disable-gtk --disable-dumper --disable-tests --disable-vala --disable-gtk-doc --enable-introspection=yes
 
   - uses: autoconf/make
 

@@ -6,7 +6,7 @@
 package:
   name: wpa_supplicant
   version: "2.12"
-  epoch: 0
+  epoch: 1
   description: IEEE 802.1X/WPA supplicant, for NetworkManager's Wi-Fi
   copyright:
     - license: BSD-3-Clause
@@ -80,7 +80,8 @@ pipeline:
       CONFIG_SUITEB192=y
       CONFIG_IEEE80211N=y
       EOF
-      # CFLAGS carries the x86-64-v3 flags (build/x86-64-v3.env); the Makefile adds its own.
+      # CFLAGS carries the x86-64-v3 flags (build/x86-64-v3.env), so hostap's own defaults (-O2)
+      # do not apply; Wolfi's compiler adds -O2 itself (the binary is the same with them given).
       make -C wpa_supplicant BINDIR=/usr/bin LIBDIR=/usr/lib -j$(nproc)
 
   # make install puts only the programs; NetworkManager reaches it over D-Bus, activated through
