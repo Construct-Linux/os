@@ -1,0 +1,50 @@
+# OpenVPN connections in NetworkManager and GNOME's Settings (Network > VPN > OpenVPN, or an
+# .ovpn imported). WireGuard is NetworkManager's own; OpenVPN is a plugin Wolfi does not build.
+# Its GTK 4 editor only (--with-gtk4), which Settings loads; --without-gnome leaves out the GTK 3
+# one.
+package:
+  name: networkmanager-openvpn
+  version: 1.12.5
+  epoch: 0
+  description: OpenVPN for NetworkManager and GNOME Settings
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      - openvpn
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - file
+      - gettext
+      - glib-dev
+      - gtk-4-dev
+      - libnma-dev
+      - libsecret-dev
+      - libxml2-dev
+      - networkmanager-dev
+      - pkgconf
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/NetworkManager-openvpn/1.12/NetworkManager-openvpn-${{package.version}}.tar.xz
+      expected-sha256: ce32e38b0500eddf2fc8072ca17679817fc2d35eb91f6ff7b9904209c14b5afd
+
+  - uses: autoconf/configure
+    with:
+      opts: --disable-static --without-gnome --with-gtk4 --libexecdir=/usr/libexec
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: networkmanager-openvpn-lang
+    pipeline:
+      - uses: split/locales
