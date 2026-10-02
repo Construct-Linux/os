@@ -147,7 +147,8 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 
 AutoFDO/Propeller profiles recorded on the NucBox; boot time (the initrd, units on the critical
 path); a services audit (what runs that need not, which units can be sandboxed further); Secure
-Boot and measured boot, as spin-ami does; an ISO medium.
+Boot and measured boot, as spin-ami does; an ISO medium; the lock libproxy's GIO resolver blocks
+geoclue on (its unit uses GLib's dummy resolver meanwhile), to fix in `recipes/libproxy`.
 
 ## Two repositories
 
