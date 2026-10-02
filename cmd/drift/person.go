@@ -80,7 +80,7 @@ func askPerson(in *bufio.Reader, out io.Writer) (person, error) {
 	if realName == "" {
 		realName = name
 	}
-	fmt.Fprint(out, "\nOne password unlocks the disk at boot, logs you in, and is what sudo and the\nlock screen ask for.\n\n")
+	fmt.Fprint(out, "\nOne password logs you in, and is what sudo and the lock screen ask for.\n\n")
 	for {
 		pw, err := readPassword(in, out, "  Password: ")
 		if err != nil {
@@ -169,10 +169,9 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 		return err
 	}
 	upper := filepath.Join(dir, "lib", "spindrift", "etc", "upper")
+	// No autologin: /var is not encrypted yet, so the password GDM asks for is all that stands
+	// between whoever powers the machine on and the person's desktop.
 	err = account.Write(upper, u)
-	if err == nil {
-		err = account.Autologin(upper, u.Name)
-	}
 	if err == nil {
 		err = account.MakeHome(dir, u)
 	}

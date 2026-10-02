@@ -43,7 +43,7 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
   of the stick.
 - **installer**: `sudo drift install` asks who the machine is for - a name, a login and one
   password - then erases the machine's first internal disk (never the stick) and lays two system
-  slots and `/var` on it. That person is logged in at boot; sudo and the lock screen ask for the
+  slots and `/var` on it. GDM, sudo and the lock screen ask for the
   password. root has none and cannot log in.
 - **update**: plugged into an installed machine, it writes its release into the slot not running.
 

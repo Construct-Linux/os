@@ -1,5 +1,4 @@
-# The person a machine is for is in wheel (internal/account): sudo asks for their password - the
-# one that unlocks the disk at boot - and takes it for 15 minutes. GDM logs them in on its own, so
-# this is what stands between a program running as them and root.
+# The person a machine is for is in wheel (internal/account): sudo asks for their password and
+# takes it for 15 minutes, so a program running as them does not become root unnoticed.
 Defaults timestamp_timeout=15
 %wheel ALL=(ALL:ALL) ALL

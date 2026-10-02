@@ -136,10 +136,10 @@ func hashes(h string) []string {
 	return []string{h}
 }
 
-// Autologin makes GDM log name in at boot. The password that unlocks /var at boot is theirs, so
-// the session needs no second one; the lock screen asks for it.
+// Autologin makes GDM log name in at boot: only the live user, which has no password and nothing
+// of anyone's to protect. A person is asked for their password.
 func Autologin(etc, name string) error {
-	conf := "# The person this machine is for, logged in at boot: unlocking /var took their password.\n" +
+	conf := "# The live session, logged in at boot: nobody is installed on this root.\n" +
 		"[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=" + name + "\n"
 	return writeFile(filepath.Join(etc, "gdm", "custom.conf"), []byte(conf), 0o644)
 }

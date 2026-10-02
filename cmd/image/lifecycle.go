@@ -281,11 +281,12 @@ const (
 	lifecyclePassword = "correct horse battery staple"
 )
 
-// person checks who an installed machine is for: GDM logged them in, there is no live user, and
-// sudo asks for their password and takes it.
+// person checks who an installed machine is for: GDM asks for their password, there is no live
+// user, and sudo asks for their password and takes it.
 func (r *report) person(g *guest) {
 	sessions, _ := g.run(`sleep 20; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
-	r.add("logged in at boot", strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live"), "sessions: "+sessions)
+	// GDM asks for the person's password: nobody is logged in at boot, and there is no live user.
+	r.add("asked for a password at boot", !strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live") && strings.Contains(sessions, "gdm"), "sessions: "+sessions)
 	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")
 	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
 	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")
