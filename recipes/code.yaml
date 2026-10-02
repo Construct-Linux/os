@@ -1,0 +1,78 @@
+# Visual Studio Code, Microsoft's build, as its .deb lays it out: the editor every developer here
+# gets out of the box, with Microsoft's extension marketplace and the extensions that only it
+# carries (Dev Containers, Remote, Copilot). Repackaged from the official tarball, pinned by its
+# SHA-256 (update.code.visualstudio.com/api/update/linux-x64/stable/latest). It updates with the
+# image's releases: the tarball cannot update itself. Its license is Microsoft's, not open.
+package:
+  name: code
+  version: 1.140.0
+  epoch: 0
+  description: Visual Studio Code, Microsoft's build
+  copyright:
+    - license: LicenseRef-Microsoft-VSCode
+  dependencies:
+    runtime:
+      # NSS and NSPR have unversioned sonames (libnss3.so), from which melange derives no dependency.
+      - libnss
+      - libnspr
+      # What Electron opens at run time rather than links: the keyring, the GTK file chooser.
+      - libsecret
+      - gtk-3
+      - xdg-utils
+
+environment:
+  contents:
+    packages:
+      - busybox
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://update.code.visualstudio.com/${{package.version}}/linux-x64/stable
+      expected-sha256: d32031e9e213d59532af3cf32fcb8b357a1cdd10417967b4f5b5ba30436dc0dc
+      extract: false
+
+  # chrome-sandbox, setuid root in the tarball, loses the bit: Electron sandboxes with user
+  # namespaces, and the image adds no setuid program it can do without.
+  - runs: |
+      mkdir -p ${{targets.destdir}}/usr/share/code ${{targets.destdir}}/usr/bin
+      tar -xzf stable -C ${{targets.destdir}}/usr/share/code --strip-components=1
+      chmod 0755 ${{targets.destdir}}/usr/share/code/chrome-sandbox
+      ln -s ../share/code/bin/code ${{targets.destdir}}/usr/bin/code
+      install -Dm644 ${{targets.destdir}}/usr/share/code/resources/app/out/media/code-icon.svg \
+        ${{targets.destdir}}/usr/share/icons/hicolor/scalable/apps/vscode.svg
+      install -Dm644 /dev/stdin ${{targets.destdir}}/usr/share/applications/code.desktop <<'EOF'
+      [Desktop Entry]
+      Name=Visual Studio Code
+      Comment=Code Editing. Redefined.
+      GenericName=Text Editor
+      Exec=/usr/share/code/code %F
+      Icon=vscode
+      Type=Application
+      StartupNotify=false
+      StartupWMClass=Code
+      Categories=TextEditor;Development;IDE;
+      MimeType=application/x-code-workspace;
+      Actions=new-empty-window;
+      Keywords=vscode;
+
+      [Desktop Action new-empty-window]
+      Name=New Empty Window
+      Exec=/usr/share/code/code --new-window %F
+      Icon=vscode
+      EOF
+      install -Dm644 /dev/stdin ${{targets.destdir}}/usr/share/applications/code-url-handler.desktop <<'EOF'
+      [Desktop Entry]
+      Name=Visual Studio Code - URL Handler
+      Comment=Code Editing. Redefined.
+      GenericName=Text Editor
+      Exec=/usr/share/code/code --open-url %U
+      Icon=vscode
+      Type=Application
+      NoDisplay=true
+      StartupNotify=true
+      Categories=Utility;TextEditor;Development;IDE;
+      MimeType=x-scheme-handler/vscode;
+      Keywords=vscode;
+      EOF
+      test -x ${{targets.destdir}}/usr/share/code/code

@@ -1,0 +1,30 @@
+# Containers that share the person's home, for the languages and tools the read-only root does
+# not carry: a Wolfi container where `apk add go-1.27` is the same Go the image is built from.
+# Wolfi has no recipe. It drives the image's Docker (no Podman here); its scripts are POSIX sh.
+package:
+  name: distrobox
+  version: 1.8.2.5
+  epoch: 0
+  description: Containers that integrate with the host's home, display and devices
+  copyright:
+    - license: GPL-3.0-only
+  dependencies:
+    runtime:
+      - docker-cli
+
+environment:
+  contents:
+    packages:
+      - busybox
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/89luca89/distrobox
+      tag: ${{package.version}}
+      expected-commit: 40c3cd724faa434aeb0a23e28776665b92de68bd
+
+  - runs: |
+      ./install --prefix ${{targets.destdir}}/usr
+      test -x ${{targets.destdir}}/usr/bin/distrobox-enter
+      rm -rf ${{targets.destdir}}/usr/share/man
