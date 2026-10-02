@@ -65,7 +65,8 @@ func (g *guest) run(script string, stdin string) (string, error) {
 	return outb.String(), nil
 }
 
-// bootGuest starts m and waits up to d for its sshd to answer, stopping it when it does not.
+// bootGuest starts m and waits up to d for its sshd to answer, stopping it when it does not -
+// with the screen it showed then in _output/no-answer.png, since nothing else says how far it got.
 func (m machine) bootGuest(d time.Duration) (*vm, *guest, error) {
 	v, err := m.start()
 	if err != nil {
@@ -73,8 +74,13 @@ func (m machine) bootGuest(d time.Duration) (*vm, *guest, error) {
 	}
 	g := &guest{cid: v.cid}
 	if err := g.wait(d); err != nil {
+		shot := filepath.Join(out, "no-answer.ppm")
+		if v.screenshot(shot) == nil {
+			time.Sleep(500 * time.Millisecond)
+			_ = ppmToPNG(shot, strings.TrimSuffix(shot, ".ppm")+".png")
+		}
 		v.stop()
-		return nil, nil, fmt.Errorf("the guest never answered over vsock: %w", err)
+		return nil, nil, fmt.Errorf("the guest never answered over vsock (its screen: %s.png): %w", strings.TrimSuffix(shot, ".ppm"), err)
 	}
 	return v, g, nil
 }
