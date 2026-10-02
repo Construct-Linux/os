@@ -121,6 +121,10 @@ func test(args []string) error {
 	// bus must know how to start it (Wolfi's bluez came without its unit and activation file).
 	bt, err := g.run(`busctl --system list --activatable --no-legend | awk '{print $1}' | grep -x org.bluez`, "")
 	r.add("bluetooth service", err == nil && strings.TrimSpace(bt) == "org.bluez", oneLine(bt)+errText(err))
+	// Video on the GPU: the VM has no Intel GPU to decode with, but Iris Xe's driver must be where
+	// libva looks, and GStreamer must load its va plugin.
+	va, err := g.run(`test -f /usr/lib/dri/iHD_drv_video.so && gst-inspect-1.0 va 2>&1 | grep -m1 Filename`, "")
+	r.add("vaapi", err == nil && strings.Contains(va, "libgstva.so"), oneLine(va)+errText(err))
 	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
 	r.add("flathub", ok, detail)
 	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files

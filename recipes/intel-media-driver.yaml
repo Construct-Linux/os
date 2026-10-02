@@ -1,0 +1,47 @@
+# VA-API for Intel GPUs from Broadwell on: the iHD driver libva loads to decode and encode video
+# on the GPU. Without it the NucBox's Iris Xe decodes H.264, HEVC, VP9 and AV1 on the CPU cores
+# (mesa's VA drivers are AMD's and virtio's). Wolfi has no recipe. Built as upstream ships it, its
+# shader kernels included (Arch's choice; Fedora's "free" build drops encoders that need them).
+package:
+  name: intel-media-driver
+  version: 26.3.5
+  epoch: 0
+  description: Intel Media Driver for VAAPI (iHD)
+  copyright:
+    - license: MIT AND BSD-3-Clause
+  dependencies:
+    runtime:
+      - libva
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cmake
+      - gmmlib-dev
+      - libdrm-dev
+      - libva-dev
+      - pkgconf
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/intel/media-driver
+      tag: intel-media-${{package.version}}
+      expected-commit: 1b5e6626308a50878b2cd593f7fddc63902597bd
+
+  # The driver goes where libva's pkg-config says libva looks (its driverdir). INSTALL_DRIVER_SYSCONF
+  # would add an /etc/profile.d script forcing LIBVA_DRIVER_NAME=iHD for every GPU; libva picks the
+  # driver by the GPU itself.
+  - uses: cmake/configure
+    with:
+      opts: -DCMAKE_BUILD_TYPE=Release -DINSTALL_DRIVER_SYSCONF=OFF -DMEDIA_BUILD_FATAL_WARNINGS=OFF -DBUILD_CMRTLIB=OFF
+
+  - uses: cmake/build
+
+  - uses: cmake/install
+
+  - runs: test -f ${{targets.destdir}}/usr/lib/dri/iHD_drv_video.so
+
+  - uses: strip

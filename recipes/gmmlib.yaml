@@ -1,0 +1,41 @@
+# Intel's graphics memory management library, which the media driver lays out surfaces with.
+# Wolfi has neither; both are what VA-API needs on the NucBox's Iris Xe (recipes/intel-media-driver).
+package:
+  name: gmmlib
+  version: 22.10.2
+  epoch: 0
+  description: Intel Graphics Memory Management Library
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - cmake
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/intel/gmmlib
+      tag: intel-gmmlib-${{package.version}}
+      expected-commit: 733c91a19baa65c40f4b1cf95a3991cc8c84d866
+
+  - uses: cmake/configure
+    with:
+      opts: -DCMAKE_BUILD_TYPE=Release -DRUN_TEST_SUITE=OFF
+
+  - uses: cmake/build
+
+  - uses: cmake/install
+
+  - uses: strip
+
+subpackages:
+  - name: gmmlib-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - gmmlib

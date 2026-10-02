@@ -64,6 +64,10 @@ contents:
     - mesa-vulkan-ati
     - mesa-vulkan-swrast
     - vulkan-loader
+    # Video decoding and encoding on the GPU (VA-API): libva loads Intel's iHD driver for Iris Xe
+    # and mesa's for AMD; Firefox and GStreamer's va plugin (gst-plugins-bad) go through it.
+    - libva
+    - intel-media-driver
     - libinput
     # libinput's device quirks (/usr/share/libinput) are in -libs, which nothing depends on.
     - libinput-libs
@@ -167,6 +171,7 @@ contents:
     - gstreamer
     - gst-plugins-base
     - gst-plugins-good
+    - gst-plugins-bad
     # Apps Wolfi maintains itself.
     - firefox
     # Development: a compiler, make, git, and Docker on containerd.
