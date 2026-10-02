@@ -1,7 +1,7 @@
 package:
   name: accountsservice
   version: 26.27.3
-  epoch: 0
+  epoch: 1
   description: D-Bus interface for user account query and manipulation
   copyright:
     - license: GPL-3.0-or-later
@@ -34,9 +34,12 @@ pipeline:
       printf '#!/bin/sh\necho %s\n' "${{package.version}}" > generate-version.sh
 
   # vapi off: no vala consumers in the session.
+  # An administrator it creates - GNOME's Initial Setup's after a factory reset, one added in
+  # Settings - joins the groups drift install gives a person (internal/account's Groups): Docker,
+  # and CUPS's printer administration.
   - uses: meson/configure
     with:
-      opts: -Dsystemdsystemunitdir=/usr/lib/systemd/system -Delogind=false -Dintrospection=true -Dvapi=false -Ddocbook=false -Dgtk_doc=false -Dtests=false -Dadmin_group=wheel -Dwtmpfile=/var/log/wtmp
+      opts: -Dsystemdsystemunitdir=/usr/lib/systemd/system -Delogind=false -Dintrospection=true -Dvapi=false -Ddocbook=false -Dgtk_doc=false -Dtests=false -Dadmin_group=wheel -Dextra_admin_groups=docker,lpadmin -Dwtmpfile=/var/log/wtmp
 
   - uses: meson/compile
 
