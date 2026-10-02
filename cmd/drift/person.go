@@ -190,7 +190,7 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	upper := filepath.Join(dir, "lib", "spindrift", "etc", "upper")
 	// No autologin: /var is not encrypted yet, so the password GDM asks for is all that stands
 	// between whoever powers the machine on and the person's desktop.
-	err = account.Write(upper, u)
+	err = account.Write(upper, factoryEtc, u)
 	if err == nil {
 		err = account.MakeHome(dir, u)
 	}
@@ -200,6 +200,10 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	return err
 }
 
+// factoryEtc holds the image's own account files (cmd/image's bake): an install starts the
+// person's /etc from them.
+const factoryEtc = "/usr/share/factory/etc"
+
 // liveCmd gives a root nobody is installed for - a live stick, the test disk - the live user,
 // logged in at boot (spindrift-live.service, before GDM). An installed machine has its person,
 // written by drift install, and never gets it.
@@ -208,7 +212,7 @@ func liveCmd(etc, varDir string) error {
 	if err != nil || installed {
 		return err
 	}
-	if err := account.Write(etc, account.Live); err != nil {
+	if err := account.Write(etc, factoryEtc, account.Live); err != nil {
 		return fmt.Errorf("the live user: %w", err)
 	}
 	if err := account.Autologin(etc, account.Live.Name); err != nil {

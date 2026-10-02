@@ -62,10 +62,11 @@ falling back from a release that does not come up.
   goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot credential
   (`ssh.ephemeral-authorized_keys-all`) and is written nowhere.
 - **No person, password or private key in the image or the repository.** `drift install` asks
-  who a machine is for and writes them into the installed `/var` (`internal/account`: userdb
-  records, the hash in a root-only companion file); a root with nobody installed boots the
-  passwordless `live` user `drift live` writes (spindrift-live.service). root stays locked (`*`). GDM asks the person's
-  password, and sudo (wheel, 15 minutes); only `live` is logged in at boot.
+  who a machine is for and adds them to the installed `/etc`'s passwd and shadow, on `/var`
+  (`internal/account`, starting from the image's own files in `usr/share/factory/etc`), where
+  passwd and GNOME's Settings change them later; a root with nobody installed boots the
+  passwordless `live` user `drift live` adds (spindrift-live.service). root stays locked (`*`).
+  GDM asks the person's password, and sudo (wheel, 15 minutes); only `live` is logged in at boot.
 
 ## What the root is, and what it implies
 

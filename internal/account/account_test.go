@@ -1,43 +1,72 @@
 package account
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
-func TestWriteLaysTheRecordsSystemdReads(t *testing.T) {
-	etc := t.TempDir()
-	u := User{Name: "ada", RealName: "Ada Lovelace", UID: FirstUID, HashedPassword: "$y$hash", Groups: []string{"wheel", "docker"}}
-	if err := Write(etc, u); err != nil {
-		t.Fatal(err)
+// factory is an image's account files, as bake leaves them under usr/share/factory/etc.
+func factory(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"passwd":  "root:x:0:0:root:/root:/bin/bash\nnobody:x:65534:65534:nobody:/:/sbin/nologin\n",
+		"group":   "root:x:0:\nwheel:x:10:\ndocker:x:990:old\n",
+		"shadow":  "root:*::0:::::\n",
+		"gshadow": "root:!::\nwheel:!::\ndocker:!::old\n",
+	} {
+		mode := os.FileMode(0o644)
+		// The image's are 0000, which only root reads; a mode of their own is what is checked.
+		if strings.Contains(name, "shadow") {
+			mode = 0o600
+		}
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(filepath.Join(dir, name), mode); err != nil {
+			t.Fatal(err)
+		}
 	}
-	var rec map[string]any
-	b, err := os.ReadFile(filepath.Join(etc, "userdb", "ada.user"))
+	return dir
+}
+
+func read(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal(b, &rec); err != nil {
+	return string(b)
+}
+
+// A person goes into an empty upper /etc as passwd and shadow lines over the image's files, in
+// their own group and the image's groups, the shadow files keeping the image's mode.
+func TestWriteAddsThePersonToTheImagesFiles(t *testing.T) {
+	etc, fac := t.TempDir(), factory(t)
+	u := User{Name: "ada", RealName: "Ada Lovelace", UID: FirstUID, HashedPassword: "$y$hash", Groups: []string{"wheel", "docker"}}
+	if ok, err := HasPerson(etc); err != nil || ok {
+		t.Fatalf("HasPerson on an empty /etc: %v %v", ok, err)
+	}
+	if err := Write(etc, fac, u); err != nil {
 		t.Fatal(err)
 	}
-	if rec["userName"] != "ada" || rec["homeDirectory"] != "/var/home/ada" || rec["uid"] != float64(1000) {
-		t.Fatalf("user record: %v", rec)
+	if got := read(t, filepath.Join(etc, "passwd")); !strings.HasPrefix(got, "root:x:0:0:root:/root:/bin/bash\n") || !strings.HasSuffix(got, "ada:x:1000:1000:Ada Lovelace:/var/home/ada:/bin/bash\n") {
+		t.Errorf("passwd:\n%s", got)
 	}
-	if _, ok := rec["privileged"]; ok {
-		t.Fatal("the public record carries the password hash")
+	if got := read(t, filepath.Join(etc, "group")); got != "root:x:0:\nwheel:x:10:ada\ndocker:x:990:old,ada\nada:x:1000:\n" {
+		t.Errorf("group:\n%s", got)
 	}
-	info, err := os.Stat(filepath.Join(etc, "userdb", "ada.user-privileged"))
-	if err != nil || info.Mode().Perm() != 0o600 {
-		t.Fatalf("privileged record: %v %v", info, err)
+	if got := read(t, filepath.Join(etc, "gshadow")); got != "root:!::\nwheel:!::ada\ndocker:!::old,ada\nada:!::\n" {
+		t.Errorf("gshadow:\n%s", got)
 	}
-	if target, err := os.Readlink(filepath.Join(etc, "userdb", "1000.user")); err != nil || target != "ada.user" {
-		t.Fatalf("uid link: %q %v", target, err)
+	shadow := read(t, filepath.Join(etc, "shadow"))
+	if !strings.HasPrefix(shadow, "root:*::0:::::\nada:$y$hash:") {
+		t.Errorf("shadow:\n%s", shadow)
 	}
-	for _, m := range []string{"ada:wheel.membership", "ada:docker.membership"} {
-		if _, err := os.Stat(filepath.Join(etc, "userdb", m)); err != nil {
-			t.Fatal(err)
-		}
+	if fi, err := os.Stat(filepath.Join(etc, "shadow")); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Errorf("shadow's mode: %v %v", fi.Mode(), err)
 	}
 	if _, err := os.Stat(filepath.Join(etc, "sudoers.d", "50-ada")); !os.IsNotExist(err) {
 		t.Fatalf("a person got passwordless sudo: %v", err)
@@ -45,19 +74,33 @@ func TestWriteLaysTheRecordsSystemdReads(t *testing.T) {
 	if ok, err := HasPerson(etc); err != nil || !ok {
 		t.Fatalf("HasPerson after Write: %v %v", ok, err)
 	}
+	// Written again - drift live at the next boot, an install retried - it is there once.
+	if err := Write(etc, fac, u); err != nil {
+		t.Fatal(err)
+	}
+	if got := read(t, filepath.Join(etc, "group")); strings.Count(got, "ada") != 3 {
+		t.Errorf("group after a second Write:\n%s", got)
+	}
+}
+
+// A group the image does not have is refused, not made up.
+func TestWriteRefusesAGroupTheImageLacks(t *testing.T) {
+	u := User{Name: "ada", UID: FirstUID, Groups: []string{"plugdev"}}
+	if err := Write(t.TempDir(), factory(t), u); err == nil {
+		t.Fatal("Write took a group the image has not")
+	}
 }
 
 func TestLiveSudoesWithoutAPassword(t *testing.T) {
 	etc := t.TempDir()
-	if ok, err := HasPerson(etc); err != nil || ok {
-		t.Fatalf("HasPerson on an empty /etc: %v %v", ok, err)
-	}
-	if err := Write(etc, Live); err != nil {
+	if err := Write(etc, factory(t), User{Name: Live.Name, UID: FirstUID, SudoNoPassword: true}); err != nil {
 		t.Fatal(err)
 	}
-	b, err := os.ReadFile(filepath.Join(etc, "sudoers.d", "50-live"))
-	if err != nil || string(b) != "live ALL=(ALL:ALL) NOPASSWD: ALL\n" {
-		t.Fatalf("live's sudoers: %q %v", b, err)
+	if got := read(t, filepath.Join(etc, "sudoers.d", "50-live")); got != "live ALL=(ALL:ALL) NOPASSWD: ALL\n" {
+		t.Fatalf("live's sudoers: %q", got)
+	}
+	if !strings.Contains(read(t, filepath.Join(etc, "shadow")), "\nlive::") {
+		t.Error("live has a password")
 	}
 }
 

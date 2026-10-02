@@ -230,6 +230,13 @@ func (r *report) person(g *guest) {
 	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
 	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")
 	r.add("sudo takes the password", strings.Contains(withPw, "0\nrc=0") || strings.HasPrefix(strings.TrimSpace(withPw), "0"), oneLine(withPw))
+	// The person changes their own password, where Settings and passwd change it (pam_unix,
+	// /etc/shadow), and sudo then takes the new one.
+	const newPassword = "quiet lantern harbor seven"
+	changed, err := g.run(`printf '%s\n%s\n%s\n' '`+lifecyclePassword+`' '`+newPassword+`' '`+newPassword+`' | runuser -u `+lifecycleUser+` -- passwd 2>&1; echo rc=$?`, "")
+	r.add("the person changes their password", err == nil && strings.Contains(changed, "rc=0"), oneLine(changed))
+	newPw, _ := g.run(`printf '%s\n' '`+newPassword+`' | sudo -u `+lifecycleUser+` sudo -k -S -p '' id -u 2>&1; echo rc=$?`, "")
+	r.add("sudo takes the new password", strings.HasPrefix(strings.TrimSpace(newPw), "0"), oneLine(newPw))
 	root, _ := g.run(`getent shadow root | cut -d: -f2`, "")
 	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
 }

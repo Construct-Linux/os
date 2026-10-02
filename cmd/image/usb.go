@@ -232,6 +232,17 @@ func bake(root, version string) error {
 	if err := rootLocked(root); err != nil {
 		return err
 	}
+	// The image's account files as they are, which an install starts a person's /etc from
+	// (internal/account): the /etc it writes into has none of its own yet.
+	factory := filepath.Join(root, "usr/share/factory/etc")
+	if err := os.MkdirAll(factory, 0o755); err != nil {
+		return err
+	}
+	for _, f := range []string{"passwd", "group", "shadow", "gshadow"} {
+		if err := run("cp", "-a", filepath.Join(root, "etc", f), filepath.Join(factory, f)); err != nil {
+			return err
+		}
+	}
 	files := map[string]string{
 		// systemd makes a machine id at every boot, from the firmware's (cmdline), and mounts it here.
 		"etc/machine-id": "",
