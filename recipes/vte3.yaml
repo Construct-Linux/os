@@ -1,7 +1,7 @@
 package:
   name: vte3
   version: 0.84.1
-  epoch: 0
+  epoch: 1
   description: Virtual Terminal Emulator library
   copyright:
     - license: LGPL-3.0-or-later

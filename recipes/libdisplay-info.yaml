@@ -1,6 +1,6 @@
 package:
   name: libdisplay-info
-  version: 0.3.0
+  version: 0.4.0
   epoch: 0
   description: EDID and DisplayID library
   copyright:
@@ -21,7 +21,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://gitlab.freedesktop.org/emersion/libdisplay-info/-/releases/${{package.version}}/downloads/libdisplay-info-${{package.version}}.tar.xz
-      expected-sha256: 6ae77cd937f9cf7d1321d35c116062c4911e8447010a6a713ac4286f7a9d5987
+      expected-sha256: 43b180baa143e2035654759d84e2b2f5ee77d5fe817c423838c7fe59c0d68459
 
   - uses: meson/configure
 

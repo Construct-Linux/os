@@ -1,12 +1,20 @@
 package:
   name: cldr-emoji-annotation
-  version: "48"
+  version: "48.2"
   epoch: 0
   description: Emoji annotation files in CLDR
   copyright:
     - license: Unicode-DFS-2016
   target-architecture:
     - all
+
+
+# CLDR tags its point releases release-48-2.
+var-transforms:
+  - from: ${{package.version}}
+    match: '\.'
+    replace: '-'
+    to: mangled-package-version
 
 environment:
   contents:
@@ -16,8 +24,8 @@ environment:
 pipeline:
   - uses: fetch
     with:
-      uri: https://github.com/unicode-org/cldr/archive/release-${{package.version}}/cldr-release-${{package.version}}.tar.gz
-      expected-sha256: 8edd97a3600bbd1c451f07c5bf7b979467e88ac6d101d360eb8f9b057d21a4d6
+      uri: https://github.com/unicode-org/cldr/archive/release-${{vars.mangled-package-version}}/cldr-release-${{vars.mangled-package-version}}.tar.gz
+      expected-sha256: d9b99299f3fbd3070b357612f4a4c4c64bff59ad7f05b4e636efdf1b60fe69f6
 
   - runs: |
       for d in annotations annotationsDerived dtd; do
