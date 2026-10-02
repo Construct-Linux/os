@@ -33,6 +33,7 @@ contents:
     - device-mapper
     # 13-dm-disk.rules reads a device-mapper device's filesystem with blkid.
     - blkid
+    # systemd-cryptsetup's TPM2 unlocking, loaded at run time, for the encrypted /var to come.
     - tpm2-tss
     - plymouth
     - bash
