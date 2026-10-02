@@ -15,6 +15,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/spin-stack/spindrift/internal/update"
 )
 
 // usb makes the release a machine boots from a USB stick: an ESP with systemd-boot and a unified
@@ -46,7 +48,7 @@ func usb(args []string) error {
 		return err
 	}
 	esp := filepath.Join(stage, "esp")
-	label := "spindrift_" + version
+	label := update.ImageID + "_" + version
 	if err := espTree(root, esp, label, v, strings.Join(extra, " ")); err != nil {
 		return err
 	}
@@ -64,8 +66,8 @@ func releaseDir(version string) string { return filepath.Join(out, "release", ve
 
 // writeRelease lays version's release: the root and its tree named with the partition UUIDs a
 // slot takes for them (the kernel image's command line names those), the kernel image, and
-// SHA256SUMS over them, which the host signs (SHA256SUMS.gpg, gpg --detach-sign: systemd-sysupdate's name for it) before the stick
-// is made. internal/update reads it by these names.
+// SHA256SUMS over them, which the host signs (SHA256SUMS.gpg, systemd-sysupdate's name) before the
+// stick is made. The names and the sums are internal/update's, which reads the release back.
 func writeRelease(version, esp, label string, v verity) (string, error) {
 	dir := releaseDir(version)
 	// One release at a time: every reader takes the newest (task usb signs it, usb-disk lays it,
@@ -78,12 +80,12 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 	}
 	// The root and its tree compressed - what is downloaded, and what GitHub takes (2 GB a file
 	// at most); systemd-import and drift install decompress them as they write.
+	rootFile, verityFile, uki := update.Names(version, v.rootUUID, v.vUUID)
 	files := map[string]string{
-		label + "_" + v.rootUUID + ".root.raw.xz": v.rootImg,
-		label + "_" + v.vUUID + ".verity.raw.xz":  v.treeImg,
-		label + ".efi":                            filepath.Join(esp, "EFI", "Linux", label+".efi"),
+		rootFile:   v.rootImg,
+		verityFile: v.treeImg,
+		uki:        filepath.Join(esp, "EFI", "Linux", label+".efi"),
 	}
-	names := make([]string, 0, len(files))
 	for name, src := range files {
 		dst := filepath.Join(dir, name)
 		if strings.HasSuffix(name, ".xz") {
@@ -93,24 +95,8 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 		} else if err := os.Link(src, dst); err != nil {
 			return "", err
 		}
-		names = append(names, name)
 	}
-	sort.Strings(names)
-	var sums strings.Builder
-	for _, name := range names {
-		f, err := os.Open(filepath.Join(dir, name))
-		if err != nil {
-			return "", err
-		}
-		h := sha256.New()
-		_, err = io.Copy(h, f)
-		f.Close()
-		if err != nil {
-			return "", err
-		}
-		fmt.Fprintf(&sums, "%x  %s\n", h.Sum(nil), name)
-	}
-	return dir, os.WriteFile(filepath.Join(dir, "SHA256SUMS"), []byte(sums.String()), 0o644)
+	return dir, update.WriteSums(dir)
 }
 
 // usbDisk lays the stick's image from the last usb's stage once its release is signed: the ESP,
@@ -126,21 +112,27 @@ func usbDisk(args []string) error {
 	}
 	version := entries[0].Name()
 	rel := releaseDir(version)
-	if _, err := os.Stat(filepath.Join(rel, "SHA256SUMS.gpg")); err != nil {
+	if _, err := os.Stat(filepath.Join(rel, update.SignatureFile)); err != nil {
 		return fmt.Errorf("%s is not signed: %w", rel, err)
 	}
-	label := "spindrift_" + version
+	b, err := os.ReadFile(filepath.Join(rel, update.SumsFile))
+	if err != nil {
+		return err
+	}
+	sums, err := update.ParseSums(b)
+	if err != nil {
+		return err
+	}
+	r, err := update.Find(sums)
+	if err != nil {
+		return err
+	}
+	label := update.ImageID + "_" + version
 	stage := filepath.Join(out, "usb")
 	// The stick boots the uncompressed root and tree the build left in its stage; the release
 	// names the partition UUIDs they take.
-	v := verity{rootImg: filepath.Join(stage, "root.img"), treeImg: filepath.Join(stage, "root.verity")}
-	matches, _ := filepath.Glob(filepath.Join(rel, label+"_*.root.raw.xz"))
-	vm, _ := filepath.Glob(filepath.Join(rel, label+"_*.verity.raw.xz"))
-	if len(matches) != 1 || len(vm) != 1 {
-		return fmt.Errorf("%s has no single root and verity", rel)
-	}
-	v.rootUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(matches[0]), label+"_"), ".root.raw.xz")
-	v.vUUID = strings.TrimSuffix(strings.TrimPrefix(filepath.Base(vm[0]), label+"_"), ".verity.raw.xz")
+	v := verity{rootImg: filepath.Join(stage, "root.img"), treeImg: filepath.Join(stage, "root.verity"),
+		rootUUID: r.Root.UUID, vUUID: r.Verity.UUID}
 	disk := filepath.Join(stage, "disk.raw")
 	_ = os.Remove(disk)
 	if err := repart(stage, disk, label, v, rel); err != nil {
