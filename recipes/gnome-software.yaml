@@ -1,7 +1,7 @@
 package:
   name: gnome-software
   version: "51.0"
-  epoch: 0
+  epoch: 1
   description: Install and update applications (Flatpak)
   copyright:
     - license: GPL-2.0-or-later
@@ -19,6 +19,8 @@ environment:
       - busybox
       - desktop-file-utils
       - flatpak-dev
+      - fwupd-dev
+      - libglib-testing-dev
       - gdk-pixbuf-dev
       - gettext
       - glib-dev
@@ -44,13 +46,13 @@ pipeline:
       uri: https://download.gnome.org/sources/gnome-software/${{vars.series}}/gnome-software-${{package.version}}.tar.xz
       expected-sha256: 834b6035e61e36dd72339eb3e15d299b472ae0b393467a5bb36bb0045e0ba123
 
-  # Flatpak is the only source of apps: there is no PackageKit, fwupd, snapd or malcontent on
-  # this image. Web apps install into Epiphany, which needs webkitgtk. The sysupdate plugin
-  # talks to systemd-sysupdated, which recipes/systemd-sysupdate does not build (the OS updates
-  # through its own transfers). sysprof is not available.
+  # Flatpak is the source of apps; fwupd brings firmware updates and systemd-sysupdated
+  # (recipes/systemd-sysupdate) the system's own, both shown and installed here. There is no
+  # PackageKit, snapd or malcontent on this image. Web apps install into Epiphany, which needs
+  # webkitgtk. sysprof is not available.
   - uses: meson/configure
     with:
-      opts: -Dflatpak=true -Dpackagekit=false -Dfwupd=false -Dsnap=false -Dmalcontent=false -Dwebapps=false -Dhardcoded_foss_webapps=false -Dhardcoded_proprietary_webapps=false -Dsystemd-sysupdate=false -Deos_updater=false -Drpm_ostree=false -Dmogwai=false -Ddkms=false -Dpolkit=true -Dgudev=true -Dsysprof=disabled -Dtests=false -Dinstalled_tests=false -Dman=false -Dgtk_doc=false
+      opts: -Dflatpak=true -Dpackagekit=false -Dfwupd=true -Dsnap=false -Dmalcontent=false -Dwebapps=false -Dhardcoded_foss_webapps=false -Dhardcoded_proprietary_webapps=false -Dsystemd-sysupdate=true -Deos_updater=false -Drpm_ostree=false -Dmogwai=false -Ddkms=false -Dpolkit=true -Dgudev=true -Dsysprof=disabled -Dtests=false -Dinstalled_tests=false -Dman=false -Dgtk_doc=false
 
   - uses: meson/compile
 

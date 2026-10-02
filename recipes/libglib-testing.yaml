@@ -1,0 +1,47 @@
+# GLib test helpers, which GNOME Software's systemd-sysupdate plugin requires to build. Wolfi has
+# no recipe.
+package:
+  name: libglib-testing
+  version: 0.2.0
+  epoch: 0
+  description: Test library providing test harnesses and mock classes for GLib
+  copyright:
+    - license: LGPL-2.1-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      # Its docs, which it builds unconditionally and the package leaves out.
+      - gtk-doc
+      - meson
+      - ninja
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.gnome.org/pwithnall/libglib-testing.git
+      tag: ${{package.version}}
+      expected-commit: 3195a83d703acfaf93bc0663ec3d183e1c03cf8e
+
+  - uses: meson/configure
+    with:
+      opts: -Dinstalled_tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - runs: rm -rf ${{targets.destdir}}/usr/share/gtk-doc ${{targets.destdir}}/usr/share/doc
+
+  - uses: strip
+
+subpackages:
+  - name: libglib-testing-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - libglib-testing

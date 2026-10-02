@@ -1,17 +1,18 @@
-systemd-sysupdate as a standalone binary, linked statically against systemd's
-own libraries the way systemd-repart.standalone is.
+systemd-sysupdate, systemd-sysupdated and updatectl as standalone binaries, linked statically
+against systemd's own libraries the way systemd-repart.standalone is.
 
-Wolfi's systemd is built with -Dsysupdate=disabled, so spindrift builds
-systemd-sysupdate on its own. Upstream v261.3 has no systemd-sysupdate.standalone
-target; the normal target links libsystemd-shared-261.so, which would tie the
-package to the exact build of Wolfi's systemd. The standalone one carries what
-it needs and only takes the system libraries it names.
+Wolfi's systemd is built with -Dsysupdate=disabled, so spindrift builds them on its own.
+Upstream v261.3 has no standalone targets for them; the normal ones link
+libsystemd-shared-261.so, which would tie the package to the exact build of Wolfi's systemd.
+The standalone ones carry what they need and only take the system libraries they name.
+systemd-sysupdated is the D-Bus service (org.freedesktop.sysupdate1) GNOME Software's
+systemd-sysupdate plugin updates the OS through; updatectl is its command line.
 
 diff --git a/src/sysupdate/meson.build b/src/sysupdate/meson.build
-index da554dd..09f6e4a 100644
+index da554dd..0f6a1de 100644
 --- a/src/sysupdate/meson.build
 +++ b/src/sysupdate/meson.build
-@@ -32,6 +32,23 @@ executables += [
+@@ -32,12 +32,54 @@ executables += [
                          libopenssl_cflags,
                  ],
          },
@@ -35,3 +36,34 @@ index da554dd..09f6e4a 100644
          libexec_template + {
                  'name' : 'systemd-sysupdated',
                  'dbus' : true,
+                 'conditions' : ['ENABLE_SYSUPDATED'],
+                 'sources' : files('sysupdated.c'),
+         },
++        libexec_template + {
++                'name' : 'systemd-sysupdated.standalone',
++                'dbus' : true,
++                'conditions' : ['ENABLE_SYSUPDATED'],
++                'sources' : files('sysupdated.c'),
++                'link_with' : [
++                        libc_wrapper_static,
++                        libbasic_static,
++                        libshared_static,
++                        libsystemd_static,
++                ],
++        },
++        executable_template + {
++                'name' : 'updatectl.standalone',
++                'public' : true,
++                'sources' : systemd_updatectl_sources,
++                'objects' : ['systemd-sysupdate'],
++                'conditions' : ['ENABLE_SYSUPDATED'],
++                'link_with' : [
++                        libc_wrapper_static,
++                        libbasic_static,
++                        libshared_static,
++                        libsystemd_static,
++                ],
++        },
+         executable_template + {
+                 'name' : 'updatectl',
+                 'public' : true,
