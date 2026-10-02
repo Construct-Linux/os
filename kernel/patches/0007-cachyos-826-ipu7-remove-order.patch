@@ -1,0 +1,25 @@
+spindrift: not yet in a maintainer's tree - CachyOS/linux-cachyos#826, whose author is sending it
+to linux-media; carried at the person's request until it lands. ipu7_pci_remove() cleaned up the
+MMU before removing the devices that still free DMA through it: isys_remove() then oopses in
+find_iova() on the NULL mmu->dmap (unbinding the driver, and on Panther Lake laptops after the
+camera's first use).
+
+Subject: [PATCH] media: staging: ipu7: remove the bus devices before the MMU cleanup
+
+---
+--- a/drivers/staging/media/ipu7/ipu7.c
++++ b/drivers/staging/media/ipu7/ipu7.c
+@@ -2637,11 +2637,11 @@
+ 	if (!IS_ERR_OR_NULL(isp->fw_code_region))
+ 		vfree(isp->fw_code_region);
+ 
++	ipu7_bus_del_devices(pdev);
++
+ 	ipu7_mmu_cleanup(isp->isys->mmu);
+ 	ipu7_mmu_cleanup(isp->psys->mmu);
+ 
+-	ipu7_bus_del_devices(pdev);
+-
+ 	pm_runtime_forbid(&pdev->dev);
+ 	pm_runtime_get_noresume(&pdev->dev);
+ 

@@ -66,6 +66,16 @@ RUN --mount=type=cache,sharing=locked,id=ami-kernel-src-${KERNEL_VERSION},target
     tar -xf "$tarball" -C /usr/src && \
     mv linux-${KERNEL_VERSION} linux
 
+# Backports for hardware the pinned kernel does not run yet, each a commit of mainline or of a
+# maintainer's tree, or a fix posted upstream that is carried until it lands - its own header
+# says which, and why. --forward: once the pinned kernel carries
+# a patch it no longer applies and the build stops, so it is dropped. --fuzz=0: a patch that no
+# longer fits exactly stops it too, instead of landing somewhere else.
+COPY kernel/patches/ /usr/src/patches/
+RUN cd /usr/src/linux && for p in /usr/src/patches/*.patch; do \
+        echo "applying $p"; patch -p1 --fuzz=0 --forward --no-backup-if-mismatch < "$p" || exit 1; \
+    done
+
 COPY --from=ami-kernel host.config metal.config /usr/src/fragments/
 COPY kernel/desktop.config /usr/src/fragments/
 
