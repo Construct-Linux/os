@@ -553,7 +553,8 @@ func (r *report) suspend(v *vm, g *guest) {
 	locked, _ := g.eval(`Main.screenShield.locked`)
 	r.add("locked after resume", locked == "true", "screenShield.locked: "+locked)
 	// construct power's sleep hook wrote what the suspend cost.
-	hook, _ := g.run(`journalctl -b -q -o cat MESSAGE_ID=8b1d2f6c3a4e4d0f9c7b5a2e1f6d3c4b | tail -1`, "")
+	// systemd-sleep runs the post hooks after the machine answers again: waited for.
+	hook, _ := g.run(`for i in $(seq 30); do m=$(journalctl -b -q -o cat MESSAGE_ID=8b1d2f6c3a4e4d0f9c7b5a2e1f6d3c4b | tail -1); [ -n "$m" ] && break; sleep 1; done; echo "$m"`, "")
 	if !strings.HasPrefix(hook, "Slept ") {
 		// The hook's own words, when it said something else.
 		hook, _ = g.run(`journalctl -b -q -o cat -t systemd-sleep -t construct-power | tail -4`, "")
