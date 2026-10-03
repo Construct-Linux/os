@@ -1,11 +1,36 @@
 #!/bin/bash
 # Opens /var with a security key before crypttab's TPM2 and password path, when one is enrolled
-# (a systemd-fido2 token in the LUKS2 header): systemd-cryptsetup takes TPM2 before FIDO2 when
-# both are named, and one prompt tried against every token would spend the key's PIN tries on
-# the password. It waits two seconds for the key, which USB may still be announcing, asks for its
-# PIN and a touch, and gives up after one try - the password path follows either way.
+# (a systemd-fido2 token in the LUKS2 header) and plugged in: systemd-cryptsetup takes TPM2 before
+# FIDO2 when both are named.
+#
+# The key's PIN must never reach the TPM2+PIN slot: a wrong PIN there counts toward the TPM's
+# dictionary-attack lockout. systemd-cryptsetup's token modules try a PIN against every token,
+# TPM2 first, whenever FIDO2 by itself finds no key - so the key is waited for here, up to three
+# seconds while USB announces it, and the modules are off (its own FIDO2 path, the key's tokens
+# only). No key, or a failed one: crypttab's attach follows, the TPM and the password as always.
+#
+# The PIN is asked here, in systemd's own words (the boot screen shows them as the key's), and
+# handed over as $PIN: systemd-cryptsetup's FIDO2 path otherwise tries the key without one first
+# and logs that as an error on every boot.
 dev=/dev/disk/by-designator/var-luks
 header=$(cryptsetup luksDump --dump-json-metadata "$dev") || exit 0
 [[ $header == *'"systemd-fido2"'* ]] || exit 0
-exec /usr/lib/systemd/systemd-cryptsetup attach var "$dev" - \
-    fido2-device=auto,token-timeout=2s,tries=1,discard,password-echo=masked
+
+key=
+for _ in $(seq 30); do
+    for h in /dev/hidraw*; do
+        [[ -e $h ]] || continue
+        props=$(udevadm info --query=property --name="$h" 2>/dev/null)
+        if [[ $'\n'$props$'\n' == *$'\nID_SECURITY_TOKEN=1\n'* ]]; then
+            key=$h
+            break 2
+        fi
+    done
+    sleep 0.1
+done
+[[ -n $key ]] || exit 0
+
+pin=$(systemd-ask-password --timeout=0 --echo=masked --icon=drive-harddisk --keyname=fido2-pin \
+    --credential=cryptsetup.fido2-pin "Please enter security token PIN:") || exit 0
+PIN=$pin SYSTEMD_CRYPTSETUP_USE_TOKEN_MODULE=0 exec /usr/lib/systemd/systemd-cryptsetup attach var "$dev" - \
+    "fido2-device=$key,tries=1,discard,password-echo=masked"

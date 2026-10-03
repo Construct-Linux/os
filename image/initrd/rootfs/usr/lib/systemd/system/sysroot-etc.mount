@@ -1,6 +1,12 @@
 # /etc as an overlay: the image's below, read-only and verified with the root; what this machine
 # changed above, on /var (as SteamOS keeps its /etc). An update brings a new lower /etc; what the
 # person changed stays theirs.
+#
+# So the upper may record nothing about one lower, whatever the kernel's defaults: index ties the
+# upper to the lower's file handles (the next release's refuses to mount: "failed to verify upper
+# root origin"), metacopy keeps a changed file's metadata over the lower's data, which the next
+# release replaces, and redirect_dir points a renamed directory at a lower path. Without them a
+# copied-up file is whole in the upper, and a renamed lower directory is copied (EXDEV).
 [Unit]
 Description=/etc, the image's under this machine's changes
 DefaultDependencies=no
@@ -12,4 +18,4 @@ Before=initrd-fs.target
 What=overlay
 Where=/sysroot/etc
 Type=overlay
-Options=lowerdir=/sysroot/etc,upperdir=/sysroot/var/lib/construct/etc/upper,workdir=/sysroot/var/lib/construct/etc/work
+Options=lowerdir=/sysroot/etc,upperdir=/sysroot/var/lib/construct/etc/upper,workdir=/sysroot/var/lib/construct/etc/work,index=off,metacopy=off,redirect_dir=off
