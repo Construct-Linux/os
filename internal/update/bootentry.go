@@ -25,7 +25,7 @@ const EntryTitle = "Construct"
 // BootEntry makes the firmware whose variables are vars start systemd-boot from the ESP esp of the
 // disk whose table is disk: a Boot#### entry, first in BootOrder. An entry of the same title and
 // ESP - a machine installed again - is replaced rather than added to. It answers the entry's
-// number. spin-ami's installer's, which wrote what efibootmgr writes without needing it.
+// number: what efibootmgr writes, without needing it.
 func BootEntry(vars Vars, disk gpt.Table, esp gpt.Partition) (uint16, error) {
 	i := slices.Index(disk.Partitions, esp)
 	if i < 0 || esp.Type != gpt.TypeESP {

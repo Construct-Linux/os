@@ -1,4 +1,4 @@
-spindrift: Mark Brown's sound tree (broonie CI, 2026-09-15; not in a release yet), backported to 7.2. The X9-15p's four CS35L57 amplifiers are lost after a suspend without it: audio dead until a reboot (thesofproject/linux#5898).
+construct: Mark Brown's sound tree (broonie CI, 2026-09-15; not in a release yet), backported to 7.2. The X9-15p's four CS35L57 amplifiers are lost after a suspend without it: audio dead until a reboot (thesofproject/linux#5898).
 
 From 7226c5c21f486aee3f1dad0e5bef20db6006a662 Mon Sep 17 00:00:00 2001
 From: Richard Fitzgerald <rf@opensource.cirrus.com>
@@ -35,7 +35,7 @@ Signed-off-by: Richard Fitzgerald <rf@opensource.cirrus.com>
 Link: https://patch.msgid.link/20260915102110.3276924-1-rf@opensource.cirrus.com
 Signed-off-by: Mark Brown <broonie@kernel.org>
 
-[spindrift: backported to 7.2. cs35l56_sdw_system_suspend() there returns early before
+[construct: backported to 7.2. cs35l56_sdw_system_suspend() there returns early before
  init_done and masks interrupts with cs35l56_disable_sdw_interrupts(); the wait is added after
  cs35l56_system_suspend() as upstream adds it.]
 ---

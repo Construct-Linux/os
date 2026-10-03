@@ -5,17 +5,19 @@ version: "3"
 # the kernel targets too; the optimisation level stays each build system's). melange runs in
 # Docker with bubblewrap inside, which needs --privileged.
 
+# What each build fetches from outside the repository, pinned by content.
+dotenv: [build/versions.env]
+
 vars:
   MELANGE: cgr.dev/chainguard/melange@sha256:3285b57ff3d6f241993f181c1cb154a590ec3ade8c3f6d987686b42693d27afe
   APKO: cgr.dev/chainguard/apko@sha256:730ae486fc77b0cc7326cdd66fb2bb3e093f9fd14b101af603fe714786752ab3
   WOLFI: --repository-append https://packages.wolfi.dev/os --keyring-append https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
   LOCAL: --repository-append /work/packages --keyring-append /work/melange.rsa.pub
-  AMI: ../spin-ami
-  # The kernel's pins and fragments are spin-ami's, read from its checkout.
-  KERNEL_ARGS:
-    sh: >-
-      echo -f kernel/Dockerfile --build-context ami-kernel=../spin-ami/kernel
-      $(cd ../spin-ami && go tool versions args debian debian-snapshot kernel)
+  # The kernel's banner dates it by the last commit, so the same sources make the same kernel.
+  KERNEL_ARGS: >-
+    -f kernel/Dockerfile --build-arg WOLFI_BASE_IMAGE={{.WOLFI_BASE_IMAGE}}
+    --build-arg KERNEL_VERSION={{.KERNEL_VERSION}} --build-arg KERNEL_SHA256={{.KERNEL_SHA256}}
+    --build-arg "KBUILD_BUILD_TIMESTAMP=$(TZ=UTC git log -1 --date=format-local:'%a %b %e %H:%M:%S UTC %Y' --format=%cd)"
   UID:
     sh: id -u
   # The release key's keyring: outside the repository, and never in a container (task usb).
@@ -58,18 +60,32 @@ tasks:
       - docker build --target build-base {{.KERNEL_ARGS}} .
 
   kernel:
-    desc: Build the desktop kernel and its signed modules into _output/kernel and _output/modules.
+    desc: Build the desktop kernel and its signed modules into _output/kernel and _output/modules, with kernel/profiles/autofdo.afdo when there is one.
     cmds:
-      - mkdir -p _output
+      # The profile's directory, which git keeps only once a profile is in it.
+      - mkdir -p _output kernel/profiles
       - docker build --target kernel --output type=local,dest=_output {{.KERNEL_ARGS}} --build-arg KERNEL_NPROC={{.NPROC | default "8"}} .
 
+  kernel:profile:
+    desc: "Turn what construct kernel-profile recorded on a machine (task kernel:profile PERF=kernel.perf) into kernel/profiles/autofdo.afdo, against _output/kernel/vmlinux - the kernel that machine ran, built from the same commit."
+    requires:
+      vars: [PERF]
+    cmds:
+      - mkdir -p kernel/profiles
+      - docker build -q -t construct-kernel-base --target build-base {{.KERNEL_ARGS}} .
+      - >-
+        docker run --rm -u {{.UID}} -v {{.ROOT_DIR}}:/work -w /work construct-kernel-base
+        llvm-profgen --kernel --binary=_output/kernel/vmlinux --perfdata={{.PERF}} -o kernel/profiles/autofdo.afdo
+
   firmware:
-    desc: Take the desktop's firmware out of spin-ami's pinned linux-firmware into _output/firmware.
+    desc: Take the firmware a PC can need out of the pinned linux-firmware and Intel's microcode into _output/firmware.
     cmds:
       - mkdir -p _output
       - >-
         docker build -f firmware/Dockerfile --target firmware --output type=local,dest=_output
-        $(cd {{.AMI}} && go tool versions args wolfi-base linux-firmware intel-microcode) .
+        --build-arg WOLFI_BASE_IMAGE={{.WOLFI_BASE_IMAGE}}
+        --build-arg LINUX_FIRMWARE_VERSION={{.LINUX_FIRMWARE_VERSION}} --build-arg LINUX_FIRMWARE_SHA256={{.LINUX_FIRMWARE_SHA256}}
+        --build-arg INTEL_MICROCODE_VERSION={{.INTEL_MICROCODE_VERSION}} --build-arg INTEL_MICROCODE_SHA256={{.INTEL_MICROCODE_SHA256}} .
 
   rootfs:
     desc: Build the desktop's root filesystem from image/apko.yaml (Wolfi + packages/) into _output/rootfs.tar.
@@ -94,10 +110,18 @@ tasks:
       # packages/ and its public key, for systemd (build/tools/Dockerfile).
       - mkdir -p _output/tools-keys && cp melange.rsa.pub _output/tools-keys/
       - >-
-        docker build -q -t construct-tools -f build/tools/Dockerfile $(cd {{.AMI}} && go tool versions args wolfi-base)
+        docker build -q -t construct-tools -f build/tools/Dockerfile --build-arg WOLFI_BASE_IMAGE={{.WOLFI_BASE_IMAGE}}
         --build-context packages=packages --build-context keys=_output/tools-keys build/tools
       - CGO_ENABLED=0 go build -o _output/bin/image ./cmd/image
       - CGO_ENABLED=0 GOAMD64=v3 go build -trimpath "-ldflags=-s -w" -o _output/construct/usr/bin/construct ./cmd/construct
+
+  harness-qemu:
+    desc: The harness's QEMU, built with CanoKey (build/qemu), which cmd/image runs its machines in when it is there.
+    cmds:
+      - >-
+        docker build -q -t construct-qemu -f build/qemu/Dockerfile --build-arg HARNESS_DEBIAN_IMAGE={{.HARNESS_DEBIAN_IMAGE}}
+        --build-arg QEMU_VERSION={{.QEMU_VERSION}} --build-arg QEMU_SHA256={{.QEMU_SHA256}}
+        --build-arg CANOKEY_QEMU_COMMIT={{.CANOKEY_QEMU_COMMIT}} build/qemu
 
   disk:
     desc: "The ext4 test disk, _output/disk.raw: the same baked root as the USB disk's, booted by its kernel directly (task disk -- -test adds image/test/rootfs)."
@@ -206,16 +230,15 @@ tasks:
       - rm -rf _output/play
 
   scan:
-    desc: "Scan the stick's baked root (_output/usb/root, task usb) for vulnerabilities with Grype; fails on a Critical or High a version already fixes (build/grype.yaml). Everything found is in _output/scan/grype.json."
-    vars:
-      GRYPE:
-        sh: cd {{.AMI}} && go tool versions ref grype
+    desc: "Scan the stick's baked root (_output/usb/root, task usb) for vulnerabilities with Grype; fails on a Critical or High a version already fixes (build/grype.yaml). The report by severity is _output/scan/report.md, Grype's own _output/scan/grype.json."
     cmds:
       - mkdir -p _output/scan/grype-db _output/scan/tmp
+      # The report is written whether the scan passed or not; the scan's status is the task's.
       - >-
         docker run --rm -u {{.UID}} -v {{.ROOT_DIR}}/_output/usb/root:/root:ro -v {{.ROOT_DIR}}/_output/scan:/scan
         -v {{.ROOT_DIR}}/build/grype.yaml:/grype.yaml:ro -e GRYPE_DB_CACHE_DIR=/scan/grype-db -e TMPDIR=/scan/tmp
-        {{.GRYPE}} -c /grype.yaml dir:/root -o table -o json=/scan/grype.json
+        {{.GRYPE_IMAGE}} -c /grype.yaml -q dir:/root -o json=/scan/grype.json; rc=$?;
+        go run ./cmd/image scan-report || exit 1; exit $rc
 
   test:usb:
     desc: Build the USB disk with the test layer, signed by a throwaway key, and run the harness on it, booted by UEFI from a USB stick.
@@ -226,7 +249,7 @@ tasks:
       - go run ./cmd/image test -usb {{.CLI_ARGS}}
 
   test:lifecycle:
-    desc: "Install from a stick onto an NVMe disk, refuse forged sticks, update from a URL, roll back from a broken release by stick: three test releases, in QEMU."
+    desc: "Install from a stick onto an NVMe disk, open it with a security key, refuse forged sticks, update from a URL, roll back from a broken release by stick: three test releases, in QEMU."
     deps: [keygen:test]
     cmds:
       - mkdir -p _output/lifecycle

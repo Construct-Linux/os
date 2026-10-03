@@ -374,7 +374,7 @@ HOME_URL="https://github.com/Construct-Linux/os"
 
 // varSkeleton records the directories and links the packages put in /var, with their owners and
 // modes, as tmpfiles.d lines systemd-tmpfiles makes at every boot: /var is a partition of its own,
-// which hides what the image has there (spin-ami's internal/disk does the same). Files are not
+// which hides what the image has there. Files are not
 // carried; a package that needs one in /var makes it itself. A path another tmpfiles.d file
 // already makes (systemd's var.conf: /var/log, /var/lib...) is left to it: systemd-tmpfiles takes
 // the first line for a path and warns of every other.
@@ -483,7 +483,7 @@ func rootLocked(root string) error {
 	return fmt.Errorf("root has no line in /etc/shadow")
 }
 
-// verity is what the kernel needs to check the root, as spin-ami's internal/disk has it.
+// verity is what the kernel needs to check the root.
 type verity struct {
 	rootHash         string
 	rootUUID, vUUID  string

@@ -1,6 +1,5 @@
 // Package gpt reads and writes a GUID partition table on 512-byte sectors: the table the installer
 // lays on a machine's disk (internal/update), and the stick's that cmd/image forges and reads.
-// spin-ami's, from the commit that carried bare metal's updates (4cafd47).
 package gpt
 
 import (

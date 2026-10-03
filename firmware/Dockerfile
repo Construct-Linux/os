@@ -1,10 +1,11 @@
 # check=skip=InvalidDefaultArgInFrom
 # The firmware a desktop's drivers ask for as their modules probe, from the root's
-# /usr/lib/firmware: spin-ami's pins of linux-firmware and intel-microcode, each tarball checked
-# by its sha256, and of linux-firmware only the families kernel/desktop.config builds drivers
-# for - not its six hundred megabytes.
+# /usr/lib/firmware: linux-firmware's and Intel's microcode releases (build/versions.env), each
+# tarball checked by its sha256, and of linux-firmware everything a PC can have: a driver is there for any
+# hardware (kernel/Dockerfile's base is a general distribution's), and a driver without its
+# firmware is a device that does not work.
 #
-# spin-ami's versions.yaml: wolfi-base, linux-firmware and intel-microcode, handed in by task firmware.
+# build/versions.env: wolfi-base, linux-firmware and intel-microcode, handed in by task firmware.
 ARG WOLFI_BASE_IMAGE
 
 FROM ${WOLFI_BASE_IMAGE} AS build
@@ -20,13 +21,12 @@ ARG INTEL_MICROCODE_SHA256
 # filled it. The tarball is linux-firmware's source tree; its copy-firmware.sh installs it as
 # drivers look for it, zstd-compressed (desktop.config's FW_LOADER_COMPRESS_ZSTD), with the
 # links WHENCE names (iwlwifi-*.ucode at the top, Intel's
-# Bluetooth under the names each part asks for). Of that, per family: Intel graphics (i915, xe)
-# and AMD's (amdgpu); Wi-Fi (iwlwifi, ath11k, ath12k, MediaTek's, rtw88, rtw89); Bluetooth
-# (Intel's ibt, Realtek's; MediaTek's is under mediatek/); Realtek ethernet, USB ones included;
-# Intel's AVS audio DSP; Cirrus Logic's amplifiers and codecs, tuned per laptop (the ThinkPad X9's
-# among them); Intel's camera units (IPU6, IPU7), sensor hub (ISH, and laptop makers' builds of it
-# under LENOVO/) and NPU; AMD's microcode, and Intel's from its own release - both uncompressed,
-# since the kernel reads them from an early cpio before it can decompress anything. The regulatory
+# Bluetooth under the names each part asks for). Of that, all but what no PC carries - which is
+# half of its two gigabytes: Qualcomm's ARM SoCs (qcom), other ARM boards' parts (dpaa2, amlogic,
+# arm, NVIDIA's Tegra) and data-centre network cards (Netronome, Mellanox, Marvell's Prestera
+# switches, QLogic, Chelsio, Cavium's LiquidIO, Broadcom's NetXtreme II). AMD's microcode, and
+# Intel's from its own release, go uncompressed, since the kernel reads them from an early cpio
+# before it can decompress anything. The regulatory
 # database is not here: wireless-regdb is its own package. WHENCE and the licenses say what each
 # file is redistributed under.
 RUN --mount=type=cache,sharing=locked,id=desktop-firmware,target=/var/cache/firmware \
@@ -40,8 +40,13 @@ RUN --mount=type=cache,sharing=locked,id=desktop-firmware,target=/var/cache/firm
     mkdir -p /lf /fw /src; \
     tar -xJf "$lf" -C /lf --strip-components=1; \
     cd /lf && ./copy-firmware.sh -j"$(nproc)" --zstd /fw >/dev/null; \
-    cd /fw && cp -a --parents i915 xe amdgpu intel/iwlwifi iwlwifi-*.zst ath11k ath12k mediatek rtw88 rtw89 \
-      intel/ibt-*.zst rtl_bt rtl_nic intel/avs cirrus intel/ipu intel/ish LENOVO intel/vpu /src; \
+    cd /fw; \
+    rm -rf qcom dpaa2 amlogic arm nvidia/tegra* netronome mellanox mrvl/prestera qed \
+      ql2*_fw.bin.zst cxgb4 liquidio bnx2x phanfw.bin.zst amd-ucode; \
+    find . -type l | while read -r l; do [ -e "$l" ] || rm "$l"; done; \
+    cp -a . /src; \
+    for f in intel/iwlwifi i915 xe amdgpu nvidia/ga102 ath10k ath11k brcm qca rtw89 mediatek intel/vsc cirrus; do \
+      [ -d "/src/$f" ] || { echo "firmware: $f missing"; exit 1; }; done; \
     cd /lf && cp -a WHENCE LICENSES /src && cp -a --parents amd-ucode /src; \
     tar -xzf "/var/cache/firmware/$iu" -C /src --strip-components=1 --wildcards '*/intel-ucode/*' '*/license'
 

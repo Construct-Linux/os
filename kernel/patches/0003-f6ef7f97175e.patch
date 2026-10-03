@@ -1,4 +1,4 @@
-spindrift: mainline v7.3-rc1. The IMX471's ACPI name on Panther Lake machines (TBE20A0), the X9-15p's, for the IPU bridge.
+construct: mainline v7.3-rc1. The IMX471's ACPI name on Panther Lake machines (TBE20A0), the X9-15p's, for the IPU bridge.
 
 From f6ef7f97175e97622c2e65d44005660fe1787e19 Mon Sep 17 00:00:00 2001
 From: Kate Hsuan <hpa@redhat.com>

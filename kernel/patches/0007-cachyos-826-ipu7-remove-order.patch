@@ -1,4 +1,4 @@
-spindrift: not yet in a maintainer's tree - CachyOS/linux-cachyos#826, whose author is sending it
+construct: not yet in a maintainer's tree - CachyOS/linux-cachyos#826, whose author is sending it
 to linux-media; carried at the person's request until it lands. ipu7_pci_remove() cleaned up the
 MMU before removing the devices that still free DMA through it: isys_remove() then oopses in
 find_iova() on the NULL mmu->dmap (unbinding the driver, and on Panther Lake laptops after the

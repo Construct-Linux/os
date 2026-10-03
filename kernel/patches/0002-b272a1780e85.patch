@@ -1,4 +1,4 @@
-spindrift: mainline v7.3-rc1. A fix to the IMX471 driver above.
+construct: mainline v7.3-rc1. A fix to the IMX471 driver above.
 
 From b272a1780e8515617fed2564edccb8da8431d707 Mon Sep 17 00:00:00 2001
 From: David Carlier <devnexen@gmail.com>

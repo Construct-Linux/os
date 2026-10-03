@@ -1,4 +1,4 @@
-spindrift: mainline v7.3-rc1. The IMX471's power enable (vana), for INT3472.
+construct: mainline v7.3-rc1. The IMX471's power enable (vana), for INT3472.
 
 From f8ae10fe4b81efb93e890e6601a92624e4b4a576 Mon Sep 17 00:00:00 2001
 From: Kate Hsuan <hpa@redhat.com>
