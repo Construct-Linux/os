@@ -8,19 +8,19 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/spin-stack/spindrift/internal/gpt"
+	"github.com/Construct-Linux/os/internal/gpt"
 )
 
 // forge makes, from a release's stick, the sticks an update must refuse: its signature gone, its
 // signature changed, its SHA256SUMS changed after it was signed, and its kernel image changed while
-// SHA256SUMS still names the original. It edits the spin-update partition's FAT with mtools, in
+// SHA256SUMS still names the original. It edits the construct-update partition's FAT with mtools, in
 // build/tools: no stick is built again.
 func forge(args []string) error {
 	fl := flag.NewFlagSet("forge", flag.ExitOnError)
 	src := fl.String("stick", filepath.Join(out, "lifecycle", "v2.raw"), "the release's stick")
 	_ = fl.Parse(args)
 
-	offset, err := partitionOffset(*src, "spin-update")
+	offset, err := partitionOffset(*src, "construct-update")
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func forge(args []string) error {
 		}
 	}
 	if efi == "" {
-		return fmt.Errorf("%s's spin-update has no kernel image: %s", *src, names)
+		return fmt.Errorf("%s's construct-update has no kernel image: %s", *src, names)
 	}
 	for _, v := range []struct {
 		name string

@@ -1,6 +1,6 @@
 # Once a day, a while after boot and at a time of its own, so machines do not all ask at once.
 [Unit]
-Description=Check for a new Spindrift every day
+Description=Check for a new Construct every day
 
 [Timer]
 OnBootSec=15min

@@ -1,4 +1,4 @@
-// Command image makes Spindrift's disks and boots them: apko's root filesystem, the kernel's signed
+// Command image makes Construct's disks and boots them: apko's root filesystem, the kernel's signed
 // modules, the firmware and image/rootfs merged into one tree - a later layer's file replacing an
 // earlier one's - and baked; then QEMU boots it, a virtio GPU behind VNC and QMP to take
 // screenshots with.
@@ -26,7 +26,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/spin-stack/spindrift/internal/update"
+	"github.com/Construct-Linux/os/internal/update"
 )
 
 const out = "_output"

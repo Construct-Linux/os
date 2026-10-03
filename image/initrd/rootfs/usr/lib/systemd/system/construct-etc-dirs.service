@@ -8,4 +8,4 @@ After=sysroot-var.mount
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=mkdir -p /sysroot/var/lib/spindrift/etc/upper /sysroot/var/lib/spindrift/etc/work
+ExecStart=mkdir -p /sysroot/var/lib/construct/etc/upper /sysroot/var/lib/construct/etc/work

@@ -1,9 +1,9 @@
-// Package account is the person a Spindrift machine is for: a user in /etc/passwd and
+// Package account is the person a Construct machine is for: a user in /etc/passwd and
 // /etc/shadow, in their groups, GNOME logging them in at boot or not, and their home on /var.
 //
 // The image carries no person. The installer writes the one it asks for into the installed
 // disk's /etc (the overlay's upper layer, on /var); a root that boots with nobody there - a live
-// stick, the test disk - gets Live, whom drift live writes. They go where passwd, chpasswd,
+// stick, the test disk - gets Live, whom construct live writes. They go where passwd, chpasswd,
 // accountsservice and pam_unix change them: the classic files, which a person's /etc keeps a
 // copy of from then on. The image's own users still reach that copy - systemd-sysusers adds
 // what a new release declares at every boot (image/rootfs's systemd-sysusers.service.d) - and
@@ -153,7 +153,7 @@ func withUser(lines []string, name string, isGroups bool, groups []string) ([]st
 }
 
 // Autologin makes GDM log name in at boot: the live user, which has nothing of anyone's to
-// protect, or the person whose password opened the encrypted /var moments before (cmd/drift).
+// protect, or the person whose password opened the encrypted /var moments before (cmd/construct).
 func Autologin(etc, name string) error {
 	conf := "# Logged in at boot: the live session, or the person whose password opened /var.\n" +
 		"[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=" + name + "\n"

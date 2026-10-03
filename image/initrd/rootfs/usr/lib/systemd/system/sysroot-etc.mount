@@ -4,12 +4,12 @@
 [Unit]
 Description=/etc, the image's under this machine's changes
 DefaultDependencies=no
-Requires=sysroot-var.mount spindrift-etc-dirs.service
-After=sysroot-var.mount spindrift-etc-dirs.service
+Requires=sysroot-var.mount construct-etc-dirs.service
+After=sysroot-var.mount construct-etc-dirs.service
 Before=initrd-fs.target
 
 [Mount]
 What=overlay
 Where=/sysroot/etc
 Type=overlay
-Options=lowerdir=/sysroot/etc,upperdir=/sysroot/var/lib/spindrift/etc/upper,workdir=/sysroot/var/lib/spindrift/etc/work
+Options=lowerdir=/sysroot/etc,upperdir=/sysroot/var/lib/construct/etc/upper,workdir=/sysroot/var/lib/construct/etc/work

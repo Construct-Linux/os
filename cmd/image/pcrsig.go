@@ -18,7 +18,7 @@ import (
 )
 
 // The kernel image's PCR 11 policy, signed offline. An installed machine's /var is sealed in the
-// TPM to whatever PCR 11 policy the PCR key signed (cmd/drift makeVar), so a kernel image this
+// TPM to whatever PCR 11 policy the PCR key signed (cmd/construct makeVar), so a kernel image this
 // key did not sign never opens it. The key is RSA-2048 - the one exception to Ed25519: a TPM cannot
 // verify Ed25519, and systemd verifies a PCR policy's signature as RSA only (RSASSA, SHA-256) - and
 // like the release key it never enters a container: ukify computes the

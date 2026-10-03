@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -95,7 +96,7 @@ func test(args []string) error {
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.installer(v, g, *stick)
-	// The live user's login keyring has no password (drift live): a secret is kept and read back
+	// The live user's login keyring has no password (construct live): a secret is kept and read back
 	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
 	// does what an app does; a prompt would hang it until the timeout.
 	keyring, _ := g.run(keyringRoundTrip("live", 1000), "")
@@ -120,6 +121,10 @@ func test(args []string) error {
 		_ = os.WriteFile(filepath.Join(dir, "dns.txt"), []byte(diag), 0o644)
 		r.add("dns", false, "no answer for dl.flathub.org; see dns.txt")
 	}
+	// What waits for a person does not start with the machine: Docker and containerd come up when
+	// docker's socket is first used, and nothing has used it yet.
+	idle, _ := g.run(`systemctl is-active docker.service containerd.service`, "")
+	r.add("on demand only", len(strings.Fields(idle)) == 2 && !slices.Contains(strings.Fields(idle), "active"), oneLine(idle))
 	dock, err := g.run(`sudo -u live docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
@@ -144,16 +149,25 @@ func test(args []string) error {
 	// Firmware and the system's own updates, which GNOME Software reaches over the bus.
 	bus, err := g.run(`busctl --system list --activatable --no-legend | awk '{print $1}' | grep -xE 'org.freedesktop.fwupd|org.freedesktop.sysupdate1' | sort | tr '\n' ' '`, "")
 	r.add("updates services", err == nil && strings.TrimSpace(bus) == "org.freedesktop.fwupd org.freedesktop.sysupdate1", oneLine(bus)+errText(err))
-	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it.
-	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- apk --version 2>&1 | tail -1`, "")
-	r.add("wolfi container", err == nil && strings.HasPrefix(strings.TrimSpace(box), "apk-tools"), oneLine(box)+errText(err))
-	ok, detail = g.waitUnit("spindrift-flathub.service", 15*time.Minute)
-	r.add("flathub", ok, detail)
+	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it, and the
+	// cloud CLIs distrobox.conf installs into it.
+	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 900 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1' 2>&1 | tail -3`, "")
+	r.add("wolfi container", err == nil && strings.Contains(box, "apk-tools") && strings.Contains(box, "aws-cli/2.") && strings.Contains(box, "Google Cloud SDK"), oneLine(box)+errText(err))
+	tools, err := g.run(`task --version && ifconfig lo | head -1 && unpigz --version 2>&1 | head -1`, "")
+	r.add("command-line tools", err == nil && strings.Contains(tools, "3.54") && strings.Contains(tools, "lo:"), oneLine(tools)+errText(err))
+	// Flathub is a static remote (usr/share/flatpak/remotes.d), added the first time flatpak
+	// looks; Chrome is installed as a person does, when asked for.
+	chrome, err := g.run(`timeout 900 flatpak install --system --noninteractive -y flathub com.google.Chrome >/dev/null 2>&1 && flatpak info --system com.google.Chrome | grep -m1 Ref:`, "")
+	r.add("flathub", err == nil && strings.Contains(chrome, "com.google.Chrome"), oneLine(chrome)+errText(err))
 	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files
-	// (drift gtk4), which a Flatpak reads through the image's read-only override. The marker is
-	// the dark styles' media query, which only the Orchis fork's light gtk.css carries.
+	// (construct theme), which a Flatpak reads through the image's read-only override. The marker
+	// is the dark styles' media query, which only the Orchis fork's light gtk.css carries.
 	gtk4, err := g.run(`f=/var/home/live/.config/gtk-4.0/gtk.css; test -f "$f" && ! test -L "$f" && sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c 'grep -c "prefers-color-scheme" "$HOME/.config/gtk-4.0/gtk.css"' 2>&1`, "")
 	r.add("gtk4 theme in flatpak", err == nil && strings.TrimSpace(lastLine(gtk4)) != "0", "Chrome's sandbox reads the copied gtk.css: "+lastLine(gtk4))
+	// GTK 3 apps from Flathub - Chrome's own window - find the theme gtk-theme names in ~/.themes,
+	// which construct theme fills and the same override shows them.
+	gtk3, err := g.run(`t=$(sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.desktop.interface gtk-theme | tr -d "'"); sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c "test -s \"\$HOME/.themes/$t/gtk-3.0/gtk.css\" && echo \"$t\"" 2>&1`, "")
+	r.add("gtk3 theme in flatpak", err == nil && strings.HasPrefix(strings.TrimSpace(lastLine(gtk3)), "Orchis-Construct-"), "Chrome's sandbox finds gtk-theme in ~/.themes: "+lastLine(gtk3))
 
 	want := map[string]bool{}
 	for _, n := range strings.Split(*only, ",") {
@@ -402,7 +416,7 @@ func (r *report) secureBoot(g *guest) {
 }
 
 // installerWindows counts the graphical installer's windows on the live session's screen.
-const installerWindows = `global.get_window_actors().map(a => a.meta_window).filter(w => w.get_wm_class() === "org.spindrift.Installer")`
+const installerWindows = `global.get_window_actors().map(a => a.meta_window).filter(w => w.get_wm_class() === "io.github.construct_linux.Installer")`
 
 // installer checks the live session offers the graphical installer at login on a stick, and
 // nowhere else; its window is shot and closed, so it covers nothing after.
@@ -420,9 +434,9 @@ func (r *report) installer(v *vm, g *guest, stick bool) {
 	}
 	want := map[bool]string{true: "1", false: "0"}[stick]
 	r.add("installer offered", strings.Trim(n, `"`) == want, fmt.Sprintf("%s installer windows on a stick=%v", n, stick))
-	// Its pages, walked as a person does (image/test/rootfs/usr/lib/spindrift-test).
+	// Its pages, walked as a person does (image/test/rootfs/usr/lib/construct-test).
 	walked, err := g.run(`sudo -u live env XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 `+
-		`DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /usr/lib/spindrift-test/walk-installer.py 2>&1`, "")
+		`DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /usr/lib/construct-test/walk-installer.py 2>&1`, "")
 	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), oneLine(walked)+errText(err))
 	if stick && strings.Trim(n, `"`) == "1" {
 		time.Sleep(2 * time.Second)

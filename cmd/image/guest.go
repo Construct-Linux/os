@@ -27,7 +27,7 @@ func testKey() (ssh.Signer, string, error) {
 		if gerr != nil {
 			return nil, "", gerr
 		}
-		block, merr := ssh.MarshalPrivateKey(priv, "spindrift test")
+		block, merr := ssh.MarshalPrivateKey(priv, "construct test")
 		if merr != nil {
 			return nil, "", merr
 		}

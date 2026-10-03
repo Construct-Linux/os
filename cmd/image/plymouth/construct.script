@@ -1,5 +1,7 @@
-# Spindrift's boot screen (cmd/image plymouth.go writes it): SpinBot, a ring turning under it, and
-# when the disk asks for its password a field of our own - the words GNOME's, in {{.Lang}}.
+# CONSTRUCT's boot screen (cmd/image plymouth.go writes it): the brand's animation - the intro
+# once, the loop while the machine boots - and when the disk asks for its password, the outro, its
+# last frame the logo, with a field of our own under it - the words GNOME's, in {{.Lang}}. The
+# logo then stays until the desktop takes the screen.
 password_text = "{{.Password}}";
 caps_text = "{{.Caps}}";
 retry_text = "{{.Retry}}";
@@ -11,22 +13,38 @@ Plymouth.SetRefreshRate(30);
 
 center_x = Window.GetX() + Window.GetWidth() / 2;
 
-logo.image = Image("watermark.png");
-logo.sprite = Sprite(logo.image);
-logo.sprite.SetPosition(center_x - logo.image.GetWidth() / 2, Window.GetY() + Window.GetHeight() * 0.42 - logo.image.GetHeight() / 2, 1);
-below_logo = logo.sprite.GetY() + logo.image.GetHeight();
+# The frames are drawn at 1080 px, square: 60% of the screen's shorter side, never above that.
+size = Math.Int(Math.Min(Math.Min(Window.GetWidth(), Window.GetHeight()) * 0.6, 1080));
+frame_x = center_x - size / 2;
+frame_y = Window.GetY() + Window.GetHeight() * 0.4 - size / 2;
+# Where the outro's last frame - the logo - ends, from the top of the frame.
+logo_bottom = frame_y + size * {{.LogoBottom}};
 
-frames = {{.Frames}};
-for (i = 0; i < frames; i++)
-  ring[i] = Image("ring-" + i + ".png");
-ring_sprite = Sprite(ring[0]);
-ring_sprite.SetPosition(center_x - ring[0].GetWidth() / 2, below_logo + 48, 1);
-frame = 0;
+# Plymouth reads an image from the theme's directory, so the brand's are reached from there.
+fun frame_image(part, n)
+{
+  if (n < 10)
+    name = "000" + n;
+  else
+    name = "00" + n;
+  return Image("{{.Frames}}" + part + "-" + name + ".png").Scale(size, size);
+}
+
+# The intro and the outro are shown once each, so they are read as they play; the loop's frames,
+# shown again and again, are kept.
+intro_frames = {{.Intro}};
+loop_frames = {{.Loop}};
+outro_frames = {{.Outro}};
+anim = Sprite(frame_image("intro", 1));
+anim.SetPosition(frame_x, frame_y, 1);
+part = "intro";
+shown = 1;
+tick = 0;
 
 # The prompt, hidden until asked for: a title, the field, a dot per character, and two notes.
 title.image = Image.Text(password_text, 1, 1, 1, 1, font);
 title.sprite = Sprite(title.image);
-title.sprite.SetPosition(center_x - title.image.GetWidth() / 2, below_logo + 32, 2);
+title.sprite.SetPosition(center_x - title.image.GetWidth() / 2, logo_bottom + 32, 2);
 
 entry.image = Image("entry.png");
 entry.sprite = Sprite(entry.image);
@@ -59,7 +77,6 @@ fun show_prompt(opacity)
 {
   title.sprite.SetOpacity(opacity);
   entry.sprite.SetOpacity(opacity);
-  ring_sprite.SetOpacity(1 - opacity);
   if (!opacity)
   {
     caps.sprite.SetOpacity(0);
@@ -69,16 +86,44 @@ fun show_prompt(opacity)
   }
 }
 
+fun play(next)
+{
+  part = next;
+  shown = 0;
+}
+
+# The brand's 9.6 frames a second, out of 30 refreshes: the frame is the tick's share of them.
 fun refresh()
 {
   if (asking)
-  {
     caps.sprite.SetOpacity(Plymouth.GetCapslockState());
-  }
-  else
+  tick++;
+  n = Math.Int(tick * 0.32);
+  if (n == shown_at)
+    return;
+  shown_at = n;
+  if (part == "intro")
   {
-    frame++;
-    ring_sprite.SetImage(ring[frame % frames]);
+    if (shown == intro_frames)
+      play("loop");
+    else
+    {
+      shown++;
+      anim.SetImage(frame_image("intro", shown));
+    }
+  }
+  if (part == "loop")
+  {
+    i = shown % loop_frames;
+    if (!kept[i])
+      kept[i] = frame_image("loop", i + 1);
+    anim.SetImage(kept[i]);
+    shown++;
+  }
+  if (part == "outro" && shown < outro_frames)
+  {
+    shown++;
+    anim.SetImage(frame_image("outro", shown));
   }
 }
 
@@ -88,6 +133,8 @@ fun display_password(prompt, count)
 {
   if (asking && count == 0 && typed > 0)
     wrong = 1;
+  if (!asking)
+    play("outro");
   asking = 1;
   typed = count;
   show_prompt(1);
@@ -96,12 +143,15 @@ fun display_password(prompt, count)
     bullets[i].SetOpacity(i < count);
 }
 
+# Once the disk is open the logo stays: GDM's handover pauses Plymouth on the frame it shows
+# (plymouth deactivate, which a script theme cannot animate), and the desktop replaces the logo.
 fun display_normal()
 {
   asking = 0;
   show_prompt(0);
 }
 
+shown_at = 0;
 show_prompt(0);
 Plymouth.SetRefreshFunction(refresh);
 Plymouth.SetDisplayPasswordFunction(display_password);

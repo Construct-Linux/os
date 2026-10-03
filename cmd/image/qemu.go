@@ -147,7 +147,7 @@ func (m machine) start() (*vm, error) {
 		}
 		if m.nvme != "" {
 			args = append(args, "-drive", "if=none,id=nvme0,format=raw,file="+m.nvme,
-				"-device", "nvme,drive=nvme0,serial=spindrift-test")
+				"-device", "nvme,drive=nvme0,serial=construct-test")
 		}
 	} else {
 		args = append(args,

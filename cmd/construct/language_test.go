@@ -25,14 +25,14 @@ func TestTheLanguageIsTheSessionsLocaleAndLayout(t *testing.T) {
 // The boot screen speaks the most specific language there is a theme for, English without one.
 func TestTheBootScreenSpeaksTheClosestLanguage(t *testing.T) {
 	themes := t.TempDir()
-	for _, d := range []string{"spin", "spin-es", "spin-pt_BR", "spin-sr@latin"} {
+	for _, d := range []string{"construct", "construct-es", "construct-pt_BR", "construct-sr@latin"} {
 		if err := os.Mkdir(filepath.Join(themes, d), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
 	for locale, want := range map[string]string{
-		"es_AR.UTF-8": "spin-es", "pt_BR.UTF-8": "spin-pt_BR", "pt_PT.UTF-8": "spin",
-		"sr_RS.UTF-8@latin": "spin-sr@latin", "ja_JP.UTF-8": "spin",
+		"es_AR.UTF-8": "construct-es", "pt_BR.UTF-8": "construct-pt_BR", "pt_PT.UTF-8": "construct",
+		"sr_RS.UTF-8@latin": "construct-sr@latin", "ja_JP.UTF-8": "construct",
 	} {
 		if got := (language{locale: locale, layout: "us"}).bootTheme(themes); got != want {
 			t.Errorf("%s: %s, not %s", locale, got, want)
@@ -42,11 +42,11 @@ func TestTheBootScreenSpeaksTheClosestLanguage(t *testing.T) {
 
 func TestPlymouthIsToldTheTheme(t *testing.T) {
 	f := filepath.Join(t.TempDir(), "plymouthd.conf")
-	if err := os.WriteFile(f, []byte("[Daemon]\nTheme=spin\nShowDelay=0\n"), 0o644); err != nil {
+	if err := os.WriteFile(f, []byte("[Daemon]\nTheme=construct\nShowDelay=0\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	b, err := plymouthConf(f, "spin-es")
-	if err != nil || string(b) != "[Daemon]\nTheme=spin-es\nShowDelay=0\n" {
+	b, err := plymouthConf(f, "construct-es")
+	if err != nil || string(b) != "[Daemon]\nTheme=construct-es\nShowDelay=0\n" {
 		t.Errorf("%q %v", b, err)
 	}
 }

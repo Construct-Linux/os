@@ -1,18 +1,18 @@
-# Spindrift's look, the defaults every user starts from; each person changes them in Settings
+# Construct's look, the defaults every user starts from; each person changes them in Settings
 # or Tweaks, in their own dconf database. Orchis for the shell and GTK 3; libadwaita apps take
-# it from ~/.config/gtk-4.0 (spindrift-gtk4.service, Flatpaks too), built for
+# it from ~/.config/gtk-4.0 (construct-theme.service, Flatpaks too), built for
 # this GNOME by the Orchis fork and checked in task test's screenshots, since each release can
 # break it.
 
 [org/gnome/desktop/interface]
-gtk-theme='Orchis-Teal-Dark'
+gtk-theme='Orchis-Construct-Dark'
 icon-theme='Tela-dark'
-cursor-theme='Bibata-Modern-Classic'
+cursor-theme='Bibata-Modern-Construct'
 accent-color='teal'
 color-scheme='prefer-dark'
 
 [org/gnome/shell/extensions/user-theme]
-name='Orchis-Teal-Dark'
+name='Orchis-Construct-Dark'
 
 # The set a developer keeps on: the shell theme, tray icons, clipboard history, the panel's
 # tweaks, staying awake, system monitors, tiling, and a taskbar. Workspace Indicator, Removable
@@ -31,7 +31,7 @@ profile-uuids=['5f0d1a6e2b3c4d8e9f0a1b2c3d4e5f60', '7a1b2c3d4e5f60718293a4b5c6d7
 default-profile-uuid='5f0d1a6e2b3c4d8e9f0a1b2c3d4e5f60'
 
 [org/gnome/Ptyxis/Profiles/5f0d1a6e2b3c4d8e9f0a1b2c3d4e5f60]
-label='Spindrift'
+label='Construct'
 
 [org/gnome/Ptyxis/Profiles/7a1b2c3d4e5f60718293a4b5c6d7e8f9]
 label='Wolfi'

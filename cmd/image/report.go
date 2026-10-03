@@ -90,7 +90,7 @@ func (r *report) system(g *guest) {
 		info, _ := g.run(`coredumpctl --no-pager info 2>&1`, "")
 		_ = os.WriteFile(filepath.Join(r.dir, "coredumps.txt"), []byte(info), 0o644)
 	}
-	errs, _ := g.run(`journalctl -b -p err --no-pager -o short-monotonic`, "")
+	errs, errsErr := g.run(`journalctl -b -p err -q --no-pager -o short-monotonic`, "")
 	// What GNOME Shell logs below error priority but is a bug all the same: an extension's
 	// exception, an actor used after it was destroyed (both typical of a lock/unlock cycle, which
 	// disables and enables every extension), a cursor the theme lacks.
@@ -116,11 +116,22 @@ func (r *report) system(g *guest) {
 	pam, pamErr := g.run(`journalctl -b --no-pager -o cat | grep -E 'unable to open config for' | sort -u || true`, "")
 	r.add("pam", pamErr == nil && strings.TrimSpace(pam) == "", oneLine(pam)+errText(pamErr))
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
+	// An error in the journal is a fault of the image's, whoever logged it: none is expected. -q, or
+	// an empty journal reads "-- No entries --".
+	errLines := strings.Count(strings.TrimSpace(errs), "\n")
+	if strings.TrimSpace(errs) != "" {
+		errLines++
+	}
+	r.add("journal errors", errsErr == nil && errLines == 0, fmt.Sprintf("%d in journal-errors.txt: %s", errLines, oneLine(firstLine(errs)))+errText(errsErr))
 	// Where the boot's time went, for every build: the total in the report, the chain to the
 	// desktop and the slowest units in boot.txt. Not a gate - a VM's numbers are not a machine's -
 	// but a baseline to compare builds by.
 	boot, bootErr := g.run(`systemd-analyze time; echo; systemd-analyze critical-chain graphical.target; echo; systemd-analyze blame | head -30`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "boot.txt"), []byte(boot), 0o644)
+	// The initrd's own timeline, which systemd-analyze's chain does not show: on a stick's first
+	// boot it makes /var, and where that time goes is in its journal.
+	initrd, _ := g.run(`journalctl -b -o short-monotonic --no-pager | sed '/Switching root/q'`, "")
+	_ = os.WriteFile(filepath.Join(r.dir, "initrd.txt"), []byte(initrd), 0o644)
 	r.add("boot time", bootErr == nil, oneLine(firstLine(boot))+errText(bootErr))
 	// Plymouth's own log, when the disk was built to boot with plymouth.debug.
 	if ply, err := g.run("cat /var/log/plymouth-debug.log", ""); err == nil && ply != "" {

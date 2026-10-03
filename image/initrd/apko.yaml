@@ -16,11 +16,16 @@ contents:
     - systemd
     - udev
     - kmod
+    # libkmod, which systemd and udevd open at run time: without it both log an error at every
+    # boot, though the initrd loads no module.
+    - kmod-libs
+    # libfido2, which systemd-cryptsetup opens at run time to unlock /var with a security key.
+    - libfido2
     - mount
     - umount
     - util-linux
     # sulogin, for the emergency shell; sfdisk moves a stick's backup GPT to its end before
-    # systemd-repart looks for room for /var (spindrift-gpt-relocate.service).
+    # systemd-repart looks for room for /var (construct-gpt-relocate.service).
     - util-linux-login
     # util-linux's su, by name: util-linux-login needs a cmd:su, and Heimdal's Kerberos su
     # declares a higher version of it (7.8 against 2.42), so the resolver picked that one as the
@@ -42,7 +47,7 @@ contents:
     # package's other faces are trimmed, cmd/image initrdTrim): without one the prompt is boxes.
     - adwaita-fonts
     # The keyboard layouts Plymouth reads the password with (XKBLAYOUT in /etc/vconsole.conf, from
-    # spindrift-boot-language.service): without them every key is a US keyboard's.
+    # construct-boot-language.service): without them every key is a US keyboard's.
     - xkeyboard-config
     - bash
     - bash-binsh

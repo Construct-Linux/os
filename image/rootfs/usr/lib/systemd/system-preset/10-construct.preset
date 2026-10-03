@@ -25,14 +25,12 @@ enable cups.socket
 enable cups.path
 enable cups-browsed.service
 enable fwupd-refresh.timer
-# Containers.
+# Containers: Docker starts when its socket is first used, and containerd with it.
 enable docker.socket
-enable containerd.service
-# Spindrift's own.
-enable spindrift-boot-check.service
-enable spindrift-ssh-hostkeys.service
-enable spindrift-live.service
-enable spindrift-update.timer
-enable spindrift-flathub.timer
+# Construct's own.
+enable construct-boot-check.service
+enable construct-ssh-hostkeys.service
+enable construct-live.service
+enable construct-update.timer
 
 disable *

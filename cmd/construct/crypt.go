@@ -14,7 +14,7 @@ import (
 // An installed machine's /var is LUKS2: everything of the person's is on it (home, the /etc
 // overlay, Docker, Flatpaks). systemd-cryptsetup opens it in the initrd (image/initrd's crypttab,
 // pulled in by its udev rule once the partition appears) by the person's password: typed as the
-// TPM's PIN where there is a TPM - the TPM then refuses a kernel image Spindrift's PCR key did not
+// TPM's PIN where there is a TPM - the TPM then refuses a kernel image Construct's PCR key did not
 // sign, and counts wrong PINs against dictionary attacks - or as the passphrase where there is none.
 
 // pcrPublicKey is the key the running kernel image's PCR 11 policy is signed with: systemd-stub
@@ -24,7 +24,7 @@ const pcrPublicKey = "/run/systemd/tpm2-pcr-public-key.pem"
 
 // installVar is the name /var is opened under while it is made: not "var", which udev would give
 // the live system's by-designator name.
-const installVar = "spindrift-install-var"
+const installVar = "construct-install-var"
 
 // hasTPM2 says whether the machine has a TPM 2.0.
 func hasTPM2(sys string) bool {
@@ -77,7 +77,7 @@ func makeVar(ctx context.Context, log *slog.Logger, partition string, p person, 
 	return recovery, err
 }
 
-// cmd runs a program with stdin as its input and env added to drift's, its output on drift's
+// cmd runs a program with stdin as its input and env added to construct's, its output on construct's
 // standard error.
 func cmd(ctx context.Context, stdin []byte, env []string, name string, args ...string) error {
 	return cmdOut(ctx, stdin, env, nil, name, args...)

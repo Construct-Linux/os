@@ -1,9 +1,9 @@
-// The live session runs drift install from the graphical installer (spindrift-installer) without
-// a password: the live user exists only on a stick nobody is installed from (drift live), and is
-// root's already through sudo. Only drift, only from the active local session.
+// The live session runs construct install from the graphical installer (construct-installer) without
+// a password: the live user exists only on a stick nobody is installed from (construct live), and is
+// root's already through sudo. Only construct, only from the active local session.
 polkit.addRule(function (action, subject) {
     if (action.id == "org.freedesktop.policykit.exec" &&
-        action.lookup("program") == "/usr/bin/drift" &&
+        action.lookup("program") == "/usr/bin/construct" &&
         subject.user == "live" && subject.local && subject.active) {
         return polkit.Result.YES;
     }

@@ -1,9 +1,9 @@
 # The partitions only the system reads stay out of Files and the desktop (udisks): a stick's
-# spin-update, which a person mounting read-write would also keep drift install from mounting it
+# construct-update, which a person mounting read-write would also keep construct install from mounting it
 # read-only, and on any of the system's disks its ESP, its root and verity slots, and its /var -
 # another machine's or a stick's, which booting an installed disk with the stick plugged in
 # would otherwise mount in the person's session (systemd's own /var is mounted by the initrd).
-SUBSYSTEM=="block", ENV{ID_PART_ENTRY_NAME}=="spin-update", ENV{UDISKS_IGNORE}="1"
+SUBSYSTEM=="block", ENV{ID_PART_ENTRY_NAME}=="construct-update", ENV{UDISKS_IGNORE}="1"
 SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="c12a7328-f81f-11d2-ba4b-00a0c93ec93b", ENV{UDISKS_IGNORE}="1"
 SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="4f68bce3-e8cd-4db1-96e7-fbcaf984b709", ENV{UDISKS_IGNORE}="1"
 SUBSYSTEM=="block", ENV{ID_PART_ENTRY_TYPE}=="2c7357ed-ebd2-46d9-aec1-23d437ec2bf5", ENV{UDISKS_IGNORE}="1"

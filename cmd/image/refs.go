@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/spin-stack/spindrift/internal/account"
+	"github.com/Construct-Linux/os/internal/account"
 )
 
 // refs checks that what the baked root's configuration names exists in it: the units it runs

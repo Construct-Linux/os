@@ -1,10 +1,10 @@
 # A user session's own units, enabled by systemctl --global preset-all in bake: sound, the
-# person's folders, and Spindrift's. What is not listed is off.
+# person's folders, and Construct's. What is not listed is off.
 enable pipewire.socket
 enable pipewire-pulse.socket
 enable wireplumber.service
 enable xdg-user-dirs.service
-enable spindrift-reboot-notice.path
-enable spindrift-gtk4.service
+enable construct-reboot-notice.path
+enable construct-theme.service
 
 disable *

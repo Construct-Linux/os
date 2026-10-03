@@ -12,7 +12,7 @@ import (
 )
 
 // Each variable is signed as the firmware checks it: PK by itself, KEK by PK, db by KEK - and db
-// holds Spindrift's certificate and Microsoft's two option ROM CAs.
+// holds Construct's certificate and Microsoft's two option ROM CAs.
 func TestTheKeySetEnrollsAsTheFirmwareChecksIt(t *testing.T) {
 	vars, _, dbCertificate, err := makeKeySet()
 	if err != nil {
@@ -47,7 +47,7 @@ func TestTheKeySetEnrollsAsTheFirmwareChecksIt(t *testing.T) {
 		}
 	}
 	if len(certs["db.auth"]) != 3 || !certs["db.auth"][0].Equal(dbCertificate) {
-		t.Errorf("db holds %d certificates, Spindrift's first: %v", len(certs["db.auth"]), certs["db.auth"])
+		t.Errorf("db holds %d certificates, Construct's first: %v", len(certs["db.auth"]), certs["db.auth"])
 	}
 }
 

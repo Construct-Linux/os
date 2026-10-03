@@ -1,10 +1,10 @@
-# A version is written and waits for a reboot: drift pending --mark, after an update, left
-# its version in /run/spindrift/reboot-required.
+# A version is written and waits for a reboot: construct pending --mark, after an update, left
+# its version in /run/construct/reboot-required.
 [Unit]
-Description=Tell the person a new Spindrift waits for a reboot
+Description=Tell the person a new Construct waits for a reboot
 
 [Path]
-PathExists=/run/spindrift/reboot-required
+PathExists=/run/construct/reboot-required
 
 [Install]
 WantedBy=default.target

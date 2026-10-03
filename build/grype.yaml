@@ -1,6 +1,6 @@
 # What task scan holds the root to. Grype decides it from this.
 
-# The root's os-release says Spindrift, which Grype knows nothing of; its packages are Wolfi's
+# The root's os-release says Construct, which Grype knows nothing of; its packages are Wolfi's
 # and recipes/'s, and Wolfi's feed says which CVEs of Wolfi's packages are fixed.
 distro: wolfi:rolling
 

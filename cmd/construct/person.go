@@ -15,8 +15,8 @@ import (
 	"github.com/openwall/yescrypt-go"
 	"golang.org/x/term"
 
-	"github.com/spin-stack/spindrift/internal/account"
-	"github.com/spin-stack/spindrift/internal/update"
+	"github.com/Construct-Linux/os/internal/account"
+	"github.com/Construct-Linux/os/internal/update"
 )
 
 // person is who the machine is installed for, and the password that unlocks it and logs them in.
@@ -197,7 +197,7 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	if err != nil {
 		return err
 	}
-	upper := filepath.Join(dir, "lib", "spindrift", "etc", "upper")
+	upper := filepath.Join(dir, "lib", "construct", "etc", "upper")
 	err = account.Write(upper, factoryEtc, u)
 	if err == nil {
 		err = account.MakeHome(dir, u)
@@ -223,9 +223,9 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 const factoryEtc = "/usr/share/factory/etc"
 
 // liveCmd gives a stick nobody is installed from the live user, logged in at boot
-// (spindrift-live.service, before GDM), and the installer; a development root (the ext4 test
+// (construct-live.service, before GDM), and the installer; a development root (the ext4 test
 // disk) gets the live user too. An installed machine - a verified root that is no stick - has
-// its person, written by drift install, or after a factory reset left it nobody, GNOME's
+// its person, written by construct install, or after a factory reset left it nobody, GNOME's
 // Initial Setup makes one: it never gets the live user.
 func liveCmd(etc, varDir string) error {
 	stick := update.FromStick("/sys")
@@ -296,7 +296,7 @@ func ownedFile(home, rel string, body []byte, uid int) error {
 
 // installerEntry is the graphical installer's desktop entry, which only a stick's live session
 // shows: an installed machine has no live user, and the test disk is no stick.
-const installerEntry = "/usr/share/spindrift/org.spindrift.Installer.desktop"
+const installerEntry = "/usr/share/construct/io.github.construct_linux.Installer.desktop"
 
 // offerInstaller puts the installer in home's applications and starts it at login, as uid's.
 func offerInstaller(home, entry string, uid int) error {

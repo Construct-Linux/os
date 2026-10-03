@@ -11,7 +11,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/spin-stack/spindrift/internal/gpt"
+	"github.com/Construct-Linux/os/internal/gpt"
 )
 
 // Disk is the disk an install writes, open to be read and written.

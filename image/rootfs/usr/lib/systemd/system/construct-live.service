@@ -1,4 +1,4 @@
-# A stick nobody is installed from - and the test disk - boots into the live user: drift live
+# A stick nobody is installed from - and the test disk - boots into the live user: construct live
 # writes it (internal/account), with GDM logging it in. An installed machine never gets it: it has
 # its person, or after a factory reset GNOME's Initial Setup makes one. Before GDM and logins,
 # after /var and the /etc overlay are up.
@@ -10,7 +10,7 @@ Before=systemd-user-sessions.service display-manager.service
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-ExecStart=/usr/bin/drift live
+ExecStart=/usr/bin/construct live
 
 [Install]
 WantedBy=multi-user.target

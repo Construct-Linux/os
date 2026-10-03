@@ -1,0 +1,11 @@
+# Chrome comes from Flathub when a person asks for it: this opens its page in Software, which
+# installs it. Flatpak's own entry, of the same name and earlier in XDG_DATA_DIRS, then takes
+# this one's place.
+[Desktop Entry]
+Type=Application
+Name=Google Chrome
+Comment=Install Google Chrome from Flathub
+Icon=com.google.Chrome
+Exec=gnome-software --details=com.google.Chrome
+Categories=Network;WebBrowser;
+StartupNotify=true

@@ -1,13 +1,13 @@
 # /var by the names it has outside a factory reset, during one too. systemd's rules
 # (90-image-dissect.rules) hide a partition while a reset is on, for systemd-repart to remake it;
-# here spindrift-factory-reset.service makes /var's file system anew before it is mounted, so the
+# here construct-factory-reset.service makes /var's file system anew before it is mounted, so the
 # initrd looks for /var by the same names in either state. An encrypted /var - an installed
 # machine's - is opened as it appears (crypttab's var, noauto: a stick has no encrypted /var to
 # wait for), and the device it is opened as is by-designator/var in every state already.
-ACTION=="remove", GOTO="spindrift_var_end"
-SUBSYSTEM!="block", GOTO="spindrift_var_end"
-ENV{DEVTYPE}!="partition", GOTO="spindrift_var_end"
-ENV{ID_DISSECT_PART_DESIGNATOR}!="var", GOTO="spindrift_var_end"
+ACTION=="remove", GOTO="construct_var_end"
+SUBSYSTEM!="block", GOTO="construct_var_end"
+ENV{DEVTYPE}!="partition", GOTO="construct_var_end"
+ENV{ID_DISSECT_PART_DESIGNATOR}!="var", GOTO="construct_var_end"
 ENV{ID_FS_TYPE}=="crypto_LUKS", SYMLINK+="disk/by-designator/var-luks", ENV{SYSTEMD_WANTS}+="systemd-cryptsetup@var.service"
 ENV{ID_FS_TYPE}!="crypto_LUKS", SYMLINK+="disk/by-designator/var"
-LABEL="spindrift_var_end"
+LABEL="construct_var_end"

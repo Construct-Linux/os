@@ -19,7 +19,7 @@ import (
 var testKeys = sync.OnceValue(func() [2]*openpgp.Entity {
 	var keys [2]*openpgp.Entity
 	for i := range keys {
-		e, err := openpgp.NewEntity("update test", "", "test@spindrift", &packet.Config{Algorithm: packet.PubKeyAlgoEdDSA})
+		e, err := openpgp.NewEntity("update test", "", "test@construct", &packet.Config{Algorithm: packet.PubKeyAlgoEdDSA})
 		if err != nil {
 			panic(err)
 		}
@@ -199,7 +199,7 @@ func TestAReleaseIsThreeFilesOfOneVersion(t *testing.T) {
 }
 
 func TestAKeyringWithAKeyThatIsNotEd25519IsRefused(t *testing.T) {
-	rsaKey, err := openpgp.NewEntity("rsa", "", "rsa@spindrift", &packet.Config{Algorithm: packet.PubKeyAlgoRSA, RSABits: 2048})
+	rsaKey, err := openpgp.NewEntity("rsa", "", "rsa@construct", &packet.Config{Algorithm: packet.PubKeyAlgoRSA, RSABits: 2048})
 	must(t, err)
 	if _, err := ParseKeyring(publicKeyring(t, rsaKey, false)); err == nil {
 		t.Error("an RSA release key was taken; a release is signed with Ed25519 alone")

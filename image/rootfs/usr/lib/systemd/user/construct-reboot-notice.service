@@ -1,6 +1,6 @@
 [Unit]
-Description=Tell the person a new Spindrift waits for a reboot
+Description=Tell the person a new Construct waits for a reboot
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c 'v=$(cat /run/spindrift/reboot-required); gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify "Spindrift" 0 system-software-update "Spindrift $v is ready" "Restart to start it. If it does not come up, the version you have now starts again by itself." "[]" "{\"urgency\": <byte 1>, \"resident\": <true>}" 0'
+ExecStart=/bin/sh -c 'v=$(cat /run/construct/reboot-required); gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify "Construct" 0 system-software-update "Construct $v is ready" "Restart to start it. If it does not come up, the version you have now starts again by itself." "[]" "{\"urgency\": <byte 1>, \"resident\": <true>}" 0'

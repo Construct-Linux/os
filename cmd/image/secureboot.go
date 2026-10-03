@@ -26,7 +26,7 @@ import (
 
 // Secure Boot. The firmware runs only EFI binaries a certificate in its db signed: systemd-boot
 // and the kernel image, whose command line names the root's dm-verity hash, so one signature
-// holds the whole boot to Spindrift's. The keys are RSA-2048, PKCS #1 v1.5 over SHA-256 - the one
+// holds the whole boot to Construct's. The keys are RSA-2048, PKCS #1 v1.5 over SHA-256 - the one
 // algorithm firmware and Authenticode agree on - and made once on the host (image
 // secureboot-keys). PK and KEK sign their own variables and db's then and are thrown away: they
 // would only ever sign a change to db, and a new db is a new key set. db's key stays in
@@ -36,7 +36,7 @@ import (
 // in setup mode: by itself in a VM, from its menu on a machine (loader.conf's secure-boot-enroll
 // if-safe).
 
-// db holds Microsoft's two CAs for option ROMs beside Spindrift's key: a graphics card's or
+// db holds Microsoft's two CAs for option ROMs beside Construct's key: a graphics card's or
 // network card's firmware is signed by Microsoft (the 2011 UEFI CA, and since 2023 its Option ROM
 // CA), and a db without them leaves such a machine without a screen, or without a boot. Not the
 // Windows CAs, nor 2023's for others' boot loaders. From github.com/microsoft/secureboot_objects
@@ -45,7 +45,7 @@ import (
 //go:embed secureboot/*.der
 var microsoftCAs embed.FS
 
-// sbOwner is the owner GUID of the signatures Spindrift adds.
+// sbOwner is the owner GUID of the signatures Construct adds.
 var sbOwner = *util.StringToGUID("0239b3ac-9f59-4d16-84ae-cdd4977061a5")
 
 // The key set in its directory: db's key and certificate, and the three variables to enroll.
@@ -92,15 +92,15 @@ func secureBootKeys(args []string) error {
 
 // makeKeySet answers the three signed variables, by file name, and db's key and certificate.
 func makeKeySet() (map[string][]byte, *rsa.PrivateKey, *x509.Certificate, error) {
-	pk, pkCert, err := newKey("Spindrift PK")
+	pk, pkCert, err := newKey("Construct PK")
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	kek, kekCert, err := newKey("Spindrift KEK")
+	kek, kekCert, err := newKey("Construct KEK")
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	db, dbCertificate, err := newKey("Spindrift db")
+	db, dbCertificate, err := newKey("Construct db")
 	if err != nil {
 		return nil, nil, nil, err
 	}
@@ -165,7 +165,7 @@ func newKey(name string) (*rsa.PrivateKey, *x509.Certificate, error) {
 	now := time.Now().UTC()
 	tmpl := &x509.Certificate{
 		SerialNumber:       serial,
-		Subject:            pkix.Name{CommonName: name, Organization: []string{"Spindrift"}},
+		Subject:            pkix.Name{CommonName: name, Organization: []string{"Construct"}},
 		NotBefore:          now.Add(-time.Hour),
 		NotAfter:           now.AddDate(30, 0, 0),
 		KeyUsage:           x509.KeyUsageDigitalSignature,

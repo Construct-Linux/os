@@ -2,13 +2,13 @@
 # /etc as it starts. gpt-auto mounts /var only after the switch, so the initrd does it here, from
 # the partition the dissect_image udev builtin designates on the disk the machine booted from:
 # type var, with the UUID this machine's id gives it (systemd-repart made it so on a stick's first
-# boot, drift install on an installed disk).
+# boot, construct install on an installed disk).
 [Unit]
 Description=/var, from the root's disk
 DefaultDependencies=no
 Requires=sysroot.mount
-Wants=spindrift-factory-reset.service
-After=sysroot.mount systemd-repart.service spindrift-factory-reset.service
+Wants=construct-factory-reset.service
+After=sysroot.mount systemd-repart.service construct-factory-reset.service
 Before=initrd-fs.target
 
 [Mount]

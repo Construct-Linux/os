@@ -1,14 +1,14 @@
-// Command drift is what the desktop's own root runs besides systemd-sysupdate, which writes
+// Command construct is what the desktop's own root runs besides systemd-sysupdate, which writes
 // its updates (usr/lib/sysupdate.d):
 //
-//	drift install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
-//	drift boot-check                                     reboot a counted boot that did not come up
-//	drift pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
-//	drift gtk4       [--from DIR] [--to DIR]             the image's GTK 4 theme, copied for a user
-//	drift live                                           the live user, on a root nobody is installed for
-//	drift firmware   ish FILE                            a laptop maker's sensor hub firmware, for this machine
+//	construct install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
+//	construct boot-check                                     reboot a counted boot that did not come up
+//	construct pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
+//	construct theme      [--themes DIR] [--home DIR] [--config DIR] the image's GTK themes, copied for a user
+//	construct live                                           the live user, on a root nobody is installed for
+//	construct firmware   ish FILE                            a laptop maker's sensor hub firmware, for this machine
 //
-// install's release is the spin-update partition of the stick it runs from (or --from, a
+// install's release is the construct-update partition of the stick it runs from (or --from, a
 // directory), checked against the public key the root carries (internal/update's KeyringPath)
 // before anything is written.
 package main
@@ -33,19 +33,19 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/spin-stack/spindrift/internal/gpt"
-	"github.com/spin-stack/spindrift/internal/update"
+	"github.com/Construct-Linux/os/internal/gpt"
+	"github.com/Construct-Linux/os/internal/update"
 )
 
 const usage = `usage:
-  drift install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--locale LANG] [--keyboard LAYOUT]
+  construct install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--locale LANG] [--keyboard LAYOUT]
                    [--user NAME --real-name NAME --password-file FILE|-] [--json]
-  drift disks      [--json]
-  drift boot-check
-  drift pending    [--esp DIR] [--mark FILE]
-  drift gtk4       [--from DIR] [--to DIR]
-  drift live
-  drift firmware   ish FILE`
+  construct disks      [--json]
+  construct boot-check
+  construct pending    [--esp DIR] [--mark FILE]
+  construct theme      [--themes DIR] [--home DIR] [--config DIR]
+  construct live
+  construct firmware   ish FILE`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -64,8 +64,8 @@ func main() {
 		err = disksCmd(os.Args[2:], os.Stdout)
 	case "pending":
 		err = pendingCmd(os.Args[2:], os.Stdout)
-	case "gtk4":
-		err = gtk4Cmd(os.Args[2:], os.Stdout)
+	case "theme":
+		err = themeCmd(os.Args[2:], os.Stdout)
 	case "live":
 		err = liveCmd("/etc", "/var")
 	case "firmware":
@@ -74,7 +74,7 @@ func main() {
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "drift:", err)
+		fmt.Fprintln(os.Stderr, "construct:", err)
 		os.Exit(1)
 	}
 }
@@ -83,12 +83,12 @@ func main() {
 var defaultKeyring = "/" + update.KeyringPath
 
 // mountFS mounts the fstype file system at dev, with opts, on a directory of its own under
-// /run/spindrift, and answers it and how to unmount it.
+// /run/construct, and answers it and how to unmount it.
 func mountFS(ctx context.Context, fstype, opts, dev string) (string, func() error, error) {
-	if err := os.MkdirAll("/run/spindrift", 0o700); err != nil {
+	if err := os.MkdirAll("/run/construct", 0o700); err != nil {
 		return "", nil, err
 	}
-	dir, err := os.MkdirTemp("/run/spindrift", fstype+"-")
+	dir, err := os.MkdirTemp("/run/construct", fstype+"-")
 	if err != nil {
 		return "", nil, err
 	}
@@ -109,8 +109,8 @@ func mountVFAT(ctx context.Context, dev string) (string, func() error, error) {
 	return mountFS(ctx, "vfat", "umask=0077", dev)
 }
 
-// mountStick mounts the release the stick this runs from carries: its spin-update partition,
-// read-only, as spindrift-update@ mounts it.
+// mountStick mounts the release the stick this runs from carries: its construct-update partition,
+// read-only, as construct-update@ mounts it.
 func mountStick(ctx context.Context, medium string) (string, func() error, error) {
 	f, err := os.Open("/dev/" + medium)
 	if err != nil {
@@ -121,7 +121,7 @@ func mountStick(ctx context.Context, medium string) (string, func() error, error
 	if err != nil {
 		return "", nil, fmt.Errorf("%s: %w", medium, err)
 	}
-	p, err := table.Named("spin-update")
+	p, err := table.Named("construct-update")
 	if err != nil {
 		return "", nil, fmt.Errorf("%s carries no release: %w", medium, err)
 	}
@@ -275,7 +275,7 @@ func percents(log *slog.Logger) func(file string, done, total int64) {
 	}
 }
 
-// disksCmd lists the disks drift install can install on - never the stick it runs from - and
+// disksCmd lists the disks construct install can install on - never the stick it runs from - and
 // the one it picks by itself, as text or, for the graphical installer, JSON.
 func disksCmd(args []string, out io.Writer) error {
 	fl := flag.NewFlagSet("disks", flag.ExitOnError)
@@ -314,7 +314,7 @@ func disksCmd(args []string, out io.Writer) error {
 
 // confirm shows disk and what is on it, and asks for its name typed back: everything on it goes.
 func confirm(in *bufio.Reader, out io.Writer, disk update.BlockDisk) error {
-	fmt.Fprintf(out, "Spindrift is to be installed on\n\n  %s\n\n", disk)
+	fmt.Fprintf(out, "Construct is to be installed on\n\n  %s\n\n", disk)
 	if f, err := os.Open(disk.Path()); err == nil {
 		if t, err := gpt.Read(f); err == nil {
 			fmt.Fprintln(out, "which holds now:")
@@ -365,7 +365,7 @@ func waitPartition(ctx context.Context, disk string, n int) (string, error) {
 	}
 }
 
-// run runs a program, its output on drift's standard error, and says what failed.
+// run runs a program, its output on construct's standard error, and says what failed.
 func run(ctx context.Context, name string, args ...string) error {
 	return cmd(ctx, nil, nil, name, args...)
 }

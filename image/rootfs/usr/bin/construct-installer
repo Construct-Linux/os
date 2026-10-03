@@ -1,7 +1,7 @@
 #!/usr/bin/python3
-# Install Spindrift: the live session's graphical installer. A front-end only - which disk can
-# be installed on, checking the release, writing it, the person's records - is drift's
-# (cmd/drift): this asks, runs `pkexec drift install --json` and shows what it says.
+# Install Construct: the live session's graphical installer. A front-end only - which disk can
+# be installed on, checking the release, writing it, the person's records - is construct's
+# (cmd/construct): this asks, runs `pkexec construct install --json` and shows what it says.
 
 import gettext
 import json
@@ -17,16 +17,16 @@ from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
 
 # _ is gettext's, for every string a person reads: never a name for unused arguments (*args),
 # which would hide it.
-_ = gettext.translation("spindrift-installer", fallback=True).gettext
+_ = gettext.translation("construct-installer", fallback=True).gettext
 
-APP_ID = "org.spindrift.Installer"
-DRIFT = "/usr/bin/drift"
+APP_ID = "io.github.construct_linux.Installer"
+CLI = "/usr/bin/construct"
 
-# What drift install says as it goes, as the person reads it, and how far along that is.
+# What construct install says as it goes, as the person reads it, and how far along that is.
 STEPS = {
     "writing the partition table": (_("Preparing the disk"), 0.03),
-    "writing slot A": (_("Copying Spindrift"), 0.05),
-    "making the ESP": (_("Making the disk start Spindrift"), 0.91),
+    "writing slot A": (_("Copying Construct"), 0.05),
+    "making the ESP": (_("Making the disk start Construct"), 0.91),
     "making /var": (_("Encrypting the space for your files"), 0.92),
     "enrolling the TPM": (_("Tying the disk to this computer"), 0.95),
     "preparing /var": (_("Setting up your account"), 0.97),
@@ -66,7 +66,7 @@ def suggest_login(name):
 
 class Installer(Adw.ApplicationWindow):
     def __init__(self, app):
-        super().__init__(application=app, title=_("Install Spindrift"), default_width=640, default_height=620)
+        super().__init__(application=app, title=_("Install Construct"), default_width=640, default_height=620)
         self.disks = self.read_disks()
         self.disk = next((d for d in self.disks if d["default"]), self.disks[0] if self.disks else None)
         self.login_edited = False
@@ -74,10 +74,10 @@ class Installer(Adw.ApplicationWindow):
         self.set_content(self.nav)
         self.nav.add(self.welcome_page())
 
-    # drift's disk list: never the stick this runs from.
+    # construct's disk list: never the stick this runs from.
     def read_disks(self):
         try:
-            proc = Gio.Subprocess.new([DRIFT, "disks", "--json"], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            proc = Gio.Subprocess.new([CLI, "disks", "--json"], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
             _ok, out, _err = proc.communicate_utf8(None, None)
             return json.loads(out) if proc.get_successful() and out else []
         except (GLib.Error, ValueError):
@@ -99,12 +99,12 @@ class Installer(Adw.ApplicationWindow):
     def welcome_page(self):
         status = Adw.StatusPage(
             icon_name="system-software-install-symbolic",
-            title=_("Install Spindrift"),
-            description=_("Spindrift is running from this stick. Install it on this computer to keep it, "
+            title=_("Install Construct"),
+            description=_("Construct is running from this stick. Install it on this computer to keep it, "
                           "or close this window and keep trying it."),
         )
         if self.disk is None:
-            status.set_description(_("This computer has no disk Spindrift can be installed on."))
+            status.set_description(_("This computer has no disk Construct can be installed on."))
         else:
             status.set_child(self.button(_("Install…"), "suggested-action", lambda *args: self.nav.push(self.disk_page())))
         return self.page(_("Welcome"), status, "welcome")
@@ -168,7 +168,7 @@ class Installer(Adw.ApplicationWindow):
         status = Adw.StatusPage(
             icon_name="dialog-warning-symbolic",
             title=_("Erase %s?") % (self.disk["model"] or self.disk["path"]),
-            description=_("Everything on %(path)s (%(size)s) is erased and Spindrift is installed in its place, "
+            description=_("Everything on %(path)s (%(size)s) is erased and Construct is installed in its place, "
                           "for %(name)s.") % {"path": self.disk["path"], "size": human_size(self.disk["size"]),
                                                 "name": self.name.get_text().strip()},
         )
@@ -178,7 +178,7 @@ class Installer(Adw.ApplicationWindow):
     def install(self, *args):
         self.progress = Gtk.ProgressBar(show_text=False)
         self.step = Gtk.Label(label=_("Starting"), css_classes=["title-4"])
-        status = Adw.StatusPage(icon_name="system-software-install-symbolic", title=_("Installing Spindrift"))
+        status = Adw.StatusPage(icon_name="system-software-install-symbolic", title=_("Installing Construct"))
         status.set_child(self.form(self.step, self.progress))
         page = self.page(_("Installing"), status, "installing")
         page.set_can_pop(False)
@@ -187,7 +187,7 @@ class Installer(Adw.ApplicationWindow):
         self.recovery_key = ""
         try:
             proc = Gio.Subprocess.new(
-                ["pkexec", DRIFT, "install", "--yes", "--json", "--disk", self.disk["path"],
+                ["pkexec", CLI, "install", "--yes", "--json", "--disk", self.disk["path"],
                  "--user", self.login.get_text(), "--real-name", self.name.get_text().strip(), "--password-file", "-"]
                 + session_language(),
                 Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
@@ -235,8 +235,8 @@ class Installer(Adw.ApplicationWindow):
     def done(self):
         status = Adw.StatusPage(
             icon_name="object-select-symbolic",
-            title=_("Spindrift is installed"),
-            description=_("Remove the stick, then restart: the computer starts Spindrift from its disk and asks for "
+            title=_("Construct is installed"),
+            description=_("Remove the stick, then restart: the computer starts Construct from its disk and asks for "
                           "your password to open it."),
         )
         key = Gtk.Label(label=self.recovery_key, selectable=True, wrap=True, css_classes=["monospace", "title-4"])
@@ -254,8 +254,8 @@ class Installer(Adw.ApplicationWindow):
         self.nav.push(page)
 
     def failed(self, detail):
-        status = Adw.StatusPage(icon_name="dialog-error-symbolic", title=_("Spindrift was not installed"),
-                                description=detail.replace("drift: ", ""))
+        status = Adw.StatusPage(icon_name="dialog-error-symbolic", title=_("Construct was not installed"),
+                                description=detail.replace("construct: ", ""))
         status.set_child(self.button(_("Back"), "pill", lambda *args: self.nav.pop_to_tag("person")))
         self.nav.push(self.page(_("Error"), status, "error"))
 

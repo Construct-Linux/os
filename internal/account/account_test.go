@@ -74,7 +74,7 @@ func TestWriteAddsThePersonToTheImagesFiles(t *testing.T) {
 	if ok, err := HasPerson(etc); err != nil || !ok {
 		t.Fatalf("HasPerson after Write: %v %v", ok, err)
 	}
-	// Written again - drift live at the next boot, an install retried - it is there once.
+	// Written again - construct live at the next boot, an install retried - it is there once.
 	if err := Write(etc, fac, u); err != nil {
 		t.Fatal(err)
 	}

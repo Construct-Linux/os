@@ -19,7 +19,9 @@ var initrdTar = filepath.Join(out, "initrd.tar")
 // hardware database), the shell completions, tpm2-tss's FAPI library, which systemd does not
 // load (it loads ESYS, RC and MU) and which alone links libcurl, every face of Adwaita but the
 // one Plymouth writes in, and the keyboard layouts' descriptions for settings screens, which
-// xkbcommon does not read. Globs are filepath.Match's.
+// xkbcommon does not read, and libfido2's udev rule, which hands security keys to a plugdev group
+// nobody declares (systemd's 60-fido-id and uaccess rules give them to the seat; image/rootfs
+// replaces it in the root). Globs are filepath.Match's.
 var initrdTrim = []string{
 	"usr/share/doc", "usr/share/man", "usr/share/info", "usr/share/locale", "usr/share/i18n",
 	"usr/share/bash-completion", "usr/share/zsh", "usr/share/fish", "usr/share/gtk-doc",
@@ -27,6 +29,7 @@ var initrdTrim = []string{
 	"var/lib/db/sbom", "usr/lib/libtss2-fapi.so*",
 	"usr/share/fonts/Adwaita/AdwaitaMono-*", "usr/share/fonts/Adwaita/AdwaitaSans-Italic.ttf",
 	"usr/share/xkeyboard-config-2/rules/*.xml", "usr/share/xkeyboard-config-2/rules/*.lst",
+	"usr/lib/udev/rules.d/70-u2f.rules",
 }
 
 // initrdDrop are packages the initrd's own pull in and it never runs: tpm2-tss's FAPI library
@@ -144,7 +147,7 @@ func buildInitrd(osRelease, dst string) error {
 	if err := os.WriteFile(filepath.Join(stage, "etc/initrd-release"), []byte(osRelease), 0o644); err != nil {
 		return err
 	}
-	// The initrd is Spindrift's too: wolfi-baselayout's etc/os-release said Wolfi, and a tool that
+	// The initrd is Construct's too: wolfi-baselayout's etc/os-release said Wolfi, and a tool that
 	// reads it there (systemd-factory-reset matching a request to this OS) took it for another.
 	for _, p := range []string{"etc/os-release", "usr/lib/os-release"} {
 		_ = os.Remove(filepath.Join(stage, p))

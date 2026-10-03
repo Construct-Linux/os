@@ -1,22 +1,26 @@
-# Updates the machine from the release on /dev/%i, a stick's spin-update partition: mounted
+# Updates the machine from the release on /dev/%i, a stick's construct-update partition: mounted
 # read-only, checked by systemd-sysupdate against the key the root carries (import-pubring.pgp),
-# and written into the slot the machine did not boot (the "stick" component, usr/lib/sysupdate.stick.d). The next boot starts
-# it, three times at most until it comes up (boot-complete.target), and falls back to this one
-# otherwise.
+# and written into the slot the machine did not boot. Its transfers are definitions of their own
+# (usr/lib/construct/sysupdate-stick), not a component, which systemd-sysupdated would check while
+# no stick is there. The next boot starts it, three times at most until it comes up
+# (boot-complete.target), and falls back to this one otherwise.
 [Unit]
 Description=Update from the release on %I
 # After the device, not bound to it: while systemd-sysupdate writes the machine's partitions udev
 # announces the block devices again, and BindsTo= stopped the update half way through. A stick
 # pulled out fails the copy by itself, and the next update vacuums what it left.
 After=dev-%i.device local-fs.target
+# An installed machine's (systemd-sysupdated.service.d says why): a stick booted on its own also
+# carries a construct-update partition, which udev announces like any other.
+ConditionPathExists=/dev/mapper/var
 
 [Service]
 Type=oneshot
-RuntimeDirectory=spindrift/update
-ExecStart=/usr/bin/mount -o ro,nodev,nosuid,noexec /dev/%i /run/spindrift/update
+RuntimeDirectory=construct/update
+ExecStart=/usr/bin/mount -o ro,nodev,nosuid,noexec /dev/%i /run/construct/update
 # A stick pulled out half way leaves a version written but not bootable, which is not written
-# again until it is vacuumed (spindrift-update.service says more).
-ExecStart=-/usr/lib/systemd/systemd-sysupdate --component=stick vacuum
-ExecStart=/usr/lib/systemd/systemd-sysupdate --component=stick update
-ExecStartPost=/usr/bin/drift pending --mark /run/spindrift/reboot-required
-ExecStopPost=-/usr/bin/umount /run/spindrift/update
+# again until it is vacuumed (construct-update.service says more).
+ExecStart=-/usr/lib/systemd/systemd-sysupdate --definitions=/usr/lib/construct/sysupdate-stick vacuum
+ExecStart=/usr/lib/systemd/systemd-sysupdate --definitions=/usr/lib/construct/sysupdate-stick update
+ExecStartPost=/usr/bin/construct pending --mark /run/construct/reboot-required
+ExecStopPost=-/usr/bin/umount /run/construct/update

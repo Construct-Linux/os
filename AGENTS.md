@@ -1,10 +1,10 @@
-# AGENTS.md - Spindrift
+# AGENTS.md - Construct
 
 What an agent working here needs and the code cannot say: rules, their reasons, and how a change
 is checked. `README.md` says what the desktop is; `task --list` is the catalogue; git is the
 history. Nothing here is a changelog.
 
-Spindrift is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on spin-ami's
+Construct is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on spin-ami's
 kernel, booted the way systemd's image-based distributions boot: a unified kernel image with a
 systemd initrd, a read-only EROFS root under dm-verity found by its root hash, partitions of the
 Discoverable Partitions Specification, A/B slots updated by systemd-sysupdate, and systemd-boot
@@ -31,7 +31,7 @@ falling back from a release that does not come up.
   `task usb`, `task test`, `task test:usb`, `task test:lifecycle`. Do not run `docker`/`melange`
   /`apko` by hand for something a task does; add or fix the task instead.
 - **Decisions are Go, not shell.** `cmd/image` (disks, the initrd, the harness, releases),
-  `cmd/drift` (install, boot-check, the live user, the GTK 4 theme), `internal/` (gpt, update,
+  `cmd/construct` (install, boot-check, the live user, the GTK 4 theme), `internal/` (gpt, update,
   account).
   The Taskfile runs steps and containers, in short blocks; a unit's `ExecStart=` stays a command,
   not a program.
@@ -48,7 +48,7 @@ falling back from a release that does not come up.
 
 ## Security, which nothing may loosen
 
-- **Ed25519 only.** SSH host and client keys (`sshd_config.d/10-spindrift.conf`), and release
+- **Ed25519 only.** SSH host and client keys (`sshd_config.d/10-construct.conf`), and release
   signing keys: `image check-key` (internal/update `ParseKeyring`) refuses a keyring with any other
   signing key, at build. No ECDSA, and RSA-2048 only where the firmware and the TPM take nothing
   else: the PCR key (`SIGNING_HOME/pcr.pem`, `task keygen:pcr`), because a TPM cannot verify
@@ -62,22 +62,22 @@ falling back from a release that does not come up.
   (`SIGNING_HOME/secureboot`, `task keygen:secureboot`) signs systemd-boot and the kernel image
   there too (`image usb-sign`). Tests use throwaway keys in
   `.cache/test-gnupg`.
-- **An installed machine's `/var` is LUKS2** (cmd/drift `makeVar`). The person's password opens
+- **An installed machine's `/var` is LUKS2** (cmd/construct `makeVar`). The person's password opens
   it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
   the passphrase when it has none. A recovery key is shown once at
   install. GDM then logs the person in, and sudo and the lock screen ask for the password again.
 - **Updates come only through url-file transfers.** systemd-sysupdate checks `SHA256SUMS.gpg` and
   every file's digest only for `url-file` sources (via systemd-pull); a `regular-file` source is
-  written unchecked. A stick is read as `file:///run/spindrift/update`, GitHub Releases as
+  written unchecked. A stick is read as `file:///run/construct/update`, GitHub Releases as
   https. The transfers are generated in `cmd/image/transfers.go`; never hand-write one.
 - **The test layer never reaches a real disk.** `image/test/` (unsafe-mode shell, the broken GDM)
   goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot credential
   (`ssh.ephemeral-authorized_keys-all`) and is written nowhere.
-- **No person, password or private key in the image or the repository.** `drift install` asks
+- **No person, password or private key in the image or the repository.** `construct install` asks
   who a machine is for and adds them to the installed `/etc`'s passwd and shadow, on `/var`
   (`internal/account`, starting from the image's own files in `usr/share/factory/etc`), where
   passwd and GNOME's Settings change them later; a root with nobody installed boots the
-  passwordless `live` user `drift live` adds (spindrift-live.service). root stays locked (`*`).
+  passwordless `live` user `construct live` adds (construct-live.service). root stays locked (`*`).
   The person is logged in at boot once their password has opened `/var`; sudo (wheel, 15
   minutes) and the lock screen ask for it.
 
@@ -88,10 +88,10 @@ falling back from a release that does not come up.
   at build (`cmd/image/usb.go` `bake`); add to it when a new package needs one. The USB disk and
   the ext4 test disk are made from the same baked tree.
 - **Units are enabled by preset**, never by a hand-made link: `usr/lib/systemd/system-preset/` and
-  `user-preset/10-spindrift.preset` list what runs (everything else is off), and `bake` runs
+  `user-preset/10-construct.preset` list what runs (everything else is off), and `bake` runs
   `systemctl preset-all`, which follows each unit's `[Install]` and makes its `Alias=` names.
 - **Mutable state lives in `/var`**, a partition on the root's own disk: systemd-repart makes it
-  in the initrd on a stick's first boot, `drift install` on an installed disk - its UUID derived
+  in the initrd on a stick's first boot, `construct install` on an installed disk - its UUID derived
   from the machine id, as the Discoverable Partitions Specification asks, so the dissect_image udev
   builtin designates it only on its own machine and never on another disk. The initrd mounts it and
   lays `/etc` over it before the switch (image/initrd: systemd mounts /var itself only after). Home
@@ -144,7 +144,7 @@ falling back from a release that does not come up.
 
 To use it as a person does: `task play` (a window, the stick, a disk to install on; state in
 `_output/play`). The graphical installer is UI only (Python, libadwaita): what it shows comes from
-`drift disks --json` and `drift install --json`, and test:lifecycle installs through exactly its
+`construct disks --json` and `construct install --json`, and test:lifecycle installs through exactly its
 command, pkexec included.
 
 Tools for a boot that misbehaves: `go run ./cmd/image run [-usb | -vars -nvme -sticks] -- '<cmd>'`

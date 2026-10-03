@@ -1,4 +1,4 @@
-# Spindrift
+# Construct
 
 A GNOME desktop on [Wolfi](https://github.com/wolfi-dev), built and verified like Spin OS
 (spin-ami): one image, read-only and checked block by block, updated as a whole into a second
@@ -6,7 +6,7 @@ slot, and rolled back by itself when a new version does not come up.
 
 - **GNOME 51** on Wayland, with GNOME's core apps (Files, Text Editor, Calendar, Maps, Software,
   Papers, ...), Ptyxis, Firefox, and Flatpak with Flathub (Chrome).
-- **Its own look**: Orchis (teal, dark) for the shell, GTK 3 and libadwaita apps alike, following
+- **Its own look**: Orchis in Construct's colors (dark) for the shell, GTK 3 and libadwaita apps alike, following
   the light/dark switch; Tela icons; Bibata's cursor. A top bar with the clock and indicators on
   the right, and a small centred dock (Dash to Panel). Extensions: AppIndicator, Clipboard
   Indicator, Just Perfection, Caffeine, Vitals, Tiling Shell.
@@ -18,7 +18,7 @@ slot, and rolled back by itself when a new version does not come up.
   PipeWire with Bluetooth audio, systemd-sysupdate, ...).
 - **Its own kernel**: spin-ami's, with modules signed by a key that exists only in its build, built
   with Clang ThinLTO for x86-64-v3, sched_ext with scx_lavd.
-- **Boot**: UEFI, systemd-boot, a unified kernel image with SpinBot's splash and Plymouth and a
+- **Boot**: UEFI, systemd-boot, a unified kernel image with Plymouth playing the brand's animation and a
   systemd initrd, the way systemd's image-based distributions boot. `/var` holds everything a
   machine keeps; `/etc` is an overlay on it, so settings persist.
 - **Updates**: signed (Ed25519) releases from GitHub Releases, checked daily, written into the slot
@@ -41,20 +41,20 @@ Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three thin
 
 - **live**: the desktop runs from it, as the user `live`; its first boot makes `/var` in the rest
   of the stick.
-- **installer**: the live session opens *Install Spindrift* (or `sudo drift install` in a
+- **installer**: the live session opens *Install Construct* (or `sudo construct install` in a
   terminal), which asks for the disk and who the machine is for - a name, a login and one
   password - then erases the machine's first internal disk (never the stick) and lays two system
   slots and `/var` on it. `/var` holds everything of the person's and is encrypted (LUKS2): at
   boot the password opens it - as the TPM's PIN where the machine has a TPM 2.0, which only
-  releases the key to kernel images Spindrift signed - and the desktop starts logged in. sudo and
+  releases the key to kernel images Construct signed - and the desktop starts logged in. sudo and
   the lock screen ask for it again. The installer shows a recovery key once, which opens the disk
   in place of a forgotten password. root has no password and cannot log in.
 - **update**: plugged into an installed machine, it writes its release into the slot not running.
 
-Secure Boot: systemd-boot and every kernel image are signed with Spindrift's key, which the
+Secure Boot: systemd-boot and every kernel image are signed with Construct's key, which the
 stick carries for the firmware. Put the firmware's Secure Boot in setup mode (its menu calls it
 "clear keys", "reset to setup mode" or "delete all keys"), boot the stick and choose *Enroll
-Secure Boot keys: auto*; the machine restarts and from then on boots only what Spindrift signed.
+Secure Boot keys: auto*; the machine restarts and from then on boots only what Construct signed.
 The keys keep Microsoft's certificates for graphics and network cards' own firmware, not
 Windows'.
 
@@ -83,7 +83,7 @@ rolls back from a broken release. `AGENTS.md` says what each change needs.
 | `kernel/`, `firmware/` | the desktop's kernel fragment and firmware selection, over spin-ami's |
 | `cmd/image` | disks, the USB stick, releases, the QEMU harness and lifecycle |
 | `image/initrd/` | the initrd: Wolfi's systemd, `/var` and the `/etc` overlay mounted before the switch |
-| `cmd/drift` | `install`, `disks` and `boot-check` on the machine |
-| `image/rootfs/usr/bin/spindrift-installer` | the graphical installer: a libadwaita front-end to `drift install --json` |
+| `cmd/construct` | `install`, `disks` and `boot-check` on the machine |
+| `image/rootfs/usr/bin/construct-installer` | the graphical installer: a libadwaita front-end to `construct install --json` |
 | `internal/` | GPT, and installing a signed release |
 | `cmd/gap` | how far Wolfi is from a desktop profile, in recipes to own |

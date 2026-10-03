@@ -14,7 +14,7 @@ import (
 // live session the installer runs in has them. The installed /etc gets them (locale.conf,
 // vconsole.conf), and so does the initrd, through credentials on the ESP, so the disk's password
 // is asked in that language and typed with that layout (image/initrd's
-// spindrift-boot-language.service).
+// construct-boot-language.service).
 type language struct {
 	locale  string // LANG: es_AR.UTF-8
 	layout  string // XKB layout: es
@@ -78,8 +78,8 @@ func (l language) vconsole() []byte {
 func (l language) localeConf() []byte { return []byte("LANG=" + l.locale + "\n") }
 
 // bootTheme is the Plymouth theme that speaks l's language, of those under themes (cmd/image
-// plymouth.go makes spin-<locale> for each it can): the most specific of es_AR, es and, for a
-// locale with a modifier, sr_RS@latin and sr@latin. spin, which speaks English, without one.
+// plymouth.go makes construct-<locale> for each it can): the most specific of es_AR, es and, for a
+// locale with a modifier, sr_RS@latin and sr@latin. construct, which speaks English, without one.
 func (l language) bootTheme(themes string) string {
 	name, _, _ := strings.Cut(l.locale, ".")
 	modifier := ""
@@ -89,11 +89,11 @@ func (l language) bootTheme(themes string) string {
 	}
 	lang, _, _ := strings.Cut(name, "_")
 	for _, c := range []string{name + modifier, lang + modifier, name, lang} {
-		if _, err := os.Stat(filepath.Join(themes, "spin-"+c)); err == nil {
-			return "spin-" + c
+		if _, err := os.Stat(filepath.Join(themes, "construct-"+c)); err == nil {
+			return "construct-" + c
 		}
 	}
-	return "spin"
+	return "construct"
 }
 
 // plymouthConf is the running root's plymouthd.conf with theme in place of its own.
@@ -126,7 +126,7 @@ func bootCredentials(ctx context.Context, l language, tpm bool) (map[string][]by
 		key = []string{"--with-key=tpm2", "--tpm2-device=auto", "--tpm2-pcrs="}
 	}
 	creds := map[string][]byte{}
-	for name, body := range map[string][]byte{"spindrift.vconsole": l.vconsole(), "spindrift.plymouth": conf} {
+	for name, body := range map[string][]byte{"construct.vconsole": l.vconsole(), "construct.plymouth": conf} {
 		var enc bytes.Buffer
 		args := append([]string{"encrypt", "--name=" + name}, key...)
 		if err := cmdOut(ctx, body, nil, &enc, "systemd-creds", append(args, "-", "-")...); err != nil {

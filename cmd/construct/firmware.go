@@ -20,16 +20,16 @@ import (
 // /usr/lib/firmware (firmware_class.path on the kernel image's command line, cmd/image).
 
 // firmwareDir is where firmware a person installs lives.
-const firmwareDir = "/var/lib/spindrift/firmware"
+const firmwareDir = "/var/lib/construct/firmware"
 
 // ishAsked is a firmware name the sensor hub driver looked for: it tries names from the most
 // specific (the machine's vendor, family and SKU) to the generic one, and logs each it lacks.
 var ishAsked = regexp.MustCompile(`intel/ish/ish_[a-z0-9]+_[0-9a-f]{8}_[0-9a-f_]+\.bin`)
 
-// firmwareCmd installs firmware: drift firmware ish FILE.
+// firmwareCmd installs firmware: construct firmware ish FILE.
 func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) != 2 || args[0] != "ish" {
-		return errors.New("usage: drift firmware ish ishS_SI_<version>.bin (from the laptop maker's Windows sensor driver)")
+		return errors.New("usage: construct firmware ish ishS_SI_<version>.bin (from the laptop maker's Windows sensor driver)")
 	}
 	fw, err := os.ReadFile(args[1])
 	if err != nil {

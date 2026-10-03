@@ -17,7 +17,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spin-stack/spindrift/internal/update"
+	"github.com/Construct-Linux/os/internal/update"
 )
 
 // usb makes the release a machine boots from a USB stick: an ESP with systemd-boot and a unified
@@ -143,7 +143,7 @@ func usbSign(args []string) error {
 }
 
 // releaseDir is where a version's release is written: what an update reads, and what the stick's
-// spin-update partition carries.
+// construct-update partition carries.
 func releaseDir(version string) string { return filepath.Join(out, "release", version) }
 
 // writeRelease lays version's release: the root and its tree named with the partition UUIDs a
@@ -161,7 +161,7 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 		return "", err
 	}
 	// The root and its tree compressed - what is downloaded, and what GitHub takes (2 GB a file
-	// at most); systemd-import and drift install decompress them as they write.
+	// at most); systemd-import and construct install decompress them as they write.
 	rootFile, verityFile, uki := update.Names(version, v.rootUUID, v.vUUID)
 	files := map[string]string{
 		rootFile:   v.rootImg,
@@ -182,7 +182,7 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 }
 
 // usbDisk lays the stick's image from the last usb's stage once its release is signed: the ESP,
-// the root and its tree, and spin-update, a FAT partition holding the release - what a machine
+// the root and its tree, and construct-update, a FAT partition holding the release - what a machine
 // installs from, and updates from when the stick is plugged into one already installed.
 func usbDisk(args []string) error {
 	fl := flag.NewFlagSet("usb-disk", flag.ExitOnError)
@@ -241,8 +241,8 @@ func bakedRoot(stage, root string, layers []layer) (string, error) {
 		return "", err
 	}
 	// Built on the host by task tools: this container has no Go.
-	if _, err := os.Stat(filepath.Join(driftDir, "usr/bin/drift")); err != nil {
-		return "", fmt.Errorf("drift (task tools builds it): %w", err)
+	if _, err := os.Stat(filepath.Join(cliDir, "usr/bin/construct")); err != nil {
+		return "", fmt.Errorf("construct (task tools builds it): %w", err)
 	}
 	merged := filepath.Join(out, "root.tar")
 	if err := merge(layers, merged); err != nil {
@@ -336,14 +336,15 @@ func bake(root, version string) error {
 # over it before it switches to the root (image/initrd).
 tmpfs /tmp tmpfs mode=1777,nosuid,nodev 0 0
 `,
-		"usr/lib/os-release": fmt.Sprintf(`NAME="Spindrift"
-ID=spindrift
+		"usr/lib/os-release": fmt.Sprintf(`NAME="Construct"
+ID=construct
 ID_LIKE=wolfi
-PRETTY_NAME="Spindrift %[1]s"
+PRETTY_NAME="Construct %[1]s"
 VERSION_ID=%[1]s
-IMAGE_ID=spindrift
+IMAGE_ID=construct
 IMAGE_VERSION=%[1]s
-HOME_URL="https://github.com/spin-stack"
+LOGO=construct-logo
+HOME_URL="https://github.com/Construct-Linux/os"
 `, version),
 	}
 	for name, body := range files {
@@ -562,13 +563,13 @@ func verityOf(rh, img, tree string) verity {
 // rest from the tree's superblock. A block that does not match panics: panic=10 then reboots, and
 // boot counting falls back. Then the consoles, the machine's id from its firmware (/var's UUID is
 // derived from it), cgroup v2 only, firmware a person installed for their own machine searched
-// first (drift firmware: /var, root's to write), and extra, options added for one build to
+// first (construct firmware: /var, root's to write), and extra, options added for one build to
 // diagnose a boot.
 func (v verity) cmdline(extra string) string {
 	return "roothash=" + v.rootHash + " systemd.verity_root_options=panic-on-corruption rootfstype=erofs ro" +
 		" console=ttyS0,115200n8 console=tty0 cgroup_no_v1=all,named" +
 		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" +
-		" firmware_class.path=/var/lib/spindrift/firmware" + strings.TrimRight(" "+extra, " ")
+		" firmware_class.path=/var/lib/construct/firmware" + strings.TrimRight(" "+extra, " ")
 }
 
 // espTree lays the ESP: systemd-boot at the removable-media path, which firmware boots from a
@@ -627,14 +628,6 @@ func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) er
 	if err := buildInitrd(rel, initrd); err != nil {
 		return err
 	}
-	shown, err := splash(splashLine{"Spindrift", 4}, splashLine{strings.TrimPrefix(label, "spindrift_"), 2})
-	if err != nil {
-		return err
-	}
-	bmpFile := filepath.Join(filepath.Dir(esp), "splash.bmp")
-	if err := os.WriteFile(bmpFile, shown, 0o644); err != nil {
-		return err
-	}
 	stage := filepath.Dir(esp)
 	digests, err := os.Create(filepath.Join(stage, pcrDigests))
 	if err != nil {
@@ -642,7 +635,6 @@ func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) er
 	}
 	defer digests.Close()
 	cmd := exec.Command("ukify", "build",
-		"--splash", bmpFile,
 		"--linux", filepath.Join(out, "kernel", "bzImage"),
 		// The microcode first: the kernel looks for it at the start of the initrds.
 		"--initrd", ucode, "--initrd", initrd,
@@ -719,10 +711,10 @@ func repart(stage, disk, label string, v verity, release string) error {
 		"21-root-verity.conf": fmt.Sprintf("[Partition]\nType=root-verity\nLabel=%s\nUUID=%s\nCopyBlocks=%s\nReadOnly=yes\n",
 			label, v.vUUID, abs(v.treeImg)),
 		// The release, for installing and updating; FAT, so any machine mounts it, and named so
-		// spindrift-update finds it.
+		// construct-update finds it.
 		// The release's files at its root: systemd-sysupdate reads SHA256SUMS from the URL it is
-		// given, file:///run/spindrift/update, where it is mounted.
-		"30-update.conf": fmt.Sprintf("[Partition]\nType=linux-generic\nLabel=spin-update\nFormat=vfat\nCopyFiles=%s:/\nSizeMinBytes=%d\n",
+		// given, file:///run/construct/update, where it is mounted.
+		"30-update.conf": fmt.Sprintf("[Partition]\nType=linux-generic\nLabel=construct-update\nFormat=vfat\nCopyFiles=%s:/\nSizeMinBytes=%d\n",
 			abs(release), dirSize(release)*11/10+64<<20),
 	} {
 		if err := os.WriteFile(filepath.Join(defs, name), []byte(body), 0o644); err != nil {

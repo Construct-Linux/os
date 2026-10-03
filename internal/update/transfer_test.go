@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/spin-stack/spindrift/internal/gpt"
+	"github.com/Construct-Linux/os/internal/gpt"
 )
 
 // The UUIDs of the slot a test release is for.

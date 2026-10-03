@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// lifecycle is a machine's life with Spindrift, in QEMU: installed from a stick onto its NVMe
+// lifecycle is a machine's life with Construct, in QEMU: installed from a stick onto its NVMe
 // disk, booted from it, updated by plugging in the stick of the next release, and rolled back by
 // systemd-boot from a release whose desktop never comes up - with what the person kept in /var and
 // changed in /etc there all along. The sticks are three test builds, oldest first: task
@@ -75,7 +75,7 @@ func lifecycle(args []string) error {
 	}
 	start := time.Now()
 	// As a person installs: the graphical installer's command, from the live session it runs in
-	// - pkexec, which the session's polkit rule lets through, drift install --json, the password
+	// - pkexec, which the session's polkit rule lets through, construct install --json, the password
 	// on standard input - read from the stick it runs from.
 	outs, err := g.installAsTheInstaller()
 	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
@@ -128,12 +128,12 @@ func lifecycle(args []string) error {
 	// The PIN typed is cached for the passphrase prompt that follows a TPM refusal, so a boot that
 	// came up says nothing: the unit's log does.
 	unlocked, err := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -o cat -u systemd-cryptsetup@var.service | grep -iE 'unseal|falling back|failed' | tail -3`, "")
-	lang, _ := g.run(`cat /etc/locale.conf /etc/vconsole.conf; ls /boot/loader/credentials/; journalctl -b -o cat -u spindrift-boot-language.service | tail -2`, "")
+	lang, _ := g.run(`cat /etc/locale.conf /etc/vconsole.conf; ls /boot/loader/credentials/; journalctl -b -o cat -u construct-boot-language.service | tail -2`, "")
 	r.add("the person's language and keyboard, at boot too", strings.Contains(lang, "LANG=es_ES.UTF-8") && strings.Contains(lang, "XKBLAYOUT=es") &&
-		strings.Contains(lang, "spindrift.vconsole.cred") && strings.Contains(lang, "spindrift.plymouth.cred") &&
+		strings.Contains(lang, "construct.vconsole.cred") && strings.Contains(lang, "construct.plymouth.cred") &&
 		strings.Contains(lang, "Finished") && !strings.Contains(lang, "Failed"), oneLine(lang))
 	r.add("the TPM unlocked it", err == nil && strings.HasPrefix(unlocked, "active") && strings.TrimSpace(strings.TrimPrefix(unlocked, "active")) == "", oneLine(unlocked))
-	_, err = g.run(`echo kept > /var/home/`+lifecycleUser+`/marker && echo kept > /etc/spindrift-marker`, "")
+	_, err = g.run(`echo kept > /var/home/`+lifecycleUser+`/marker && echo kept > /etc/construct-marker`, "")
 	r.add("keep a file in /var and one in /etc", err == nil, errText(err))
 	r.person(g)
 	ok, detail := g.waitUnit2Active("boot-complete.target", 5*time.Minute)
@@ -174,12 +174,12 @@ func lifecycle(args []string) error {
 	_, err = g.run(`mkdir -p /etc/sysupdate.d && for f in /usr/lib/sysupdate.d/*.transfer; do `+
 		`sed "s|^Path=https://.*|Path=`+url+`|" "$f" > /etc/sysupdate.d/$(basename "$f"); done`, "")
 	r.add("point updates at the test server", err == nil, url+errText(err))
-	_, err = g.run(`systemctl start spindrift-update.service`, "")
-	outs, _ = g.run(`journalctl -b --no-pager -o cat -u spindrift-update.service | tail -3`, "")
+	_, err = g.run(`systemctl start construct-update.service`, "")
+	outs, _ = g.run(`journalctl -b --no-pager -o cat -u construct-update.service | tail -3`, "")
 	r.add("v2 downloads", err == nil, oneLine(outs)+errText(err))
 	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
-	r.add("v2 is counted on the ESP", strings.Contains(esp, "spindrift_"+versions["v2"]+"+3"), oneLine(esp))
-	mark, _ := g.run(`cat /run/spindrift/reboot-required`, "")
+	r.add("v2 is counted on the ESP", strings.Contains(esp, "construct_"+versions["v2"]+"+3"), oneLine(esp))
+	mark, _ := g.run(`cat /run/construct/reboot-required`, "")
 	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
@@ -188,13 +188,13 @@ func lifecycle(args []string) error {
 		return r.write(nil)
 	}
 	r.add("reboot into v2", g.version() == versions["v2"], "running "+g.version())
-	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/spindrift-marker`, "")
+	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
 	r.add("kept across the update", strings.Count(kept, "kept") == 2, oneLine(kept))
 	ok, detail = g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v2 comes up", ok, detail)
 	time.Sleep(10 * time.Second) // systemd-bless-boot runs once the target is reached
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
-	r.add("v2 is blessed", strings.Contains(esp, "spindrift_"+versions["v2"]+".efi"), oneLine(esp))
+	r.add("v2 is blessed", strings.Contains(esp, "construct_"+versions["v2"]+".efi"), oneLine(esp))
 	v.powerOff(g)
 
 	// 5. v3's desktop never comes up: three tries, then systemd-boot falls back to v2 by itself.
@@ -218,8 +218,8 @@ func lifecycle(args []string) error {
 	}
 	r.add("v3 rolls back to v2", g.version() == versions["v2"], "running "+g.version())
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
-	r.add("v3 is marked bad", strings.Contains(esp, "spindrift_"+versions["v3"]+"+0-3"), oneLine(esp))
-	kept, _ = g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/spindrift-marker`, "")
+	r.add("v3 is marked bad", strings.Contains(esp, "construct_"+versions["v3"]+"+0-3"), oneLine(esp))
+	kept, _ = g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
 	r.add("kept across the rollback", strings.Count(kept, "kept") == 2, oneLine(kept))
 
 	// 7. A factory reset, as systemd asks for one: the machine reboots, its /var made anew in the
@@ -233,7 +233,7 @@ func lifecycle(args []string) error {
 	}
 	err = g.wait(10 * time.Minute)
 	r.add("factory reset reboots", err == nil && g.version() == versions["v2"], "running "+g.version()+errText(err))
-	gone, _ := g.run(`ls /var/home/; getent passwd `+lifecycleUser+`; cat /etc/spindrift-marker 2>&1`, "")
+	gone, _ := g.run(`ls /var/home/; getent passwd `+lifecycleUser+`; cat /etc/construct-marker 2>&1`, "")
 	r.add("factory reset forgets the person", !strings.Contains(gone, lifecycleUser) && !strings.Contains(gone, "kept"), oneLine(gone))
 	setup, _ := g.run(`for i in $(seq 60); do loginctl list-sessions --no-legend | grep -q gnome-initial-setup && break; sleep 2; done; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
 	r.add("initial setup for the new person", strings.Contains(setup, "gnome-initial-setup"), "sessions: "+setup)
@@ -243,7 +243,7 @@ func lifecycle(args []string) error {
 	return err
 }
 
-// updateEnd is how the spindrift-update@ unit a plugged stick started ended: whether it did, and
+// updateEnd is how the construct-update@ unit a plugged stick started ended: whether it did, and
 // well, systemd's line for it, and what systemd-sysupdate last said.
 type updateEnd struct {
 	ended, ok       bool
@@ -252,19 +252,19 @@ type updateEnd struct {
 
 func (u updateEnd) detail() string {
 	if !u.ended {
-		return "no spindrift-update@ unit ended"
+		return "no construct-update@ unit ended"
 	}
 	return u.unit + ": systemd-sysupdate: " + oneLine(u.sysupdate)
 }
 
-// waitUpdate waits for the spindrift-update@ unit a plugged stick started to end. It reads the
+// waitUpdate waits for the construct-update@ unit a plugged stick started to end. It reads the
 // journal: a oneshot that already ended is unloaded, and no longer listed.
 func (g *guest) waitUpdate(d time.Duration) updateEnd {
 	deadline := time.Now().Add(d)
 	for time.Now().Before(deadline) {
-		log, _ := g.run(`journalctl -b --no-pager -o cat -u 'spindrift-update@*' | grep -E '^(Finished|Failed to start) Update' | tail -1`, "")
+		log, _ := g.run(`journalctl -b --no-pager -o cat -u 'construct-update@*' | grep -E '^(Finished|Failed to start) Update' | tail -1`, "")
 		if log = strings.TrimSpace(log); log != "" {
-			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'spindrift-update@*' -t systemd-sysupdate | tail -3`, "")
+			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'construct-update@*' -t systemd-sysupdate | tail -3`, "")
 			return updateEnd{ended: true, ok: strings.HasPrefix(log, "Finished"), unit: log, sysupdate: strings.TrimSpace(tail)}
 		}
 		time.Sleep(3 * time.Second)
@@ -315,15 +315,15 @@ func (r *report) person(g *guest) {
 	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
 }
 
-// installAsTheInstaller runs what spindrift-installer runs, from inside the live session (GNOME
-// Shell starts it, so polkit sees the session's process), and answers what drift printed: its
+// installAsTheInstaller runs what construct-installer runs, from inside the live session (GNOME
+// Shell starts it, so polkit sees the session's process), and answers what construct printed: its
 // JSON records, then its errors.
 func (g *guest) installAsTheInstaller() (string, error) {
 	if _, err := g.waitShell(5 * time.Minute); err != nil {
 		return "", err
 	}
 	run := "/run/user/1000/install"
-	script := `printf '%s\n' '` + lifecyclePassword + `' | pkexec /usr/bin/drift install --yes --json --disk /dev/nvme0n1 ` +
+	script := `printf '%s\n' '` + lifecyclePassword + `' | pkexec /usr/bin/construct install --yes --json --disk /dev/nvme0n1 ` +
 		`--user ` + lifecycleUser + ` --real-name 'Ada Lovelace' --password-file - ` +
 		// The session's language and layout, as the installer passes them: Spanish, so the
 		// machine's boot screen and keyboard are checked to be the person's, not the image's.
@@ -336,11 +336,11 @@ func (g *guest) installAsTheInstaller() (string, error) {
 		if rc, err := g.run(`cat `+run+`.rc 2>/dev/null`, ""); err == nil && strings.TrimSpace(rc) != "" {
 			outs, _ := g.run(`cat `+run+`.json `+run+`.err`, "")
 			if strings.TrimSpace(rc) != "0" {
-				return outs, fmt.Errorf("drift install exited %s", strings.TrimSpace(rc))
+				return outs, fmt.Errorf("construct install exited %s", strings.TrimSpace(rc))
 			}
 			return outs, nil
 		}
 		time.Sleep(5 * time.Second)
 	}
-	return "", fmt.Errorf("drift install did not end")
+	return "", fmt.Errorf("construct install did not end")
 }

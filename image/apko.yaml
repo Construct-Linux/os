@@ -12,8 +12,10 @@ contents:
     - systemd
     - systemd-init
     - systemd-boot
-    # The boot splash: SpinBot over a turning ring (cmd/image/plymouth.go).
+    # The boot screen: the brand's animation (cmd/image/plymouth.go), and its logo as the icon
+    # os-release's LOGO names.
     - plymouth
+    - construct-brand
     - systemd-logind-service
     - systemd-timesyncd
     - systemd-userdb
@@ -28,7 +30,7 @@ contents:
     # declares a higher version of it (7.8 against 2.42), so the resolver picked that one as the
     # setuid su - with Kerberos in tow.
     - util-linux-su
-    # What drift install and update run: mount and umount (their own packages in Wolfi),
+    # What construct install and update run: mount and umount (their own packages in Wolfi),
     # and the ESP's and /var's mkfs.
     - mount
     - umount
@@ -39,7 +41,7 @@ contents:
     - systemd-sysupdate
     - gpg
     # The TPM2 stack (libtss2-*), which systemd (recipes/systemd, built with TPM2) loads at run time,
-    # so nothing depends on it: drift install enrolls /var's key with systemd-cryptenroll.
+    # so nothing depends on it: construct install enrolls /var's key with systemd-cryptenroll.
     - tpm2-tss
     # libbpf, which systemd (recipes/systemd, built with BPF) loads at run time for its cgroup BPF
     # features (RestrictFileSystems=, IP accounting and filters), so nothing depends on it.
@@ -173,7 +175,7 @@ contents:
     - gnome-software
     - papers
     - gnome-calendar
-    # The look (etc/dconf/db/local.d/00-spindrift): Orchis, Tela, Bibata.
+    # The look (etc/dconf/db/local.d/00-construct): Orchis, Tela, Bibata.
     - orchis-theme
     - tela-icon-theme
     - bibata-cursor-theme
@@ -216,6 +218,12 @@ contents:
     - curl
     - vim
     - less
+    # Task (recipes/task), the runner this repository and many projects drive their builds with;
+    # ifconfig, route, netstat and arp for scripts and habits that still call them (net-tools).
+    - task
+    - net-tools
+    # libfido2, which systemd-cryptenroll and systemd-cryptsetup open at run time for a security key.
+    - libfido2
     - dockerd-29
     - dockerd-service-29
     - docker-init-29

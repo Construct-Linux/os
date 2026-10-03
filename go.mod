@@ -1,4 +1,4 @@
-module github.com/spin-stack/spindrift
+module github.com/Construct-Linux/os
 
 go 1.27
 

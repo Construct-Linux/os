@@ -11,7 +11,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/spin-stack/spindrift/internal/update"
+	"github.com/Construct-Linux/os/internal/update"
 )
 
 // The transfers systemd-sysupdate runs match the files a release is written with: what the build
@@ -50,7 +50,7 @@ func TestTransfersMatchTheReleaseNames(t *testing.T) {
 // file's digest; a regular-file source is written unchecked. And the kernel image stays
 // writable, or systemd-boot cannot count its tries.
 func TestTransfersAreChecked(t *testing.T) {
-	for _, url := range []string{"https://example.org/r", "file:///run/spindrift/update"} {
+	for _, url := range []string{"https://example.org/r", "file:///run/construct/update"} {
 		for name, body := range transfers(url) {
 			src := body[strings.Index(body, "[Source]"):strings.Index(body, "[Target]")]
 			if !strings.Contains(src, "Type=url-file\n") || !strings.Contains(src, "Path="+url+"\n") {

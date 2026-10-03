@@ -1,0 +1,3 @@
+# Replaces libfido2's rule of this name, which gives security keys to a plugdev group nothing
+# declares: systemd's 60-fido-id.rules already marks every FIDO device (ID_SECURITY_TOKEN) and its
+# 70-uaccess.rules gives it to the person at the seat, as Fedora relies on.

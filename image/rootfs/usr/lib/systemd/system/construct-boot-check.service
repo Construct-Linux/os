@@ -1,5 +1,5 @@
 # Ends a boot that did not come up, so systemd-boot can fall back from its kernel image
-# (drift boot-check, internal/update): boot counting counts starts, and a boot whose GDM
+# (construct boot-check, internal/update): boot counting counts starts, and a boot whose GDM
 # failed stays up, never blessed and never started again. Once boot-complete.target was reached or
 # failed to be, a boot that did not reach it, of an image systemd-boot is counting, is rebooted.
 [Unit]
@@ -13,7 +13,7 @@ JobTimeoutAction=reboot
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/drift boot-check
+ExecStart=/usr/bin/construct boot-check
 StandardOutput=journal+console
 StandardError=journal+console
 

@@ -15,43 +15,59 @@ import (
 	"strings"
 )
 
-// gtk4Stamp records, in the user's gtk-4.0 directory, each file gtk4 wrote and its digest: how
-// it tells its own copy, which it may refresh, from a theme the user put there.
-const gtk4Stamp = ".drift-gtk4"
+// themeStamp records, in each directory theme writes, each file it wrote and its digest: how it
+// tells its own copy, which it may refresh, from a theme the user put there.
+const themeStamp = ".construct-theme"
 
-// gtk4Cmd copies the image's GTK 4 theme into the user's ~/.config/gtk-4.0, the only place
-// libadwaita apps take styles from. Copies, not links: a Flatpak sees that directory (the image's
-// read-only override) but not the host's /usr, where links would point. Run at every login, it
-// brings an updated image's theme along, and leaves the directory alone once the user has put
-// their own gtk.css there.
-func gtk4Cmd(args []string, stdout io.Writer) error {
-	fl := flag.NewFlagSet("gtk4", flag.ContinueOnError)
-	from := fl.String("from", "/usr/share/themes/Orchis-Teal-Light/gtk-4.0", "the theme's gtk-4.0 directory")
-	to := fl.String("to", "", "the user's gtk-4.0 directory (default: $XDG_CONFIG_HOME/gtk-4.0)")
+// themeCmd copies the image's GTK themes where apps take them from: Orchis's light GTK 4 theme
+// (which carries the dark styles) into ~/.config/gtk-4.0, the only place libadwaita apps read,
+// and each Orchis variant's GTK 3 theme into ~/.themes/<name>/gtk-3.0, where GTK 3 finds a theme
+// even inside a Flatpak, whose own /usr has none of the image's and whose XDG_DATA_HOME is the
+// app's. Copies, not links: a Flatpak sees both directories (the image's read-only override) but
+// not the host's /usr, where links would point. Run at every login, it brings an updated image's
+// themes along, and leaves a directory alone once the user has put their own gtk.css there.
+func themeCmd(args []string, stdout io.Writer) error {
+	fl := flag.NewFlagSet("theme", flag.ContinueOnError)
+	themes := fl.String("themes", "/usr/share/themes", "where the image's themes are")
+	home := fl.String("home", "", "the user's home directory (default: $HOME)")
+	config := fl.String("config", "", "the user's configuration directory (default: $XDG_CONFIG_HOME)")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
-	if *to == "" {
+	if *home == "" {
+		dir, err := os.UserHomeDir()
+		if err != nil {
+			return err
+		}
+		*home = dir
+	}
+	if *config == "" {
 		dir, err := os.UserConfigDir()
 		if err != nil {
 			return err
 		}
-		*to = filepath.Join(dir, "gtk-4.0")
+		*config = dir
 	}
-	synced, err := syncGTK4(*from, *to)
-	if err != nil {
-		return err
+	copies := [][2]string{{filepath.Join(*themes, "Orchis-Construct-Light/gtk-4.0"), filepath.Join(*config, "gtk-4.0")}}
+	for _, name := range []string{"Orchis-Construct-Dark", "Orchis-Construct-Light"} {
+		copies = append(copies, [2]string{filepath.Join(*themes, name, "gtk-3.0"), filepath.Join(*home, ".themes", name, "gtk-3.0")})
 	}
-	if !synced {
-		fmt.Fprintf(stdout, "%s holds the user's own theme: left as it is\n", *to)
+	for _, c := range copies {
+		synced, err := syncTheme(c[0], c[1])
+		if err != nil {
+			return err
+		}
+		if !synced {
+			fmt.Fprintf(stdout, "%s holds the user's own theme: left as it is\n", c[1])
+		}
 	}
 	return nil
 }
 
-// syncGTK4 makes dst a copy of src, unless dst's gtk.css is not one gtk4 wrote (absent counts as
+// syncTheme makes dst a copy of src, unless dst's gtk.css is not one theme wrote (absent counts as
 // its own: there is nothing to keep). It reports whether it copied.
-func syncGTK4(src, dst string) (bool, error) {
-	stamp, err := readGTK4Stamp(filepath.Join(dst, gtk4Stamp))
+func syncTheme(src, dst string) (bool, error) {
+	stamp, err := readThemeStamp(filepath.Join(dst, themeStamp))
 	if err != nil {
 		return false, err
 	}
@@ -90,7 +106,7 @@ func syncGTK4(src, dst string) (bool, error) {
 			_ = os.Remove(path)
 		}
 	}
-	return true, writeGTK4Stamp(filepath.Join(dst, gtk4Stamp), written)
+	return true, writeThemeStamp(filepath.Join(dst, themeStamp), written)
 }
 
 // ownedByStamp is true when path is absent, or a regular file whose digest is want.
@@ -117,7 +133,7 @@ func copyFile(src, dst string) (string, error) {
 		return "", err
 	}
 	defer in.Close()
-	tmp, err := os.CreateTemp(filepath.Dir(dst), ".drift-*")
+	tmp, err := os.CreateTemp(filepath.Dir(dst), ".construct-*")
 	if err != nil {
 		return "", err
 	}
@@ -154,8 +170,8 @@ func fileSum(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// readGTK4Stamp reads "<digest> <path>" lines; a missing stamp is an empty one.
-func readGTK4Stamp(path string) (map[string]string, error) {
+// readThemeStamp reads "<digest> <path>" lines; a missing stamp is an empty one.
+func readThemeStamp(path string) (map[string]string, error) {
 	f, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return map[string]string{}, nil
@@ -175,7 +191,7 @@ func readGTK4Stamp(path string) (map[string]string, error) {
 	return stamp, sc.Err()
 }
 
-func writeGTK4Stamp(path string, stamp map[string]string) error {
+func writeThemeStamp(path string, stamp map[string]string) error {
 	rels := make([]string, 0, len(stamp))
 	for rel := range stamp {
 		rels = append(rels, rel)

@@ -11,7 +11,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
-	"github.com/spin-stack/spindrift/internal/gpt"
+	"github.com/Construct-Linux/os/internal/gpt"
 )
 
 // TypeVar is /var's partition type, x86-64's in the Discoverable Partitions Specification.
@@ -93,7 +93,7 @@ type InstallOptions struct {
 	Run      func(ctx context.Context, name string, args ...string) error
 	MountESP func(ctx context.Context, dev string) (string, func() error, error)
 	// MakeVar is given /var's partition to make /var on: its encryption, its file system, and who
-	// the machine is for are the caller's (cmd/drift).
+	// the machine is for are the caller's (cmd/construct).
 	MakeVar func(ctx context.Context, partition string) error
 	// Progress, when set, is told how far slot A's files are written: done of total bytes of the
 	// file as fetched (total -1 when the source does not say), for an installer to show.

@@ -96,12 +96,12 @@ func (l dirLayer) walk(fn func(*tar.Header, io.Reader) error) error {
 	})
 }
 
-// keyDir holds the release key's public half at usr/share/spindrift/release.pgp (task usb).
+// keyDir holds the release key's public half at usr/share/construct/release.pgp (task usb).
 var keyDir = filepath.Join(out, "release-key")
 
-// driftDir holds cmd/drift at usr/bin/drift, which task tools builds for the root (the tools
+// cliDir holds cmd/construct at usr/bin/construct, which task tools builds for the root (the tools
 // container that lays the root has no Go): a layer of its own.
-var driftDir = filepath.Join(out, "drift")
+var cliDir = filepath.Join(out, "construct")
 
 func clean(name string) string {
 	return strings.TrimPrefix(path.Clean("/"+name), "/")
@@ -116,7 +116,7 @@ func rootLayers(test bool) []layer {
 		tarLayer{file: filepath.Join(out, "firmware", "firmware.tar"), prefix: "usr/lib/firmware"},
 		dirLayer{dir: "image/rootfs"},
 		dirLayer{dir: themeDir},
-		dirLayer{dir: driftDir},
+		dirLayer{dir: cliDir},
 		dirLayer{dir: transfersDir},
 	}
 	// The key a release's signature is checked against, as task usb exported it from the signing
