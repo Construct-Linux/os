@@ -1,3 +1,0 @@
-# sched_ext's scheduler for a desktop: scx_lavd schedules for interactive latency and knows hybrid
-# processors' performance and efficiency cores. EEVDF takes over again whenever it stops.
-SCX_SCHEDULER=scx_lavd

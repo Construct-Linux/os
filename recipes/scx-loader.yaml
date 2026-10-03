@@ -1,0 +1,42 @@
+# scx_loader: the sched_ext scheduler as a D-Bus service (org.scx.Loader), started at boot with the
+# scheduler etc/scx_loader.toml names and switched while the machine runs - by scxctl, or by
+# CONSTRUCT's own settings through polkit - instead of a unit that starts one scheduler and keeps
+# it. It replaces scx's own scx.service. Wolfi has no recipe.
+package:
+  name: scx-loader
+  version: 1.1.3
+  epoch: 0
+  description: D-Bus loader for sched_ext schedulers, and scxctl
+  copyright:
+    - license: GPL-2.0-only
+  dependencies:
+    runtime:
+      - scx
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - git
+      - pkgconf
+      - rust
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/sched-ext/scx-loader
+      tag: v${{package.version}}
+      expected-commit: eab0ea026f3f86879373b86ca64735b66719f6df
+
+  - runs: |
+      cargo build --release --locked -p scx_loader -p scxctl
+      install -Dm755 target/release/scx_loader ${{targets.destdir}}/usr/bin/scx_loader
+      install -Dm755 target/release/scxctl ${{targets.destdir}}/usr/bin/scxctl
+      install -Dm644 services/scx_loader.service -t ${{targets.destdir}}/usr/lib/systemd/system/
+      install -Dm644 services/org.scx.Loader.service -t ${{targets.destdir}}/usr/share/dbus-1/system-services/
+      install -Dm644 configs/org.scx.Loader.conf -t ${{targets.destdir}}/usr/share/dbus-1/system.d/
+      install -Dm644 configs/org.scx.Loader.policy -t ${{targets.destdir}}/usr/share/polkit-1/actions/
+      install -Dm644 configs/org.scx.Loader.xml -t ${{targets.destdir}}/usr/share/dbus-1/interfaces/
+
+  - uses: strip

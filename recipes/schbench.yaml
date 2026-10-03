@@ -1,0 +1,29 @@
+# schbench, Chris Mason's scheduler benchmark: how long a woken thread waits for a CPU, at each
+# percentile, with every CPU busy - what a person at a loaded desktop feels as lag. construct
+# bench reads its JSON. Wolfi has no recipe; its last tag (1.0) predates the JSON output.
+package:
+  name: schbench
+  version: 1.0_git20250609
+  epoch: 0
+  description: Scheduler wakeup latency benchmark
+  copyright:
+    - license: GPL-2.0-only
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://git.kernel.org/pub/scm/linux/kernel/git/mason/schbench.git
+      branch: master
+      expected-commit: 6300b8f3a8922c61ea6bb2cdfa1901a42c0cc6fc
+
+  - runs: |
+      make CFLAGS="$CFLAGS -Wall -O2"
+      install -Dm755 schbench ${{targets.destdir}}/usr/bin/schbench
+
+  - uses: strip

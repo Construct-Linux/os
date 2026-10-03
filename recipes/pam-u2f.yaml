@@ -1,0 +1,41 @@
+# Yubico's pam_u2f: a touch of the person's security key where PAM asks for them - sudo, polkit's
+# "Authentication required", the lock screen - and pamu2fcfg, which registers a key for it.
+# Wolfi has no recipe. The manual pages need asciidoc and are left out.
+package:
+  name: pam-u2f
+  version: 1.4.0
+  epoch: 0
+  description: PAM module for FIDO2 and U2F security keys
+  copyright:
+    - license: BSD-2-Clause
+
+environment:
+  contents:
+    packages:
+      - autoconf
+      - automake
+      - build-base
+      - busybox
+      # libcrypto too: libfido2-dev brings OpenSSL 4.0's headers, which openssl-dev's would collide with.
+      - libfido2-dev
+      - libtool
+      - linux-pam-dev
+      - pkgconf
+      - pkgconf-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/Yubico/pam-u2f
+      tag: pam_u2f-${{package.version}}
+      expected-commit: 1d85db26b590c191a508d06eddc86fbff6b5009e
+
+  - runs: |
+      autoreconf -fi
+      ./configure --prefix=/usr --with-pam-dir=/usr/lib/security --disable-man
+      make -j$(nproc)
+      make DESTDIR=${{targets.destdir}} install
+      test -f ${{targets.destdir}}/usr/lib/security/pam_u2f.so
+      test -x ${{targets.destdir}}/usr/bin/pamu2fcfg
+
+  - uses: strip

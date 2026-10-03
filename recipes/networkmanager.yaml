@@ -50,7 +50,7 @@ pipeline:
   # ovs, teamdctl, nm_cloud_setup, ifupdown, ifcfg_rh: no Open vSwitch, teamd, cloud or distro config files on the desktop.
   # nmtui: Wolfi has no newt.
   # clat, ebpf, nbft: BPF 464XLAT and NVMe-oF boot are not desktop features and pull in libbpf, clang and libnvme.
-  # selinux, libaudit: neither runs on Spin OS.
+  # selinux, libaudit: neither runs on CONSTRUCT.
   # python-3.13 and py3.13-gobject3: libnm property metadata is generated from the gir even without docs.
   - uses: meson/configure
     with:
