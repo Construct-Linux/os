@@ -1,4 +1,4 @@
-# GNOME's first-run setup. Spindrift's installer creates the person, so it runs at their first
+# GNOME's first-run setup. Construct's installer creates the person, so it runs at their first
 # login (its existing-user mode): language, keyboard, privacy, online accounts, a welcome. Wolfi
 # has no recipe. WebKitGTK (web sign-ins for some online accounts) and malcontent (parental
 # controls) are not in the image.

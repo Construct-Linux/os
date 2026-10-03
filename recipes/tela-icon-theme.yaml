@@ -1,7 +1,7 @@
 package:
   name: tela-icon-theme
   version: 2026.08.10
-  epoch: 0
+  epoch: 1
   description: Tela flat icon theme (Tela, Tela-dark, Tela-light)
   copyright:
     - license: GPL-3.0-or-later
@@ -26,15 +26,15 @@ pipeline:
   # one visible app of the image Tela had none for.
   - uses: git-checkout
     with:
-      repository: https://github.com/aledbf/Tela-icon-theme
+      repository: https://github.com/Construct-Linux/Tela-icon-theme
       branch: gnome-51
-      expected-commit: 2cd0faae14605e8b3b21cd6581dcf8c815f60de9
+      expected-commit: 3d9cd2e9920ae17d77c25c545f196b8ed94605a7
 
   # Only the standard folder colour: the image names Tela/Tela-dark/Tela-light and
   # each further colour is another full copy of the theme.
   - runs: |
       mkdir -p "${{targets.destdir}}"/usr/share/icons
-      bash ./install.sh -d "${{targets.destdir}}"/usr/share/icons standard
+      bash ./install.sh -d "${{targets.destdir}}"/usr/share/icons
       for t in Tela Tela-dark Tela-light; do
         test -f "${{targets.destdir}}/usr/share/icons/$t/index.theme"
         test -e "${{targets.destdir}}/usr/share/icons/$t/scalable/apps/org.gnome.Decibels.svg"

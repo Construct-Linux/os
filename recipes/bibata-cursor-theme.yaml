@@ -1,8 +1,8 @@
 package:
   name: bibata-cursor-theme
   version: 2.0.7
-  epoch: 1
-  description: Bibata Modern cursor themes (Classic, dark; Ice, light)
+  epoch: 3
+  description: Bibata Modern cursors in Construct's colours (Bibata-Modern-Construct)
   copyright:
     - license: GPL-3.0-or-later
 
@@ -11,45 +11,23 @@ environment:
     packages:
       - busybox
       - python-3.13
-      - xz
+      - rsvg-convert
 
-# The prebuilt release cursors: building them needs clickgen (Python) and the
-# Node bitmapper, neither in Wolfi, and the result is the same X cursor files.
+# The fork's gnome-51 branch builds the theme from Bibata's SVGs with one Python program
+# (build.py): the X cursors every client reads, and the cursors_scalable/ SVGs GNOME Shell 51
+# draws its own cursor from - without them the shell logs "Could not load cursor" and shows
+# Adwaita's.
 pipeline:
-  - uses: fetch
-    with:
-      uri: https://github.com/ful1e5/Bibata_Cursor/releases/download/v${{package.version}}/Bibata-Modern-Classic.tar.xz
-      expected-sha256: 7d3495864e5bbef02f5e77de760b2905903b63c71495a78ef6306d19a3b556d8
-      extract: false
-
-  - uses: fetch
-    with:
-      uri: https://github.com/ful1e5/Bibata_Cursor/releases/download/v${{package.version}}/Bibata-Modern-Ice.tar.xz
-      expected-sha256: a68cae60c4dc706350e194ebc91c5fe48bc7bc9d59e119555834a2a7ee5078ef
-      extract: false
-
-  - runs: |
-      mkdir -p ${{targets.destdir}}/usr/share/icons
-      for theme in Bibata-Modern-Classic Bibata-Modern-Ice; do
-        tar -xJf $theme.tar.xz -C ${{targets.destdir}}/usr/share/icons
-        test -f ${{targets.destdir}}/usr/share/icons/$theme/index.theme
-      done
-      chmod -R u=rwX,go=rX ${{targets.destdir}}/usr/share/icons
-
-  # GNOME Shell 51 draws its cursor from SVGs in <theme>/cursors_scalable and ignores X cursors:
-  # without them the shell logs "Could not load cursor" and shows Adwaita's. The fork's gnome-51
-  # branch (v2.0.7 plus scalable.py) writes them from Bibata's own SVGs, colours and hotspots.
   - uses: git-checkout
     with:
-      repository: https://github.com/aledbf/Bibata_Cursor
+      repository: https://github.com/Construct-Linux/Bibata_Cursor
       branch: gnome-51
-      expected-commit: 10537b1491730f63a1ec9a11c65261b466b3a1c2
-      destination: src
+      expected-commit: a60da192fb7d1b2d3671447b64bca7683db55a56
 
   - runs: |
-      cd src
-      python3 scalable.py -o ${{targets.destdir}}/usr/share/icons Bibata-Modern-Classic Bibata-Modern-Ice
-      for theme in Bibata-Modern-Classic Bibata-Modern-Ice; do
-        test -f ${{targets.destdir}}/usr/share/icons/$theme/cursors_scalable/default/metadata.json
-      done
+      python3 build.py -o ${{targets.destdir}}/usr/share/icons
+      t=${{targets.destdir}}/usr/share/icons/Bibata-Modern-Construct
+      test -f $t/index.theme
+      test -f $t/cursors/default
+      test -f $t/cursors_scalable/default/metadata.json
       chmod -R u=rwX,go=rX ${{targets.destdir}}/usr/share/icons

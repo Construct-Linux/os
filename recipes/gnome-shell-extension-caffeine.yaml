@@ -2,7 +2,7 @@ package:
   name: gnome-shell-extension-caffeine
   # Tag v60 lacks GNOME Shell 51 in metadata.json; the pinned master commit adds it.
   version: 60_git20261002
-  epoch: 0
+  epoch: 1
   description: GNOME Shell extension that disables the screensaver and auto suspend
   copyright:
     - license: GPL-2.0-or-later
@@ -21,9 +21,9 @@ pipeline:
   # the screen is locked (upstream #366: locked monitors never turned off).
   - uses: git-checkout
     with:
-      repository: https://github.com/aledbf/gnome-shell-extension-caffeine
+      repository: https://github.com/Construct-Linux/gnome-shell-extension-caffeine
       branch: gnome-51
-      expected-commit: 2fcefa5da683f08b703d4ef1d8561e1e7d3b4003
+      expected-commit: ea1dcf7e6531d5f46185aa62ea24505101401c5f
 
   # Installed by hand instead of the Makefile's gnome-extensions zip: the schema goes system-wide
   # because the image compiles /usr/share/glib-2.0/schemas at build, and the catalogs go to

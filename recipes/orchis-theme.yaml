@@ -1,8 +1,8 @@
 package:
   name: orchis-theme
   version: "20260914"
-  epoch: 2
-  description: Orchis GTK and GNOME Shell theme (blue and teal, light and dark)
+  epoch: 3
+  description: Orchis GTK and GNOME Shell theme in Construct's colors, light and dark
   copyright:
     - license: GPL-3.0-only
 
@@ -17,22 +17,17 @@ environment:
 
 pipeline:
   # The gnome-shell-51 branch of a fork, on upstream's master: Shell 51 only, and what 49-51
-  # changed in the shell's widgets that upstream's newest stylesheet (48) leaves unstyled.
+  # changed in the shell's widgets that upstream's newest stylesheet (48) leaves unstyled; the
+  # brand's palette as its one accent, and only GNOME Shell, GTK 3 and GTK 4.
   - uses: git-checkout
     with:
-      repository: https://github.com/aledbf/Orchis-theme
+      repository: https://github.com/Construct-Linux/Orchis-theme
       branch: gnome-shell-51
-      expected-commit: 4e829aae45bff1d1d12b937f775df97110e4d745
+      expected-commit: 81e0c1d9e7ba8c304b60818ce2997b0d8023ee08
 
-  # No -l (it links into a home directory; the image links libadwaita per user) and no -g (the
-  # login screen keeps GNOME's look).
+  # No -l: it links into a home directory, and the image links libadwaita per user.
   - runs: |
       mkdir -p ${{targets.destdir}}/usr/share/themes
-      ./install.sh -d ${{targets.destdir}}/usr/share/themes -t default teal -c light dark -s standard
-      test -f ${{targets.destdir}}/usr/share/themes/Orchis-Teal-Dark/gnome-shell/gnome-shell.css
-
-  # Cinnamon, Xfwm4, Metacity and Plank styles serve desktops the image does not ship.
-  - runs: |
-      cd ${{targets.destdir}}/usr/share/themes
-      rm -r Orchis-*-hdpi Orchis-*-xhdpi
-      for t in Orchis-*; do rm -r $t/cinnamon $t/xfwm4 $t/metacity-1 $t/plank; done
+      ./install.sh -d ${{targets.destdir}}/usr/share/themes -c light dark
+      test -f ${{targets.destdir}}/usr/share/themes/Orchis-Construct-Dark/gnome-shell/gnome-shell.css
+      grep -q prefers-color-scheme ${{targets.destdir}}/usr/share/themes/Orchis-Construct-Light/gtk-4.0/gtk.css

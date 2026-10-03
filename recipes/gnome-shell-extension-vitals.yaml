@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-vitals
   version: 84.0.0
-  epoch: 1
+  epoch: 2
   description: GNOME Shell extension showing temperature, voltage, fan, memory, CPU, network and storage
   copyright:
     - license: GPL-2.0-or-later
@@ -25,9 +25,9 @@ pipeline:
   # bridges counted the same traffic two or three times).
   - uses: git-checkout
     with:
-      repository: https://github.com/aledbf/Vitals
+      repository: https://github.com/Construct-Linux/Vitals
       branch: gnome-51
-      expected-commit: 563a73f27b85cf6a1ff1b6f06f580e0abd1f1112
+      expected-commit: 95af23cc4fbb306576bbaf7f7e8beb5105f54f38
 
   # Upstream ships no build system: the extension is its source tree. The schema goes to the
   # system directory because the image compiles schemas there at build; the .po/.pot sources stay

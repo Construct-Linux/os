@@ -35,7 +35,7 @@ pipeline:
 
   # vapi off: no vala consumers in the session.
   # An administrator it creates - GNOME's Initial Setup's after a factory reset, one added in
-  # Settings - joins the groups drift install gives a person (internal/account's Groups): Docker,
+  # Settings - joins the groups construct install gives a person (internal/account's Groups): Docker,
   # and CUPS's printer administration.
   - uses: meson/configure
     with:

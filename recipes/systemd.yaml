@@ -5,12 +5,15 @@
 #   /var unlocks with the TPM and the person's PIN, sealed to a signed PCR 11 policy.
 # - sysupdate and sysupdated, in their own subpackage: the updates' engine and the D-Bus service
 #   GNOME Software updates the OS through.
+# - FIDO2: Wolfi builds without libfido2, so systemd-cryptenroll cannot enrol a security key and
+#   systemd-cryptsetup has no token to open /var with one (touch and the key's PIN). libfido2 is
+#   opened at run time: the root and the initrd install it themselves.
 # Everything else is Wolfi's, but for the aarch64-only patch (we build x86_64) and the package
 # tests, which use Wolfi's own test pipelines and which melange build does not run.
 package:
   name: systemd
   version: "261.3"
-  epoch: 5
+  epoch: 6
   description: The systemd System and Service Manager
   copyright:
     - license: LGPL-2.1-or-later AND GPL-2.0-or-later
@@ -78,6 +81,7 @@ environment:
       - gperf
       - kmod
       - kmod-dev
+      - libfido2-dev
       - libarchive-dev
       - libbpf
       - libbpf-dev
@@ -136,6 +140,7 @@ pipeline:
         -Dsysupdate=enabled \
         -Dsysupdated=enabled \
         -Dtpm2=enabled \
+        -Dlibfido2=enabled \
         -Dukify=true
 
   - uses: meson/compile

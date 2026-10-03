@@ -1,0 +1,36 @@
+# Task (taskfile.dev), the runner this repository's own Taskfile and a developer's projects use.
+# An override of Wolfi's task, which is three releases behind (3.51.1) and ships the binary alone:
+# this one carries the shell completions too, which Task writes itself (task --completion).
+package:
+  name: task
+  version: 3.54.0
+  epoch: 4
+  description: A task runner and build tool (Taskfile.yml)
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - go
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/go-task/task
+      tag: v${{package.version}}
+      expected-commit: b5aef1c287a9be8038347a17646bdf4bc7185bce
+
+  # The version is internal/version/version.txt, embedded; -buildvcs=false keeps a commit and
+  # "dirty" out of it, which the checkout's own state would add.
+  - runs: |
+      CGO_ENABLED=0 go build -trimpath -buildvcs=false -ldflags "-s -w" -o task ./cmd/task
+      ./task --version | grep -q "${{package.version}}"
+      install -Dm755 task ${{targets.destdir}}/usr/bin/task
+      ./task --completion bash > task.bash
+      ./task --completion zsh > _task
+      ./task --completion fish > task.fish
+      install -Dm644 task.bash ${{targets.destdir}}/usr/share/bash-completion/completions/task
+      install -Dm644 _task ${{targets.destdir}}/usr/share/zsh/site-functions/_task
+      install -Dm644 task.fish ${{targets.destdir}}/usr/share/fish/vendor_completions.d/task.fish
