@@ -1,0 +1,41 @@
+# iio-sensor-proxy: the ambient light sensor, the accelerometer and the proximity sensor over
+# D-Bus, which GNOME's automatic brightness and screen rotation read - a laptop's sensor hub (ISH)
+# or a 2-in-1's accelerometer. udev starts it when such a sensor appears. Wolfi has no recipe.
+package:
+  name: iio-sensor-proxy
+  version: "3.9"
+  epoch: 0
+  description: IIO sensors (light, accelerometer, proximity) over D-Bus
+  copyright:
+    - license: GPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - glib-dev
+      - libgudev-dev
+      - meson
+      - ninja
+      - polkit-dev
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://gitlab.freedesktop.org/hadess/iio-sensor-proxy/-/archive/${{package.version}}/iio-sensor-proxy-${{package.version}}.tar.gz
+      expected-sha256: af5edd307dcfa52dc3a242d13b7cc756e90a71640caf332efbad960e21649ae4
+
+  - uses: meson/configure
+    with:
+      opts: -Dtests=false -Dgtk-tests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - runs: |
+      test -f ${{targets.destdir}}/usr/lib/systemd/system/iio-sensor-proxy.service
+
+  - uses: strip

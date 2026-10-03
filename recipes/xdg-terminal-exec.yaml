@@ -1,0 +1,31 @@
+# xdg-terminal-exec, the default terminal as freedesktop's proposed specification has it: GLib
+# launches an app with Terminal=true through it, and the session's "open a terminal" with it.
+# Which terminal is etc/xdg/xdg-terminals.list's (Ghostty); a person's ~/.config one comes first.
+# Wolfi has no recipe. The manual page needs scdoc and is left out.
+package:
+  name: xdg-terminal-exec
+  version: 0.14.3
+  epoch: 0
+  description: The default terminal, by the proposed xdg-terminal-exec specification
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      - busybox
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - make
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/Vladimir-csp/xdg-terminal-exec
+      tag: v${{package.version}}
+      expected-commit: 065925df9f419008159258ae169018bfd23df71b
+
+  - runs: |
+      make prefix=/usr DESTDIR=${{targets.destdir}} install-bin install-conf
+      test -x ${{targets.destdir}}/usr/bin/xdg-terminal-exec

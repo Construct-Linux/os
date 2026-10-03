@@ -1,0 +1,50 @@
+# Intel's Low Power Mode Daemon: on a lightly loaded laptop it confines work to the low-power cores
+# (Meteor, Lunar and Panther Lake's own configurations, data/intel_lpmd_config_F6_M*.xml), which
+# owners of the ThinkPad X9-15p report as about 2.5 W idle against 3 W. Installed and not enabled:
+# the image enables it once construct power measures that on the laptop itself. Wolfi has no recipe.
+package:
+  name: intel-lpmd
+  version: 0.1.0
+  epoch: 0
+  description: Intel Low Power Mode Daemon
+  copyright:
+    - license: GPL-2.0-or-later
+
+environment:
+  contents:
+    packages:
+      - autoconf
+      - automake
+      - build-base
+      - busybox
+      - glib-dev
+      - gtk-doc
+      - libnl3-dev
+      - libtool
+      - libxml2-dev
+      - pkgconf
+      # pkg.m4, autoconf's PKG_CHECK_MODULES.
+      - pkgconf-dev
+      - systemd-dev
+      - upower-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/intel/intel-lpmd
+      tag: v${{package.version}}
+      expected-commit: 956df747e56aca1739b39bff8cff77e81758af9a
+
+  # The D-Bus policy where packages' policies go (/usr/share), not /etc's administrator copies.
+  - runs: |
+      NO_CONFIGURE=1 ./autogen.sh
+      ./configure --prefix=/usr --sbindir=/usr/bin --sysconfdir=/etc --localstatedir=/var \
+        --with-dbus-sys-dir=/usr/share/dbus-1/system.d \
+        --with-systemdsystemunitdir=/usr/lib/systemd/system --disable-werror
+      make -j$(nproc)
+      make DESTDIR=${{targets.destdir}} install
+      test -f ${{targets.destdir}}/usr/lib/systemd/system/intel_lpmd.service
+      grep -q '^ExecStart=/usr/bin/intel_lpmd' ${{targets.destdir}}/usr/lib/systemd/system/intel_lpmd.service
+      ls ${{targets.destdir}}/etc/intel_lpmd/ | grep -q 'F6_M204'
+
+  - uses: strip

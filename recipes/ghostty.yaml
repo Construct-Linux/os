@@ -1,0 +1,75 @@
+# Ghostty, the default terminal: GTK 4 and libadwaita, rendering on the GPU. Wolfi has no recipe.
+# Built as its PACKAGING.md says a distribution does: the release's source tarball (not a git
+# checkout), its Zig dependencies fetched first into a cache - by hash, from build.zig.zon - and the
+# build itself offline against them (--system), the system's libraries linked dynamically. Three
+# libraries Wolfi lacks (spirv-cross, simdutf, gtk4-layer-shell), and glslang - whose -dev package
+# conflicts with shaderc, which GTK 4's pulls in, over the glslang command - are Ghostty's own
+# copies from that cache (-fno-sys). Zig changes incompatibly between releases: 1.3.1 asks for 0.15.2.
+package:
+  name: ghostty
+  version: 1.3.1
+  epoch: 0
+  description: A fast, native terminal emulator (GTK 4)
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - bash
+      - curl
+      - git
+      - zig=0.15.2-r2
+      - pkgconf
+      - gettext
+      - blueprint-compiler
+      - gtk-4-dev
+      - libadwaita-dev
+      - fontconfig-dev
+      - freetype-dev
+      - harfbuzz-dev
+      - highway-dev
+      - oniguruma-dev
+      - libxml2-dev
+      - libpng-dev
+      - bzip2-dev
+      - zlib-dev
+      - wayland-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://release.files.ghostty.org/${{package.version}}/ghostty-${{package.version}}.tar.gz
+      expected-sha256: 3349d25600ffbda281197a18314f7d18791969cffe9474f0ff16a45a9ebfccdb
+
+  # The build environment, as Zig's linker reads it: Wolfi's glibc writes its libc.so and libm.so
+  # linker scripts naming copies called libc.so-2.44 and libm.so-2.44, an extension Zig refuses,
+  # so they name the same libraries by their sonames; and bzip2 ships no pkg-config file - Arch's
+  # and Fedora's add this one. Neither leaves the build.
+  - runs: |
+      sed -i 's|/usr/lib/libc.so-[0-9.]*|/usr/lib/libc.so.6|; s|/usr/lib/libm.so-[0-9.]*|/usr/lib/libm.so.6|' /usr/lib/libc.so /usr/lib/libm.so
+      grep -q 'libc.so.6' /usr/lib/libc.so && grep -q 'libm.so.6' /usr/lib/libm.so
+      printf 'prefix=/usr\nlibdir=${prefix}/lib\nincludedir=${prefix}/include\n\nName: bzip2\nDescription: bzip2 compression library\nVersion: 1.0.8\nLibs: -L${libdir} -lbz2\nCflags: -I${includedir}\n' > /usr/lib/pkgconfig/bzip2.pc
+
+  - runs: |
+      export ZIG_GLOBAL_CACHE_DIR=/tmp/zig-cache
+      ./nix/build-support/fetch-zig-cache.sh
+      DESTDIR=${{targets.destdir}} zig build \
+        --prefix /usr \
+        --system /tmp/zig-cache/p \
+        -Doptimize=ReleaseFast \
+        -Dcpu=x86_64_v3 \
+        -fno-sys=spirv-cross -fno-sys=simdutf -fno-sys=gtk4-layer-shell -fno-sys=glslang \
+        -Demit-docs=false
+      test -x ${{targets.destdir}}/usr/bin/ghostty
+      test -f ${{targets.destdir}}/usr/share/applications/com.mitchellh.ghostty.desktop
+
+  - uses: strip
+
+subpackages:
+  - name: ghostty-lang
+    pipeline:
+      - uses: split/locales
+    description: Ghostty's translations
