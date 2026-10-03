@@ -152,8 +152,9 @@ func test(args []string) error {
 		`ip netns add fwtest && ip link add fw0 type veth peer name fw1 netns fwtest && `+
 		`ip addr add 10.99.0.1/24 dev fw0 && ip link set fw0 up && `+
 		`ip -n fwtest addr add 10.99.0.2/24 dev fw1 && ip -n fwtest link set fw1 up && `+
-		`{ python3 -m http.server 8765 --bind 0.0.0.0 >/dev/null 2>&1 & p=$!; sleep 1; `+
-		`curl -s -o /dev/null -m 3 http://127.0.0.1:8765/; echo local=$?; `+
+		// Python takes its time to listen: the local answer is waited for, up to ten seconds.
+		`{ python3 -m http.server 8765 --bind 0.0.0.0 >/dev/null 2>&1 & p=$!; l=7; `+
+		`for i in $(seq 20); do curl -s -o /dev/null -m 1 http://127.0.0.1:8765/ && { l=0; break; }; sleep 0.5; done; echo local=$l; `+
 		`ip netns exec fwtest curl -s -o /dev/null -m 3 http://10.99.0.1:8765/; echo network=$?; kill $p; }; `+
 		`ip netns del fwtest`, "")
 	r.add("firewall", strings.HasPrefix(fw, "1\n") && strings.Contains(fw, "local=0") && strings.Contains(fw, "network=28"), oneLine(fw))
@@ -512,10 +513,18 @@ func (r *report) installer(v *vm, g *guest, stick bool) {
 // successful suspend), the session came back locked - /var's key stays in memory while it sleeps,
 // and the lock screen is what keeps it - and the network is up again. Last: the session stays
 // locked after it.
+//
+// It sleeps as the laptops Construct is for do: s2idle, modern standby, the one state they have.
+// QEMU's S3 is no stand-in for them - its xHCI controller cannot save and restore its state
+// (USBSTS SRE), the kernel resets it on resume, and the stick the live root is read from comes
+// back offline. A key press wakes it: the PS/2 keyboard is made a wakeup source, as a laptop's is.
 func (r *report) suspend(v *vm, g *guest) {
 	before, _ := g.run(`cat /sys/power/suspend_stats/success`, "")
-	// --no-block: the job ends only once the machine is awake again, which this side does.
-	_, err := g.run(`systemctl suspend --no-block`, "")
+	_, err := g.run(`echo s2idle > /sys/power/mem_sleep && echo enabled > /sys/devices/platform/i8042/serio0/power/wakeup`, "")
+	if err == nil {
+		// --no-block: the job ends only once the machine is awake again, which this side does.
+		_, err = g.run(`systemctl suspend --no-block`, "")
+	}
 	if err == nil {
 		// Asleep once the guest stops answering.
 		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
@@ -524,7 +533,7 @@ func (r *report) suspend(v *vm, g *guest) {
 			}
 		}
 		time.Sleep(3 * time.Second)
-		err = v.wake()
+		err = v.key("shift")
 	}
 	if err == nil {
 		err = g.wait(2 * time.Minute)

@@ -144,10 +144,6 @@ func (m machine) start() (*vm, error) {
 		// Secure Boot's firmware, its variables in setup mode until systemd-boot enrolls the
 		// stick's keys (by itself in a VM): every machine with UEFI boots signed or not at all.
 		// The variables are written in SMM, which only the firmware may enter.
-		// S3, which QEMU wakes from on QMP's system_wakeup: the suspend path the harness tests -
-		// logind, GNOME's lock, the sleep hooks, the network - is the same as s2idle's, whose
-		// RTC alarm does not wake a VM. s2idle's hardware is measured on a laptop.
-		args = append(args, "-global", "ICH9-LPC.disable_s3=0")
 		args = append(args, "-machine", "q35,smm=on",
 			"-global", "driver=cfi.pflash01,property=secure,value=on",
 			"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd",
@@ -162,7 +158,6 @@ func (m machine) start() (*vm, error) {
 	} else {
 		args = append(args,
 			"-kernel", filepath.Join(out, "kernel", "bzImage"),
-			"-global", "PIIX4_PM.disable_s3=0",
 			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
 			"-drive", "file="+filepath.Join(out, "disk.raw")+",if=virtio,format=raw")
 	}
@@ -305,11 +300,6 @@ func (v *vm) typeText(text string) error {
 		}
 	}
 	return v.key("ret")
-}
-
-// wake wakes a suspended machine, as opening a laptop's lid does.
-func (v *vm) wake() error {
-	return qmpRun(v.qmp, map[string]any{"execute": "system_wakeup"})
 }
 
 // harnessQEMU is the image task harness-qemu builds: QEMU with CanoKey, which the host's lacks.
