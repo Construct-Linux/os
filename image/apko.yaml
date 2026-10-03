@@ -151,7 +151,6 @@ contents:
     - xdg-desktop-portal-gtk
     - gvfs
     - xdg-user-dirs
-    - gnome-backgrounds
     # Apps.
     - nautilus
     - tinysparql

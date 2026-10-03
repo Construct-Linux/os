@@ -24,21 +24,24 @@ frame_y = Window.GetY() + Window.GetHeight() * 0.4 - size / 2;
 logo_bottom = frame_y + size * {{.LogoBottom}};
 
 # Plymouth reads an image from the theme's directory, so the brand's are reached from there.
-fun frame_image(part, n)
+fun frame_image(n)
 {
   if (n < 10)
     name = "000" + n;
-  else
+  else if (n < 100)
     name = "00" + n;
-  return Image("{{.Frames}}" + part + "-" + name + ".png").Scale(size, size);
+  else
+    name = "0" + n;
+  return Image("{{.Frames}}frame-" + name + ".png").Scale(size, size);
 }
 
+# Each part's frames by number, in the order they play (the brand's sequence.json), and how many.
 # The intro and the outro are shown once each, so they are read as they play; the loop's frames,
-# shown again and again, are kept.
-intro_frames = {{.Intro}};
-loop_frames = {{.Loop}};
-outro_frames = {{.Outro}};
-anim = Sprite(frame_image("intro", 1));
+# shown again and again, are kept by number.
+{{.Intro}}
+{{.Loop}}
+{{.Outro}}
+anim = Sprite(frame_image(intro[0]));
 anim.SetPosition(frame_x, frame_y, 1);
 part = "intro";
 shown = 1;
@@ -125,22 +128,22 @@ fun refresh()
       play("loop");
     else
     {
+      anim.SetImage(frame_image(intro[shown]));
       shown++;
-      anim.SetImage(frame_image("intro", shown));
     }
   }
   if (part == "loop")
   {
-    i = shown % loop_frames;
-    if (!kept[i])
-      kept[i] = frame_image("loop", i + 1);
-    anim.SetImage(kept[i]);
+    frame = loop[shown % loop_frames];
+    if (!kept[frame])
+      kept[frame] = frame_image(frame);
+    anim.SetImage(kept[frame]);
     shown++;
   }
   if (part == "outro" && shown < outro_frames)
   {
+    anim.SetImage(frame_image(outro[shown]));
     shown++;
-    anim.SetImage(frame_image("outro", shown));
   }
 }
 

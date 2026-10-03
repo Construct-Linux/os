@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -24,9 +25,19 @@ import (
 var themeDir = filepath.Join(out, "plymouth")
 
 // brandFrames is where construct-brand (recipes/, from github.com/Construct-Linux/brand) puts the
-// boot animation's frames: intro-NNNN.png, played once; loop-NNNN.png, repeated while the machine
-// boots; outro-NNNN.png, the grid going out until the logo is left.
+// boot animation: its frames, frame-NNNN.png, and sequence.json, which frames each part plays -
+// the intro once, the loop while the machine boots, the outro until the logo is left. A frame may
+// appear in more than one part, and more than once in one.
 const brandFrames = "usr/share/construct/plymouth"
+
+// brandSequence is sequence.json: each part's frames, by number, in the order they play.
+type brandSequence struct {
+	Intro []int `json:"intro"`
+	Loop  []int `json:"loop"`
+	Outro []int `json:"outro"`
+}
+
+func frameName(n int) string { return fmt.Sprintf("frame-%04d.png", n) }
 
 // themeScript is the theme's script, for Plymouth's script plugin: the screen is CONSTRUCT's, the
 // disk's password prompt included, which two-step would leave to systemd's words ("Please enter
@@ -47,14 +58,17 @@ var themeScript string
 // (construct install, a credential the boot-language unit writes into plymouthd.conf).
 func plymouthTheme() error {
 	rootfs := filepath.Join(out, "rootfs.tar")
-	frames, err := readBrandFrames(rootfs)
+	files, err := readBrandFiles(rootfs)
+	if err != nil {
+		return err
+	}
+	seq, frames, err := brandAnimation(files)
 	if err != nil {
 		return err
 	}
 	if err := os.RemoveAll(themeDir); err != nil {
 		return err
 	}
-	counts := map[string]int{}
 	for name, b := range frames {
 		dst := filepath.Join(themeDir, brandFrames, name)
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
@@ -63,15 +77,8 @@ func plymouthTheme() error {
 		if err := os.WriteFile(dst, b, 0o644); err != nil {
 			return err
 		}
-		part, _, _ := strings.Cut(name, "-")
-		counts[part]++
 	}
-	for _, part := range []string{"intro", "loop", "outro"} {
-		if counts[part] == 0 {
-			return fmt.Errorf("construct-brand has no %s frames in %s", part, brandFrames)
-		}
-	}
-	logoBottom, err := opaqueBottom(frames[fmt.Sprintf("outro-%04d.png", counts["outro"])])
+	logoBottom, err := opaqueBottom(frames[frameName(seq.Outro[len(seq.Outro)-1])])
 	if err != nil {
 		return err
 	}
@@ -103,10 +110,11 @@ func plymouthTheme() error {
 		var b bytes.Buffer
 		if err := tmpl.Execute(&b, struct {
 			promptWords
-			Intro, Loop, Outro         int
+			Intro, Loop, Outro         string
 			Frames, LogoBottom         string
 			KeyPINPrompt, TouchMessage string
-		}{scriptQuoted(words), counts["intro"], counts["loop"], counts["outro"], framesFromTheme + "/", fmt.Sprintf("%.3f", logoBottom), keyPINPrompt, touchMessage}); err != nil {
+		}{scriptQuoted(words), scriptArray("intro", seq.Intro), scriptArray("loop", seq.Loop), scriptArray("outro", seq.Outro),
+			framesFromTheme + "/", fmt.Sprintf("%.3f", logoBottom), keyPINPrompt, touchMessage}); err != nil {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(dir, script), b.Bytes(), 0o644); err != nil {
@@ -120,8 +128,10 @@ func plymouthTheme() error {
 			return err
 		}
 	}
+	// The brand's palette (github.com/Construct-Linux/brand palette.toml): the field is neutral g,
+	// what Orchis draws text on in dark mode; the dots are the mark's cyan.
 	for name, img := range map[string]image.Image{
-		"entry.png":  box(320, 36, color.RGBA{0x10, 0x1c, 0x2c, 0xff}),
+		"entry.png":  box(320, 36, color.RGBA{0x17, 0x20, 0x28, 0xff}),
 		"bullet.png": dot(10, color.RGBA{0x00, 0xe5, 0xff, 0xff}),
 	} {
 		if err := writePNG(filepath.Join(dir, name), img); err != nil {
@@ -136,8 +146,8 @@ func plymouthTheme() error {
 	return os.WriteFile(filepath.Join(etc, "plymouthd.conf"), []byte(conf), 0o644)
 }
 
-// readBrandFrames reads construct-brand's frames from the root's tarball, by file name.
-func readBrandFrames(rootfs string) (map[string][]byte, error) {
+// readBrandFiles reads construct-brand's animation from the root's tarball, by file name.
+func readBrandFiles(rootfs string) (map[string][]byte, error) {
 	f, err := os.Open(rootfs)
 	if err != nil {
 		return nil, err
@@ -154,7 +164,7 @@ func readBrandFrames(rootfs string) (map[string][]byte, error) {
 			return nil, err
 		}
 		name := strings.TrimPrefix(path.Clean("/"+h.Name), "/")
-		if path.Dir(name) != brandFrames || path.Ext(name) != ".png" {
+		if path.Dir(name) != brandFrames {
 			continue
 		}
 		if frames[path.Base(name)], err = io.ReadAll(tr); err != nil {
@@ -165,6 +175,48 @@ func readBrandFrames(rootfs string) (map[string][]byte, error) {
 		return nil, fmt.Errorf("%s has no %s: image/apko.yaml installs construct-brand", rootfs, brandFrames)
 	}
 	return frames, nil
+}
+
+// brandAnimation is the brand's sequence and the frames it plays, by file name: every part has
+// frames, and every frame it names is there. A frame no part plays stays out of the theme.
+func brandAnimation(files map[string][]byte) (brandSequence, map[string][]byte, error) {
+	var seq brandSequence
+	b, ok := files["sequence.json"]
+	if !ok {
+		return seq, nil, fmt.Errorf("construct-brand has no %s/sequence.json", brandFrames)
+	}
+	if err := json.Unmarshal(b, &seq); err != nil {
+		return seq, nil, fmt.Errorf("construct-brand's sequence.json: %w", err)
+	}
+	frames := map[string][]byte{}
+	for _, part := range []struct {
+		name   string
+		frames []int
+	}{{"intro", seq.Intro}, {"loop", seq.Loop}, {"outro", seq.Outro}} {
+		if len(part.frames) == 0 {
+			return seq, nil, fmt.Errorf("construct-brand's sequence.json has no %s", part.name)
+		}
+		for _, n := range part.frames {
+			name := frameName(n)
+			f, ok := files[name]
+			if !ok {
+				return seq, nil, fmt.Errorf("construct-brand's %s plays %s, which it has not got", part.name, name)
+			}
+			frames[name] = f
+		}
+	}
+	return seq, frames, nil
+}
+
+// scriptArray is a Plymouth script's statements filling the array name with v, the language
+// having no array literal: name[0] = 1; name[1] = 2; ...
+func scriptArray(name string, v []int) string {
+	var b strings.Builder
+	for i, n := range v {
+		fmt.Fprintf(&b, "%s[%d] = %d; ", name, i, n)
+	}
+	fmt.Fprintf(&b, "%s_frames = %d;", name, len(v))
+	return b.String()
 }
 
 // opaqueBottom is how far down a frame its drawing reaches, as a share of its height: the prompt

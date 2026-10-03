@@ -76,7 +76,7 @@ func TestSyncThemeLeavesALinkedTheme(t *testing.T) {
 	writeTree(t, src, map[string]string{"gtk.css": "v1"})
 	other := filepath.Join(t.TempDir(), "gtk.css")
 	writeTree(t, filepath.Dir(other), map[string]string{"gtk.css": "linked"})
-	// What Orchis's own install.sh -l leaves: a link, and no stamp.
+	// A link someone else made, and no stamp.
 	if err := os.Symlink(other, filepath.Join(dst, "gtk.css")); err != nil {
 		t.Fatal(err)
 	}

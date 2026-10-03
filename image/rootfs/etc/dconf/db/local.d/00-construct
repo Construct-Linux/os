@@ -14,6 +14,27 @@ color-scheme='prefer-dark'
 [org/gnome/shell/extensions/user-theme]
 name='Orchis-Construct-Dark'
 
+# The brand's wallpaper (construct-brand), light and dark, on its own colour while it loads.
+[org/gnome/desktop/background]
+picture-uri='file:///usr/share/backgrounds/construct/construct-light.png'
+picture-uri-dark='file:///usr/share/backgrounds/construct/construct-dark.png'
+picture-options='zoom'
+primary-color='#0B1116'
+color-shading-type='solid'
+
+# Tiling Shell tiles windows: mutter's own edge tiling and its keys would answer the same gestures
+# and keys, and the extension's first enable would write these into each person's dconf.
+[org/gnome/mutter]
+edge-tiling=false
+
+[org/gnome/mutter/keybindings]
+toggle-tiled-left=@as []
+toggle-tiled-right=@as []
+
+[org/gnome/desktop/wm/keybindings]
+maximize=@as []
+unmaximize=@as []
+
 # The set a developer keeps on: the shell theme, tray icons, clipboard history, the panel's
 # tweaks, staying awake, system monitors, tiling, and a taskbar. Workspace Indicator, Removable
 # Drive Menu and Night Theme Switcher are installed, off: the last turns libadwaita light by day
