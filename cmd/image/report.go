@@ -17,6 +17,8 @@ import (
 type result struct {
 	name, detail string
 	ok           bool
+	// skipped is a check this machine cannot run, said so rather than passed.
+	skipped bool
 }
 
 type report struct {
@@ -28,12 +30,18 @@ type report struct {
 }
 
 func (r *report) add(name string, ok bool, detail string) {
-	r.results = append(r.results, result{name, detail, ok})
+	r.results = append(r.results, result{name: name, detail: detail, ok: ok})
 	mark := "PASS"
 	if !ok {
 		mark = "FAIL"
 	}
 	fmt.Printf("%s %-36s %s\n", mark, name, detail)
+}
+
+// skip records a check that could not run here, and why: never a pass, never silent.
+func (r *report) skip(name, why string) {
+	r.results = append(r.results, result{name: name, detail: why, ok: true, skipped: true})
+	fmt.Printf("SKIP %-36s %s\n", name, why)
 }
 
 // shot saves the screen as name.png; one it cannot take is a failure of its own, since the report
@@ -59,10 +67,14 @@ func (r *report) write(g *guest) error {
 		r.system(g)
 	}
 	var b strings.Builder
-	bad := 0
+	bad, skipped := 0, 0
 	for _, x := range r.results {
 		mark := "PASS"
-		if !x.ok {
+		switch {
+		case x.skipped:
+			mark = "SKIP"
+			skipped++
+		case !x.ok:
 			mark = "FAIL"
 			bad++
 		}
@@ -71,7 +83,8 @@ func (r *report) write(g *guest) error {
 	if err := os.WriteFile(filepath.Join(r.dir, "report.txt"), []byte(b.String()), 0o644); err != nil {
 		return err
 	}
-	fmt.Printf("%d/%d passed; screenshots and journal-errors.txt in %s\n", len(r.results)-bad, len(r.results), r.dir)
+	ran := len(r.results) - skipped
+	fmt.Printf("%d/%d passed, %d skipped; screenshots and journal-errors.txt in %s\n", ran-bad, ran, skipped, r.dir)
 	if bad > 0 {
 		return fmt.Errorf("%d checks failed", bad)
 	}

@@ -22,7 +22,7 @@ name='Orchis-Construct-Dark'
 enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com']
 
 # The dock: Files, the browser, the editor, the terminal, Software, Calendar.
-favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'code.desktop', 'org.gnome.Ptyxis.desktop', 'org.gnome.Software.desktop', 'org.gnome.Calendar.desktop']
+favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'code.desktop', 'com.mitchellh.ghostty.desktop', 'org.gnome.Software.desktop', 'org.gnome.Calendar.desktop']
 
 # Ptyxis: the machine, and a tab in the Wolfi container (etc/distrobox/distrobox.conf), whose
 # first use creates it.
@@ -58,3 +58,8 @@ global-border-radius=4
 
 [org/gnome/shell/extensions/just-perfection]
 clock-menu-position=1
+
+# Some laptops' screenshot key sends XF86SelectiveScreenshot rather than Print (the ThinkPad
+# X9-15p's): both open GNOME's screenshot UI.
+[org/gnome/shell/keybindings]
+show-screenshot-ui=['Print', 'XF86SelectiveScreenshot']

@@ -105,6 +105,10 @@ contents:
     - gnome-settings-daemon
     - gnome-control-center
     - xdg-desktop-portal-gnome
+    # The default terminal: Ghostty, by xdg-terminal-exec (etc/xdg/xdg-terminals.list). Ptyxis
+    # stays for its profile into the Wolfi container.
+    - ghostty
+    - xdg-terminal-exec
     - ptyxis
     - xwayland
     - networkmanager
@@ -194,6 +198,8 @@ contents:
     - flatpak
     # sched_ext schedulers (kernel/desktop.config's SCHED_CLASS_EXT).
     - scx
+    # scx_loader, which starts and switches it (etc/scx_loader.toml).
+    - scx-loader
     - font-noto-emoji
     - glibc-locale-en
     - glibc-locale-es
@@ -222,8 +228,29 @@ contents:
     # ifconfig, route, netstat and arp for scripts and habits that still call them (net-tools).
     - task
     - net-tools
-    # libfido2, which systemd-cryptenroll and systemd-cryptsetup open at run time for a security key.
+    # powertop: what keeps a laptop from its low-power states, and its tunables (construct power).
+    - powertop
+    # Swap in compressed RAM (usr/lib/systemd/zram-generator.conf), and construct bench's
+    # workloads: schbench (recipes/), stress-ng and fio.
+    - zram-generator
+    - schbench
+    - stress-ng
+    - fio
+    # A laptop's own: its light, motion and proximity sensors over D-Bus (automatic brightness,
+    # rotation), started by udev; fingerprint login (fprintd, enrolled in Settings, offered by
+    # GDM's gdm-fingerprint), started by D-Bus; Intel's low-power-mode daemon, installed and not
+    # enabled until it is measured (recipes/intel-lpmd).
+    - iio-sensor-proxy
+    - libfprint
+    - fprintd
+    - intel-lpmd
+    # libfido2, which systemd-cryptenroll and systemd-cryptsetup open at run time for a security key,
+    # and its tools: fido2-token lists keys and sets a new key's PIN, for the installer and a person.
     - libfido2
+    - fido2
+    # script (util-linux): a terminal for a program that reads one, fido2-token's new-PIN prompt
+    # among them.
+    - script
     - dockerd-29
     - dockerd-service-29
     - docker-init-29
@@ -234,6 +261,10 @@ contents:
     - containerd-service-2
     - runc
     - iptables-nft
+    # nft, which loads the firewall (usr/lib/construct/firewall.nft).
+    - nftables
+    # Tailscale (usr/lib/systemd/system/tailscaled.service).
+    - tailscale
     # Translations: Wolfi and recipes/ put a package's catalogs in <name>-lang, which nothing
     # installs unless it is named here. go run ./cmd/image check-langs (in task rootfs) fails the
     # build when one is missing.
@@ -300,6 +331,8 @@ contents:
     - papers-lang
     - polkit-lang
     - popt-lang
+    - fprintd-lang
+    - ghostty-lang
     - ptyxis-lang
     - shared-mime-info-lang
     - showtime-lang

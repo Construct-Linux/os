@@ -22,6 +22,7 @@ type app struct {
 // apps is what "usable" means, as a list the harness checks: each must be installed, open a
 // window, and leave no core dump behind.
 var apps = []app{
+	{"com.mitchellh.ghostty.desktop", 20 * time.Second},
 	{"org.gnome.Ptyxis.desktop", 20 * time.Second},
 	{"code.desktop", 40 * time.Second},
 	{"org.gnome.Settings.desktop", 30 * time.Second},
@@ -109,6 +110,9 @@ func test(args []string) error {
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
 	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched)+errText(err))
+	// scx_loader runs it (etc/scx_loader.toml), and answers which over its bus.
+	loader, err := g.run(`scxctl get 2>&1`, "")
+	r.add("scx_loader runs lavd", err == nil && strings.Contains(strings.ToLower(loader), "running lavd"), oneLine(loader)+errText(err))
 	for _, e := range g.extensions() {
 		r.add("extension "+e.uuid, e.ok(), e.detail())
 	}
@@ -125,9 +129,37 @@ func test(args []string) error {
 	// docker's socket is first used, and nothing has used it yet.
 	idle, _ := g.run(`systemctl is-active docker.service containerd.service`, "")
 	r.add("on demand only", len(strings.Fields(idle)) == 2 && !slices.Contains(strings.Fields(idle), "active"), oneLine(idle))
+	// The default terminal, as GLib and the session's "open a terminal" find it.
+	term, _ := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 xdg-terminal-exec --print-id 2>&1`, "")
+	r.add("default terminal", strings.Contains(term, "com.mitchellh.ghostty.desktop"), oneLine(term))
+	// The memory, writeback and network settings (usr/lib/sysctl.d/70-construct.conf, zram,
+	// THP), as the running kernel has them.
+	tune, _ := g.run(`swapon --show=NAME,TYPE --noheadings | tr -s ' ' | tr '\n' ';'; `+
+		`sysctl -n vm.swappiness vm.page-cluster vm.vfs_cache_pressure vm.dirty_bytes net.ipv4.tcp_congestion_control kernel.nmi_watchdog | tr '\n' ' '; `+
+		`cat /sys/kernel/mm/transparent_hugepage/defrag /sys/module/zswap/parameters/enabled | tr '\n' ' '`, "")
+	r.add("memory and network settings", strings.Contains(tune, "/dev/zram0 partition;") &&
+		strings.Contains(tune, "150 0 50 268435456 bbr 0") && strings.Contains(tune, "[defer+madvise]") && strings.HasSuffix(strings.TrimSpace(tune), "N"), oneLine(tune))
+	// Tailscale's agent runs, waiting for someone to log in (no tailnet in the harness).
+	ts, _ := g.run(`systemctl is-active tailscaled; tailscale status --json 2>/dev/null | grep -o '"BackendState": *"[A-Za-z]*"'`, "")
+	r.add("tailscale", strings.HasPrefix(ts, "active") && strings.Contains(ts, "NeedsLogin"), oneLine(ts))
+	// The firewall: a server listening on every address answers this machine, and not another on
+	// the network - a network namespace behind a veth stands in for one, its packets arriving on an
+	// interface that is neither loopback nor a container's bridge.
+	fw, _ := g.run(`nft list chain inet construct input | grep -c 'policy drop'; `+
+		`ip netns add fwtest && ip link add fw0 type veth peer name fw1 netns fwtest && `+
+		`ip addr add 10.99.0.1/24 dev fw0 && ip link set fw0 up && `+
+		`ip -n fwtest addr add 10.99.0.2/24 dev fw1 && ip -n fwtest link set fw1 up && `+
+		`{ python3 -m http.server 8765 --bind 0.0.0.0 >/dev/null 2>&1 & p=$!; sleep 1; `+
+		`curl -s -o /dev/null -m 3 http://127.0.0.1:8765/; echo local=$?; `+
+		`ip netns exec fwtest curl -s -o /dev/null -m 3 http://10.99.0.1:8765/; echo network=$?; kill $p; }; `+
+		`ip netns del fwtest`, "")
+	r.add("firewall", strings.HasPrefix(fw, "1\n") && strings.Contains(fw, "local=0") && strings.Contains(fw, "network=28"), oneLine(fw))
 	dock, err := g.run(`sudo -u live docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
+	// A port Docker publishes without an address is this machine's (etc/docker/daemon.json).
+	published, err := g.run(`c=$(sudo -u live docker run -d --rm -p 8766:8080 cgr.dev/chainguard/wolfi-base sleep 30) && sudo -u live docker port "$c"; sudo -u live docker rm -f "$c" >/dev/null 2>&1`, "")
+	r.add("docker publishes on loopback", err == nil && strings.Contains(published, "127.0.0.1:8766") && !strings.Contains(published, "0.0.0.0"), oneLine(published))
 	// NetworkManager's Wi-Fi is wpa_supplicant, started by the bus when it is asked for: a VM has
 	// no Wi-Fi card to join a network with, but the supplicant must be there to be started.
 	wifi, err := g.run(`busctl call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus StartServiceByName su fi.w1.wpa_supplicant1 0 2>&1`, "")
@@ -149,6 +181,11 @@ func test(args []string) error {
 	// Firmware and the system's own updates, which GNOME Software reaches over the bus.
 	bus, err := g.run(`busctl --system list --activatable --no-legend | awk '{print $1}' | grep -xE 'org.freedesktop.fwupd|org.freedesktop.sysupdate1' | sort | tr '\n' ' '`, "")
 	r.add("updates services", err == nil && strings.TrimSpace(bus) == "org.freedesktop.fwupd org.freedesktop.sysupdate1", oneLine(bus)+errText(err))
+	// A laptop's sensors and fingerprint reader, neither of which a VM has: fprintd starts when
+	// the bus is asked for it, iio-sensor-proxy when udev finds a sensor.
+	laptop, err := g.run(`busctl --system list --activatable --no-legend | awk '$1=="net.reactivated.Fprint"{print $1}'; `+
+		`grep -l iio-sensor-proxy.service /usr/lib/udev/rules.d/*.rules`, "")
+	r.add("laptop services", err == nil && strings.Contains(laptop, "net.reactivated.Fprint") && strings.Contains(laptop, "80-iio-sensor-proxy.rules"), oneLine(laptop)+errText(err))
 	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it, and the
 	// cloud CLIs distrobox.conf installs into it.
 	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 900 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1' 2>&1 | tail -3`, "")
@@ -215,6 +252,12 @@ func test(args []string) error {
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
 	if len(want) == 0 || want["views"] {
 		r.shellViews(v, g)
+	}
+	if len(want) == 0 || want["bench"] {
+		r.bench(g)
+	}
+	if len(want) == 0 || want["suspend"] {
+		r.suspend(v, g)
 	}
 	return r.write(g)
 }
@@ -444,4 +487,58 @@ func (r *report) installer(v *vm, g *guest, stick bool) {
 		_, _ = g.eval(installerWindows + `.forEach(w => w.delete(global.get_current_time())); true`)
 		time.Sleep(time.Second)
 	}
+}
+
+// suspend sleeps the machine as a laptop's lid does and wakes it: it slept (the kernel counts a
+// successful suspend), the session came back locked - /var's key stays in memory while it sleeps,
+// and the lock screen is what keeps it - and the network is up again. Last: the session stays
+// locked after it.
+func (r *report) suspend(v *vm, g *guest) {
+	before, _ := g.run(`cat /sys/power/suspend_stats/success`, "")
+	// --no-block: the job ends only once the machine is awake again, which this side does.
+	_, err := g.run(`systemctl suspend --no-block`, "")
+	if err == nil {
+		// Asleep once the guest stops answering.
+		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
+			if _, perr := g.run("true", ""); perr != nil {
+				break
+			}
+		}
+		time.Sleep(3 * time.Second)
+		err = v.wake()
+	}
+	if err == nil {
+		err = g.wait(2 * time.Minute)
+	}
+	after, _ := g.run(`cat /sys/power/suspend_stats/success`, "")
+	slept := err == nil && strings.TrimSpace(after) != strings.TrimSpace(before)
+	if !slept {
+		// What logind and the kernel said, for the failure to carry its own reason.
+		why, _ := g.run(`cat /sys/power/mem_sleep; journalctl -b -q -o cat -u systemd-logind -u systemd-suspend -g 'suspend|sleep|inhibit' | tail -5`, "")
+		r.add("suspend and resume", false, "suspends: "+oneLine(before)+" -> "+oneLine(after)+errText(err)+"; "+oneLine(why))
+		return
+	}
+	r.add("suspend and resume", true, "suspends: "+oneLine(before)+" -> "+oneLine(after))
+	locked, _ := g.eval(`Main.screenShield.locked`)
+	r.add("locked after resume", locked == "true", "screenShield.locked: "+locked)
+	// construct power's sleep hook wrote what the suspend cost.
+	hook, _ := g.run(`journalctl -b -q -o cat MESSAGE_ID=8b1d2f6c3a4e4d0f9c7b5a2e1f6d3c4b | tail -1`, "")
+	if !strings.HasPrefix(hook, "Slept ") {
+		// The hook's own words, when it said something else.
+		hook, _ = g.run(`journalctl -b -q -o cat -t systemd-sleep -t construct-power | tail -4`, "")
+		r.add("the suspend is measured", false, oneLine(hook))
+	} else {
+		r.add("the suspend is measured", true, oneLine(hook))
+	}
+	net, _ := g.run(`for i in $(seq 30); do nmcli -t -f STATE general | grep -qx connected && break; sleep 1; done; nmcli -t -f STATE general`, "")
+	r.add("network after resume", strings.TrimSpace(net) == "connected", oneLine(net))
+}
+
+// bench runs construct bench briefly: that it runs, measures both profiles and puts the machine's
+// settings back - its numbers are a VM's, not a finding.
+func (r *report) bench(g *guest) {
+	before, _ := g.run(`sysctl -n vm.swappiness; swapon --show=NAME --noheadings`, "")
+	out, err := g.run(`construct bench --rounds 1 --seconds 5 2>&1 | tail -6`, "")
+	after, _ := g.run(`sysctl -n vm.swappiness; swapon --show=NAME --noheadings`, "")
+	r.add("construct bench", err == nil && strings.Contains(out, "wakeup latency p99") && before == after, oneLine(out)+errText(err))
 }

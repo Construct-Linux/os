@@ -1,0 +1,8 @@
+# The I/O scheduler by kind of disk: NVMe's own queues need little help, and kyber keeps reads'
+# latency low beside a large write; a SATA SSD takes mq-deadline; a spinning disk BFQ, which keeps
+# a desktop responsive while it seeks.
+ACTION!="add|change", GOTO="construct_iosched_end"
+KERNEL=="nvme[0-9]*n[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="kyber"
+KERNEL=="sd[a-z]*|mmcblk[0-9]*", ATTR{queue/rotational}=="0", ATTR{queue/scheduler}="mq-deadline"
+KERNEL=="sd[a-z]*", ATTR{queue/rotational}=="1", ATTR{queue/scheduler}="bfq"
+LABEL="construct_iosched_end"

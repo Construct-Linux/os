@@ -1,6 +1,9 @@
 {
   "firewall-backend": "iptables",
-  "exec-opts": ["native.cgroupdriver=systemd"],
+  "ip": "127.0.0.1",
+  "exec-opts": [
+    "native.cgroupdriver=systemd"
+  ],
   "log-driver": "json-file",
   "log-opts": {
     "max-size": "16m",

@@ -1,0 +1,17 @@
+# The firewall (usr/lib/construct/firewall.nft), in place before any network is up - as Arch's and
+# Fedora's nftables.service do: loaded once, nothing left running.
+[Unit]
+Description=The firewall
+DefaultDependencies=no
+Wants=network-pre.target
+Before=network-pre.target shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/nft -f /usr/lib/construct/firewall.nft
+ExecReload=/usr/bin/nft -f /usr/lib/construct/firewall.nft
+
+[Install]
+WantedBy=sysinit.target

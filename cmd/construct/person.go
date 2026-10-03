@@ -24,6 +24,9 @@ type person struct {
 	user     account.User
 	password string
 	lang     language
+	// keys are the security keys that open /var beside the password: none, one, or one and the
+	// backup kept somewhere safe.
+	keys []securityKey
 }
 
 // personFrom is the person the flags name, or, with neither, the one asked for at the terminal.
@@ -202,7 +205,11 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	if err == nil {
 		err = account.MakeHome(dir, u)
 	}
-	// Logged in at boot: nothing of the person's opens without their password, typed for /var.
+	if err == nil {
+		err = clearKeyring(filepath.Join(dir, "home", u.Name), u.UID)
+	}
+	// Logged in at boot: nothing of the person's opens without their password or their key,
+	// which opened /var.
 	if err == nil {
 		err = account.Autologin(upper, u.Name)
 	}
@@ -251,13 +258,25 @@ func liveCmd(etc, varDir string) error {
 	if err := ownedFile(home, ".config/gnome-initial-setup-done", []byte("yes"), account.Live.UID); err != nil {
 		return err
 	}
-	// A login keyring without a password, as GNOME Keyring keeps one in the clear: the live user
-	// logs in with none, so no app's first secret makes GNOME ask for a password for a new one.
+	if err := clearKeyring(home, account.Live.UID); err != nil {
+		return err
+	}
+	if !stick {
+		return nil
+	}
+	return offerInstaller(home, installerEntry, account.Live.UID)
+}
+
+// clearKeyring gives the home a login keyring without a password, as GNOME Keyring keeps one in
+// the clear: what protects it at rest is /var's encryption, opened at boot by the person's password
+// or their security key. Either way GDM logs them in with the keyring open - after a security key
+// no password was typed to unlock one with - and changing their password leaves nothing behind.
+func clearKeyring(home string, uid int) error {
 	for rel, body := range map[string]string{
 		".local/share/keyrings/login.keyring": "[keyring]\ndisplay-name=Login\nctime=0\nmtime=0\nlock-on-idle=false\nlock-after=false\n",
 		".local/share/keyrings/default":       "login\n",
 	} {
-		if err := ownedFile(home, rel, []byte(body), account.Live.UID); err != nil {
+		if err := ownedFile(home, rel, []byte(body), uid); err != nil {
 			return err
 		}
 		// The secrets it comes to hold are its owner's alone, as GNOME Keyring makes them.
@@ -265,13 +284,7 @@ func liveCmd(etc, varDir string) error {
 			return err
 		}
 	}
-	if err := os.Chmod(filepath.Join(home, ".local/share/keyrings"), 0o700); err != nil {
-		return err
-	}
-	if !stick {
-		return nil
-	}
-	return offerInstaller(home, installerEntry, account.Live.UID)
+	return os.Chmod(filepath.Join(home, ".local/share/keyrings"), 0o700)
 }
 
 // ownedFile writes body to rel under home, each directory it makes on the way and the file

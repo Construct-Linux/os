@@ -1,8 +1,8 @@
 # Construct
 
-A GNOME desktop on [Wolfi](https://github.com/wolfi-dev), built and verified like Spin OS
-(spin-ami): one image, read-only and checked block by block, updated as a whole into a second
-slot, and rolled back by itself when a new version does not come up.
+A GNOME desktop on [Wolfi](https://github.com/wolfi-dev): one image, read-only and checked block
+by block, updated as a whole into a second slot, and rolled back by itself when a new version does
+not come up.
 
 - **GNOME 51** on Wayland, with GNOME's core apps (Files, Text Editor, Calendar, Maps, Software,
   Papers, ...), Ptyxis, Firefox, and Flatpak with Flathub (Chrome).
@@ -16,8 +16,9 @@ slot, and rolled back by itself when a new version does not come up.
 - **What Wolfi lacks is built here**: about 110 melange recipes in `recipes/` - the GNOME stack,
   and Wolfi packages rebuilt where Wolfi's fall short (mesa with Intel's drivers and Vulkan,
   PipeWire with Bluetooth audio, systemd-sysupdate, ...).
-- **Its own kernel**: spin-ami's, with modules signed by a key that exists only in its build, built
-  with Clang ThinLTO for x86-64-v3, sched_ext with scx_lavd.
+- **Its own kernel**: Arch Linux's set of drivers, with CONSTRUCT's boot and hardening over it,
+  modules signed by a key that exists only in its build, built with Clang ThinLTO for x86-64-v3,
+  sched_ext with scx_lavd.
 - **Boot**: UEFI, systemd-boot, a unified kernel image with Plymouth playing the brand's animation and a
   systemd initrd, the way systemd's image-based distributions boot. `/var` holds everything a
   machine keeps; `/etc` is an overlay on it, so settings persist.
@@ -29,8 +30,8 @@ Developer tools ship with it: Docker and containerd, gcc and make, git.
 
 ## Use it
 
-Everything is a task (`task --list`); the build needs Docker, Go, QEMU (and swtpm) and
-`../spin-ami`.
+Everything is a task (`task --list`); the build needs Docker, Go, QEMU and swtpm. What it fetches
+from outside is pinned in `build/versions.env`.
 
 ```sh
 task keygen:release                      # once: the release key, outside this repository
@@ -80,7 +81,7 @@ rolls back from a broken release. `AGENTS.md` says what each change needs.
 |---|---|
 | `recipes/` | melange recipes, built into `packages/` (`task build -- <name>`) |
 | `image/` | the root: `apko.yaml`, and `rootfs/` laid over it; `test/` is the harness's only |
-| `kernel/`, `firmware/` | the desktop's kernel fragment and firmware selection, over spin-ami's |
+| `kernel/`, `firmware/` | the kernel's fragments over Arch's configuration, and the firmware taken from linux-firmware |
 | `cmd/image` | disks, the USB stick, releases, the QEMU harness and lifecycle |
 | `image/initrd/` | the initrd: Wolfi's systemd, `/var` and the `/etc` overlay mounted before the switch |
 | `cmd/construct` | `install`, `disks` and `boot-check` on the machine |

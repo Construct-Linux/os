@@ -103,10 +103,10 @@ func plymouthTheme() error {
 		var b bytes.Buffer
 		if err := tmpl.Execute(&b, struct {
 			promptWords
-			Intro, Loop, Outro int
-			Frames             string
-			LogoBottom         string
-		}{scriptQuoted(words), counts["intro"], counts["loop"], counts["outro"], framesFromTheme + "/", fmt.Sprintf("%.3f", logoBottom)}); err != nil {
+			Intro, Loop, Outro         int
+			Frames, LogoBottom         string
+			KeyPINPrompt, TouchMessage string
+		}{scriptQuoted(words), counts["intro"], counts["loop"], counts["outro"], framesFromTheme + "/", fmt.Sprintf("%.3f", logoBottom), keyPINPrompt, touchMessage}); err != nil {
 			return err
 		}
 		if err := os.WriteFile(filepath.Join(dir, script), b.Bytes(), 0o644); err != nil {
@@ -188,7 +188,7 @@ func opaqueBottom(b []byte) (float64, error) {
 // scriptQuoted escapes the words for a Plymouth script's double-quoted strings.
 func scriptQuoted(w promptWords) promptWords {
 	q := strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace
-	return promptWords{Lang: q(w.Lang), Password: q(w.Password), Caps: q(w.Caps), Retry: q(w.Retry)}
+	return promptWords{Lang: q(w.Lang), Password: q(w.Password), Caps: q(w.Caps), Retry: q(w.Retry), KeyPIN: q(w.KeyPIN), Touch: q(w.Touch)}
 }
 
 func box(w, h int, c color.RGBA) image.Image {

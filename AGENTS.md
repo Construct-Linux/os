@@ -4,8 +4,8 @@ What an agent working here needs and the code cannot say: rules, their reasons, 
 is checked. `README.md` says what the desktop is; `task --list` is the catalogue; git is the
 history. Nothing here is a changelog.
 
-Construct is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on spin-ami's
-kernel, booted the way systemd's image-based distributions boot: a unified kernel image with a
+Construct is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on its own kernel,
+booted the way systemd's image-based distributions boot: a unified kernel image with a
 systemd initrd, a read-only EROFS root under dm-verity found by its root hash, partitions of the
 Discoverable Partitions Specification, A/B slots updated by systemd-sysupdate, and systemd-boot
 falling back from a release that does not come up.
@@ -73,6 +73,12 @@ falling back from a release that does not come up.
 - **The test layer never reaches a real disk.** `image/test/` (unsafe-mode shell, the broken GDM)
   goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot credential
   (`ssh.ephemeral-authorized_keys-all`) and is written nowhere.
+- **Nothing reaches the machine that it did not ask for.** The firewall (`usr/lib/construct/
+  firewall.nft`, loaded by nftables.service before any network) drops what comes in but replies,
+  what IPv4/IPv6, DHCP and mDNS need, the containers' bridges, and SSH and RDP, which answer only
+  when a person turned them on; Docker publishes on 127.0.0.1 unless given an address. Open a port
+  in the ruleset with its reason, never by widening a rule; `task test` checks that a network
+  cannot reach a server listening on every address.
 - **No person, password or private key in the image or the repository.** `construct install` asks
   who a machine is for and adds them to the installed `/etc`'s passwd and shadow, on `/var`
   (`internal/account`, starting from the image's own files in `usr/share/factory/etc`), where
@@ -118,16 +124,19 @@ falling back from a release that does not come up.
 
 ## The kernel and firmware
 
-- `kernel/desktop.config` is merged over spin-ami's `host.config` and `metal.config` (read from
-  `../spin-ami` as a build context, never copied) and **every line is asserted** after
-  olddefconfig: a line is a promise. Fix a dropped symbol's dependency, do not delete the line.
+- The base is Arch Linux's configuration for the same kernel (pinned in `kernel/Dockerfile`):
+  every driver a general distribution builds, as modules. `kernel/platform.config` (boot,
+  systemd, hardening, what is never built) and then `kernel/desktop.config` (a PC's hardware) are
+  merged over it, and **every line of both is asserted** after olddefconfig: a line is a promise.
+  Fix a dropped symbol's dependency, do not delete the line. A PC is not a server in a controlled
+  environment: do not close what a person's hardware or tools may need.
 - Modules are signed by a key that exists only inside the build, with integrity lockdown: nothing
   built elsewhere loads.
-- Compiled with Clang ThinLTO, `-march=x86-64-v3`, AutoFDO and Propeller enabled for a profile from
+- Compiled with Wolfi's Clang 23, ThinLTO, `-march=x86-64-v3`, AutoFDO and Propeller enabled for a profile from
   real hardware, full dynamic preemption, sched_ext (scx_lavd at boot). CachyOS's compiler side,
   none of its patches: out-of-tree scheduler patches are not taken.
-- Firmware is spin-ami's pinned linux-firmware, desktop families only, zstd; microcode stays
-  uncompressed (it rides in the UKI's early cpio).
+- Firmware is the pinned linux-firmware, all of it but what no PC carries (ARM SoCs, data-centre
+  network cards), zstd; microcode stays uncompressed (it rides in the UKI's early cpio).
 
 ## How a change is checked
 
@@ -139,7 +148,7 @@ falling back from a release that does not come up.
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
 | install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, four forged sticks refused, update from a URL, rollback from a broken release, files in `/var` and `/etc` kept |
 | the kernel | `task kernel:config`, then `task kernel` | the assertion's output |
-| packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | a Critical or High a version fixes fails it; `_output/scan/grype.json` has the rest |
+| packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | `_output/scan/report.md`, by severity: a Critical or High a version fixes fails it; what nobody has fixed is listed too |
 | the boot's look (splash, Plymouth) | `go run ./cmd/image boot -usb -shots 30` | the frames in `_output/boot` |
 
 To use it as a person does: `task play` (a window, the stick, a disk to install on; state in
@@ -156,6 +165,9 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 
 - **A scripted edit that matches nothing changes nothing, silently** (Python `str.replace`, `sed`
   on a gofmt-aligned line). Use edits that fail when they do not match, and grep for the result.
+- **`set -e` does not stop a failing `a && b && c`**: only the list's last command counts, so a
+  `find` busybox does not support skipped the firmware's copy and the build shipped 19 MB of it.
+  One command per line under `set -e`, and assert what a step must have made.
 - **Never pipe a gate's exit status away** (`task test | tail && ...`): redirect to a file and
   read the status.
 - A VM stopped by QMP `quit` is a power cut: files written without fsync are empty afterwards.
@@ -176,8 +188,7 @@ security` rates gdm, sshd and docker UNSAFE); fwupd's UEFI capsule updates, whic
 fwupd-efi built and its binary signed with db's key; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
 resolver meanwhile), to fix in `recipes/libproxy`.
 
-## Two repositories
+## Pins
 
-spin-ami (`../spin-ami`) is the server and bare-metal image whose kernel fragments, pins and boot
-design this one builds on; its `versions.yaml` pins the kernel, the toolchain, linux-firmware and
-the Wolfi base image used here. A change to what both share is made there.
+`build/versions.env` pins what every build fetches from outside: the Wolfi base image (whose
+Clang 23 also builds the kernel), the kernel, linux-firmware, Intel's microcode and Grype. Taskfile.yml reads it (dotenv); a bump changes it and is checked like any other change.

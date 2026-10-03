@@ -53,6 +53,9 @@ func makeVar(ctx context.Context, log *slog.Logger, partition string, p person, 
 			return "", err
 		}
 	}
+	if err := enrollSecurityKeys(ctx, log, partition, p.password, p.keys); err != nil {
+		return "", err
+	}
 	var key bytes.Buffer
 	if err := cmdOut(ctx, nil, []string{"PASSWORD=" + p.password}, &key,
 		"systemd-cryptenroll", "--recovery-key", partition); err != nil {

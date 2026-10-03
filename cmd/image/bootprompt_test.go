@@ -72,6 +72,8 @@ func TestALanguageIsOfferedWhenTheFontDrawsIt(t *testing.T) {
 		"usr/share/locale/es/LC_MESSAGES/gtk40.mo":       mo(map[string]string{englishPrompt.Caps: "Bloq Mayús está activado"}),
 		"usr/share/locale/ja/LC_MESSAGES/gnome-shell.mo": mo(map[string]string{englishPrompt.Password: "パスワード"}),
 		"usr/share/locale/fr/LC_MESSAGES/gtk40.mo":       mo(map[string]string{englishPrompt.Caps: "Verr. Maj. activé"}),
+		"usr/share/locale/es/LC_MESSAGES/systemd.mo":     mo(map[string]string{keyPINPrompt: "Introduzca el PIN del token de seguridad:", touchMessage: "Confirme la presencia en el token de seguridad para desbloquear."}),
+		"usr/share/locale/it/LC_MESSAGES/gnome-shell.mo": mo(map[string]string{englishPrompt.Password: "Password"}),
 	} {
 		if err := tw.WriteHeader(&tar.Header{Name: "./" + name, Mode: 0o644, Size: int64(len(body))}); err != nil {
 			t.Fatal(err)
@@ -88,7 +90,15 @@ func TestALanguageIsOfferedWhenTheFontDrawsIt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(langs) != 1 || langs["es"].Password != "Contraseña" || langs["es"].Caps != "Bloq Mayús está activado" {
+	if len(langs) != 2 || langs["es"].Password != "Contraseña" || langs["es"].Caps != "Bloq Mayús está activado" {
 		t.Errorf("languages: %+v", langs)
+	}
+	// A security key's words are systemd's, the PIN's as a title without its colon; English where
+	// systemd has no catalog for the language, which stays offered.
+	if es := langs["es"]; es.KeyPIN != "Introduzca el PIN del token de seguridad" || es.Touch != "Confirme la presencia en el token de seguridad para desbloquear." {
+		t.Errorf("es key words: %q, %q", es.KeyPIN, es.Touch)
+	}
+	if it := langs["it"]; it.KeyPIN != "Please enter security token PIN" || it.Touch != touchMessage {
+		t.Errorf("it key words: %q, %q", it.KeyPIN, it.Touch)
 	}
 }

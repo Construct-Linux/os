@@ -18,7 +18,7 @@ enable systemd-oomd.service
 enable gdm.service
 enable bluetooth.service
 enable power-profiles-daemon.service
-enable scx.service
+enable scx_loader.service
 # Printing: cupsd starts when a print dialog asks (its socket and path); cups-browsed finds the
 # network's printers. fwupd starts by D-Bus; its timer refreshes LVFS's metadata.
 enable cups.socket
@@ -27,6 +27,10 @@ enable cups-browsed.service
 enable fwupd-refresh.timer
 # Containers: Docker starts when its socket is first used, and containerd with it.
 enable docker.socket
+# The firewall, before any network.
+enable nftables.service
+# Tailscale's agent: idle until someone logs in, then the machine is on their tailnet from boot.
+enable tailscaled.service
 # Construct's own.
 enable construct-boot-check.service
 enable construct-ssh-hostkeys.service

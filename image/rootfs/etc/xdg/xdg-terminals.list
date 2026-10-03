@@ -1,0 +1,3 @@
+# The default terminal (xdg-terminal-exec): Ghostty. A person's ~/.config/xdg-terminals.list, or
+# gnome-xdg-terminals.list, picks another.
+com.mitchellh.ghostty.desktop

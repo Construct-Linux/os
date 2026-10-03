@@ -7,6 +7,9 @@
 //	construct theme      [--themes DIR] [--home DIR] [--config DIR] the image's GTK themes, copied for a user
 //	construct live                                           the live user, on a root nobody is installed for
 //	construct firmware   ish FILE                            a laptop maker's sensor hub firmware, for this machine
+//	construct power      [--seconds N] | suspend             what the machine draws, or what each suspend cost
+//	construct bench      [--rounds N] [--seconds N]           CONSTRUCT's settings against the kernel's, measured here
+//	construct kernel-profile [--minutes N] [-o FILE]          the kernel at work, recorded for its AutoFDO profile
 //
 // install's release is the construct-update partition of the stick it runs from (or --from, a
 // directory), checked against the public key the root carries (internal/update's KeyringPath)
@@ -39,17 +42,29 @@ import (
 
 const usage = `usage:
   construct install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--locale LANG] [--keyboard LAYOUT]
-                   [--user NAME --real-name NAME --password-file FILE|-] [--json]
+                   [--user NAME --real-name NAME --password-file FILE|-]
+                   [--security-key DEV ... --key-pin-file FILE] [--json]
   construct disks      [--json]
   construct boot-check
   construct pending    [--esp DIR] [--mark FILE]
   construct theme      [--themes DIR] [--home DIR] [--config DIR]
   construct live
-  construct firmware   ish FILE`
+  construct firmware   ish FILE
+  construct power      [--seconds N] | suspend
+  construct bench      [--rounds N] [--seconds N]
+  construct kernel-profile [--minutes N] [-o FILE]`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	// systemd-sleep runs its hooks by name: usr/lib/systemd/system-sleep/construct-power is this.
+	if filepath.Base(os.Args[0]) == "construct-power" {
+		if err := sleepHook(os.Args[1:]); err != nil {
+			fmt.Fprintln(os.Stderr, "construct-power:", err)
+			os.Exit(1)
+		}
+		return
+	}
 	if len(os.Args) < 2 {
 		fmt.Fprintln(os.Stderr, usage)
 		os.Exit(2)
@@ -70,6 +85,12 @@ func main() {
 		err = liveCmd("/etc", "/var")
 	case "firmware":
 		err = firmwareCmd(ctx, os.Args[2:], os.Stdout)
+	case "power":
+		err = powerCmd(os.Args[2:], os.Stdout)
+	case "bench":
+		err = benchCmd(os.Args[2:], os.Stdout)
+	case "kernel-profile":
+		err = kernelProfileCmd(os.Args[2:], os.Stdout)
 	default:
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
@@ -143,6 +164,9 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	passwordFile := fl.String("password-file", "", "a file holding their password, - for standard input (default: asked)")
 	locale := fl.String("locale", "", "their language, a locale: es_AR.UTF-8 (default: $LANG)")
 	keyboard := fl.String("keyboard", "", "their keyboard layout, as GNOME's input sources write it: es, us+intl (default: /etc/vconsole.conf's)")
+	var keyDevices stringList
+	fl.Var(&keyDevices, "security-key", "a FIDO2 key's hidraw node that opens the disk too, with its PIN and a touch; twice for a backup key")
+	keyPINFile := fl.String("key-pin-file", "", "the security keys' PINs, one a line in --security-key's order: a file or /dev/fd/N")
 	jsonOut := fl.Bool("json", false, "tell what is done as JSON lines on standard output, progress included: what the graphical installer reads")
 	_ = fl.Parse(args)
 	log, progress := journal(), func(string, int64, int64) {}
@@ -190,6 +214,9 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		return err
 	}
 	if who.lang, err = languageFrom(*locale, *keyboard); err != nil {
+		return err
+	}
+	if who.keys, err = securityKeysFrom(keyDevices, *keyPINFile); err != nil {
 		return err
 	}
 	// /var is bound to this machine: the live system's id is the firmware's, as the installed one's.
@@ -445,3 +472,9 @@ func pendingCmd(args []string, out io.Writer) error {
 	}
 	return nil
 }
+
+// stringList is a flag given more than once.
+type stringList []string
+
+func (l *stringList) String() string     { return strings.Join(*l, ",") }
+func (l *stringList) Set(v string) error { *l = append(*l, v); return nil }

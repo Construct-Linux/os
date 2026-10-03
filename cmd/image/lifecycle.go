@@ -140,6 +140,13 @@ func lifecycle(args []string) error {
 	r.add("v1 comes up", ok, detail)
 	v.powerOff(g)
 
+	// 2b. A security key, enrolled beside the password with its PIN and a touch, opens the disk:
+	// the boot asks for the key's PIN, not the password. Without the key the password still does,
+	// and nothing about the key is an error.
+	if !r.securityKey(m, first, said, *dir) {
+		return r.write(nil)
+	}
+
 	// 3. Sticks that are not a release its key signed are refused, and change nothing.
 	for _, bad := range []string{"unsigned", "badsig", "sums", "uki"} {
 		s, err := stick("v2-" + bad)
@@ -243,6 +250,86 @@ func lifecycle(args []string) error {
 	return err
 }
 
+// lifecycleKeyPIN is the security key's PIN: another secret than the person's password, as a
+// YubiKey's is.
+const lifecycleKeyPIN = "482913"
+
+// securityKey runs step 2b on the installed machine m (first is it without the password's
+// credential, as a person boots it): a key plugged in, given a PIN as a new key is, enrolled from
+// the running system with the recovery key the install showed, then the boots with and without
+// it. It reports whether the machine still boots for the steps after it. A QEMU without CanoKey
+// has no key to plug in, and says so.
+func (r *report) securityKey(m, first machine, installed, dir string) bool {
+	if !qemuHasCanoKey() {
+		r.skip("a security key opens the disk", "this host's QEMU has no CanoKey (built without libcanokey-qemu)")
+		return true
+	}
+	recovery := ""
+	if _, rest, ok := strings.Cut(installed, `"recovery_key":"`); ok {
+		recovery, _, _ = strings.Cut(rest, `"`)
+	}
+	key := filepath.Join(dir, "canokey")
+	_ = os.Remove(key)
+	withKey := m
+	withKey.securityKey = key
+	v, g, err := withKey.bootGuest(5 * time.Minute)
+	if err != nil {
+		r.add("boot with a security key not yet enrolled", false, err.Error())
+		return false
+	}
+	// fido2-token asks for a new key's PIN at a terminal, as a person types it, and drops what was
+	// typed before it asked: script gives it one, and each PIN follows its question.
+	enroll, err := g.run(`dev=$(fido2-token -L | grep -m1 -i canokey | cut -d: -f1) && `+
+		`(sleep 2; echo '`+lifecycleKeyPIN+`'; sleep 2; echo '`+lifecycleKeyPIN+`'; sleep 2) | script -qec "fido2-token -S $dev" /dev/null && `+
+		`umask 077 && printf '%s' '`+recovery+`' > /run/recovery && creds=$(mktemp -d) && `+
+		// systemd-cryptenroll takes a FIDO2 PIN as a credential only, as the installer gives it.
+		`printf '%s' '`+lifecycleKeyPIN+`' > $creds/cryptenroll.fido2-pin && `+
+		`CREDENTIALS_DIRECTORY=$creds timeout 120 systemd-cryptenroll --unlock-key-file=/run/recovery --fido2-device=$dev `+
+		`--fido2-with-client-pin=yes --fido2-with-user-presence=yes /dev/nvme0n1p6 2>&1; rc=$?; rm -rf /run/recovery $creds; `+
+		`systemd-cryptenroll /dev/nvme0n1p6; exit $rc`, "")
+	r.add("enroll a security key", err == nil && strings.Contains(enroll, "fido2"), oneLine(enroll)+errText(err))
+	v.powerOff(g)
+
+	keyBoot := first
+	keyBoot.securityKey = key
+	if v, err = keyBoot.start(); err != nil {
+		r.add("boot with the security key", false, err.Error())
+		return false
+	}
+	g = &guest{cid: v.cid}
+	asked := g.wait(45*time.Second) != nil
+	_ = v.screenshot(filepath.Join(dir, "key-pin.ppm"))
+	time.Sleep(500 * time.Millisecond)
+	_ = ppmToPNG(filepath.Join(dir, "key-pin.ppm"), filepath.Join(dir, "key-pin.png"))
+	r.add("the disk asks for the key's PIN", asked, "screen: key-pin.png")
+	// The key's PIN is no password: had the boot asked for the password, this would not open it.
+	err = v.typeText(lifecycleKeyPIN)
+	if err == nil {
+		err = g.wait(5 * time.Minute)
+	}
+	r.add("the key's PIN and a touch open the disk", err == nil, errText(err))
+	if err != nil {
+		v.stop()
+		return false
+	}
+	used, _ := g.run(`journalctl -b -q -o cat -u systemd-cryptsetup@var.service -p err; echo end`, "")
+	r.add("no error opening it with the key", strings.TrimSpace(used) == "end", oneLine(used))
+	// No password was typed, and the keyring is open all the same.
+	keyring, _ := g.run(`sleep 20; `+keyringRoundTrip(lifecycleUser, 1000), "")
+	r.add("the login keyring is open after the key", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
+	v.powerOff(g)
+
+	v, g, err = m.bootGuest(5 * time.Minute)
+	if err != nil {
+		r.add("the password opens it without the key", false, err.Error())
+		return false
+	}
+	without, _ := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -q -o cat -u systemd-cryptsetup@var.service -p err; echo end`, "")
+	r.add("the password opens it without the key", strings.TrimSpace(without) == "active\nend", oneLine(without))
+	v.powerOff(g)
+	return true
+}
+
 // updateEnd is how the construct-update@ unit a plugged stick started ended: whether it did, and
 // well, systemd's line for it, and what systemd-sysupdate last said.
 type updateEnd struct {
@@ -296,8 +383,8 @@ func (r *report) person(g *guest) {
 	sessions, _ := g.run(`sleep 20; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
 	// The password opened /var at boot: GDM logs the person in, and there is no live user.
 	r.add("logged in at boot", strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live"), "sessions: "+sessions)
-	// The password that opened /var made and unlocked their login keyring (gdm-autologin's
-	// pam_systemd_loadkey): an app keeps and reads a secret with no prompt.
+	// Their login keyring has no password of its own (construct clearKeyring): open once GDM logs
+	// them in, an app keeps and reads a secret with no prompt.
 	keyring, _ := g.run(keyringRoundTrip(lifecycleUser, 1000), "")
 	r.add("the login keyring is open", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
 	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")

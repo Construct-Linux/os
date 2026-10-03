@@ -1,0 +1,5 @@
+# The sched_ext scheduler scx_loader starts at boot: scx_lavd, which schedules for interactive
+# latency and knows hybrid processors' performance and efficiency cores. scxctl (or CONSTRUCT's
+# settings) switches it while the machine runs; EEVDF takes over whenever it stops.
+default_sched = "scx_lavd"
+default_mode = "Auto"

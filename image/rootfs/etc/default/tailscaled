@@ -1,0 +1,6 @@
+# Tailscale's defaults (cmd/tailscaled/tailscaled.defaults): the port its peers reach it on
+# directly, which the firewall opens (usr/lib/construct/firewall.nft).
+PORT="41641"
+
+# Extra flags you might want to pass to tailscaled.
+FLAGS=""

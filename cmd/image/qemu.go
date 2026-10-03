@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"golang.org/x/sys/unix"
 	"net"
 	"os"
 	"os/exec"
@@ -106,6 +107,9 @@ type machine struct {
 	// tpm, when set, gives the machine a TPM 2.0 (swtpm) keeping its state in that directory: an
 	// install seals /var's key in it, and the next boots unseal it.
 	tpm string
+	// securityKey, when set, plugs a FIDO2 security key into the machine: QEMU's CanoKey, a whole
+	// authenticator (PIN, hmac-secret) in emulation, keeping its state in that file across boots.
+	securityKey string
 	// credentials are systemd credentials for this boot, name=value, as the firmware hands them.
 	credentials []string
 	// dir is where its QMP socket and serial log go: _output without one; task play's own, so it
@@ -133,11 +137,17 @@ func (m machine) start() (*vm, error) {
 	if m.window {
 		cpus = strconv.Itoa(max(4, runtime.NumCPU()/2))
 	}
-	args := []string{"-enable-kvm", "-cpu", "host", "-smp", cpus, "-m", m.mem, "-uuid", machineUUID}
+	// -nodefaults: only the devices named here - QEMU's own would add a DVD drive a PC no longer
+	// has, which libata probes and fails to power-check after a resume.
+	args := []string{"-nodefaults", "-enable-kvm", "-cpu", "host", "-smp", cpus, "-m", m.mem, "-uuid", machineUUID}
 	if m.vars != "" {
 		// Secure Boot's firmware, its variables in setup mode until systemd-boot enrolls the
 		// stick's keys (by itself in a VM): every machine with UEFI boots signed or not at all.
 		// The variables are written in SMM, which only the firmware may enter.
+		// S3, which QEMU wakes from on QMP's system_wakeup: the suspend path the harness tests -
+		// logind, GNOME's lock, the sleep hooks, the network - is the same as s2idle's, whose
+		// RTC alarm does not wake a VM. s2idle's hardware is measured on a laptop.
+		args = append(args, "-global", "ICH9-LPC.disable_s3=0")
 		args = append(args, "-machine", "q35,smm=on",
 			"-global", "driver=cfi.pflash01,property=secure,value=on",
 			"-drive", "if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.secboot.fd",
@@ -152,6 +162,7 @@ func (m machine) start() (*vm, error) {
 	} else {
 		args = append(args,
 			"-kernel", filepath.Join(out, "kernel", "bzImage"),
+			"-global", "PIIX4_PM.disable_s3=0",
 			"-append", "root=/dev/vda rw rootfstype=ext4 console=ttyS0 systemd.firstboot=off",
 			"-drive", "file="+filepath.Join(out, "disk.raw")+",if=virtio,format=raw")
 	}
@@ -177,6 +188,9 @@ func (m machine) start() (*vm, error) {
 		}
 		args = append(args, "-device", dev)
 	}
+	if m.securityKey != "" {
+		args = append(args, "-device", "canokey,bus=xhci.0,file="+m.securityKey)
+	}
 	if m.pubkey != "" {
 		args = append(args,
 			"-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", vsockCID),
@@ -188,15 +202,20 @@ func (m machine) start() (*vm, error) {
 	if len(m.cmdline) > 0 {
 		args = append(args, "-smbios", "type=11,value=io.systemd.stub.kernel-cmdline-extra="+strings.Join(m.cmdline, " "))
 	}
+	inContainer := harnessQEMUBuilt(m.window)
 	if m.tpm != "" {
-		sock, err := startTPM(m.tpm)
-		if err != nil {
-			return nil, err
+		// The harness's QEMU starts swtpm beside it (build/qemu/qemu.sh); the host's needs one here.
+		sock := filepath.Join(m.tpm, "swtpm.sock")
+		if !inContainer {
+			var err error
+			if sock, err = startTPM(m.tpm); err != nil {
+				return nil, err
+			}
 		}
 		args = append(args, "-chardev", "socket,id=chrtpm,path="+sock,
 			"-tpmdev", "emulator,id=tpm0,chardev=chrtpm", "-device", "tpm-crb,tpmdev=tpm0")
 	}
-	cmd := exec.Command("qemu-system-x86_64", args...)
+	cmd := qemuCommand(m.window, m.tpm, args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -286,6 +305,52 @@ func (v *vm) typeText(text string) error {
 		}
 	}
 	return v.key("ret")
+}
+
+// wake wakes a suspended machine, as opening a laptop's lid does.
+func (v *vm) wake() error {
+	return qmpRun(v.qmp, map[string]any{"execute": "system_wakeup"})
+}
+
+// harnessQEMU is the image task harness-qemu builds: QEMU with CanoKey, which the host's lacks.
+const harnessQEMU = "construct-qemu"
+
+// harnessQEMUBuilt is whether machines run in the harness's QEMU: it is built, and the machine is
+// not in a window (task play), which the container has no display for.
+func harnessQEMUBuilt(window bool) bool {
+	return !window && exec.Command("docker", "image", "inspect", harnessQEMU).Run() == nil
+}
+
+// qemuCommand is QEMU with args: the harness's own (task harness-qemu) when it is built - a
+// container that sees the repository at the same path, the host's KVM, vsock and network (the
+// lifecycle's HTTP server at 10.0.2.2 is the host's), the host's UEFI firmware, and the TPM in
+// tpm, whose swtpm it starts itself - or the host's QEMU.
+func qemuCommand(window bool, tpm string, args ...string) *exec.Cmd {
+	if !harnessQEMUBuilt(window) {
+		return exec.Command("qemu-system-x86_64", args...)
+	}
+	wd, _ := os.Getwd()
+	run := []string{"run", "--rm", "-i", "--network", "host", "-e", "SWTPM_STATE=" + tpm,
+		"--device", "/dev/kvm", "--device", "/dev/vhost-vsock",
+		"-u", fmt.Sprintf("%d:%d", os.Getuid(), os.Getgid()), "--group-add", groupOf("/dev/kvm"),
+		"-v", wd + ":" + wd, "-w", wd, "-v", "/usr/share/OVMF:/usr/share/OVMF:ro", harnessQEMU}
+	return exec.Command("docker", append(run, args...)...)
+}
+
+// groupOf is the group that owns path, by number: the container has no names for the host's.
+func groupOf(path string) string {
+	var st unix.Stat_t
+	if err := unix.Stat(path, &st); err != nil {
+		return "0"
+	}
+	return strconv.Itoa(int(st.Gid))
+}
+
+// qemuHasCanoKey is whether the QEMU the harness runs was built with CanoKey (libcanokey-qemu),
+// the emulated security key the lifecycle opens /var with; most distributions' QEMU is not.
+func qemuHasCanoKey() bool {
+	out, err := qemuCommand(false, "", "-device", "help").CombinedOutput()
+	return err == nil && strings.Contains(string(out), `"canokey"`)
 }
 
 func (v *vm) stop() {

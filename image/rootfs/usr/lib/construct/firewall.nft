@@ -1,0 +1,48 @@
+#!/usr/bin/nft -f
+# The machine's firewall (nftables.service loads it before any network is up): nothing reaches it
+# that it did not ask for, but what a network needs to work and what a person turned on.
+# Development servers listening on every address (npm's, python -m http.server) stay this
+# machine's; Docker publishes on 127.0.0.1 unless told an address (etc/docker/daemon.json), its
+# DNAT passing by this chain. An administrator opens more in /etc/nftables.d/*.nft, rules of this
+# chain, kept in /var with the rest of /etc.
+destroy table inet construct
+
+table inet construct {
+	chain input {
+		type filter hook input priority filter; policy drop;
+
+		ct state established,related accept
+		ct state invalid drop
+		iif lo accept
+
+		# Containers reach the host's own services (host.docker.internal) through their bridges.
+		iifname "docker0" accept
+		iifname "br-*" accept
+
+		# What IPv4 and IPv6 need from the network to work: errors that make a path's size and
+		# reachability known, IPv6's neighbours and routers, and an answer to a ping.
+		icmp type { destination-unreachable, time-exceeded, parameter-problem, echo-request } accept
+		icmpv6 type { destination-unreachable, packet-too-big, time-exceeded, parameter-problem,
+			echo-request, nd-router-advert, nd-neighbor-solicit, nd-neighbor-advert,
+			mld-listener-query } accept
+
+		# Addresses from DHCP's servers, whose answers come broadcast or link-local.
+		udp sport 67 udp dport 68 accept
+		ip6 saddr fe80::/10 udp sport 547 udp dport 546 accept
+
+		# mDNS, for printers and Files' network browsing (avahi): its multicast group only.
+		ip daddr 224.0.0.251 udp dport 5353 accept
+		ip6 daddr ff02::fb udp dport 5353 accept
+
+		# Tailscale: the peers of the person's tailnet - whom its access rules let through - and the
+		# port they reach this machine on directly, without a relay (etc/default/tailscaled).
+		iifname "tailscale0" accept
+		udp dport 41641 accept
+
+		# What a person turns on in Settings or with systemctl - SSH, GNOME's Remote Desktop
+		# (RDP) - answers only while it listens, and nothing does unless they did.
+		tcp dport { 22, 3389 } accept
+
+		include "/etc/nftables.d/*.nft"
+	}
+}

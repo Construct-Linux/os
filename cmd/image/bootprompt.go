@@ -14,19 +14,31 @@ import (
 	"golang.org/x/image/font/sfnt"
 )
 
-// The words of the disk's password prompt (plymouth/spin.script) are GNOME's, so every language
-// GNOME speaks has them already: the lock screen's "Password" and "Sorry, that didn’t work. Please
-// try again." (gnome-shell), and GTK's "Caps Lock is on". English where a catalog lacks one, or
-// where Adwaita Sans - the one font the initrd carries - has no glyph for it.
+// The words of the disk's password prompt (plymouth/construct.script) are GNOME's, so every
+// language GNOME speaks has them already: the lock screen's "Password" and "Sorry, that didn’t
+// work. Please try again." (gnome-shell), and GTK's "Caps Lock is on". A security key's are
+// systemd's own, which it asks Plymouth for in English - the initrd has no catalogs - and which
+// the script recognises by that text (keyPINPrompt, touchMessage) to show in the person's
+// language. English where a catalog lacks one, or where Adwaita Sans - the one font the initrd
+// carries - has no glyph for it.
 type promptWords struct {
-	Lang, Password, Caps, Retry string
+	Lang, Password, Caps, Retry, KeyPIN, Touch string
 }
+
+// What systemd-cryptsetup asks Plymouth when /var opens with a security key: the key's PIN, and
+// then to touch it (libfido2-util).
+const (
+	keyPINPrompt = "Please enter security token PIN:"
+	touchMessage = "Please confirm presence on security token to unlock."
+)
 
 var englishPrompt = promptWords{
 	Lang:     "English",
 	Password: "Password",
 	Caps:     "Caps Lock is on",
 	Retry:    "Sorry, that didn’t work. Please try again.",
+	KeyPIN:   asTitle(keyPINPrompt),
+	Touch:    touchMessage,
 }
 
 // promptFont is the font the prompt is written in, in the root and in the initrd.
@@ -64,7 +76,7 @@ func promptLanguages(rootfs string) (map[string]promptWords, error) {
 		if lang == dir || strings.Contains(lang, "/") {
 			continue
 		}
-		for _, domain := range []string{"gnome-shell", "gtk40"} {
+		for _, domain := range []string{"gnome-shell", "gtk40", "systemd"} {
 			if file == domain+".mo" {
 				b, err := io.ReadAll(tr)
 				if err != nil {
@@ -97,11 +109,25 @@ func promptLanguages(rootfs string) (map[string]promptWords, error) {
 		if w.Caps, ok = moLookup(catalogs["gtk40"][lang], englishPrompt.Caps); !ok {
 			w.Caps = englishPrompt.Caps
 		}
-		if drawable(face, w.Password+w.Caps+w.Retry) {
-			langs[lang] = w
+		if !drawable(face, w.Password+w.Caps+w.Retry) {
+			continue
 		}
+		// The key's words come along when systemd has them and the font draws them; the
+		// language stays either way, with them in English.
+		w.KeyPIN, w.Touch = englishPrompt.KeyPIN, englishPrompt.Touch
+		pin, okPIN := moLookup(catalogs["systemd"][lang], keyPINPrompt)
+		touch, okTouch := moLookup(catalogs["systemd"][lang], touchMessage)
+		if okPIN && okTouch && drawable(face, pin+touch) {
+			w.KeyPIN, w.Touch = asTitle(pin), touch
+		}
+		langs[lang] = w
 	}
 	return langs, nil
+}
+
+// asTitle is a prompt as the title over the field: without the colon that ends it.
+func asTitle(prompt string) string {
+	return strings.TrimRight(prompt, ":： ")
 }
 
 // drawable says whether the font has a glyph for every character of s.

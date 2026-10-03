@@ -1,0 +1,26 @@
+# Tailscale's own unit (cmd/tailscaled/tailscaled.service, v1.102.5), Wolfi's package carrying none:
+# the binaries are in /usr/bin here. Idle until someone logs in (tailscale up); then the machine is
+# on their tailnet from boot, before anyone logs in.
+[Unit]
+Description=Tailscale node agent
+Documentation=https://tailscale.com/docs/
+Wants=network-pre.target
+After=network-pre.target NetworkManager.service systemd-resolved.service
+
+[Service]
+EnvironmentFile=/etc/default/tailscaled
+ExecStart=/usr/bin/tailscaled --state=/var/lib/tailscale/tailscaled.state --socket=/run/tailscale/tailscaled.sock --port=${PORT} $FLAGS
+ExecStopPost=/usr/bin/tailscaled --cleanup
+
+Restart=on-failure
+
+RuntimeDirectory=tailscale
+RuntimeDirectoryMode=0755
+StateDirectory=tailscale
+StateDirectoryMode=0700
+CacheDirectory=tailscale
+CacheDirectoryMode=0750
+Type=notify
+
+[Install]
+WantedBy=multi-user.target

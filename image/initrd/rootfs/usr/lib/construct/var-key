@@ -1,0 +1,11 @@
+#!/bin/bash
+# Opens /var with a security key before crypttab's TPM2 and password path, when one is enrolled
+# (a systemd-fido2 token in the LUKS2 header): systemd-cryptsetup takes TPM2 before FIDO2 when
+# both are named, and one prompt tried against every token would spend the key's PIN tries on
+# the password. It waits two seconds for the key, which USB may still be announcing, asks for its
+# PIN and a touch, and gives up after one try - the password path follows either way.
+dev=/dev/disk/by-designator/var-luks
+header=$(cryptsetup luksDump --dump-json-metadata "$dev") || exit 0
+[[ $header == *'"systemd-fido2"'* ]] || exit 0
+exec /usr/lib/systemd/systemd-cryptsetup attach var "$dev" - \
+    fido2-device=auto,token-timeout=2s,tries=1,discard,password-echo=masked
