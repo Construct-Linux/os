@@ -101,7 +101,10 @@ func (r *report) system(g *guest) {
 	dumps, dumpsErr := g.run(`coredumpctl --no-pager --no-legend list 2>/dev/null | awk '{print $(NF-1)}' | sort | uniq -c`, "")
 	if strings.TrimSpace(dumps) != "" {
 		info, _ := g.run(`coredumpctl --no-pager info 2>&1`, "")
-		_ = os.WriteFile(filepath.Join(r.dir, "coredumps.txt"), []byte(info), 0o644)
+		// A crashed shell's JavaScript stack - which extension's code called into C last - is
+		// logged as it dies, below error priority; the native stack alone stops at GJS.
+		js, _ := g.run(`journalctl -b --no-pager -o cat _COMM=gnome-shell | grep -A80 'Stack trace for context' || true`, "")
+		_ = os.WriteFile(filepath.Join(r.dir, "coredumps.txt"), []byte(js+"\n"+info), 0o644)
 	}
 	errs, errsErr := g.run(`journalctl -b -p err -q --no-pager -o short-monotonic`, "")
 	// What GNOME Shell logs below error priority but is a bug all the same: an extension's

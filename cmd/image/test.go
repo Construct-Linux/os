@@ -58,7 +58,7 @@ var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power
 
 func test(args []string) error {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
-	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views); all by default")
+	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, bench, suspend); all by default")
 	mem := fl.String("m", "6G", "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	_ = fl.Parse(args)
@@ -132,6 +132,9 @@ func test(args []string) error {
 	// The default terminal, as GLib and the session's "open a terminal" find it.
 	term, _ := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 xdg-terminal-exec --print-id 2>&1`, "")
 	r.add("default terminal", strings.Contains(term, "com.mitchellh.ghostty.desktop"), oneLine(term))
+	// A machine nobody named is os-release's DEFAULT_HOSTNAME.
+	name, err := g.run(`hostnamectl hostname`, "")
+	r.add("the computer's default name", err == nil && strings.TrimSpace(name) == "construct", "hostname: "+oneLine(name)+errText(err))
 	// The memory, writeback and network settings (usr/lib/sysctl.d/70-construct.conf, zram,
 	// THP), as the running kernel has them.
 	tune, _ := g.run(`swapon --show=NAME,TYPE --noheadings | tr -s ' ' | tr '\n' ';'; `+
@@ -188,8 +191,11 @@ func test(args []string) error {
 	r.add("laptop services", err == nil && strings.Contains(laptop, "net.reactivated.Fprint") && strings.Contains(laptop, "80-iio-sensor-proxy.rules"), oneLine(laptop)+errText(err))
 	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it, and the
 	// cloud CLIs distrobox.conf installs into it.
-	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 900 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1' 2>&1 | tail -3`, "")
-	r.add("wolfi container", err == nil && strings.Contains(box, "apk-tools") && strings.Contains(box, "aws-cli/2.") && strings.Contains(box, "Google Cloud SDK"), oneLine(box)+errText(err))
+	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 900 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1; test -s /usr/share/terminfo/x/xterm-ghostty && echo ghostty-terminfo' 2>&1 | tail -4`, "")
+	r.add("wolfi container", err == nil && strings.Contains(box, "apk-tools") && strings.Contains(box, "aws-cli/2.") && strings.Contains(box, "Google Cloud SDK") && strings.Contains(box, "ghostty-terminfo"), oneLine(box)+errText(err))
+	// Ghostty's TERM, which ncurses programs (top, nano, htop) refuse to start without.
+	colors, err := g.run(`TERM=xterm-ghostty tput colors`, "")
+	r.add("ghostty's terminfo", err == nil && strings.TrimSpace(colors) == "256", oneLine(colors)+errText(err))
 	tools, err := g.run(`task --version && ifconfig lo | head -1 && unpigz --version 2>&1 | head -1`, "")
 	r.add("command-line tools", err == nil && strings.Contains(tools, "3.54") && strings.Contains(tools, "lo:"), oneLine(tools)+errText(err))
 	// Flathub is a static remote (usr/share/flatpak/remotes.d), added the first time flatpak
@@ -205,6 +211,9 @@ func test(args []string) error {
 	// which construct theme fills and the same override shows them.
 	gtk3, err := g.run(`t=$(sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.desktop.interface gtk-theme | tr -d "'"); sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c "test -s \"\$HOME/.themes/$t/gtk-3.0/gtk.css\" && echo \"$t\"" 2>&1`, "")
 	r.add("gtk3 theme in flatpak", err == nil && strings.HasPrefix(strings.TrimSpace(lastLine(gtk3)), "Orchis-Construct-"), "Chrome's sandbox finds gtk-theme in ~/.themes: "+lastLine(gtk3))
+	// The brand's wallpaper, light and dark: both files the session's background names are there.
+	wall, err := g.run(`for k in picture-uri picture-uri-dark; do u=$(sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.desktop.background $k | tr -d "'"); f=${u#file://}; test -s "$f" && echo "$f"; done`, "")
+	r.add("the brand's wallpaper", err == nil && strings.Count(wall, "/usr/share/backgrounds/construct/") == 2, oneLine(wall)+errText(err))
 
 	want := map[string]bool{}
 	for _, n := range strings.Split(*only, ",") {
@@ -213,7 +222,7 @@ func test(args []string) error {
 		}
 	}
 	// A name -only gives that nothing answers to would run nothing, and pass.
-	known := map[string]bool{"views": true}
+	known := map[string]bool{"views": true, "bench": true, "suspend": true}
 	for _, a := range apps {
 		known[a.id] = true
 	}
@@ -222,7 +231,7 @@ func test(args []string) error {
 	}
 	for n := range want {
 		if !known[n] {
-			r.add("-only "+n, false, "no app, panel:<name> or views is called that")
+			r.add("-only "+n, false, "no app, panel:<name>, views, bench or suspend is called that")
 		}
 	}
 	for _, a := range apps {
@@ -436,12 +445,22 @@ func (r *report) shellViews(v *vm, g *guest) {
 	}
 }
 
-// locked checks what a lock leaves behind: the shell disables every extension while the screen is
-// locked, and a disabled extension must not keep its machinery running (Tiling Shell kept one
-// tiling manager per monitor, with their display handlers and actors, upstream #559).
+// lockScreenRoles are the panel's own indicators the lock screen shows (gnome-shell's
+// js/ui/panel.js PANEL_ITEM_IMPLEMENTATIONS, less what _hideIndicators hides): anything else the
+// panel shows while locked is an extension's.
+var lockScreenRoles = []string{"activities", "quickSettings", "dateMenu", "a11y", "keyboard", "dwellClick", "screenRecording", "screenSharing"}
+
+// locked checks what the lock screen shows of the extensions. Tiling Shell and AppIndicator stay
+// enabled there (session-modes unlock-dialog), so a lock does not tear them down and build them
+// again, and each hides what it puts in the panel; nothing of an extension may show on it.
 func (r *report) locked(g *guest) {
-	n, err := g.eval(`String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.stateObj?._tilingManagers?.length ?? 0)`)
-	r.add("locked: tilingshell", err == nil && strings.Trim(n, `"`) == "0", "tiling managers alive while disabled: "+n)
+	state, err := g.eval(`String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.state)`)
+	// ExtensionState.ACTIVE
+	r.add("locked: tilingshell stays enabled", err == nil && strings.Trim(state, `"`) == "1", "state "+state+errText(err))
+	roles, _ := json.Marshal(lockScreenRoles)
+	shown, err := g.eval(`JSON.stringify(Object.entries(Main.panel.statusArea).filter(([role, i]) => !` + string(roles) +
+		`.includes(role) && i.container.visible && i.visible).map(([role]) => role))`)
+	r.add("locked: no extension in the panel", err == nil && strings.Trim(shown, `"`) == "[]", "shown: "+shown+errText(err))
 }
 
 // keyringRoundTrip is a shell command that keeps a secret in user's login keyring and reads it
@@ -511,6 +530,9 @@ func (r *report) suspend(v *vm, g *guest) {
 		err = g.wait(2 * time.Minute)
 	}
 	after, _ := g.run(`cat /sys/power/suspend_stats/success`, "")
+	// What the machine said from the suspend on: what a resume broke is read here.
+	resumed, _ := g.run(`journalctl -b -q --no-pager -o short-monotonic -p warning --since "-5min"`, "")
+	_ = os.WriteFile(filepath.Join(r.dir, "resume.txt"), []byte(resumed), 0o644)
 	slept := err == nil && strings.TrimSpace(after) != strings.TrimSpace(before)
 	if !slept {
 		// What logind and the kernel said, for the failure to carry its own reason.

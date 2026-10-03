@@ -190,7 +190,13 @@ func lifecycle(args []string) error {
 	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
-		r.add("reboot into v2", false, err.Error())
+		// What the screen shows where the boot stopped: a prompt, an emergency shell.
+		shot := filepath.Join(*dir, "reboot-v2.ppm")
+		if v.screenshot(shot) == nil {
+			time.Sleep(500 * time.Millisecond)
+			_ = ppmToPNG(shot, filepath.Join(*dir, "reboot-v2.png"))
+		}
+		r.add("reboot into v2", false, err.Error()+"; screen: reboot-v2.png")
 		v.stop()
 		return r.write(nil)
 	}
@@ -313,6 +319,10 @@ func (r *report) securityKey(m, first machine, installed, dir string) bool {
 		return false
 	}
 	used, _ := g.run(`journalctl -b -q -o cat -u systemd-cryptsetup@var.service -p err; echo end`, "")
+	if strings.TrimSpace(used) != "end" {
+		// The whole unit's words: which attempt, which token, and what opened /var in the end.
+		used, _ = g.run(`journalctl -b -q -o short-monotonic -u systemd-cryptsetup@var.service`, "")
+	}
 	r.add("no error opening it with the key", strings.TrimSpace(used) == "end", oneLine(used))
 	// No password was typed, and the keyring is open all the same.
 	keyring, _ := g.run(`sleep 20; `+keyringRoundTrip(lifecycleUser, 1000), "")
@@ -375,6 +385,8 @@ func serve(dir string) (*http.Server, string, error) {
 const (
 	lifecycleUser     = "ada"
 	lifecyclePassword = "correct horse battery staple"
+	// lifecycleHostname is the name the person gives the machine, which it has from its first boot.
+	lifecycleHostname = "ada-x9"
 )
 
 // person checks who an installed machine is for: logged in once their password opened /var, no live
@@ -383,6 +395,8 @@ func (r *report) person(g *guest) {
 	sessions, _ := g.run(`sleep 20; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
 	// The password opened /var at boot: GDM logs the person in, and there is no live user.
 	r.add("logged in at boot", strings.Contains(sessions, lifecycleUser) && !strings.Contains(sessions, "live"), "sessions: "+sessions)
+	name, _ := g.run(`hostnamectl hostname`, "")
+	r.add("the computer's name", strings.TrimSpace(name) == lifecycleHostname, "hostname: "+oneLine(name))
 	// Their login keyring has no password of its own (construct clearKeyring): open once GDM logs
 	// them in, an app keeps and reads a secret with no prompt.
 	keyring, _ := g.run(keyringRoundTrip(lifecycleUser, 1000), "")
@@ -414,7 +428,7 @@ func (g *guest) installAsTheInstaller() (string, error) {
 		`--user ` + lifecycleUser + ` --real-name 'Ada Lovelace' --password-file - ` +
 		// The session's language and layout, as the installer passes them: Spanish, so the
 		// machine's boot screen and keyboard are checked to be the person's, not the image's.
-		`--locale es_ES.UTF-8 --keyboard es > ` + run + `.json 2> ` + run + `.err; echo $? > ` + run + `.rc`
+		`--locale es_ES.UTF-8 --keyboard es --hostname ` + lifecycleHostname + ` > ` + run + `.json 2> ` + run + `.err; echo $? > ` + run + `.rc`
 	if _, err := g.eval(`GLib.spawn_async(null, ["sh", "-c", ` + strconv.Quote(script) + `], null, GLib.SpawnFlags.SEARCH_PATH, null); "started"`); err != nil {
 		return "", err
 	}

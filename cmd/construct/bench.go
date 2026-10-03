@@ -175,13 +175,14 @@ func useProfile(p bench.Profile) error {
 		return err
 	}
 	if _, err := os.Stat("/dev/zram0"); err == nil && p.Zram != zramOn() {
-		// zram-generator's swap unit owns the device: systemd sets it up again on start.
-		verb := "stop"
+		// zram-generator's units own the device: stopping its setup turns the swap off and resets
+		// the device, which a second setup needs; starting the swap sets it up again.
+		args := []string{"stop", "systemd-zram-setup@zram0.service"}
 		if p.Zram {
-			verb = "start"
+			args = []string{"start", "dev-zram0.swap"}
 		}
-		if out, err := exec.Command("systemctl", verb, "dev-zram0.swap").CombinedOutput(); err != nil {
-			return fmt.Errorf("systemctl %s dev-zram0.swap: %w: %s", verb, err, strings.TrimSpace(string(out)))
+		if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
+			return fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
 		}
 	}
 	_ = exec.Command("sync").Run()

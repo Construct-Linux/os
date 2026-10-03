@@ -344,6 +344,7 @@ VERSION_ID=%[1]s
 IMAGE_ID=construct
 IMAGE_VERSION=%[1]s
 LOGO=construct-logo
+DEFAULT_HOSTNAME=construct
 HOME_URL="https://github.com/Construct-Linux/os"
 `, version),
 	}

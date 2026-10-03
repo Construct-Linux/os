@@ -21,6 +21,9 @@ _ = gettext.translation("construct-installer", fallback=True).gettext
 
 APP_ID = "io.github.construct_linux.Installer"
 CLI = "/usr/bin/construct"
+# construct install's: one DNS label (cmd/construct hostname.go).
+DEFAULT_HOSTNAME = "construct"
+HOSTNAME = re.compile(r"[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?")
 
 # What construct install says as it goes, as the person reads it, and how far along that is.
 STEPS = {
@@ -139,9 +142,12 @@ class Installer(Adw.ApplicationWindow):
         self.login = Adw.EntryRow(title=_("Login name"))
         self.password = Adw.PasswordEntryRow(title=_("Password"))
         self.again = Adw.PasswordEntryRow(title=_("Password again"))
+        # The machine's name, as the network and Settings' About show it: construct's default, kept
+        # unless changed.
+        self.hostname = Adw.EntryRow(title=_("Computer name"), text=DEFAULT_HOSTNAME)
         self.name.connect("changed", self.on_name)
         self.login.connect("changed", lambda *args: setattr(self, "login_edited", self.login.has_focus()))
-        for row in (self.name, self.login, self.password, self.again):
+        for row in (self.name, self.login, self.password, self.again, self.hostname):
             group.add(row)
             row.connect("changed", self.check_person)
         self.person_next = self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.confirm_page()))
@@ -161,6 +167,8 @@ class Installer(Adw.ApplicationWindow):
             hint = _("Choose a password.")
         elif self.password.get_text() != self.again.get_text():
             hint = _("The passwords do not match.")
+        elif not HOSTNAME.fullmatch(self.hostname.get_text().strip().lower()):
+            hint = _("A computer name is letters, digits and -, up to 63, not starting or ending with -.")
         self.person_hint.set_text(hint)
         self.person_next.set_sensitive(hint == "" and self.name.get_text().strip() != "")
 
@@ -188,7 +196,8 @@ class Installer(Adw.ApplicationWindow):
         try:
             proc = Gio.Subprocess.new(
                 ["pkexec", CLI, "install", "--yes", "--json", "--disk", self.disk["path"],
-                 "--user", self.login.get_text(), "--real-name", self.name.get_text().strip(), "--password-file", "-"]
+                 "--user", self.login.get_text(), "--real-name", self.name.get_text().strip(), "--password-file", "-",
+                 "--hostname", self.hostname.get_text().strip().lower()]
                 + session_language(),
                 Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
             )

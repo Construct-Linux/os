@@ -164,6 +164,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	passwordFile := fl.String("password-file", "", "a file holding their password, - for standard input (default: asked)")
 	locale := fl.String("locale", "", "their language, a locale: es_AR.UTF-8 (default: $LANG)")
 	keyboard := fl.String("keyboard", "", "their keyboard layout, as GNOME's input sources write it: es, us+intl (default: /etc/vconsole.conf's)")
+	hostname := fl.String("hostname", "", "the computer's name, one label: ada-x9 (default: asked; with --yes, "+defaultHostname+")")
 	var keyDevices stringList
 	fl.Var(&keyDevices, "security-key", "a FIDO2 key's hidraw node that opens the disk too, with its PIN and a touch; twice for a backup key")
 	keyPINFile := fl.String("key-pin-file", "", "the security keys' PINs, one a line in --security-key's order: a file or /dev/fd/N")
@@ -217,6 +218,15 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		return err
 	}
 	if who.keys, err = securityKeysFrom(keyDevices, *keyPINFile); err != nil {
+		return err
+	}
+	switch {
+	case *hostname != "":
+		who.hostname, err = validHostname(*hostname)
+	case !*yes:
+		who.hostname, err = askHostname(ask, out)
+	}
+	if err != nil {
 		return err
 	}
 	// /var is bound to this machine: the live system's id is the firmware's, as the installed one's.

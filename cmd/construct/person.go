@@ -27,6 +27,8 @@ type person struct {
 	// keys are the security keys that open /var beside the password: none, one, or one and the
 	// backup kept somewhere safe.
 	keys []securityKey
+	// hostname is the name they give the machine, /etc/hostname; empty leaves os-release's.
+	hostname string
 }
 
 // personFrom is the person the flags name, or, with neither, the one asked for at the terminal.
@@ -213,8 +215,13 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	if err == nil {
 		err = account.Autologin(upper, u.Name)
 	}
-	// Their language and keyboard, which GDM, GNOME and the console start from.
-	for name, body := range map[string][]byte{"locale.conf": p.lang.localeConf(), "vconsole.conf": p.lang.vconsole()} {
+	// Their language and keyboard, which GDM, GNOME and the console start from, and the machine's
+	// name.
+	files := map[string][]byte{"locale.conf": p.lang.localeConf(), "vconsole.conf": p.lang.vconsole()}
+	if p.hostname != "" {
+		files["hostname"] = []byte(p.hostname + "\n")
+	}
+	for name, body := range files {
 		if err == nil {
 			err = os.WriteFile(filepath.Join(upper, name), body, 0o644)
 		}
