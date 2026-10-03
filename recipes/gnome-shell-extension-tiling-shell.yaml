@@ -3,7 +3,7 @@ package:
   # 18.0 is not released yet: the maintainer added GNOME 51 on the v18.0 branch (RC), and the
   # 18.0-candidate tag predates fixes on it. _rc keeps the final 18.0 sorting above this.
   version: "18.0_rc20260919"
-  epoch: 4
+  epoch: 5
   description: Tiling window management for GNOME Shell (tilingshell@ferrarodomenico.com)
   copyright:
     # package.json says GPL v2; the LICENSE file is GPL-3.0.
@@ -35,7 +35,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/tilingshell
       branch: gnome-51
-      expected-commit: 087b9bf2c775c877ac8e79edaac54351d70f28b3
+      expected-commit: 189dfb358ae5349e2ed7d1ca60a516119b1907e4
 
   # TypeScript transpiled by esbuild; npm ci installs exactly the lockfile's versions, each
   # checked against its integrity hash, or fails.

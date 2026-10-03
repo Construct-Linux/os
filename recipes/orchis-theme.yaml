@@ -1,7 +1,7 @@
 package:
   name: orchis-theme
   version: "20260914"
-  epoch: 3
+  epoch: 4
   description: Orchis GTK and GNOME Shell theme in Construct's colors, light and dark
   copyright:
     - license: GPL-3.0-only
@@ -18,12 +18,13 @@ environment:
 pipeline:
   # The gnome-shell-51 branch of a fork, on upstream's master: Shell 51 only, and what 49-51
   # changed in the shell's widgets that upstream's newest stylesheet (48) leaves unstyled; the
-  # brand's palette as its one accent, and only GNOME Shell, GTK 3 and GTK 4.
+  # brand's palette as its one accent, and only GNOME Shell (dark: the shell is), GTK 3 and GTK 4.
+  # awk, which the build runs, is busybox's.
   - uses: git-checkout
     with:
       repository: https://github.com/Construct-Linux/Orchis-theme
       branch: gnome-shell-51
-      expected-commit: 81e0c1d9e7ba8c304b60818ce2997b0d8023ee08
+      expected-commit: 147067948df9d124ef4f5224be5ebbc43ba1d6fb
 
   # No -l: it links into a home directory, and the image links libadwaita per user.
   - runs: |

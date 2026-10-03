@@ -1,12 +1,13 @@
-# CONSTRUCT's identity, from its own repository: the boot animation's frames, which cmd/image
-# makes the Plymouth theme of (plymouth.go), and the logo, as the icon theme's construct-logo -
-# os-release's LOGO, GNOME's About page - in color, at every size and as GNOME's symbolic icon.
+# CONSTRUCT's identity, from its own repository: the boot animation's frames and the order they
+# play in (sequence.json), which cmd/image makes the Plymouth theme of (plymouth.go); the logo, as
+# the icon theme's construct-logo - os-release's LOGO, GNOME's About page - in color and as
+# GNOME's symbolic icon; and the wallpaper, light and dark, as GNOME's Background settings list it.
 # The images are the ones brand commits and holds to its sources (its task check).
 package:
   name: construct-brand
-  version: 0_git20261002
-  epoch: 1
-  description: CONSTRUCT's logo and boot animation
+  version: 0_git20261003
+  epoch: 0
+  description: CONSTRUCT's logo, boot animation and wallpaper
   copyright:
     - license: CC-BY-SA-4.0
   dependencies:
@@ -22,17 +23,19 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/brand
       branch: main
-      expected-commit: 1148ad97ab4ba8bcd888336ba8f6efd63ee8264f
+      expected-commit: c7f4d59c3188a8c8fa2f565c25f73f51202e404e
 
   - runs: |
       d=${{targets.destdir}}/usr/share
-      mkdir -p $d/construct/plymouth $d/icons/hicolor/scalable/apps $d/icons/hicolor/symbolic/apps $d/licenses/construct-brand
-      cp plymouth/intro-*.png plymouth/loop-*.png plymouth/outro-*.png $d/construct/plymouth/
-      test "$(ls $d/construct/plymouth | wc -l)" -eq 48
+      mkdir -p $d/construct/plymouth $d/icons/hicolor/scalable/apps $d/icons/hicolor/symbolic/apps \
+        $d/backgrounds/construct $d/gnome-background-properties $d/licenses/construct-brand
+      cp plymouth/frame-*.png plymouth/sequence.json $d/construct/plymouth/
       cp logos/construct.svg $d/icons/hicolor/scalable/apps/construct-logo.svg
       cp logos/construct-symbolic.svg $d/icons/hicolor/symbolic/apps/construct-logo-symbolic.svg
-      for s in 16 24 32 48 64 128 512; do
+      for s in 16 24 32 48 64; do
         mkdir -p $d/icons/hicolor/${s}x${s}/apps
         cp logos/construct-$s.png $d/icons/hicolor/${s}x${s}/apps/construct-logo.png
       done
+      cp wallpapers/construct-dark.png wallpapers/construct-light.png $d/backgrounds/construct/
+      cp wallpapers/construct.xml $d/gnome-background-properties/construct.xml
       cp LICENSES/CC-BY-SA-4.0.txt LICENSES/OFL-1.1.txt $d/licenses/construct-brand/

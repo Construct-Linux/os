@@ -1,8 +1,8 @@
 package:
   name: tela-icon-theme
   version: 2026.08.10
-  epoch: 1
-  description: Tela flat icon theme (Tela, Tela-dark, Tela-light)
+  epoch: 2
+  description: Tela flat icon theme (Tela, Tela-dark)
   copyright:
     - license: GPL-3.0-or-later
   dependencies:
@@ -14,12 +14,8 @@ package:
 environment:
   contents:
     packages:
-      - bash
+      # install.sh is POSIX sh, busybox's enough.
       - busybox
-      # install.sh links the variants with ln -sr, which busybox's ln lacks.
-      - coreutils
-      # install.sh ends on it; without it the script's exit status fails the build.
-      - gtk-3-update-icon-cache
 
 pipeline:
   # The fork's gnome-51 branch: upstream master (2026-08-10) plus an icon for Decibels, the
@@ -28,14 +24,13 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/Tela-icon-theme
       branch: gnome-51
-      expected-commit: 3d9cd2e9920ae17d77c25c545f196b8ed94605a7
+      expected-commit: d57c29abab34534840577f64bf5cff05e4942dcd
 
-  # Only the standard folder colour: the image names Tela/Tela-dark/Tela-light and
-  # each further colour is another full copy of the theme.
+  # Only the standard folder colour: each further colour is another full copy of the theme.
   - runs: |
       mkdir -p "${{targets.destdir}}"/usr/share/icons
-      bash ./install.sh -d "${{targets.destdir}}"/usr/share/icons
-      for t in Tela Tela-dark Tela-light; do
+      sh ./install.sh -d "${{targets.destdir}}"/usr/share/icons
+      for t in Tela Tela-dark; do
         test -f "${{targets.destdir}}/usr/share/icons/$t/index.theme"
         test -e "${{targets.destdir}}/usr/share/icons/$t/scalable/apps/org.gnome.Decibels.svg"
       done
