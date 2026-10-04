@@ -439,8 +439,6 @@ func needlesPropose(args []string) error {
 	}
 	// Back on main whatever happens: the checkout is where the next run compares from.
 	defer func() { _ = git("checkout", "-q", "main") }()
-	var body strings.Builder
-	fmt.Fprintf(&body, "Build `%s`, against needles `%s`.\n\n| View | Differs |\n|---|---|\n", l.Version, l.Needles)
 	for _, v := range changed {
 		b, err := os.ReadFile(filepath.Join(*from, v.Name+".png"))
 		if err != nil {
@@ -474,6 +472,27 @@ func needlesPropose(args []string) error {
 				return err
 			}
 		}
+	}
+	table := proposalTable(l, changed)
+	title := fmt.Sprintf("Look of %s: %d view(s)", l.Version, len(changed))
+	if err := git("commit", "-q", "-m", title, "-m", table); err != nil {
+		return err
+	}
+	if err := git("push", "-q", "-f", "origin", branch); err != nil {
+		return err
+	}
+	pr := exec.Command("gh", "pr", "create", "--title", title, "--body", table+"\n"+reviewChecklist(), "--head", branch, "--base", "main")
+	pr.Dir = *needles
+	pr.Stdout, pr.Stderr = os.Stdout, os.Stderr
+	return pr.Run()
+}
+
+// proposalTable is what a proposal changes, view by view: the commit's message, and the top of
+// the pull request.
+func proposalTable(l look, views []lookView) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "Build `%s`, against needles `%s`.\n\n| View | Differs |\n|---|---|\n", l.Version, l.Needles)
+	for _, v := range views {
 		state := fmt.Sprintf("%.3f%%", v.Share*100)
 		switch {
 		case v.New:
@@ -481,18 +500,48 @@ func needlesPropose(args []string) error {
 		case v.Error != "":
 			state = v.Error
 		}
-		fmt.Fprintf(&body, "| `%s` | %s |\n", v.Name, state)
+		fmt.Fprintf(&b, "| `%s` | %s |\n", v.Name, state)
 	}
-	body.WriteString("\nMerging approves these as how the views must look.\n")
-	title := fmt.Sprintf("Look of %s: %d view(s)", l.Version, len(changed))
-	if err := git("commit", "-q", "-m", title, "-m", body.String()); err != nil {
-		return err
+	return b.String()
+}
+
+// reviewAsked is what a person judges before merging a proposal, because no check can: needles say
+// that a view changed, lf that it keeps the rules it can measure, neither that it is still good.
+// The checklist is in the body needles-propose writes: a template in the needles repository never
+// reaches a pull request opened with gh --body.
+var reviewAsked = []string{
+	"Where a view has a solid accent area, it is that view's one right primary action (lf counts the areas, not which control fills them)",
+	"The chrome reads quieter than the content it frames",
+	"No new visual primitive: no shape, icon style or radius that no view had before",
+	"No new persistent badge or indicator",
+	"Upstream's branding is kept wherever the palette does not need it changed",
+}
+
+// reviewGated are the rules lf already measures on the views, by its checks' names: not asked
+// again, since a run that broke one failed it.
+var reviewGated = []struct{ rules, checks string }{
+	{"C3", "`accent areas <view>` and `accent share <view>`, on every view"},
+	{"E2, S1", "`surface`, `ring` and `edge` of `top bar (<view>)` and `dock (<view>)`, over every wallpaper"},
+	{"F1, C8", "`focus quick toggle style`, `focus quick toggle drawn`, `focus calendar day`, `today calendar`, `css focus G2`, `css rings C8`"},
+	{"S2, S4", "`surface quick settings`, `surface calendar`, `submenu quick settings`, `ground <view>`"},
+	{"S3, E3", "`window installer`, `rule installer headerbar`, `window maximized`"},
+	{"S5, S6, C11", "`desk settings-light`, `ring settings-light window`, `shelf settings-light`, `selected row settings-light`, `rule settings-light headerbar`"},
+	{"C1, T2", "`css palette G3`, `css weights G6`, `css weights G6 gtk`"},
+	{"R1, SP2", "`radius <surface>`, `spacing bars`, `spacing top bar buttons`, `spacing menus`"},
+	{"X2", "`icons apps`"},
+}
+
+// reviewChecklist is the pull request's review: boxes for what a person judges, and lines for
+// what lf gated.
+func reviewChecklist() string {
+	var b strings.Builder
+	b.WriteString("## Review\n\nMerging approves these as how the views must look: tick each box once every view above has been looked at.\n\n")
+	for _, q := range reviewAsked {
+		fmt.Fprintf(&b, "- [ ] %s\n", q)
 	}
-	if err := git("push", "-q", "-f", "origin", branch); err != nil {
-		return err
+	b.WriteString("\nAlready held by the run that shot them:\n\n")
+	for _, g := range reviewGated {
+		fmt.Fprintf(&b, "- %s, gated by lf: %s\n", g.rules, g.checks)
 	}
-	pr := exec.Command("gh", "pr", "create", "--title", title, "--body", body.String(), "--head", branch, "--base", "main")
-	pr.Dir = *needles
-	pr.Stdout, pr.Stderr = os.Stdout, os.Stderr
-	return pr.Run()
+	return b.String()
 }

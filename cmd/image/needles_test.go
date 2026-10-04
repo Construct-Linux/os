@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -94,6 +95,20 @@ func TestCompareNeedle(t *testing.T) {
 	// Another size is a failure of its own.
 	if _, err := compareNeedle(ref, shot("small", solid(50, 50, ink)), "", diff); err == nil {
 		t.Error("a different size: no error")
+	}
+}
+
+// A proposal's commit keeps the table alone; its pull request asks a person what no check measures,
+// as boxes to tick, and names what lf held instead of asking it again.
+func TestProposalBody(t *testing.T) {
+	l := look{Version: "20261004.1", Needles: "abc"}
+	table := proposalTable(l, []lookView{{Name: "shell-calendar", Share: 0.013}, {Name: "gtk-focus", New: true}})
+	if !strings.Contains(table, "| `shell-calendar` | 1.300% |") || !strings.Contains(table, "| `gtk-focus` | new view |") || strings.Contains(table, "- [ ]") {
+		t.Errorf("table:\n%s", table)
+	}
+	review := reviewChecklist()
+	if strings.Count(review, "- [ ] ") != len(reviewAsked) || !strings.Contains(review, "- C3, gated by lf: `accent areas <view>`") {
+		t.Errorf("review:\n%s", review)
 	}
 }
 
