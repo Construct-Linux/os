@@ -213,8 +213,15 @@ func lifecycle(args []string) error {
 	// fires again while it does - a new notice each time, until the trigger limit fails the path.
 	told, _ := g.run(fmt.Sprintf(`sleep 10; sudo -u %s XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-failed construct-reboot-notice.path; `+
 		`journalctl -b -o cat --user-unit construct-reboot-notice.service | grep -c '^Starting '`, lifecycleUser), "")
-	r.add("the reboot notice is shown once", strings.Join(strings.Fields(told), " ") == "active 1",
-		"path, notices: "+oneLine(told))
+	once := strings.Join(strings.Fields(told), " ") == "active 1"
+	r.add("the reboot notice is shown once", once, "path, notices: "+oneLine(told))
+	if !once {
+		// The path unit's and the notice's own account, and what the path is watched through.
+		why, _ := g.run(fmt.Sprintf(`ls -ld /run/construct /run/construct/reboot-required; `+
+			`sudo -u %s XDG_RUNTIME_DIR=/run/user/1000 systemctl --user status --no-pager construct-reboot-notice.path construct-reboot-notice.service; `+
+			`journalctl -b --no-pager -o short-monotonic --user-unit construct-reboot-notice.path --user-unit construct-reboot-notice.service | tail -30`, lifecycleUser), "")
+		_ = os.WriteFile(filepath.Join(*dir, "reboot-notice.txt"), []byte(why), 0o644)
+	}
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
 		// What the screen shows where the boot stopped: a prompt, an emergency shell.
@@ -244,6 +251,13 @@ func lifecycle(args []string) error {
 	}
 	u := g.waitUpdate(15 * time.Minute)
 	r.add("v3's stick updates", u.ok, u.detail())
+	if !u.ended {
+		// Whether the stick's partition was seen and its unit started, and where it stopped.
+		why, _ := g.run(`lsblk -o NAME,PARTLABEL,SIZE; systemctl list-units --all --no-pager 'construct-update*'; `+
+			`for d in $(lsblk -nro NAME,PARTLABEL | awk '$2 == "construct-update" {print $1}'); do udevadm info /dev/$d | grep -E 'SYSTEMD|PARTNAME|TAGS'; done; `+
+			`journalctl -b --no-pager -o short-monotonic -u 'construct-update@*' | tail -40`, "")
+		_ = os.WriteFile(filepath.Join(*dir, "stick-update.txt"), []byte(why), 0o644)
+	}
 	g.reboot()
 	deadline := time.Now().Add(20 * time.Minute)
 	for time.Now().Before(deadline) {
