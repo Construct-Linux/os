@@ -4,6 +4,8 @@ import (
 	"image"
 	"image/color"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -317,6 +319,35 @@ func TestPromptLook(t *testing.T) {
 	}
 	if ok, _ := gridBack(prompt, prompt, 594); ok {
 		t.Error("the outro's last frame again passed as the grid back")
+	}
+}
+
+// The grid after the password is its own result: a screen that cannot be read, or none at all, is
+// no grid, and one readable screen with the grid back is.
+func TestGridPlymouth(t *testing.T) {
+	dir := t.TempDir()
+	prompt := solid(1280, 800, tBlack)
+	fill(prompt, lfRect{500, 140, 280, 3}, tAccent)
+	back := solid(1280, 800, tBlack)
+	fill(back, lfRect{500, 140, 280, 3}, tAccent)
+	fill(back, lfRect{500, 240, 280, 3}, tAccent)
+	same, grid, broken := filepath.Join(dir, "same.png"), filepath.Join(dir, "grid.png"), filepath.Join(dir, "broken.png")
+	if writePNG(same, prompt) != nil || writePNG(grid, back) != nil || os.WriteFile(broken, []byte("\x89PNG partial"), 0o644) != nil {
+		t.Fatal("writing the screens")
+	}
+	for _, c := range []struct {
+		name   string
+		afters []string
+		want   bool
+	}{
+		{"none", nil, false},
+		{"unreadable", []string{broken}, false},
+		{"unreadable, then the outro still", []string{broken, same}, false},
+		{"unreadable, then the grid", []string{broken, grid}, true},
+	} {
+		if ok, why := gridPlymouth(prompt, c.afters); ok != c.want {
+			t.Errorf("%s: %v (%s), want %v", c.name, ok, why, c.want)
+		}
 	}
 }
 

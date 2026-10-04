@@ -2853,25 +2853,30 @@ func (r *report) plymouthPrompt(g *guest, dir string) {
 	}
 	ok, detail := promptLook(prompt, p.colors["dark-accent"], p.colors["neutral-g"], p.colors["brand-boot"])
 	r.add("lf: prompt plymouth", ok, detail+" (password.png)")
-	// Any of the screens after the password showing the grid back is the outro going back.
 	afters, _ := filepath.Glob(filepath.Join(dir, "password-after-*.png"))
-	if len(afters) == 0 {
-		r.add("lf: grid plymouth", false, "no screens after the password")
-		return
-	}
 	sort.Strings(afters)
+	grid, why := gridPlymouth(prompt, afters)
+	r.add("lf: grid plymouth", grid, why)
+}
+
+// gridPlymouth is whether any of the screens after the password shows the grid back, the outro
+// going back. Its result is its own: screens it cannot read are no grid, whatever the prompt was.
+func gridPlymouth(prompt image.Image, afters []string) (bool, string) {
+	why := "no readable screen after the password"
+	from, _ := promptRows(prompt.Bounds().Dy())
 	for _, f := range afters {
 		after, err := readPNG(f)
 		if err != nil {
+			why = err.Error()
 			continue
 		}
-		from, _ := promptRows(prompt.Bounds().Dy())
-		if ok, detail = gridBack(prompt, after, from); ok {
-			break
+		ok, detail := gridBack(prompt, after, from)
+		if ok {
+			return true, detail
 		}
-		detail += " (" + filepath.Base(f) + ")"
+		why = detail + " (" + filepath.Base(f) + ")"
 	}
-	r.add("lf: grid plymouth", ok, detail)
+	return false, why
 }
 
 // gridBack is whether the grid came back after the password: above the prompt there is at least
