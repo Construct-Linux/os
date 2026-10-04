@@ -611,8 +611,11 @@ func (r *report) lockPassword(g *guest) {
 // asLive runs a command in the live user's session.
 const asLive = `sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus `
 
-// desktopViews are the desktop over each of the brand's wallpapers (E2: the bars' edge over every
-// one), the desktop at 150%, and Settings in Spanish, whose strings run longer than English's.
+// plainDesktop is desktop-plain's ground: a neutral grey, no colour of the palette's.
+const plainDesktop = "#808080"
+
+// desktopViews are the desktop over each of the brand's wallpapers and over a flat colour (E2: the
+// bars' edge over every one), the desktop at 150%, and Settings in Spanish, whose strings run longer than English's.
 func (r *report) desktopViews(v *vm, g *guest, l *lf, sc screen) {
 	walls, err := g.run(`ls /usr/share/backgrounds/construct/*.png`, "")
 	if err != nil || strings.TrimSpace(walls) == "" {
@@ -638,7 +641,21 @@ func (r *report) desktopViews(v *vm, g *guest, l *lf, sc screen) {
 		r.shotLook(v, g, viewMeta{name, groupDesktop, about, []string{"E2", "S1"}})
 		l.view(name)
 	}
-	_, _ = g.run(asLive+`gsettings reset org.gnome.desktop.background picture-uri; `+asLive+`gsettings reset org.gnome.desktop.background picture-uri-dark`, "")
+	// No wallpaper at all: a flat colour, as a person who picks one has. Mid grey is neither the
+	// brand's ink nor its light desk, so the bars' edge is held over a ground the wallpapers never
+	// gave it.
+	_, err = g.run(asLive+`gsettings set org.gnome.desktop.background picture-options none && `+
+		asLive+`gsettings set org.gnome.desktop.background color-shading-type solid && `+
+		asLive+`gsettings set org.gnome.desktop.background primary-color '`+plainDesktop+`'`, "")
+	r.add("view:desktop-plain", err == nil, plainDesktop+errText(err))
+	time.Sleep(3 * time.Second)
+	r.shotLook(v, g, viewMeta{"desktop-plain", groupDesktop,
+		"Both bars over no wallpaper, a flat mid grey: their edge shows without the brand's ground under it",
+		[]string{"E2", "S1"}})
+	l.view("desktop-plain")
+	for _, k := range []string{"picture-uri", "picture-uri-dark", "picture-options", "color-shading-type", "primary-color"} {
+		_, _ = g.run(asLive+`gsettings reset org.gnome.desktop.background `+k, "")
+	}
 	time.Sleep(2 * time.Second)
 
 	// 150%: mutter's native backend lays monitors out logically, so fractional scales are offered
