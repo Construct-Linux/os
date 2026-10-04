@@ -88,9 +88,10 @@ const (
 	// The lock clock is regular: its stem is thinner than this share of its cap height (Adwaita
 	// Sans regular ~0.12, bold ~0.19).
 	lfClockStemRatio = 0.15
-	// The overview's workspace card puts the wallpaper's mark at this share of the screen's height:
-	// y 344 measured at 1280x800, within lfCardMarkTol stage pixels.
-	lfCardMarkShare = 344.0 / 800
+	// The overview's workspace card is the wallpaper drawn small: its mark sits at the share of
+	// the card's height the wallpaper puts it at (wallpaper.py, W1), within lfCardMarkTol stage
+	// pixels. The card's place on the screen changes with the screen's size; this does not.
+	lfCardMarkShare = 0.4222
 	lfCardMarkTol   = 6
 	// The top bar's outer height, ring included.
 	lfBarHeight = 36
@@ -1550,7 +1551,7 @@ func (l *lf) overview(img image.Image) {
 	}
 	cx, cy := float64(box.X)+float64(box.W)/2, float64(box.Y)+float64(box.H)/2
 	l.cardMark = &[2]float64{cx, cy}
-	want, tol := lfCardMarkShare*float64(img.Bounds().Dy()), float64(lfCardMarkTol*l.k)
+	want, tol := float64(card.Y)+lfCardMarkShare*float64(card.H), float64(lfCardMarkTol*l.k)
 	l.check("mark", "overview card", math.Abs(cy-want) <= tol,
 		fmt.Sprintf("centred at (%.0f, %.0f), want y %.0f±%.0f", cx, cy, want, tol))
 }

@@ -68,7 +68,9 @@ button-layout='appmenu:minimize,maximize,close'
 # itself with the theme's #panel, so it sets no background, opacity or border of its own, and
 # Orchis owns its 15 px radius. Both bars sit 6 px from the screen's edge. Its focus highlight is
 # the accent as the brand's rest tint, like a selected item: 18% over g is #13434F, the accent on
-# it 7.02:1. Two px of margin a side: at six the icons stood about 30 px apart.
+# it 7.02:1. No margin and 2 px of padding: measured at 200%, icons drawn 33 px with 18.5 px
+# between them (at 2 and 4: 30 px icons, 26 px apart, near as wide as the icons). What is left
+# is the icons' own transparent margin, Tela drawing an app at about 75% of its canvas.
 # The session starts in the overview: neither hide-overview-on-startup here nor Just
 # Perfection's startup-status is set, because a desktop-first start fades the desktop in over
 # GNOME's startup stage instead of rising from the boot's black.
@@ -80,7 +82,8 @@ panel-anchors='{"0":"MIDDLE","1":"MIDDLE","2":"MIDDLE"}'
 panel-sizes='{"0":44,"1":44,"2":44}'
 panel-element-positions='{"0":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}],"1":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}],"2":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}]}'
 panel-top-bottom-margins=6
-appicon-margin=2
+appicon-margin=0
+appicon-padding=2
 global-border-radius=0
 focus-highlight-color='#00E5FF'
 focus-highlight-opacity=18

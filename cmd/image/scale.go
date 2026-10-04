@@ -72,6 +72,10 @@ func gdctlScale(show string) (float64, bool) {
 	return 0, false
 }
 
+// liveActive makes the live user's session on seat0 the active one, and fails when it is not.
+const liveActive = `s=$(loginctl list-sessions --no-legend | awk '$3 == "live" && $4 == "seat0" {print $1; exit}') && ` +
+	`loginctl activate "$s" && sleep 1 && [ "$(loginctl show-session "$s" -p Active --value)" = yes ] && `
+
 // gdctlMonitor is the shell command that puts the first monitor's connector in $c.
 const gdctlMonitor = `c=$(` + asLive + `gdctl show | grep -o 'Monitor [^ ]*' | head -1 | cut -d' ' -f2) && `
 
@@ -85,8 +89,11 @@ const gdctlMonitor = `c=$(` + asLive + `gdctl show | grep -o 'Monitor [^ ]*' | h
 // the live session makes at boot; scaling-factor is a global factor mutter takes for every
 // monitor of every machine. gdctl asks mutter for the scale on the monitor there is, and answers
 // whether mutter took it.
+//
+// The live session is made the seat's active one before and after: at 2880x1800 GDM's greeter
+// (tty1) was left in front of the autologin session, and every view after shot the login screen.
 func (g *guest) setSessionScale(scale float64, wantW, wantH int) (string, error) {
-	out, err := g.run(gdctlMonitor+asLive+fmt.Sprintf(`gdctl set --logical-monitor --primary --monitor "$c" --scale %g 2>&1 && `, scale)+asLive+`gdctl show 2>&1`, "")
+	out, err := g.run(liveActive+gdctlMonitor+asLive+fmt.Sprintf(`gdctl set --logical-monitor --primary --monitor "$c" --scale %g 2>&1 && `, scale)+asLive+`gdctl show 2>&1 && `+liveActive+`echo active`, "")
 	if err != nil {
 		return out, fmt.Errorf("gdctl: %w: %s", err, oneLine(out))
 	}

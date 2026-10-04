@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 )
@@ -63,6 +64,13 @@ func devUp(args []string) error {
 	}
 	// As the harness does: no blanking, and the installer the live session opens closed.
 	_, _ = g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
+	// The installer autostarts a few seconds after the login: it is waited for before it is
+	// closed, or it opens over the views a moment later.
+	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
+		if n, _ := g.eval(`String(` + installerWindows + `.length)`); strings.Trim(n, `"`) != "0" {
+			break
+		}
+	}
 	_, _ = g.eval(installerWindows + `.forEach(w => w.delete(global.get_current_time())); true`)
 	w, h := sc.logical()
 	if out, err := g.setSessionScale(float64(sc.Scale), w, h); err != nil {
