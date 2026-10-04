@@ -1,6 +1,7 @@
-# Downloads the newest release from where releases are published (the default sysupdate
-# component, usr/lib/sysupdate.d) and writes it into the slot the machine did not boot, once
-# systemd-pull has checked its signature and every file. It never reboots: the person is told
+# Downloads the newest release of the channel the machine follows (stable, the default sysupdate
+# component, or the one construct channel wrote into /etc/construct/channel) and writes it into the
+# slot the machine did not boot, once systemd-pull has checked the channel's signature and every
+# file. It never reboots: the person is told
 # (construct-reboot-notice), and the next boot starts it - three times at most until it comes
 # up, then back to this one.
 [Unit]
@@ -12,9 +13,11 @@ ConditionPathExists=/dev/mapper/var
 
 [Service]
 Type=oneshot
+# SYSUPDATE_COMPONENT: --component=<channel>, or unset for stable.
+EnvironmentFile=-/etc/construct/channel
 # An update that stopped half way - a refused kernel image after its slot was written, a lost
 # network - is never booted (it has no kernel image), but systemd-sysupdate will not write that
 # version again until it is vacuumed.
-ExecStartPre=-/usr/lib/systemd/systemd-sysupdate vacuum
-ExecStart=/usr/lib/systemd/systemd-sysupdate update
+ExecStartPre=-/usr/lib/systemd/systemd-sysupdate $SYSUPDATE_COMPONENT vacuum
+ExecStart=/usr/lib/systemd/systemd-sysupdate $SYSUPDATE_COMPONENT update
 ExecStartPost=/usr/bin/construct pending --mark /run/construct/reboot-required

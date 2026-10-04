@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -20,6 +21,7 @@ import (
 func lifecycle(args []string) error {
 	fl := flag.NewFlagSet("lifecycle", flag.ExitOnError)
 	dir := fl.String("dir", filepath.Join(out, "lifecycle"), "where v1.raw, v2.raw and v3.raw (broken) are, and the machine's disk and variables go")
+	keys := fl.String("keys", filepath.Join(".cache", "test-keys"), "the test release key the sticks were signed with, which signs the channels' indexes too")
 	_ = fl.Parse(args)
 
 	versions := map[string]string{}
@@ -186,24 +188,34 @@ func lifecycle(args []string) error {
 		_ = os.Remove(s)
 	}
 
-	// 4. v2 comes from where releases are published - an HTTP server on this host here, which the
-	// default component's transfers are pointed at - by the daily timer's service.
-	srv, url, err := serve(filepath.Join(*dir, "v2.release"))
+	// 4. v2 comes from its channel - the update CDN, played by an HTTP server on this host, which
+	// the channels' transfers are pointed at - by the daily timer's service. stable lists v1 alone,
+	// so the machine finds nothing newer there; following testing, it takes v2, each file through a
+	// redirect as from the CDN to GitHub.
+	cdn, err := newUpdateCDN(*dir, versions, filepath.Join(*keys, "release.pem"), filepath.Join(*keys, "release.pgp"))
 	if err != nil {
 		return err
 	}
-	defer srv.Close()
+	defer cdn.srv.Close()
+	url := cdn.url
 	if v, g, err = boot(); err != nil {
 		r.add("boot for the URL update", false, err.Error())
 		return r.write(nil)
 	}
-	_, err = g.run(`mkdir -p /etc/sysupdate.d && for f in /usr/lib/sysupdate.d/*.transfer; do `+
-		`sed "s|^Path=https://.*|Path=`+url+`|" "$f" > /etc/sysupdate.d/$(basename "$f"); done`, "")
-	r.add("point updates at the test server", err == nil, url+errText(err))
+	_, err = g.run(`for ch in stable testing; do d=/usr/lib/sysupdate.$ch.d; e=/etc/sysupdate.$ch.d; `+
+		`[ $ch = stable ] && d=/usr/lib/sysupdate.d && e=/etc/sysupdate.d; mkdir -p $e && for f in $d/*.transfer; do `+
+		`sed "s|^Path=https://.*|Path=`+url+`/$ch|" "$f" > $e/$(basename "$f") || exit 1; done; done`, "")
+	r.add("point the channels at the test CDN", err == nil, url+errText(err))
+	_, err = g.run(`systemctl start construct-update.service`, "")
+	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
+	r.add("stable has nothing newer", err == nil && !strings.Contains(esp, versions["v2"]), oneLine(esp)+errText(err))
+	outs, err = g.run(`construct channel testing && construct channel`, "")
+	r.add("follow testing", err == nil && strings.HasPrefix(outs, "following testing") && strings.Contains(outs, "\ntesting (of"), oneLine(outs)+errText(err))
 	_, err = g.run(`systemctl start construct-update.service`, "")
 	outs, _ = g.run(`journalctl -b --no-pager -o cat -u construct-update.service | tail -3`, "")
-	r.add("v2 downloads", err == nil, oneLine(outs)+errText(err))
-	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
+	r.add("v2 downloads from testing", err == nil, oneLine(outs)+errText(err))
+	r.add("its files came through redirects", cdn.redirects.Load() >= 3, fmt.Sprintf("%d redirects", cdn.redirects.Load()))
+	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v2 is counted on the ESP", strings.Contains(esp, "construct_"+versions["v2"]+"+3"), oneLine(esp))
 	mark, _ := g.run(`cat /run/construct/reboot-required`, "")
 	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
@@ -388,16 +400,75 @@ func (g *guest) waitUpdate(d time.Duration) updateEnd {
 	return updateEnd{}
 }
 
-// serve answers dir's files over HTTP on this host, where a guest reaches it at 10.0.2.2 (QEMU's
-// user network): what GitHub Releases is to a machine.
-func serve(dir string) (*http.Server, string, error) {
+// updateCDN is the update CDN (infra updates.tf) on this host, where a guest reaches it at
+// 10.0.2.2 (QEMU's user network): each channel's index, signed with the test release key, and each
+// release file as a redirect to where it is - a path of this server here, a GitHub Release asset
+// there.
+type updateCDN struct {
+	srv       *http.Server
+	url       string
+	redirects atomic.Int32
+}
+
+// newUpdateCDN serves stable listing v1 and testing listing v1 and v2, from the releases in dir.
+func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string) (*updateCDN, error) {
+	root := filepath.Join(dir, "cdn")
+	if err := os.RemoveAll(root); err != nil {
+		return nil, err
+	}
+	byVersion := map[string]string{}
+	for ch, vs := range map[string][]string{"stable": {"v1"}, "testing": {"v1", "v2"}} {
+		idx := index{}
+		for _, v := range vs {
+			b, err := os.ReadFile(filepath.Join(dir, v+".release", "SHA256SUMS"))
+			if err != nil {
+				return nil, err
+			}
+			rel, err := parseIndex(string(b))
+			if err != nil {
+				return nil, err
+			}
+			idx[versions[v]] = rel[versions[v]]
+			byVersion[versions[v]] = v
+		}
+		sums := filepath.Join(root, ch, "SHA256SUMS")
+		if err := os.MkdirAll(filepath.Dir(sums), 0o755); err != nil {
+			return nil, err
+		}
+		if err := os.WriteFile(sums, []byte(idx.String()), 0o644); err != nil {
+			return nil, err
+		}
+		if err := signSums(keyRef, pubring, sums); err != nil {
+			return nil, err
+		}
+	}
+	c := &updateCDN{}
+	index := http.FileServer(http.Dir(root))
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
+		if len(parts) == 2 {
+			if m := releaseFile.FindStringSubmatch(parts[1]); m != nil {
+				if v, ok := byVersion[m[1]]; ok && parts[0] != "assets" {
+					c.redirects.Add(1)
+					http.Redirect(w, r, "/assets/"+v+"/"+parts[1], http.StatusFound)
+					return
+				}
+			}
+		}
+		if len(parts) == 3 && parts[0] == "assets" && releaseFile.MatchString(parts[2]) && (parts[1] == "v1" || parts[1] == "v2") {
+			http.ServeFile(w, r, filepath.Join(dir, parts[1]+".release", parts[2]))
+			return
+		}
+		index.ServeHTTP(w, r)
+	})
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
-		return nil, "", err
+		return nil, err
 	}
-	srv := &http.Server{Handler: http.FileServer(http.Dir(dir))}
-	go func() { _ = srv.Serve(l) }()
-	return srv, fmt.Sprintf("http://10.0.2.2:%d", l.Addr().(*net.TCPAddr).Port), nil
+	c.srv = &http.Server{Handler: handler}
+	go func() { _ = c.srv.Serve(l) }()
+	c.url = fmt.Sprintf("http://10.0.2.2:%d", l.Addr().(*net.TCPAddr).Port)
+	return c, nil
 }
 
 // The person test:lifecycle installs for.

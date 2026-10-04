@@ -17,6 +17,7 @@
 //	image packages-list -o packages.txt         the baked root's packages, a release asset
 //	image release-version                       the next vYYYYMMDD.N, from the remote's tags (cmd/image/calver.go)
 //	image release-notes -version v -packages f  a release's notes (cmd/image/notes.go)
+//	image channel-index -version v -add|-withdraw  a channel's index with a release added or withdrawn (cmd/image/channel.go)
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
@@ -97,6 +98,8 @@ func main() {
 		err = releaseVersion(os.Args[2:])
 	case "release-notes":
 		err = releaseNotes(os.Args[2:])
+	case "channel-index":
+		err = channelIndex(os.Args[2:])
 	case "play":
 		err = play(os.Args[2:])
 	case "check-langs":

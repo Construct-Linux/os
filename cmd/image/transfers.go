@@ -9,26 +9,35 @@ import (
 // transfersDir holds the systemd-sysupdate transfers writeTransfers makes, laid into the root.
 var transfersDir = filepath.Join(out, "sysupdate")
 
-// updateURL is where releases are published (GitHub Releases' newest): the default component's
-// source, which construct-update.timer checks every day. CONSTRUCT_UPDATE_URL moves it.
-func updateURL() string {
+// updatesURL is where machines check for updates: the update CDN (infra updates.tf), each
+// channel's index at <url>/<channel>/. A release is built with CONSTRUCT_UPDATE_URL, the builder's
+// (image usb refuses a release without it); another build points nowhere (.invalid), since only
+// a release is ever offered to machines.
+func updatesURL() string {
 	if u := os.Getenv("CONSTRUCT_UPDATE_URL"); u != "" {
 		return u
 	}
-	return "https://github.com/Construct-Linux/os/releases/latest/download"
+	return "https://updates.construct.invalid"
 }
 
-// writeTransfers makes two sets of transfers that differ in their source alone: the default
-// sysupdate component, from updateURL, and the stick's, from a stick's construct-update partition
-// mounted at /run/construct/update - definitions construct-update@ names, not a component, which
-// systemd-sysupdated would check while no stick is there. Both are url-file sources: only those make
-// systemd-sysupdate (through systemd-pull) check SHA256SUMS.gpg against import-pubring.pgp and each
-// file against SHA256SUMS as it copies it - a regular-file source is taken unchecked.
+// writeTransfers makes a set of transfers per channel, and the stick's, which differ in their
+// source alone: the first channel's are the default sysupdate component, each other channel's its
+// own component (sysupdate.<channel>.d, which construct channel switches to), and the stick's read
+// a stick's construct-update partition mounted at /run/construct/update - definitions
+// construct-update@ names, not a component, which systemd-sysupdated would check while no stick is
+// there. All are url-file sources: only those make systemd-sysupdate (through systemd-pull) check
+// SHA256SUMS.gpg against import-pubring.pgp and each file against SHA256SUMS as it copies it - a
+// regular-file source is taken unchecked.
 func writeTransfers() error {
-	for dir, url := range map[string]string{
-		"usr/lib/sysupdate.d":               updateURL(),
-		"usr/lib/construct/sysupdate-stick": "file:///run/construct/update",
-	} {
+	sets := map[string]string{"usr/lib/construct/sysupdate-stick": "file:///run/construct/update"}
+	for i, ch := range channels {
+		dir := "usr/lib/sysupdate." + ch + ".d"
+		if i == 0 {
+			dir = "usr/lib/sysupdate.d"
+		}
+		sets[dir] = updatesURL() + "/" + ch
+	}
+	for dir, url := range sets {
 		full := filepath.Join(transfersDir, dir)
 		if err := os.MkdirAll(full, 0o755); err != nil {
 			return err

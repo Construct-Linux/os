@@ -42,6 +42,9 @@ func usb(args []string) error {
 	if *release != "" && !calver.MatchString(*release) {
 		return fmt.Errorf("usb: -version %q is not YYYYMMDD.N", *release)
 	}
+	if *release != "" && os.Getenv("CONSTRUCT_UPDATE_URL") == "" {
+		return fmt.Errorf("usb: a release (-version) checks for updates where CONSTRUCT_UPDATE_URL says, and it is not set")
+	}
 
 	stage := filepath.Join(out, "usb")
 	root := filepath.Join(stage, "root")
