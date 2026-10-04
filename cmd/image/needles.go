@@ -54,10 +54,14 @@ type needleSpec struct {
 	Actors []needleRect `json:"actors,omitempty"`
 }
 
-// needleBarFallback is what is left out of a view whose actors could not be measured: the top
-// bar's inside from the middle on, its ring still compared. At the harness's 1280x800, the bar
-// from y 6 to 41.
-var needleBarFallback = needleRect{X: 640, Y: 8, W: 634, H: 32, Why: "the top bar's readings, not measured"}
+// needleBarFallback is what is left out of a view whose actors could not be measured, in a
+// screenshot width px wide at scale: the top bar's inside from the middle on, its ring still
+// compared. The bar is 6 px from the top and 36 high (lfBarHeight), in the stage's pixels.
+func needleBarFallback(width, scale int) needleRect {
+	scale = max(scale, 1)
+	w := width / scale
+	return needleRect{X: w / 2 * scale, Y: 8 * scale, W: (w/2 - 6) * scale, H: 32 * scale, Why: "the top bar's readings, not measured"}
+}
 
 // needleActors is the JavaScript that measures, in the running shell, what changes from one run to
 // the next: inside the top bar, its clock and Vitals' readings, kept inside the bar's ring so the
@@ -161,7 +165,7 @@ func (r *report) shotLook(v *vm, g *guest, name string) {
 	}
 	spec := needleSpec{Actors: append(before.onScreen(width), after.onScreen(width)...)}
 	if err := errors.Join(errBefore, errAfter); err != nil {
-		spec.Actors = append(spec.Actors, needleBarFallback)
+		spec.Actors = append(spec.Actors, needleBarFallback(width, r.scale))
 		r.add("look: "+name+" actors", false, "the clock and Vitals could not be measured: "+oneLine(err.Error()))
 	}
 	if b, err := json.MarshalIndent(spec, "", "  "); err == nil {

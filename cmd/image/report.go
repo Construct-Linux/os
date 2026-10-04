@@ -26,6 +26,8 @@ type report struct {
 	// lifecycle's installed machine, where GDM waits for the person's password.
 	user    string
 	results []result
+	// scale is how many physical pixels a stage pixel is in its screenshots: 0 is 1.
+	scale int
 }
 
 func (r *report) add(name string, ok bool, detail string) {

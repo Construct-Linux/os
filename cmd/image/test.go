@@ -58,11 +58,16 @@ var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power
 
 func test(args []string) error {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
-	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, bench, suspend); all by default")
+	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, type, bench, suspend); all by default")
 	mem := fl.String("m", "6G", "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	needles := fl.String("needles", "", "a checkout of github.com/Construct-Linux/needles: every screenshot is compared with its needle")
+	scale := fl.Int("scale", 2, "2: the X9-15's 2880x1800 panel at 200%; 1: 1280x800 at 100%")
 	_ = fl.Parse(args)
+	sc, err := screenFor(*scale)
+	if err != nil {
+		return err
+	}
 
 	dir := filepath.Join(out, "test")
 	_ = os.RemoveAll(dir)
@@ -77,6 +82,7 @@ func test(args []string) error {
 	if err != nil {
 		return err
 	}
+	m.screen = sc
 	var v *vm
 	var g *guest
 	// A stick boots as a machine does, firmware, systemd-boot and Plymouth: it is filmed from the
@@ -98,7 +104,7 @@ func test(args []string) error {
 	}
 	defer v.stop()
 
-	r := &report{dir: dir, user: "live"}
+	r := &report{dir: dir, user: "live", scale: sc.Scale}
 	r.add("boot", true, "sshd over vsock answered")
 	_, shellErr := g.waitShell(3 * time.Minute)
 	var bootMark *[2]float64
@@ -114,6 +120,9 @@ func test(args []string) error {
 		return errors.New("GNOME Shell never answered Eval")
 	}
 	r.add("shell", true, "org.gnome.Shell.Eval answers in unsafe mode")
+	// The session at the screen's scale before any view is shot: GDM and the session's first
+	// frames are at mutter's own choice, which QEMU's EDID (100 dpi) makes 100%.
+	r.sessionScreen(g, sc)
 	l := newLF(r, v, g)
 	l.bootMark = bootMark
 	// The run takes longer than GNOME's idle delay: with the display blanked, every screenshot
@@ -253,7 +262,7 @@ func test(args []string) error {
 		}
 	}
 	// A name -only gives that nothing answers to would run nothing, and pass.
-	known := map[string]bool{"views": true, "bench": true, "suspend": true}
+	known := map[string]bool{"views": true, "type": true, "bench": true, "suspend": true}
 	for _, a := range apps {
 		known[a.id] = true
 	}
@@ -262,7 +271,7 @@ func test(args []string) error {
 	}
 	for n := range want {
 		if !known[n] {
-			r.add("-only "+n, false, "no app, panel:<name>, views, bench or suspend is called that")
+			r.add("-only "+n, false, "no app, panel:<name>, views, type, bench or suspend is called that")
 		}
 	}
 	for _, a := range apps {
@@ -296,10 +305,13 @@ func test(args []string) error {
 	if len(want) == 0 || want["views"] {
 		r.gtkViews(v, g, l)
 		r.shellViews(v, g, l)
-		r.desktopViews(v, g, l)
+		r.desktopViews(v, g, l, sc)
 		l.guestLook()
 	}
 	l.finish()
+	if len(want) == 0 || want["type"] {
+		r.typeMatrix(v, g, l)
+	}
 	if len(want) == 0 || want["bench"] {
 		r.bench(g)
 	}
@@ -520,7 +532,7 @@ const asLive = `sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1
 
 // desktopViews are the desktop over each of the brand's wallpapers (E2: the bars' edge over every
 // one), the desktop at 150%, and Settings in Spanish, whose strings run longer than English's.
-func (r *report) desktopViews(v *vm, g *guest, l *lf) {
+func (r *report) desktopViews(v *vm, g *guest, l *lf, sc screen) {
 	walls, err := g.run(`ls /usr/share/backgrounds/construct/*.png`, "")
 	if err != nil || strings.TrimSpace(walls) == "" {
 		r.add("view:desktop wallpapers", false, "no wallpaper in /usr/share/backgrounds/construct"+errText(err))
@@ -540,18 +552,18 @@ func (r *report) desktopViews(v *vm, g *guest, l *lf) {
 
 	// 150%: mutter's native backend lays monitors out logically, so fractional scales are offered
 	// without its experimental key; gdctl takes the supported scale nearest 1.5. Temporary: it is
-	// not written to monitors.xml, and the run sets 1 back.
-	monitor := `c=$(` + asLive + `gdctl show | grep -o 'Monitor [^ ]*' | head -1 | cut -d' ' -f2) && `
-	out, err := g.run(monitor+asLive+`gdctl set --logical-monitor --primary --monitor "$c" --scale 1.5 2>&1 && `+asLive+`gdctl show 2>&1 | grep -m1 'Scale:'`, "")
+	// not written to monitors.xml, and the run sets its own scale back.
+	out, err := g.setSessionScale(1.5, 0, 0)
 	if err != nil {
-		r.skip("view:"+lfScaledDesktop, "gdctl could not set 150%: "+oneLine(out)+errText(err))
+		r.skip("view:"+lfScaledDesktop, "gdctl could not set 150%: "+oneLine(lastLines(out, 12))+errText(err))
 	} else {
 		time.Sleep(4 * time.Second)
-		r.add("view:"+lfScaledDesktop, true, oneLine(out))
+		r.add("view:"+lfScaledDesktop, true, "Scale: 1.5")
 		r.shotLook(v, g, lfScaledDesktop)
 		l.view(lfScaledDesktop)
-		back, err := g.run(monitor+asLive+`gdctl set --logical-monitor --primary --monitor "$c" --scale 1 2>&1`, "")
-		r.add("view:"+lfScaledDesktop+" restored", err == nil, "scale 1 again: "+oneLine(back)+errText(err))
+		w, h := sc.logical()
+		_, err := g.setSessionScale(float64(sc.Scale), w, h)
+		r.add("view:"+lfScaledDesktop+" restored", err == nil, fmt.Sprintf("scale %d again%s", sc.Scale, errText(err)))
 		time.Sleep(3 * time.Second)
 	}
 

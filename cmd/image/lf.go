@@ -73,7 +73,8 @@ const (
 	// The full accent's share of a view's pixels: tinted toggles and today keep every view under
 	// it (round 2's sweep: solid toggles were 1.29% of quick settings, Clocks 1.12%, Users 0.95%).
 	lfAccentShareMax = 0.009
-	// The top bar's buttons: the spacing scale's step either side (Orchis eb033362).
+	// The top bar's buttons: the spacing scale's step either side (Orchis eb033362); Activities, half
+	// of it, is exempt (bars).
 	lfPanelHPadding = 6
 	// A line across a pane covers this much of its row (or column); text and icons never do.
 	lfRuleShare = 0.9
@@ -87,12 +88,18 @@ const (
 	// The lock clock is regular: its stem is thinner than this share of its cap height (Adwaita
 	// Sans regular ~0.12, bold ~0.19).
 	lfClockStemRatio = 0.15
-	// The overview's workspace card puts the wallpaper's mark here, at 1280x800.
-	lfCardMarkY   = 344
-	lfCardMarkTol = 6
+	// The overview's workspace card puts the wallpaper's mark at this share of the screen's height:
+	// y 344 measured at 1280x800, within lfCardMarkTol stage pixels.
+	lfCardMarkShare = 344.0 / 800
+	lfCardMarkTol   = 6
 	// The top bar's outer height, ring included.
 	lfBarHeight = 36
 )
+
+// Every pixel count, distance and coordinate above and in the checks is in the stage's pixels, as
+// St reports extents, lengths and radii (logical: mutter lays monitors out in them). A screenshot
+// is in the panel's physical pixels, k of them a stage pixel: lengths are taken k times, areas k²
+// times, and an extent is l.px of it.
 
 // lfPalette is construct-brand's palette.json as the guest has it: colours by token, the numbers
 // (tints, the inset, the radii) and the type families.
@@ -369,12 +376,13 @@ func accentShare(img image.Image, r lfRect, cols []color.NRGBA, tol int) float64
 
 // solidAreas are r's areas of cols larger than a mark: what is left of them once every stroke up
 // to lfMarkStroke px is eroded away (a square of side lfMarkStroke+1 must fit), grown back, and
-// wider or taller than lfMarkDisc. Text, rings, a slider's fill and the quick toggle's disc are
-// marks; a solid button or a filled toggle is an area.
-func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, tol int) []lfRect {
+// wider or taller than lfMarkDisc - both scale physical pixels a stage pixel. Text, rings, a
+// slider's fill and the quick toggle's disc are marks; a solid button or a filled toggle is an
+// area.
+func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, tol, scale int) []lfRect {
 	m, b := accentMask(img, r, cols, tol)
 	w, h := b.Dx(), b.Dy()
-	k := lfMarkStroke/2 + 1
+	k := lfMarkStroke*scale/2 + 1
 	// Erosion by a square, as a horizontal run and then a vertical one.
 	erode := func(src []bool, dx, dy int) []bool {
 		out := make([]bool, len(src))
@@ -419,7 +427,7 @@ func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, tol int) []lfRect
 		}
 		// Grown back by what erosion took from each side.
 		box = box.Inset(-(k - 1))
-		if box.Dx() > lfMarkDisc || box.Dy() > lfMarkDisc {
+		if box.Dx() > lfMarkDisc*scale || box.Dy() > lfMarkDisc*scale {
 			out = append(out, lfRect{b.Min.X + box.Min.X, b.Min.Y + box.Min.Y, box.Dx(), box.Dy()})
 		}
 	}
@@ -443,13 +451,13 @@ func hRule(img image.Image, x0, x1, y0, y1 int) (int, color.NRGBA, bool) {
 }
 
 // vRule is hRule across: the first column from x0 to x1, in the rows y0 to y1, that is a line
-// different from the columns on both sides of it.
-func vRule(img image.Image, x0, x1, y0, y1 int) (int, color.NRGBA, bool) {
+// width px wide (a stage pixel's physical ones) different from the columns on both sides of it.
+func vRule(img image.Image, x0, x1, y0, y1, width int) (int, color.NRGBA, bool) {
 	col := func(x int) (color.NRGBA, float64) { return modeColor(img, lfRect{x, y0, 1, y1 - y0}) }
 	for x := x0; x < x1; x++ {
 		c, share := col(x)
 		l, _ := col(x - 1)
-		r, _ := col(x + 1)
+		r, _ := col(x + width)
 		if share >= lfRuleShare && channelDelta(c, l) > lfSurfaceTol && channelDelta(c, r) > lfSurfaceTol {
 			return x, c, true
 		}
@@ -900,14 +908,23 @@ type lf struct {
 	ok  bool
 	// The menus' tops, by menu: quick settings and the calendar hang at the same height.
 	menuY map[string]int
-	// The overview card's mark centre, and the boot's Plymouth mark centre, which must agree.
+	// The overview card's mark centre, and the boot's Plymouth mark centre, which must agree, in
+	// physical pixels.
 	cardMark, bootMark *[2]float64
+	// The stage's size, and k, the physical pixels a stage pixel is in the screenshot last read.
+	stageW, stageH, k int
 }
 
 // newLF reads the guest's palette.json; without it no lf check can be measured, and one failure
 // says why.
 func newLF(r *report, v *vm, g *guest) *lf {
-	l := &lf{r: r, v: v, g: g, menuY: map[string]int{}}
+	l := &lf{r: r, v: v, g: g, menuY: map[string]int{}, k: 1}
+	var st [2]int
+	if err := g.evalJSON(`return [global.stage.width, global.stage.height];`, &st); err != nil {
+		r.add("lf: stage", false, "the stage's size: "+err.Error())
+		return l
+	}
+	l.stageW, l.stageH = st[0], st[1]
 	raw, err := g.run("cat /"+brandPalette, "")
 	if err != nil {
 		r.add("lf: palette", false, "/"+brandPalette+" is not on the guest (construct-brand installs it)"+errText(err))
@@ -927,15 +944,24 @@ func (l *lf) check(rule, surface string, ok bool, detail string) {
 
 func (l *lf) c(token string) color.NRGBA { return l.pal.colors[token] }
 
-// img is a view's screenshot, as r.shot saved it.
+// img is a view's screenshot, as r.shot saved it; it sets l.k from its width over the stage's.
 func (l *lf) img(name string) (image.Image, bool) {
 	img, err := readPNG(filepath.Join(l.r.dir, name+".png"))
 	if err != nil {
 		l.check("screenshot", name, false, err.Error())
 		return nil, false
 	}
+	k, ok := scaleOf(img.Bounds().Dx(), l.stageW)
+	if !ok {
+		l.check("screenshot", name, false, fmt.Sprintf("%d px wide over a %d px stage: no whole scale to measure at", img.Bounds().Dx(), l.stageW))
+		return nil, false
+	}
+	l.k = k
 	return img, true
 }
+
+// px is a stage rectangle in the screenshot's pixels.
+func (l *lf) px(r lfRect) lfRect { return lfRect{r.X * l.k, r.Y * l.k, r.W * l.k, r.H * l.k} }
 
 // view runs the checks that measure the view just shot.
 func (l *lf) view(name string) {
@@ -993,7 +1019,7 @@ const lfScaledDesktop = "desktop-scale-150"
 func (l *lf) sweep(name string, img image.Image) {
 	cols := []color.NRGBA{l.c("dark-accent"), l.c("light-accent")}
 	all := lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}
-	areas := solidAreas(img, all, cols, lfSweepTol)
+	areas := solidAreas(img, all, cols, lfSweepTol, l.k)
 	var where []string
 	for _, a := range areas {
 		where = append(where, a.String())
@@ -1014,10 +1040,11 @@ func (l *lf) surfaceCheck(name string, a *lfLook, img image.Image, want color.NR
 		return
 	}
 	bg, _ := parseHex(a.BG)
-	r := a.rect()
+	r := l.px(a.rect())
+	k := l.k
 	// Inside the ring and clear of the corners' curve.
-	rad := min(a.H/2, maxRadius(a))
-	inner := lfRect{r.X + max(rad, 3), r.Y + 3, r.W - 2*max(rad, 3), r.H - 6}
+	rad := max(min(a.H/2, maxRadius(a)), 3) * k
+	inner := lfRect{r.X + rad, r.Y + 3*k, r.W - 2*rad, r.H - 6*k}
 	mode, share := modeColor(img, inner)
 	l.check("surface", name, bg == color.NRGBA{want.R, want.G, want.B, 255} && near(mode, want, lfSurfaceTol),
 		fmt.Sprintf("St %s, drawn %s over %.0f%% of %v; want %s opaque", a.BG, hexOf(mode), share*100, inner, hexOf(want)))
@@ -1042,12 +1069,12 @@ func (l *lf) surfaceCheck(name string, a *lfLook, img image.Image, want color.NR
 	}
 	var missed, weak []string
 	for _, e := range edges {
-		p, hit := ringHit(img, e.x, e.y, e.nx, e.ny, lfRingReach, ring, lfRingTol)
+		p, hit := ringHit(img, e.x, e.y, e.nx, e.ny, lfRingReach*k, ring, lfRingTol)
 		if !hit {
 			missed = append(missed, fmt.Sprintf("%s %s", e.name, hexOf(at(img, e.x, e.y))))
 			continue
 		}
-		o := image.Pt(p.X+e.nx*lfEdgeGap, p.Y+e.ny*lfEdgeGap)
+		o := image.Pt(p.X+e.nx*lfEdgeGap*k, p.Y+e.ny*lfEdgeGap*k)
 		if !o.In(img.Bounds()) {
 			continue
 		}
@@ -1106,8 +1133,12 @@ func (l *lf) bars(view string, img image.Image, desktop bool) {
 		Main.uiGroup.add_child(banner);
 		const b = look(banner);
 		banner.destroy();
-		// The clock's button has no padding of its own: its label carries it.
-		const pads = lfAll(Main.panel, lfClass('panel-button')).filter(a => a.is_mapped() && !a.has_style_class_name('clock-display'))
+		// The clock's button has no padding of its own: its label carries it. Activities is narrower
+		// on purpose: Orchis gives it half the step (%icon_activities, $space-size / 2), so its pill
+		// of workspace dots sits as close to the bar's end as the bar's own inset.
+		const activities = Main.panel.statusArea.activities;
+		const pads = lfAll(Main.panel, lfClass('panel-button')).filter(a => a.is_mapped() && !a.has_style_class_name('clock-display') &&
+			a !== activities && a !== activities?.container && a.name !== 'panelActivities')
 			.map(a => a.get_theme_node().get_length('-natural-hpadding'));
 		return {panel: look(Main.panel), dock: look(lfDock()), menu: look(menu), banner: b, labels: lfLabels(Main.panel), pads};`, &s)
 	if err != nil {
@@ -1130,7 +1161,7 @@ func (l *lf) bars(view string, img image.Image, desktop bool) {
 	}
 	l.check("radius", "top bar", pill, fmt.Sprintf("%v, want at least half its %d px height", s.Panel.Radius, s.Panel.H))
 	inset := int(l.pal.nums["shape-inset"])
-	gap := img.Bounds().Dy() - (s.Dock.Y + s.Dock.H)
+	gap := img.Bounds().Dy()/l.k - (s.Dock.Y + s.Dock.H)
 	l.check("spacing", "bars", s.Panel.Y == inset && abs(gap-inset) <= 1 && s.Panel.H == lfBarHeight,
 		fmt.Sprintf("top bar at y %d, %d px high; dock %d px off the bottom; want %d, %d and %d", s.Panel.Y, s.Panel.H, gap, inset, lfBarHeight, inset))
 	var offPad []float64
@@ -1140,7 +1171,7 @@ func (l *lf) bars(view string, img image.Image, desktop bool) {
 		}
 	}
 	l.check("spacing", "top bar buttons", len(s.Pads) > 0 && len(offPad) == 0,
-		fmt.Sprintf("%d buttons; -natural-hpadding not %d px: %v", len(s.Pads), lfPanelHPadding, offPad))
+		fmt.Sprintf("%d buttons besides Activities; -natural-hpadding not %d px: %v", len(s.Pads), lfPanelHPadding, offPad))
 	family := l.pal.strs["type-ui"]
 	var off []string
 	for _, t := range s.Labels {
@@ -1208,7 +1239,8 @@ func (l *lf) quickSettings(img image.Image) {
 		l.menuY["quick settings"] = s.Box.Y
 	}
 	n := countNear(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
-	l.check("accent", "quick settings", n < lfAccentQuickSettings, fmt.Sprintf("%d px of the accent, want under %d", n, lfAccentQuickSettings))
+	most := lfAccentQuickSettings * l.k * l.k
+	l.check("accent", "quick settings", n < most, fmt.Sprintf("%d px of the accent, want under %d", n, most))
 	fill := tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
 	ground := l.c("neutral-e")
 	var on, off int
@@ -1222,11 +1254,11 @@ func (l *lf) quickSettings(img image.Image) {
 		discs = append(discs, l.disc(img, t)...)
 		if t.Checked {
 			on++
-			mode, _ := modeColor(img, t.Look.rect().inset(4, 4))
+			mode, _ := modeColor(img, l.px(t.Look.rect()).inset(4*l.k, 4*l.k))
 			if !near(mode, fill, lfTextTol) {
 				bad = append(bad, fmt.Sprintf("%q on is %s, not the tint %s", t.Title.Text, hexOf(mode), hexOf(fill)))
 			}
-			if c := t.Title.ink(ground); !near(c, l.c("dark-accent-text"), lfTextTol) || countNear(img, t.Title.rect(), l.c("dark-accent-text"), lfRingAccentTol) == 0 {
+			if c := t.Title.ink(ground); !near(c, l.c("dark-accent-text"), lfTextTol) || countNear(img, l.px(t.Title.rect()), l.c("dark-accent-text"), lfRingAccentTol) == 0 {
 				bad = append(bad, fmt.Sprintf("%q on titled %s, not the accent", t.Title.Text, hexOf(c)))
 			}
 			if t.Subtitle != nil && !near(t.Subtitle.ink(ground), l.c("dark-text"), lfTextTol) {
@@ -1270,7 +1302,7 @@ func (l *lf) disc(img image.Image, t quickToggle) []string {
 	if abs(t.Icon.W-lfDiscSize) > 1 || abs(t.Icon.H-lfDiscSize) > 1 || maxRadius(t.Icon)*2 < t.Icon.H {
 		bad = append(bad, fmt.Sprintf("%q on: icon %dx%d radius %v, not a %d px disc", t.Title.Text, t.Icon.W, t.Icon.H, t.Icon.Radius, lfDiscSize))
 	}
-	r := t.Icon.rect()
+	r := l.px(t.Icon.rect())
 	if share := float64(countNear(img, r, accent, lfAccentTol)) / float64(max(1, r.W*r.H)); share < lfDiscShare {
 		bad = append(bad, fmt.Sprintf("%q on: %.0f%% of its icon drawn the accent, want >= %.0f%%", t.Title.Text, share*100, lfDiscShare*100))
 	}
@@ -1308,11 +1340,12 @@ func (l *lf) focus(img image.Image) {
 	if !ok {
 		return
 	}
-	r := s.Toggle.rect().inset(-2, -2)
+	r := l.px(s.Toggle.rect()).inset(-2*l.k, -2*l.k)
 	changed, share := focusDiff(before, img, r, accent, lfRingAccentTol)
-	l.check("focus", "quick toggle drawn", changed >= lfFocusMinChanged && share >= lfFocusAccentShare,
+	least := lfFocusMinChanged * l.k * l.k
+	l.check("focus", "quick toggle drawn", changed >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px changed in %v against shell-quick-settings, %.0f%% of them the accent; want >= %d and >= %.0f%%",
-			changed, r, share*100, lfFocusMinChanged, lfFocusAccentShare*100))
+			changed, r, share*100, least, lfFocusAccentShare*100))
 }
 
 // submenu is the expanded submenu: a g well in the h menu, with no light slab in it. A toggle's
@@ -1332,11 +1365,12 @@ func (l *lf) submenu(img image.Image) {
 	g := l.c("neutral-g")
 	bg, _ := parseHex(s.Well.BG)
 	rad := maxRadius(s.Well)
-	mode, share := modeColor(img, s.Well.rect().inset(max(rad, 3), max(rad/2, 3)))
-	area := lightSlab(img, s.Box.rect(), lfSlabLightness)
-	l.check("submenu", "quick settings", bg == color.NRGBA{g.R, g.G, g.B, 255} && near(mode, g, lfSurfaceTol) && area <= lfSlabMaxArea,
+	mode, share := modeColor(img, l.px(s.Well.rect()).inset(max(rad, 3)*l.k, max(rad/2, 3)*l.k))
+	area := lightSlab(img, l.px(s.Box.rect()), lfSlabLightness)
+	most := lfSlabMaxArea * l.k * l.k
+	l.check("submenu", "quick settings", bg == color.NRGBA{g.R, g.G, g.B, 255} && near(mode, g, lfSurfaceTol) && area <= most,
 		fmt.Sprintf("well St %s, drawn %s over %.0f%% (want %s); largest area lighter than %.0f%%: %d px, want <= %d",
-			s.Well.BG, hexOf(mode), share*100, hexOf(g), lfSlabLightness*100, area, lfSlabMaxArea))
+			s.Well.BG, hexOf(mode), share*100, hexOf(g), lfSlabLightness*100, area, most))
 }
 
 // calendarDay is a day of the month's grid as the checks see it.
@@ -1376,7 +1410,8 @@ func (l *lf) calendar(img image.Image) {
 		l.menuY["calendar"] = s.Box.Y
 	}
 	n := countNear(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
-	l.check("accent", "calendar", n < lfAccentCalendar, fmt.Sprintf("%d px of the accent, want under %d", n, lfAccentCalendar))
+	most := lfAccentCalendar * l.k * l.k
+	l.check("accent", "calendar", n < most, fmt.Sprintf("%d px of the accent, want under %d", n, most))
 	l.today(img, s.Days, s.Selected, s.Focus)
 	// F1 and Orchis eb033362: every day of the month is text, weekends too; only the other months'
 	// days are muted, so the month's edge reads.
@@ -1429,8 +1464,8 @@ func (l *lf) today(img image.Image, days []calendarDay, selected, focus bool) {
 	if selected {
 		centre = tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
 	}
-	mode, _ := modeColor(img, t.rect().inset(4, 4))
-	share := ringShare(img, t.rect(), 1, l.c("dark-accent"), lfRingAccentTol)
+	mode, _ := modeColor(img, l.px(t.rect()).inset(4*l.k, 4*l.k))
+	share := ringShare(img, l.px(t.rect()), float64(l.k), l.c("dark-accent"), lfRingAccentTol)
 	fg, _ := parseHex(t.FG)
 	accent := l.c("dark-accent-text")
 	shadow := t.Shadow != nil && !strings.HasSuffix(t.Shadow.Color, "00")
@@ -1469,15 +1504,17 @@ func (l *lf) dayFocus(img image.Image) {
 		ok = sh.Inset && sh.Spread >= 2 && c == color.NRGBA{accent.R, accent.G, accent.B, 255}
 		detail = fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
 	}
-	share := ringShare(img, s.Day.rect(), 1, accent, lfRingAccentTol)
+	share := ringShare(img, l.px(s.Day.rect()), float64(l.k), accent, lfRingAccentTol)
 	l.check("focus", "calendar day", ok && share >= lfDayFocusRing,
 		fmt.Sprintf("%q: %s; %.0f%% of its outline the accent, want inset, spread >= 2, %s and >= %.0f%%", s.Label, detail, share*100, hexOf(accent), lfDayFocusRing*100))
 }
 
 // ground is the overview's and the app grid's: the boot's black.
 func (l *lf) ground(view string, img image.Image) {
-	c := at(img, 5, 100)
-	l.check("ground", view, near(c, l.c("brand-boot"), lfSurfaceTol), fmt.Sprintf("(5,100) is %s, want %s", hexOf(c), hexOf(l.c("brand-boot"))))
+	// Left of the overview's content and under the top bar, at any scale.
+	x, y := 5*l.k, 100*l.k
+	c := at(img, x, y)
+	l.check("ground", view, near(c, l.c("brand-boot"), lfSurfaceTol), fmt.Sprintf("(%d,%d) is %s, want %s", x, y, hexOf(c), hexOf(l.c("brand-boot"))))
 }
 
 func (l *lf) overview(img image.Image) {
@@ -1505,15 +1542,17 @@ func (l *lf) overview(img image.Image) {
 		l.check("mark", "overview card", false, "no workspace card on the screen")
 		return
 	}
-	box, ok := markBox(img, s.Card.rect().inset(8, 8))
+	card := l.px(s.Card.rect())
+	box, ok := markBox(img, card.inset(8*l.k, 8*l.k))
 	if !ok {
-		l.check("mark", "overview card", false, "no mark in the card "+s.Card.rect().String())
+		l.check("mark", "overview card", false, "no mark in the card "+card.String())
 		return
 	}
 	cx, cy := float64(box.X)+float64(box.W)/2, float64(box.Y)+float64(box.H)/2
 	l.cardMark = &[2]float64{cx, cy}
-	l.check("mark", "overview card", math.Abs(cy-lfCardMarkY) <= lfCardMarkTol,
-		fmt.Sprintf("centred at (%.0f, %.0f), want y %d±%d", cx, cy, lfCardMarkY, lfCardMarkTol))
+	want, tol := lfCardMarkShare*float64(img.Bounds().Dy()), float64(lfCardMarkTol*l.k)
+	l.check("mark", "overview card", math.Abs(cy-want) <= tol,
+		fmt.Sprintf("centred at (%.0f, %.0f), want y %.0f±%.0f", cx, cy, want, tol))
 }
 
 func (l *lf) search(img image.Image) {
@@ -1554,8 +1593,8 @@ func (l *lf) lock(img image.Image) {
 	}
 	fg, _ := parseHex(s.Time.FG)
 	// The label's top rows are its padding, clear of the digits.
-	bg, _ := modeColor(img, lfRect{s.Time.X, s.Time.Y, s.Time.W, 3})
-	ratio, err := strokeRatio(img, s.Time.rect(), fg, bg)
+	bg, _ := modeColor(img, l.px(lfRect{s.Time.X, s.Time.Y, s.Time.W, 3}))
+	ratio, err := strokeRatio(img, l.px(s.Time.rect()), fg, bg)
 	l.check("type", "lock clock", err == nil && ratio < lfClockStemRatio,
 		fmt.Sprintf("stem/cap %.3f, want under %.2f (regular, not bold)%s", ratio, lfClockStemRatio, errText(err)))
 }
@@ -1583,17 +1622,21 @@ func (l *lf) installer(img image.Image) {
 		l.check("window", "installer", false, fmt.Sprintf("the focused window is %q, not the installer%s", cls, errText(err)))
 		return
 	}
-	body, _ := modeColor(img, lfRect{630, 590, 21, 21})
+	k := l.k
+	// The body: 21 px around the screen's middle, three quarters down, where the window's body is
+	// whatever the screen's size (measured at (640, 600) of 1280x800).
+	body, _ := modeColor(img, l.px(lfRect{l.stageW/2 - 10, l.stageH*3/4 - 10, 21, 21}))
 	ring := l.c("dark-border")
-	_, left := ringHit(img, r.X-1, r.Y+r.H/2, -1, 0, lfRingReach, ring, lfRingTol)
-	_, bottom := ringHit(img, r.X+r.W/2, r.Y+r.H, 0, 1, lfRingReach, ring, lfRingTol)
-	head, _ := modeColor(img, lfRect{r.X + 8, r.Y + 3, r.W - 16, 8})
+	p := l.px(r)
+	_, left := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, lfRingReach*k, ring, lfRingTol)
+	_, bottom := ringHit(img, p.X+p.W/2, p.Y+p.H, 0, 1, lfRingReach*k, ring, lfRingTol)
+	head, _ := modeColor(img, l.px(lfRect{r.X + 8, r.Y + 3, r.W - 16, 8}))
 	l.check("window", "installer", near(body, l.c("neutral-f"), lfSurfaceTol) && left && bottom && near(head, l.c("neutral-g"), lfSurfaceTol),
 		fmt.Sprintf("frame %v: body %s (want %s), ring left %v (%s) bottom %v (%s), want %s; headerbar %s (want %s)",
-			r, hexOf(body), hexOf(l.c("neutral-f")), left, hexOf(at(img, r.X-1, r.Y+r.H/2)), bottom, hexOf(at(img, r.X+r.W/2, r.Y+r.H)),
+			r, hexOf(body), hexOf(l.c("neutral-f")), left, hexOf(at(img, p.X-1, p.Y+p.H/2)), bottom, hexOf(at(img, p.X+p.W/2, p.Y+p.H)),
 			hexOf(ring), hexOf(head), hexOf(l.c("neutral-g"))))
 	// E3: where g meets f, dark draws one solid line, the border (THEMING, Lines).
-	y, c, ok := hRule(img, r.X+24, r.X+r.W-24, r.Y+12, r.Y+r.H/3)
+	y, c, ok := hRule(img, p.X+24*k, p.X+p.W-24*k, p.Y+12*k, p.Y+p.H/3)
 	l.check("rule", "installer headerbar", ok && near(c, ring, lfRingTol),
 		fmt.Sprintf("the line under the headerbar at y %d (found %v) is %s, want %s", y, ok, hexOf(c), hexOf(ring)))
 }
@@ -1609,33 +1652,40 @@ func (l *lf) settingsLight(img image.Image) {
 	}
 	r := lfRect{s.Win.X, s.Win.Y, s.Win.W, s.Win.H}
 	want := int(l.pal.nums["shape-radius-surface"])
-	rad, err := cornerRadius(img, r.X, r.Y, 2*want)
+	p := l.px(r)
+	rad, err := cornerRadius(img, p.X, p.Y, 2*want*l.k)
+	rad /= float64(l.k)
 	l.check("radius", "settings-light window", err == nil && math.Abs(rad-float64(want)) <= lfRadiusTol,
 		fmt.Sprintf("its top-left corner fits a %.2f px radius, want %d%s", rad, want, errText(err)))
 	l.r.skip("lf: radius settings-light card", "a card's extents come only from AT-SPI, which the harness does not read yet")
 	l.lightWindow(img, r)
 }
 
-// lightWindow is settingsLight's pixel probes on a light window with a sidebar at r.
+// lightWindow is settingsLight's pixel probes on a light window with a sidebar at r, a stage
+// rectangle.
 func (l *lf) lightWindow(img image.Image, r lfRect) {
 	desk, muted := l.c("light-desk"), l.c("light-muted")
+	k := l.k
 	// The desk: the widest stretch of desktop beside the window, clear of its shadow and the bars.
-	side := lfRect{8, 60, r.X - 40, img.Bounds().Dy() - 120}
-	if right := img.Bounds().Dx() - (r.X + r.W) - 48; right > side.W {
-		side = lfRect{r.X + r.W + 40, 60, right, img.Bounds().Dy() - 120}
+	side := lfRect{8, 60, r.X - 40, l.stageH - 120}
+	if right := l.stageW - (r.X + r.W) - 48; right > side.W {
+		side = lfRect{r.X + r.W + 40, 60, right, l.stageH - 120}
 	}
+	side = l.px(side)
 	ground, share := modeColor(img, side)
 	l.check("desk", "settings-light", near(ground, desk, lfSurfaceTol),
 		fmt.Sprintf("the desktop %s over %.0f%% of %v, want %s", hexOf(ground), share*100, side, hexOf(desk)))
 	// The ring line, light.muted at its alpha over what is outside the window there - the shadow
 	// darkens the desk under it, so the nominal value holds only on a bare desk.
 	ringA := l.pal.nums["line-light-ring"]
+	p := l.px(r)
 	var edges []string
+	// The line is a stage pixel, k physical ones: what is outside it is k past its inner pixel.
 	for _, e := range []struct {
 		name         string
 		x, y, nx, ny int
-	}{{"top", r.X + r.W/2, r.Y - 1, 0, -1}, {"left", r.X - 1, r.Y + r.H/2, -1, 0}} {
-		got, out := at(img, e.x, e.y), at(img, e.x+e.nx, e.y+e.ny)
+	}{{"top", p.X + p.W/2, p.Y - 1, 0, -1}, {"left", p.X - 1, p.Y + p.H/2, -1, 0}} {
+		got, out := at(img, e.x, e.y), at(img, e.x+e.nx*k, e.y+e.ny*k)
 		if w := tint(muted, out, ringA); !near(got, w, lfRingTol) {
 			edges = append(edges, fmt.Sprintf("%s %s, want %s over %s", e.name, hexOf(got), hexOf(w), hexOf(out)))
 		}
@@ -1643,21 +1693,21 @@ func (l *lf) lightWindow(img image.Image, r lfRect) {
 	l.check("ring", "settings-light window", len(edges) == 0,
 		fmt.Sprintf("the line outside the window, light.muted at %.0f%% (%s on a bare desk): %v", ringA*100, hexOf(tint(muted, desk, ringA)), edges))
 	// The panes: the separator is the first line down the window's left half.
-	midY := r.Y + r.H/3
-	sep, _, ok := vRule(img, r.X+60, r.X+r.W/2, midY, midY+r.H/6)
+	midY := p.Y + p.H/3
+	sep, _, ok := vRule(img, p.X+60*k, p.X+p.W/2, midY, midY+p.H/6, k)
 	if !ok {
 		l.check("panes", "settings-light", false, "no pane separator in the window's left half")
 		return
 	}
-	shelf, _ := modeColor(img, lfRect{r.X + 4, r.Y + 64, sep - r.X - 8, r.H - 128})
+	shelf, _ := modeColor(img, lfRect{p.X + 4*k, p.Y + 64*k, sep - p.X - 8*k, p.H - 128*k})
 	l.check("shelf", "settings-light", near(shelf, l.c("light-shelf"), lfSurfaceTol),
-		fmt.Sprintf("the sidebar (%d px) is %s, want %s", sep-r.X, hexOf(shelf), hexOf(l.c("light-shelf"))))
-	l.selectedRow(img, lfRect{r.X + 4, r.Y + 64, sep - r.X - 8, r.H - 72})
+		fmt.Sprintf("the sidebar (%d px) is %s, want %s", (sep-p.X)/k, hexOf(shelf), hexOf(l.c("light-shelf"))))
+	l.selectedRow(img, lfRect{p.X + 4*k, p.Y + 64*k, sep - p.X - 8*k, p.H - 72*k})
 	// S6: the headerbar's rule at one height in both panes, the border line over each.
 	borderA := l.pal.nums["line-light-border"]
-	ys, yc, sideOK := hRule(img, r.X+24, sep-24, r.Y+8, r.Y+80)
-	yb, yc2, mainOK := hRule(img, sep+24, r.X+r.W-24, r.Y+8, r.Y+80)
-	above, _ := modeColor(img, lfRect{sep + 24, yb - 3, r.W - (sep - r.X) - 48, 1})
+	ys, yc, sideOK := hRule(img, p.X+24*k, sep-24*k, p.Y+8*k, p.Y+80*k)
+	yb, yc2, mainOK := hRule(img, sep+24*k, p.X+p.W-24*k, p.Y+8*k, p.Y+80*k)
+	above, _ := modeColor(img, lfRect{sep + 24*k, yb - 3*k, p.W - (sep - p.X) - 48*k, 1})
 	wantRule := tint(muted, above, borderA)
 	l.check("rule", "settings-light headerbar", sideOK && mainOK && ys == yb && near(yc2, wantRule, lfRingTol),
 		fmt.Sprintf("sidebar's at y %d (%v, %s), content's at y %d (%v, %s); want one y, and light.muted at %.0f%% over %s, %s",
@@ -1744,7 +1794,7 @@ func (l *lf) app(id, shot string) {
 	}
 	g, f := l.c("neutral-g"), l.c("neutral-f")
 	region := func(x, y, w, h int) color.NRGBA {
-		c, _ := modeColor(img, lfRect{r.X + x, r.Y + y, w, h})
+		c, _ := modeColor(img, l.px(lfRect{r.X + x, r.Y + y, w, h}))
 		return c
 	}
 	switch id {
@@ -1753,7 +1803,7 @@ func (l *lf) app(id, shot string) {
 		term := region(r.W/4, r.H*2/3, r.W/2, r.H/4)
 		// Ghostty's own default background, which a missing theme leaves, as a surface: text
 		// antialiased on g passes through it a pixel at a time.
-		stock := flatCount(img, r, color.NRGBA{0x28, 0x2C, 0x34, 255}, lfSurfaceTol)
+		stock := flatCount(img, l.px(r), color.NRGBA{0x28, 0x2C, 0x34, 255}, lfSurfaceTol)
 		l.check("app", "ghostty", near(head, g, lfSurfaceTol) && near(term, g, lfSurfaceTol) && stock == 0,
 			fmt.Sprintf("headerbar %s, terminal %s, want %s; %d px of a #282C34 surface", hexOf(head), hexOf(term), hexOf(g), stock))
 	case "code.desktop":
@@ -1792,8 +1842,8 @@ func (l *lf) firefoxControls(id string, win lfRect) {
 		return
 	}
 	blue := color.NRGBA{0x35, 0x84, 0xE4, 255}
-	n := countNear(img, win, blue, 8)
-	accent := countNear(img, win, l.c("light-accent"), 12)
+	n := countNear(img, l.px(win), blue, 8)
+	accent := countNear(img, l.px(win), l.c("light-accent"), 12)
 	l.check("app", "firefox controls", n == 0, fmt.Sprintf("%d px of Adwaita's #3584E4 on a light page, want none (%d px of %s)", n, accent, hexOf(l.c("light-accent"))))
 }
 
@@ -1803,9 +1853,10 @@ func (l *lf) finish() {
 		return
 	}
 	dx, dy := math.Abs(l.bootMark[0]-l.cardMark[0]), math.Abs(l.bootMark[1]-l.cardMark[1])
-	l.check("mark", "boot to overview", dx <= 6 && dy <= 12,
-		fmt.Sprintf("Plymouth's mark at (%.0f, %.0f), the overview card's at (%.0f, %.0f): want within 6 px across, 12 down",
-			l.bootMark[0], l.bootMark[1], l.cardMark[0], l.cardMark[1]))
+	across, down := float64(6*l.k), float64(12*l.k)
+	l.check("mark", "boot to overview", dx <= across && dy <= down,
+		fmt.Sprintf("Plymouth's mark at (%.0f, %.0f), the overview card's at (%.0f, %.0f): want within %.0f px across, %.0f down",
+			l.bootMark[0], l.bootMark[1], l.cardMark[0], l.cardMark[1], across, down))
 }
 
 // gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip, a
@@ -1847,11 +1898,11 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	// its tooltip; GTK 4's window controls have none. Two moves: GTK starts the tooltip's timer on
 	// motion inside the widget.
 	before = windows()
-	sw, sh := 1280, 800
+	sw, sh := l.stageW, l.stageH
 	x, y := frame.X+105, frame.Y+23
-	_ = v.pointTo((x-6)*32767/(sw-1), y*32767/(sh-1))
+	_ = v.pointTo(absPoint(x-6, y, sw, sh))
 	time.Sleep(300 * time.Millisecond)
-	_ = v.pointTo(x*32767/(sw-1), y*32767/(sh-1))
+	_ = v.pointTo(absPoint(x, y, sw, sh))
 	time.Sleep(3 * time.Second)
 	r.add("view:gtk-tooltip", windows() > before, fmt.Sprintf("%d surfaces with the pointer at (%d, %d), %d before", windows(), x, y, before))
 	shot("gtk-tooltip")
@@ -1921,9 +1972,10 @@ func (l *lf) maximized(id, shot string) {
 		l.check("window", shot, false, err.Error())
 		return
 	}
-	head, _ := modeColor(img, lfRect{r.X + 8, r.Y + 3, r.W - 16, 8})
-	corner := at(img, r.X, r.Y)
-	_, ring := ringHit(img, r.X-1, r.Y+r.H/2, -1, 0, 1, l.c("dark-border"), lfRingTol)
+	head, _ := modeColor(img, l.px(lfRect{r.X + 8, r.Y + 3, r.W - 16, 8}))
+	p := l.px(r)
+	corner := at(img, p.X, p.Y)
+	_, ring := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, l.k, l.c("dark-border"), lfRingTol)
 	l.check("window", "maximized", near(corner, head, lfSurfaceTol) && !ring,
 		fmt.Sprintf("frame %v: corner %s, headerbar %s (square: the same); the border outside its left edge: %v, want none", r, hexOf(corner), hexOf(head), ring))
 }
@@ -2509,7 +2561,10 @@ var filmGrounds = []color.NRGBA{{0x28, 0x28, 0x28, 255}, {0x22, 0x22, 0x26, 255}
 
 // filmFrame is what one frame of the boot showed.
 type filmFrame struct {
-	at       time.Duration
+	at time.Duration
+	// The frame's size: the firmware's framebuffer until the virtio GPU's driver takes the
+	// screen at the panel's.
+	w, h     int
 	cyan     int
 	mark     lfRect
 	black    float64
@@ -2575,6 +2630,7 @@ func filmStats(img *image.RGBA) filmFrame {
 		}
 	}
 	n := float64(b.Dx() * b.Dy())
+	f.w, f.h = b.Dx(), b.Dy()
 	f.black = float64(black) / n
 	f.mark = lfRect{box.Min.X, box.Min.Y, box.Dx(), box.Dy()}
 	for k, c := range cover {
@@ -2699,16 +2755,24 @@ func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 	} else {
 		r.add("boot film: systemd-boot menu", true, "never on screen")
 	}
-	// The mark once it is whole: the intro draws it piece by piece.
-	largest := 0
+	// The mark once it is whole - the intro draws it piece by piece - on the screen the session
+	// gets: Plymouth starts on the firmware's framebuffer, and its frames there are another size.
+	last := frames[first]
 	for _, f := range frames[first:] {
 		if f.plymouth() {
+			last = f
+		}
+	}
+	panel := func(f filmFrame) bool { return f.plymouth() && f.w == last.w && f.h == last.h }
+	largest := 0
+	for _, f := range frames[first:] {
+		if panel(f) {
 			largest = max(largest, f.mark.W*f.mark.H)
 		}
 	}
 	var xs, ys []float64
 	for _, f := range frames[first:] {
-		if f.plymouth() && f.mark.W*f.mark.H*10 >= largest*9 {
+		if panel(f) && f.mark.W*f.mark.H*10 >= largest*9 {
 			xs = append(xs, float64(f.mark.X)+float64(f.mark.W)/2)
 			ys = append(ys, float64(f.mark.Y)+float64(f.mark.H)/2)
 		}
@@ -2718,15 +2782,24 @@ func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 	return &[2]float64{xs[len(xs)/2], ys[len(ys)/2]}
 }
 
-// The rows Plymouth's prompt is looked for in, at 1280x800: below the mark and its wordmark, around
-// the pill's middle at 612.
-const promptFrom, promptTo = 560, 680
+// The rows Plymouth's prompt is looked for in, as shares of the screen's height: below the mark and
+// its wordmark, around the pill's middle (rows 560 to 680 of 800, the pill's middle at 612). The
+// script lays the mark and the logo out in shares of the height, and the prompt a fixed distance
+// under the logo, so the shares hold within the band at 1440x900 too.
+const promptFromShare, promptToShare = 560.0 / 800, 680.0 / 800
+
+// promptRows is the band of rows the prompt is looked for in, in a screenshot h px high.
+func promptRows(h int) (int, int) {
+	return int(math.Round(promptFromShare * float64(h))), int(math.Round(promptToShare * float64(h)))
+}
 
 // promptLook checks Plymouth's password prompt as test:lifecycle shows it: a pill on g with an
 // accent ring, centred under the mark on the boot's black. The ring is looked for down the middle
-// column.
+// column; the pill's sizes are Plymouth's pixels, plymouthScale physical ones each.
 func promptLook(img image.Image, accent, fill, ground color.NRGBA) (bool, string) {
 	cx := img.Bounds().Dx() / 2
+	k := plymouthScale(img.Bounds().Dx(), img.Bounds().Dy())
+	promptFrom, promptTo := promptRows(img.Bounds().Dy())
 	top := -1
 	for y := promptFrom; y < min(promptTo, img.Bounds().Dy()); y++ {
 		if near(at(img, cx, y), accent, 8) {
@@ -2737,8 +2810,8 @@ func promptLook(img image.Image, accent, fill, ground color.NRGBA) (bool, string
 	if top < 0 {
 		return false, fmt.Sprintf("no %s ring at x %d from y %d to %d", hexOf(accent), cx, promptFrom, promptTo)
 	}
-	inside, _ := modeColor(img, lfRect{cx - 80, top + 6, 160, 24})
-	corner := at(img, cx-160, top)
+	inside, _ := modeColor(img, lfRect{cx - 80*k, top + 6*k, 160 * k, 24 * k})
+	corner := at(img, cx-160*k, top)
 	ok := near(inside, fill, lfTextTol) && near(corner, ground, lfTextTol)
 	return ok, fmt.Sprintf("ring at y %d; inside %s (want %s), the pill's corner %s (want %s)", top, hexOf(inside), hexOf(fill), hexOf(corner), hexOf(ground))
 }
@@ -2775,7 +2848,8 @@ func (r *report) plymouthPrompt(g *guest, dir string) {
 		if err != nil {
 			continue
 		}
-		if ok, detail = gridBack(prompt, after, promptFrom); ok {
+		from, _ := promptRows(prompt.Bounds().Dy())
+		if ok, detail = gridBack(prompt, after, from); ok {
 			break
 		}
 		detail += " (" + filepath.Base(f) + ")"

@@ -23,12 +23,18 @@ func boot(args []string) error {
 	mem := fl.String("m", "4G", "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk by UEFI from a stick, as a machine does")
 	shots := fl.Int("shots", 0, "take this many screenshots, one a second from the start, into _output/boot/, then stop")
+	scale := fl.Int("scale", 2, "2: the X9-15's 2880x1800 panel; 1: 1280x800")
 	_ = fl.Parse(args)
 
+	sc, err := screenFor(*scale)
+	if err != nil {
+		return err
+	}
 	m, err := testMachine(*mem, "", *stick)
 	if err != nil {
 		return err
 	}
+	m.screen = sc
 	v, err := m.start()
 	if err != nil {
 		return err
@@ -118,6 +124,8 @@ type machine struct {
 	// cmdline are kernel options for this boot, which systemd-stub adds to the kernel image's from
 	// the firmware's SMBIOS when Secure Boot is off: a boot to diagnose.
 	cmdline []string
+	// screen is the virtio GPU's panel; the zero screen is QEMU's default, 1280x800.
+	screen screen
 }
 
 // machineUUID is the test machine's firmware UUID: the same at every boot, as a board's.
@@ -163,7 +171,7 @@ func (m machine) start() (*vm, error) {
 	}
 	// An HDA card, so the sound stack - the kernel's driver, PipeWire, WirePlumber - has a device
 	// to find; its output goes nowhere unless the machine is in a window.
-	display := []string{"-device", "virtio-vga", "-display", "none", "-vnc", "127.0.0.1:7", "-audiodev", "none,id=snd0"}
+	display := []string{"-device", m.screen.device(), "-display", "none", "-vnc", "127.0.0.1:7", "-audiodev", "none,id=snd0"}
 	if m.window {
 		display = []string{"-device", "virtio-vga-gl", "-display", "gtk,gl=on,show-cursor=on", "-audiodev", "pipewire,id=snd0"}
 	}

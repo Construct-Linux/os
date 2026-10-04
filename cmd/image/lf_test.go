@@ -433,12 +433,12 @@ func TestSolidAreas(t *testing.T) {
 	fill(img, lfRect{10, 30, 4, 60}, tAccent)  // a 4 px stroke
 	fill(img, lfRect{50, 50, 24, 24}, tAccent) // the disc's box
 	fill(img, lfRect{100, 40, 40, 2}, tAccent) // a ring's side
-	if a := solidAreas(img, all, acc, lfSweepTol); len(a) != 0 {
+	if a := solidAreas(img, all, acc, lfSweepTol, 1); len(a) != 0 {
 		t.Errorf("marks taken for areas: %v", a)
 	}
 	fill(img, lfRect{200, 100, 120, 36}, tAccent)
 	fill(img, lfRect{20, 150, 300, 6}, tAccent)
-	a := solidAreas(img, all, acc, lfSweepTol)
+	a := solidAreas(img, all, acc, lfSweepTol, 1)
 	if len(a) != 2 || a[0] != (lfRect{20, 150, 300, 6}) && a[1] != (lfRect{20, 150, 300, 6}) {
 		t.Errorf("a button and a bar: %v", a)
 	}
@@ -470,7 +470,7 @@ func TestRules(t *testing.T) {
 	if y, _, ok := hRule(img, 10, 90, 8, 80); !ok || y != 47 {
 		t.Errorf("sidebar's rule: %d %v", y, ok)
 	}
-	if x, _, ok := vRule(img, 10, 150, 60, 190); !ok || x != 100 {
+	if x, _, ok := vRule(img, 10, 150, 60, 190, 1); !ok || x != 100 {
 		t.Errorf("separator: %d %v", x, ok)
 	}
 	if _, _, ok := hRule(solid(100, 100, c), 0, 100, 8, 80); ok {
@@ -531,5 +531,79 @@ label.title { font-weight: 800; }
 	}
 	if ok, detail := cssWeights(rules); ok || !strings.Contains(detail, "label.title: 800") {
 		t.Errorf("G6 in a @media block: %s", detail)
+	}
+}
+
+// At 2x a mark is twice the pixels and still a mark; an area is an area at any scale.
+func TestSolidAreasScaled(t *testing.T) {
+	img := solid(800, 400, tH)
+	acc := []color.NRGBA{tAccent}
+	all := lfRect{0, 0, 800, 400}
+	fill(img, lfRect{20, 60, 8, 120}, tAccent)   // a 4 px stroke, at 2x
+	fill(img, lfRect{100, 100, 48, 48}, tAccent) // the 24 px disc's box, at 2x
+	if a := solidAreas(img, all, acc, lfSweepTol, 2); len(a) != 0 {
+		t.Errorf("marks at 2x taken for areas: %v", a)
+	}
+	if a := solidAreas(img, all, acc, lfSweepTol, 1); len(a) != 2 {
+		t.Errorf("the same pixels at 1x are areas: %v", a)
+	}
+	fill(img, lfRect{400, 200, 240, 72}, tAccent)
+	if a := solidAreas(img, all, acc, lfSweepTol, 2); len(a) != 1 {
+		t.Errorf("a button at 2x: %v", a)
+	}
+}
+
+// A separator a stage pixel wide is two physical ones at 2x: found with its width, missed without.
+func TestVRuleScaled(t *testing.T) {
+	shelf, c := color.NRGBA{0xE9, 0xED, 0xF0, 255}, color.NRGBA{0xF4, 0xF6, 0xF8, 255}
+	line := color.NRGBA{0xCF, 0xD5, 0xD9, 255}
+	img := solid(600, 400, c)
+	fill(img, lfRect{0, 0, 200, 400}, shelf)
+	fill(img, lfRect{200, 0, 2, 400}, line)
+	if x, col, ok := vRule(img, 20, 300, 120, 380, 2); !ok || x != 200 || col != line {
+		t.Errorf("2x separator: %d %v", x, ok)
+	}
+	if _, _, ok := vRule(img, 20, 300, 120, 380, 1); ok {
+		t.Error("a 2 px line read as 1 px wide")
+	}
+}
+
+// Plymouth's prompt at 2880x1800, drawn at Plymouth's scale 2 where the 1440x900 layout puts it.
+func TestPromptLookScaled(t *testing.T) {
+	if from, to := promptRows(800); from != 560 || to != 680 {
+		t.Errorf("1280x800 rows %d-%d", from, to)
+	}
+	prompt := solid(2880, 1800, tBlack)
+	// The pill's middle at 678 of 900 logical, 1356 physical; 320x36 logical.
+	cy, half := 1356.0, 320.0
+	for y := 1320; y < 1392; y++ {
+		for x := 1440 - 320; x < 1440+320; x++ {
+			in := func(r float64) func(fx, fy float64) bool {
+				return func(fx, fy float64) bool {
+					cx := math.Min(math.Max(fx, 1440-half+36), 1440+half-36)
+					return math.Hypot(fx-cx, fy-cy) <= r
+				}
+			}
+			blendAt(prompt, x, y, tAccent, coverage(x, y, in(36)))
+			blendAt(prompt, x, y, tG, coverage(x, y, in(32)))
+		}
+	}
+	if ok, detail := promptLook(prompt, tAccent, tG, tBlack); !ok {
+		t.Error(detail)
+	}
+}
+
+// Plymouth draws on the firmware's framebuffer first: the mark is read only from the frames of
+// the panel's size the session gets.
+func TestFilmReportSizes(t *testing.T) {
+	ms := func(n int) time.Duration { return time.Duration(n) * time.Millisecond }
+	frames := []filmFrame{
+		{at: ms(1000), black: 0.95, cyan: 900, w: 1280, h: 800, mark: lfRect{540, 240, 200, 200}},
+		{at: ms(1100), black: 0.95, cyan: 900, w: 1280, h: 800, mark: lfRect{540, 240, 200, 200}},
+		{at: ms(2000), black: 0.95, cyan: 3600, w: 2880, h: 1800, mark: lfRect{1240, 600, 400, 400}},
+	}
+	r := &report{dir: t.TempDir()}
+	if mark := r.filmReport(frames, 0); mark == nil || mark[0] != 1440 || mark[1] != 800 {
+		t.Errorf("mark %v", mark)
 	}
 }

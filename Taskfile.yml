@@ -260,9 +260,14 @@ tasks:
       - go run ./cmd/image dev-down
 
   theme:dev:
-    desc: "Build the local Orchis checkout (ORCHIS, in .env) into the machine task dev:up runs - GNOME Shell loads it, construct theme copies GTK's - and take the shell's views against the needles: _output/test/look.html. About a minute; the image is still the source of truth (pin, rootfs, stick)."
+    desc: "Build the local Orchis checkout (ORCHIS, in .env) into the machine task dev:up runs - GNOME Shell loads it, construct theme copies GTK's - and take the shell's views against the needles: _output/test/look.html (task theme:dev -- -type adds the type matrix). About a minute; the image is still the source of truth (pin, rootfs, stick)."
     cmds:
-      - go run ./cmd/image theme-dev -orchis "{{.ORCHIS}}" -needles "{{.NEEDLES}}"
+      - go run ./cmd/image theme-dev -orchis "{{.ORCHIS}}" -needles "{{.NEEDLES}}" {{.CLI_ARGS}}
+
+  type:dev:
+    desc: "Take the type specimen and its rendering matrix in the machine task dev:up runs - GTK 4's text under each hinting, antialiasing, metrics and stem darkening setting, measured: _output/test/type.html and type.json. About a minute."
+    cmds:
+      - go run ./cmd/image type-dev
 
   needles:propose:
     desc: "Open a pull request in github.com/Construct-Linux/needles with the views the last test:usb drew differently from their needles, or that have none (_output/test/look.json): merging it approves the new look. Needs NEEDLES, a checkout of it."

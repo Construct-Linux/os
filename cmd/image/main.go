@@ -15,6 +15,7 @@
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
 //	image play  [-fresh] [-stick=false]          the stick in a window on the host, with a disk to install on
+//	image type-dev                              the type specimen and its rendering matrix, in dev-up's machine (cmd/image/typespec.go)
 //	image forge                                 the forged sticks the lifecycle must refuse
 //	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
 //	image check-langs                           every package in the root comes with its translations
@@ -64,6 +65,8 @@ func main() {
 		err = devDown(os.Args[2:])
 	case "theme-dev":
 		err = themeDev(os.Args[2:])
+	case "type-dev":
+		err = typeDev(os.Args[2:])
 	case "needles-propose":
 		err = needlesPropose(os.Args[2:])
 	case "scan-report":

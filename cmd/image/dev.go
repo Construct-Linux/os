@@ -26,8 +26,9 @@ import (
 
 // devVM is where dev-up's machine answers: _output/dev/vm.json.
 type devVM struct {
-	CID int    `json:"cid"`
-	QMP string `json:"qmp"`
+	CID   int    `json:"cid"`
+	QMP   string `json:"qmp"`
+	Scale int    `json:"scale"`
 }
 
 var devState = filepath.Join(out, "dev", "vm.json")
@@ -37,7 +38,12 @@ var devState = filepath.Join(out, "dev", "vm.json")
 func devUp(args []string) error {
 	fl := flag.NewFlagSet("dev-up", flag.ExitOnError)
 	mem := fl.String("m", "6G", "memory")
+	scale := fl.Int("scale", 2, "2: the X9-15's 2880x1800 panel at 200%; 1: 1280x800 at 100%")
 	_ = fl.Parse(args)
+	sc, err := screenFor(*scale)
+	if err != nil {
+		return err
+	}
 	_, pub, err := testKey()
 	if err != nil {
 		return err
@@ -46,6 +52,7 @@ func devUp(args []string) error {
 	if err != nil {
 		return err
 	}
+	m.screen = sc
 	v, g, err := m.bootGuest(4 * time.Minute)
 	if err != nil {
 		return err
@@ -57,7 +64,11 @@ func devUp(args []string) error {
 	// As the harness does: no blanking, and the installer the live session opens closed.
 	_, _ = g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
 	_, _ = g.eval(installerWindows + `.forEach(w => w.delete(global.get_current_time())); true`)
-	b, err := json.Marshal(devVM{CID: v.cid, QMP: v.qmp})
+	w, h := sc.logical()
+	if out, err := g.setSessionScale(float64(sc.Scale), w, h); err != nil {
+		return fmt.Errorf("the session at %d00%%: %w: %s", sc.Scale, err, lastLines(out, 12))
+	}
+	b, err := json.Marshal(devVM{CID: v.cid, QMP: v.qmp, Scale: sc.Scale})
 	if err != nil {
 		return err
 	}
@@ -68,7 +79,7 @@ func devUp(args []string) error {
 		return err
 	}
 	defer os.Remove(devState)
-	fmt.Println("up: task theme:dev builds the local Orchis into it, task dev:down stops it")
+	fmt.Println("up: task theme:dev builds the local Orchis into it, task type:dev measures its text, task dev:down stops it")
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	exited := make(chan error, 1)
@@ -115,6 +126,7 @@ func themeDev(args []string) error {
 	fl := flag.NewFlagSet("theme-dev", flag.ExitOnError)
 	orchis := fl.String("orchis", "", "the Orchis-theme checkout to build (ORCHIS)")
 	needles := fl.String("needles", "", "the needles checkout to compare with (NEEDLES)")
+	withType := fl.Bool("type", false, "take the type specimen and its rendering matrix too (_output/test/type.html)")
 	_ = fl.Parse(args)
 	if *orchis == "" {
 		return errors.New("theme-dev: -orchis names an Orchis-theme checkout (ORCHIS)")
@@ -170,10 +182,39 @@ func themeDev(args []string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	r := &report{dir: dir, user: "live"}
+	r := &report{dir: dir, user: "live", scale: d.Scale}
 	time.Sleep(time.Second)
-	r.shellViews(v, g, newLF(r, v, g))
+	l := newLF(r, v, g)
+	r.shellViews(v, g, l)
+	if *withType {
+		r.typeMatrix(v, g, l)
+	}
 	r.compareNeedles(*needles)
+	return r.write(nil)
+}
+
+// typeDev takes the type specimen and its rendering matrix in dev-up's machine, and nothing else:
+// the loop for a change to how text is drawn, about a minute.
+func typeDev(args []string) error {
+	fl := flag.NewFlagSet("type-dev", flag.ExitOnError)
+	_ = fl.Parse(args)
+	d, err := readDevVM()
+	if err != nil {
+		return err
+	}
+	v, g := &vm{qmp: d.QMP, cid: d.CID}, &guest{cid: d.CID}
+	dir := filepath.Join(out, "test")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	// Only the type's own files go: the rest of the last run's views stay beside them.
+	for _, old := range []string{"type", "type.html", "type.json", "type-specimen.png", "type-specimen.json"} {
+		if err := os.RemoveAll(filepath.Join(dir, old)); err != nil {
+			return err
+		}
+	}
+	r := &report{dir: dir, user: "live", scale: d.Scale}
+	r.typeMatrix(v, g, newLF(r, v, g))
 	return r.write(nil)
 }
 
