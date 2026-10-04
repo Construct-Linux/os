@@ -68,8 +68,7 @@ func needleBarFallback(width, scale int) needleRect {
 // ring and the bar's surface around them are compared; with the calendar open, today's date, the
 // month's days and each notification's time; on the lock screen, its clock. Each grows by 2 px for
 // antialiasing. It answers them with the stage's width: at a fractional scale the stage is in
-// logical pixels and the screenshot in physical ones. No apostrophe in what it answers: gdbus would
-// quote it otherwise, and guest.eval reads single quotes.
+// logical pixels and the screenshot in physical ones.
 const needleActors = `
 const out = [];
 const box = a => {
@@ -110,7 +109,7 @@ if (dm?.menu.isOpen) {
     times(dm.menu.box);
 }
 add(Main.screenShield?._dialog?._clock, 'the lock clock');
-JSON.stringify({w: global.stage.width, actors: out})`
+return {w: global.stage.width, actors: out};`
 
 // stageActors is what needleActors answers: the stage's width and the actors on it.
 type stageActors struct {
@@ -121,15 +120,7 @@ type stageActors struct {
 // measureActors is what needleActors finds on the screen now.
 func measureActors(g *guest) (stageActors, error) {
 	var seen stageActors
-	raw, err := g.eval(needleActors)
-	if err != nil {
-		return seen, err
-	}
-	var inner string
-	if err := json.Unmarshal([]byte(raw), &inner); err != nil {
-		return seen, fmt.Errorf("eval answered %.80q: %w", raw, err)
-	}
-	return seen, json.Unmarshal([]byte(inner), &seen)
+	return seen, g.evalJSON(needleActors, &seen)
 }
 
 // onScreen is a stage's rectangles in a screenshot width px wide: scaled by the screenshot over

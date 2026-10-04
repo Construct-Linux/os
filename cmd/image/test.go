@@ -396,15 +396,9 @@ func (g *guest) extensions() []extension {
 			enabled = append(enabled, f)
 		}
 	}
-	raw, err := g.eval(`JSON.stringify(Main.extensionManager.getUuids().map(u => { const e = Main.extensionManager.lookup(u); return [u, e.state, e.error ? String(e.error) : ""]; }))`)
-	if err != nil {
-		return []extension{{uuid: "(extension manager)", err: err.Error()}}
-	}
-	// Eval answers the JSON of its result: here a string, which holds the JSON of the list.
-	var inner string
 	var rows [][]any
-	if json.Unmarshal([]byte(raw), &inner) != nil || json.Unmarshal([]byte(inner), &rows) != nil {
-		return []extension{{uuid: "(extension manager)", err: "unreadable: " + raw}}
+	if err := g.evalJSON(`return Main.extensionManager.getUuids().map(u => { const e = Main.extensionManager.lookup(u); return [u, e.state, e.error ? String(e.error) : ""]; });`, &rows); err != nil {
+		return []extension{{uuid: "(extension manager)", err: err.Error()}}
 	}
 	known := map[string]extension{}
 	for _, row := range rows {
@@ -431,14 +425,9 @@ func (g *guest) extensions() []extension {
 // fresh image has nothing to be told, so one there is a component announcing itself (Dash to
 // Panel's "has been updated" did, on every first login).
 func (g *guest) notifications() (bool, string) {
-	raw, err := g.eval(`JSON.stringify(Main.messageTray.getSources().flatMap(s => s.notifications.map(n => s.title + ": " + n.title)))`)
-	if err != nil {
-		return false, err.Error()
-	}
-	var inner string
 	var titles []string
-	if json.Unmarshal([]byte(raw), &inner) != nil || json.Unmarshal([]byte(inner), &titles) != nil {
-		return false, "unreadable: " + raw
+	if err := g.evalJSON(`return Main.messageTray.getSources().flatMap(s => s.notifications.map(n => s.title + ": " + n.title));`, &titles); err != nil {
+		return false, err.Error()
 	}
 	if len(titles) > 0 {
 		return false, strings.Join(titles, "; ")
