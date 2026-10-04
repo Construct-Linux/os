@@ -127,7 +127,6 @@ type specimenItem struct {
 
 type specimenRun struct {
 	Fullscreen bool              `json:"fullscreen"`
-	Surface    []float64         `json:"surface"`
 	Env        string            `json:"env"`
 	Settings   gtkSeen           `json:"settings"`
 	Fonts      map[string]string `json:"fonts"`

@@ -105,10 +105,10 @@ func TestSurfacePixels(t *testing.T) {
 		t.Errorf("mode %s over %.2f", hexOf(c), share)
 	}
 	// The extent says y 9, the ring is at 10.
-	if p, ok := ringHit(img, 100, 9, 0, -1, lfRingReach, tRing, lfRingTol); !ok || p.Y != 10 {
+	if p, ok := ringHit(img, 100, 9, 0, -1, lfRingReach, tRing); !ok || p.Y != 10 {
 		t.Errorf("top ring: %v %v", p, ok)
 	}
-	if _, ok := ringHit(img, 100, 5, 0, -1, lfRingReach, tRing, lfRingTol); ok {
+	if _, ok := ringHit(img, 100, 5, 0, -1, lfRingReach, tRing); ok {
 		t.Error("a ring 5 px away was taken for this edge's")
 	}
 	if n := countNear(img, lfRect{0, 0, 200, 60}, tRing, 0); n != 2*160+2*34 {
@@ -130,16 +130,16 @@ func TestRingShare(t *testing.T) {
 			blendAt(img, x, y, tAccent, ring)
 		}
 	}
-	if s := ringShare(img, day, 1, tAccent, lfRingAccentTol); s < 0.9 {
+	if s := ringShare(img, day, 1, tAccent); s < 0.9 {
 		t.Errorf("a full ring: %.2f", s)
 	}
-	if s := ringShare(solid(60, 60, tH), day, 1, tAccent, lfRingAccentTol); s != 0 {
+	if s := ringShare(solid(60, 60, tH), day, 1, tAccent); s != 0 {
 		t.Errorf("no ring: %.2f", s)
 	}
 	// A pill: its top side is a quarter of its outline (60 px of sides, 2 ends of radius 19).
 	wide := solid(100, 40, tH)
 	fill(wide, lfRect{20, 0, 60, 2}, tAccent)
-	if s := ringShare(wide, lfRect{0, 0, 100, 40}, 1, tAccent, lfRingAccentTol); s < 0.22 || s > 0.28 {
+	if s := ringShare(wide, lfRect{0, 0, 100, 40}, 1, tAccent); s < 0.22 || s > 0.28 {
 		t.Errorf("one straight side of a pill: %.2f", s)
 	}
 }
@@ -425,11 +425,11 @@ func TestRingHitBlend(t *testing.T) {
 	img := solid(20, 10, desk)
 	fill(img, lfRect{6, 0, 14, 10}, tG)
 	img.SetNRGBA(6, 5, tint(tRing, desk, 0.975))
-	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing, lfRingTol); !ok {
+	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing); !ok {
 		t.Errorf("the apex %s was not taken for the ring", hexOf(at(img, 6, 5)))
 	}
 	img.SetNRGBA(6, 5, tint(tRing, desk, 0.5))
-	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing, lfRingTol); ok {
+	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing); ok {
 		t.Error("half a ring was taken for one")
 	}
 	if a, res := coverOf(tint(tAccent, tH, 0.18), tAccent, tH); math.Abs(a-0.18) > 0.01 || res > 1 {
@@ -464,12 +464,12 @@ func TestSolidAreas(t *testing.T) {
 	fill(img, lfRect{10, 30, 4, 60}, tAccent)  // a 4 px stroke
 	fill(img, lfRect{50, 50, 24, 24}, tAccent) // the disc's box
 	fill(img, lfRect{100, 40, 40, 2}, tAccent) // a ring's side
-	if a := solidAreas(img, all, acc, lfSweepTol, 1); len(a) != 0 {
+	if a := solidAreas(img, all, acc, 1); len(a) != 0 {
 		t.Errorf("marks taken for areas: %v", a)
 	}
 	fill(img, lfRect{200, 100, 120, 36}, tAccent)
 	fill(img, lfRect{20, 150, 300, 6}, tAccent)
-	a := solidAreas(img, all, acc, lfSweepTol, 1)
+	a := solidAreas(img, all, acc, 1)
 	if len(a) != 2 || a[0] != (lfRect{20, 150, 300, 6}) && a[1] != (lfRect{20, 150, 300, 6}) {
 		t.Errorf("a button and a bar: %v", a)
 	}
@@ -572,14 +572,14 @@ func TestSolidAreasScaled(t *testing.T) {
 	all := lfRect{0, 0, 800, 400}
 	fill(img, lfRect{20, 60, 8, 120}, tAccent)   // a 4 px stroke, at 2x
 	fill(img, lfRect{100, 100, 48, 48}, tAccent) // the 24 px disc's box, at 2x
-	if a := solidAreas(img, all, acc, lfSweepTol, 2); len(a) != 0 {
+	if a := solidAreas(img, all, acc, 2); len(a) != 0 {
 		t.Errorf("marks at 2x taken for areas: %v", a)
 	}
-	if a := solidAreas(img, all, acc, lfSweepTol, 1); len(a) != 2 {
+	if a := solidAreas(img, all, acc, 1); len(a) != 2 {
 		t.Errorf("the same pixels at 1x are areas: %v", a)
 	}
 	fill(img, lfRect{400, 200, 240, 72}, tAccent)
-	if a := solidAreas(img, all, acc, lfSweepTol, 2); len(a) != 1 {
+	if a := solidAreas(img, all, acc, 2); len(a) != 1 {
 		t.Errorf("a button at 2x: %v", a)
 	}
 }

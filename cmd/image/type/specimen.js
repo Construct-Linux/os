@@ -77,7 +77,6 @@ app.connect('activate', () => {
     win.connect('map', () => {
         // Drawn, and fullscreen, well before the harness looks.
         GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => {
-            const [sx, sy] = win.get_surface_transform();
             const fonts = {};
             for (const [name, family] of FAMILIES) {
                 const ctx = items[0].label.get_pango_context();
@@ -86,7 +85,6 @@ app.connect('activate', () => {
             }
             const out = {
                 fullscreen: win.is_fullscreen(),
-                surface: [sx, sy],
                 env: GLib.getenv('FREETYPE_PROPERTIES') ?? '',
                 settings: {
                     font_rendering: settings.gtk_font_rendering === Gtk.FontRendering.MANUAL ? 'manual' : 'automatic',

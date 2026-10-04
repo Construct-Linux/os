@@ -302,9 +302,9 @@ func coverOf(c, fg, bg color.NRGBA) (float64, int) {
 
 // ringHit looks for a 1 px ring at (x, y) and up to reach px either way along the normal (nx, ny):
 // a ring lands a pixel to either side of an extent rounded from a fractional allocation. A pixel is
-// the ring when it is within tol of it, or the ring antialiased over the pixel just outside it,
+// the ring when it is within lfRingTol of it, or the ring antialiased over the pixel just outside it,
 // covering at least lfRingCover of it.
-func ringHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA, tol int) (image.Point, bool) {
+func ringHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA) (image.Point, bool) {
 	for k := 0; k <= reach; k++ {
 		for _, s := range []int{k, -k} {
 			p := image.Pt(x+s*nx, y+s*ny)
@@ -313,11 +313,11 @@ func ringHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA, tol int
 				continue
 			}
 			c := at(img, p.X, p.Y)
-			if near(c, ring, tol) {
+			if near(c, ring, lfRingTol) {
 				return p, true
 			}
 			if o.In(img.Bounds()) {
-				if a, res := coverOf(c, ring, at(img, o.X, o.Y)); a >= lfRingCover && res <= tol {
+				if a, res := coverOf(c, ring, at(img, o.X, o.Y)); a >= lfRingCover && res <= lfRingTol {
 					return p, true
 				}
 			}
@@ -383,8 +383,8 @@ func accentShare(img image.Image, r lfRect, cols []color.NRGBA, tol int) float64
 // wider or taller than lfMarkDisc - both scale physical pixels a stage pixel. Text, rings, a
 // slider's fill and the quick toggle's disc are marks; a solid button or a filled toggle is an
 // area.
-func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, tol, scale int) []lfRect {
-	m, b := accentMask(img, r, cols, tol)
+func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, scale int) []lfRect {
+	m, b := accentMask(img, r, cols, lfSweepTol)
 	w, h := b.Dx(), b.Dy()
 	k := lfMarkStroke*scale/2 + 1
 	// Erosion by a square, as a horizontal run and then a vertical one.
@@ -501,10 +501,10 @@ func tint(c, surface color.NRGBA, t float64) color.NRGBA {
 	return color.NRGBA{m(c.R, surface.R), m(c.G, surface.G), m(c.B, surface.B), 255}
 }
 
-// ringShare is the share of points on a pill's outline, inset px inside its extents, within tol of
-// want: a 2 px ring drawn inside the edge is sampled down its middle with inset 1. A circle is a
+// ringShare is the share of points on a pill's outline, inset px inside its extents, within
+// lfRingAccentTol of want: a 2 px ring drawn inside the edge is sampled down its middle with inset 1. A circle is a
 // pill as long as it is wide.
-func ringShare(img image.Image, r lfRect, inset float64, want color.NRGBA, tol int) float64 {
+func ringShare(img image.Image, r lfRect, inset float64, want color.NRGBA) float64 {
 	d := float64(min(r.W, r.H))
 	rad := d/2 - inset
 	x0, y0 := float64(r.X), float64(r.Y)
@@ -525,7 +525,7 @@ func ringShare(img image.Image, r lfRect, inset float64, want color.NRGBA, tol i
 			return
 		}
 		n++
-		if near(at(img, p.X, p.Y), want, tol) {
+		if near(at(img, p.X, p.Y), want, lfRingAccentTol) {
 			hits++
 		}
 	}
@@ -1024,7 +1024,7 @@ const lfScaledDesktop = "desktop-scale-150"
 func (l *lf) sweep(name string, img image.Image) {
 	cols := []color.NRGBA{l.c("dark-accent"), l.c("light-accent")}
 	all := lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}
-	areas := solidAreas(img, all, cols, lfSweepTol, l.k)
+	areas := solidAreas(img, all, cols, l.k)
 	var where []string
 	for _, a := range areas {
 		where = append(where, a.String())
@@ -1074,7 +1074,7 @@ func (l *lf) surfaceCheck(name string, a *lfLook, img image.Image, want color.NR
 	}
 	var missed, weak []string
 	for _, e := range edges {
-		p, hit := ringHit(img, e.x, e.y, e.nx, e.ny, lfRingReach*k, ring, lfRingTol)
+		p, hit := ringHit(img, e.x, e.y, e.nx, e.ny, lfRingReach*k, ring)
 		if !hit {
 			missed = append(missed, fmt.Sprintf("%s %s", e.name, hexOf(at(img, e.x, e.y))))
 			continue
@@ -1470,7 +1470,7 @@ func (l *lf) today(img image.Image, days []calendarDay, selected, focus bool) {
 		centre = tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
 	}
 	mode, _ := modeColor(img, l.px(t.rect()).inset(4*l.k, 4*l.k))
-	share := ringShare(img, l.px(t.rect()), float64(l.k), l.c("dark-accent"), lfRingAccentTol)
+	share := ringShare(img, l.px(t.rect()), float64(l.k), l.c("dark-accent"))
 	fg, _ := parseHex(t.FG)
 	accent := l.c("dark-accent-text")
 	shadow := t.Shadow != nil && !strings.HasSuffix(t.Shadow.Color, "00")
@@ -1509,7 +1509,7 @@ func (l *lf) dayFocus(img image.Image) {
 		ok = sh.Inset && sh.Spread >= 2 && c == color.NRGBA{accent.R, accent.G, accent.B, 255}
 		detail = fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
 	}
-	share := ringShare(img, l.px(s.Day.rect()), float64(l.k), accent, lfRingAccentTol)
+	share := ringShare(img, l.px(s.Day.rect()), float64(l.k), accent)
 	l.check("focus", "calendar day", ok && share >= lfDayFocusRing,
 		fmt.Sprintf("%q: %s; %.0f%% of its outline the accent, want inset, spread >= 2, %s and >= %.0f%%", s.Label, detail, share*100, hexOf(accent), lfDayFocusRing*100))
 }
@@ -1633,8 +1633,8 @@ func (l *lf) installer(img image.Image) {
 	body, _ := modeColor(img, l.px(lfRect{l.stageW/2 - 10, l.stageH*3/4 - 10, 21, 21}))
 	ring := l.c("dark-border")
 	p := l.px(r)
-	_, left := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, lfRingReach*k, ring, lfRingTol)
-	_, bottom := ringHit(img, p.X+p.W/2, p.Y+p.H, 0, 1, lfRingReach*k, ring, lfRingTol)
+	_, left := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, lfRingReach*k, ring)
+	_, bottom := ringHit(img, p.X+p.W/2, p.Y+p.H, 0, 1, lfRingReach*k, ring)
 	head, _ := modeColor(img, l.px(lfRect{r.X + 8, r.Y + 3, r.W - 16, 8}))
 	l.check("window", "installer", near(body, l.c("neutral-f"), lfSurfaceTol) && left && bottom && near(head, l.c("neutral-g"), lfSurfaceTol),
 		fmt.Sprintf("frame %v: body %s (want %s), ring left %v (%s) bottom %v (%s), want %s; headerbar %s (want %s)",
@@ -1990,7 +1990,7 @@ func (l *lf) maximized(id, shot string) {
 	head, _ := modeColor(img, l.px(lfRect{r.X + 8, r.Y + 3, r.W - 16, 8}))
 	p := l.px(r)
 	corner := at(img, p.X, p.Y)
-	_, ring := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, l.k, l.c("dark-border"), lfRingTol)
+	_, ring := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, l.k, l.c("dark-border"))
 	l.check("window", "maximized", near(corner, head, lfSurfaceTol) && !ring,
 		fmt.Sprintf("frame %v: corner %s, headerbar %s (square: the same); the border outside its left edge: %v, want none", r, hexOf(corner), hexOf(head), ring))
 }
