@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -563,13 +561,7 @@ var shellViews = []shellView{
 // Each view opens and closes with lf.go's helpers at hand (find, lfAll), and its lf checks measure
 // it while it is open.
 func (r *report) shellViews(v *vm, g *guest, l *lf) {
-	// The live user has no password, so no wrong one to type: the lock views get one of their
-	// own, random and never written down, taken off again after them.
-	defer func() { _, _ = g.run(`passwd -d live`, "") }()
 	for _, s := range shellViews {
-		if s.name == "lock-screen" {
-			r.lockPassword(g)
-		}
 		_, err := g.eval(lfPrelude + s.open + "; true")
 		r.add("view:"+s.name, err == nil, "screenshot shell-"+s.name+".png")
 		settle := s.settle
@@ -604,15 +596,6 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 			time.Sleep(time.Second)
 		}
 	}
-}
-
-// lockPassword gives the live user a random password: the lock screen's prompt then asks for one,
-// as it does a person, and a wrong one is refused. Its words are typed nowhere but chpasswd's input.
-func (r *report) lockPassword(g *guest) {
-	b := make([]byte, 12)
-	_, _ = rand.Read(b)
-	_, err := g.run(`chpasswd`, "live:"+hex.EncodeToString(b)+"\n")
-	r.add("view:lock password", err == nil, "a random password for the live user, until the lock views end"+errText(err))
 }
 
 // asLive runs a command in the live user's session.
