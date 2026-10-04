@@ -16,6 +16,8 @@ func TestApplyAndRestore(t *testing.T) {
 		"proc/sys/vm/vfs_cache_pressure":            "50",
 		"proc/sys/vm/dirty_ratio":                   "0",
 		"proc/sys/vm/dirty_background_ratio":        "0",
+		"proc/sys/vm/dirty_bytes":                   "268435456",
+		"proc/sys/vm/dirty_background_bytes":        "67108864",
 		"proc/sys/vm/dirty_writeback_centisecs":     "1500",
 		"proc/sys/kernel/nmi_watchdog":              "0",
 		"proc/sys/net/ipv4/tcp_congestion_control":  "bbr",
@@ -46,7 +48,15 @@ func TestApplyAndRestore(t *testing.T) {
 	if err := Apply(root, construct); err != nil {
 		t.Fatal(err)
 	}
-	for rel, want := range map[string]string{"proc/sys/vm/swappiness": "150", "sys/kernel/mm/transparent_hugepage/defrag": "defer+madvise", "sys/block/nvme0n1/queue/scheduler": "kyber"} {
+	// CONSTRUCT's dirty limits are bytes, its ratios reading 0: the bytes are what come back, never a
+	// 0 ratio that would clear them.
+	for _, s := range construct.Settings {
+		if s.Path == "proc/sys/vm/dirty_ratio" || s.Path == "proc/sys/vm/dirty_background_ratio" {
+			t.Errorf("CONSTRUCT's profile writes %s=%s, which clears its bytes", s.Path, s.Value)
+		}
+	}
+	for rel, want := range map[string]string{"proc/sys/vm/swappiness": "150", "sys/kernel/mm/transparent_hugepage/defrag": "defer+madvise", "sys/block/nvme0n1/queue/scheduler": "kyber",
+		"proc/sys/vm/dirty_bytes": "268435456", "proc/sys/vm/dirty_background_bytes": "67108864"} {
 		if v, _ := read(filepath.Join(root, rel)); v != want {
 			t.Errorf("%s restored as %q, want %q", rel, v, want)
 		}

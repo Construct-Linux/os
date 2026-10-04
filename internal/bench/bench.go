@@ -56,16 +56,36 @@ func Kernel(disks []string) Profile {
 	return p
 }
 
+// bytesTwin is the bytes setting of each dirty ratio. The kernel keeps one of a pair: writing
+// either clears the other, and the one not in use reads 0. CONSTRUCT sets the bytes
+// (70-construct.conf), so its ratios read 0, and writing such a 0 back would clear its limits.
+var bytesTwin = map[string]string{
+	"proc/sys/vm/dirty_ratio":            "proc/sys/vm/dirty_bytes",
+	"proc/sys/vm/dirty_background_ratio": "proc/sys/vm/dirty_background_bytes",
+}
+
+// active is the setting at path as the kernel uses it: the path, or its bytes twin when that is
+// the one set, and its value.
+func active(root, path string) (string, string, error) {
+	v, err := read(filepath.Join(root, path))
+	if twin, ok := bytesTwin[path]; ok && err == nil && v == "0" {
+		if tv, terr := read(filepath.Join(root, twin)); terr == nil && tv != "0" {
+			return twin, tv, nil
+		}
+	}
+	return path, v, err
+}
+
 // Current is what the machine has now, for the settings of p: CONSTRUCT's own profile when the
 // machine runs CONSTRUCT, and what is put back when the bench ends.
 func Current(root string, p Profile, name string, zram bool) (Profile, error) {
 	cur := Profile{Name: name, Zram: zram}
 	for _, s := range p.Settings {
-		v, err := read(filepath.Join(root, s.Path))
+		path, v, err := active(root, s.Path)
 		if err != nil {
 			return Profile{}, err
 		}
-		cur.Settings = append(cur.Settings, Setting{s.Path, v})
+		cur.Settings = append(cur.Settings, Setting{path, v})
 	}
 	return cur, nil
 }
@@ -77,10 +97,9 @@ func Writable(root string, p Profile) (Profile, []string) {
 	kept := Profile{Name: p.Name, Zram: p.Zram}
 	var dropped []string
 	for _, s := range p.Settings {
-		path := filepath.Join(root, s.Path)
-		v, err := read(path)
+		rel, v, err := active(root, s.Path)
 		if err == nil {
-			err = os.WriteFile(path, []byte(v), 0o644)
+			err = os.WriteFile(filepath.Join(root, rel), []byte(v), 0o644)
 		}
 		if err != nil {
 			dropped = append(dropped, s.Path)
