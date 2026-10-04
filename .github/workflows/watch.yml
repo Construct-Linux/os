@@ -60,7 +60,10 @@ jobs:
           echo "grype=_output/watch/grype.json" >> "$GITHUB_OUTPUT"
           echo "release=$tag" >> "$GITHUB_OUTPUT"
 
+      # After a failed scan too: without -grype the security issues are left as they are, and the
+      # kernel, GNOME and microcode checks still run. The job stays red for the scan.
       - name: Open, update and close issues
+        if: ${{ !cancelled() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
           GRYPE: ${{ steps.scan.outputs.grype }}
