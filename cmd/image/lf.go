@@ -2092,7 +2092,8 @@ func (l *lf) guestLook() {
 	l.check("firefox theme", "Orchis-Construct", err == nil && link == "Orchis-Construct-Light\ngtk-3.0\n", "link to "+oneLine(link)+errText(err))
 	ghostty, err := l.g.run(`test -s "/usr/share/ghostty/themes/Construct Dark" && test -s "/usr/share/ghostty/themes/Construct Light" && echo themes; `+
 		`test -s /var/home/live/.config/ghostty/config.ghostty && echo seed; `+
-		`out=$(`+user+`ghostty +validate-config 2>&1); rc=$?; echo "$out"; echo "rc=$rc"; ls -l /var/home/live/.config/ghostty; cat /var/home/live/.config/ghostty/config.ghostty`, "")
+		// From the live user's home: in root's, which live cannot read, ghostty exits 1 and says nothing.
+		`out=$(cd /var/home/live && `+user+`ghostty +validate-config 2>&1); rc=$?; echo "$out"; echo "rc=$rc"; ls -l /var/home/live/.config/ghostty; cat /var/home/live/.config/ghostty/config.ghostty`, "")
 	// All of it, for a failure that says nothing on the line (rc=1 with no diagnostic, once).
 	_ = os.WriteFile(filepath.Join(l.r.dir, "ghostty.txt"), []byte(ghostty), 0o644)
 	said, rest, _ := strings.Cut(ghostty, "rc=")
