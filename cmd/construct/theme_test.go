@@ -89,7 +89,7 @@ func TestSyncThemeLeavesALinkedTheme(t *testing.T) {
 }
 
 // The GTK 4 theme goes where libadwaita reads, each GTK 3 variant where GTK 3 finds a theme from
-// inside a Flatpak, and nothing else of the theme (the shell's) is copied.
+// inside a Flatpak, nothing else of the theme (the shell's) is copied, and Ghostty is seeded.
 func TestThemeCopiesGTK3AndGTK4(t *testing.T) {
 	themes, home := t.TempDir(), t.TempDir()
 	config := filepath.Join(home, ".config")
@@ -115,5 +115,39 @@ func TestThemeCopiesGTK3AndGTK4(t *testing.T) {
 	}
 	if out.Len() != 0 {
 		t.Errorf("nothing of the user's was there to leave, yet: %q", out.String())
+	}
+	if got := readFile(t, filepath.Join(config, "ghostty/config.ghostty")); got != ghosttySeed {
+		t.Errorf("ghostty/config.ghostty = %q", got)
+	}
+}
+
+func TestSeedGhosttyWritesTheSeedWhenAbsent(t *testing.T) {
+	config := filepath.Join(t.TempDir(), ".config")
+	if err := seedGhostty(config); err != nil {
+		t.Fatal(err)
+	}
+	if got := readFile(t, filepath.Join(config, "ghostty/config.ghostty")); got != ghosttySeed {
+		t.Fatalf("config.ghostty = %q", got)
+	}
+}
+
+// Either file Ghostty reads is the user's configuration, the seed's own included: never written over.
+func TestSeedGhosttyLeavesAnExistingConfig(t *testing.T) {
+	for _, name := range []string{"config", "config.ghostty"} {
+		t.Run(name, func(t *testing.T) {
+			config := t.TempDir()
+			writeTree(t, config, map[string]string{"ghostty/" + name: "mine"})
+			if err := seedGhostty(config); err != nil {
+				t.Fatal(err)
+			}
+			if got := readFile(t, filepath.Join(config, "ghostty", name)); got != "mine" {
+				t.Fatalf("%s = %q", name, got)
+			}
+			if name == "config" {
+				if _, err := os.Stat(filepath.Join(config, "ghostty/config.ghostty")); !os.IsNotExist(err) {
+					t.Fatalf("seeded beside the legacy config: %v", err)
+				}
+			}
+		})
 	}
 }

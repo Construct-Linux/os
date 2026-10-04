@@ -4,7 +4,7 @@
 //	construct install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
 //	construct boot-check                                     reboot a counted boot that did not come up
 //	construct pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
-//	construct theme      [--themes DIR] [--home DIR] [--config DIR] the image's GTK themes, copied for a user
+//	construct theme      [--themes DIR] [--home DIR] [--config DIR] the image's GTK themes, copied for a user, and Ghostty's first config
 //	construct live                                           the live user, on a root nobody is installed for
 //	construct firmware   ish FILE                            a laptop maker's sensor hub firmware, for this machine
 //	construct power      [--seconds N] | suspend             what the machine draws, or what each suspend cost

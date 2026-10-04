@@ -181,8 +181,26 @@ func useProfile(p bench.Profile) error {
 		if p.Zram {
 			args = []string{"start", "dev-zram0.swap"}
 		}
-		if out, err := exec.Command("systemctl", args...).CombinedOutput(); err != nil {
-			return fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+		// The reset a stop asks for finishes after systemctl returns: until the device says it holds
+		// nothing, the setup a start runs finds it busy. So the stop waits for that, and a start
+		// that still fails is tried again before it counts.
+		var err error
+		for try := 0; try < 5; try++ {
+			var out []byte
+			if out, err = exec.Command("systemctl", args...).CombinedOutput(); err == nil {
+				break
+			}
+			err = fmt.Errorf("systemctl %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(string(out)))
+			time.Sleep(time.Second)
+		}
+		if err != nil {
+			log, _ := exec.Command("journalctl", "-q", "-n", "5", "-o", "cat", "-u", "systemd-zram-setup@zram0.service").Output()
+			return fmt.Errorf("%w; systemd-zram-setup: %s", err, strings.TrimSpace(string(log)))
+		}
+		if !p.Zram {
+			for i := 0; i < 50 && strings.TrimSpace(readSys("/sys/block/zram0/disksize")) != "0"; i++ {
+				time.Sleep(100 * time.Millisecond)
+			}
 		}
 	}
 	_ = exec.Command("sync").Run()
@@ -253,4 +271,10 @@ func saveBench(results map[string]map[string][]float64) error {
 	}
 	p := filepath.Join(dir, "bench-"+time.Now().Format("20060102-150405")+".json")
 	return os.WriteFile(p, b, 0o644)
+}
+
+// readSys is a sysfs file's contents, or "" when it cannot be read.
+func readSys(path string) string {
+	b, _ := os.ReadFile(path)
+	return string(b)
 }

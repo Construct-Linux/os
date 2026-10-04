@@ -19,13 +19,27 @@ import (
 // tells its own copy, which it may refresh, from a theme the user put there.
 const themeStamp = ".construct-theme"
 
+// ghosttySeed is the Ghostty configuration a user starts with. The Construct themes are the
+// image's (/usr/share/ghostty/themes), and their background is the GTK view's, Orchis's
+// headerbar, so the window is one surface; on that surface the default raised toolbar's shadow
+// does not show, and raised-border gives the tab bar an edge. Balanced padding centres the grid
+// in what the cells leave over.
+const ghosttySeed = `# Written once by construct theme; it is yours to change.
+theme = light:Construct Light,dark:Construct Dark
+window-padding-x = 12
+window-padding-y = 8
+window-padding-balance = true
+gtk-toolbar-style = raised-border
+`
+
 // themeCmd copies the image's GTK themes where apps take them from: Orchis's light GTK 4 theme
 // (which carries the dark styles) into ~/.config/gtk-4.0, the only place libadwaita apps read,
 // and each Orchis variant's GTK 3 theme into ~/.themes/<name>/gtk-3.0, where GTK 3 finds a theme
 // even inside a Flatpak, whose own /usr has none of the image's and whose XDG_DATA_HOME is the
 // app's. Copies, not links: a Flatpak sees both directories (the image's read-only override) but
 // not the host's /usr, where links would point. Run at every login, it brings an updated image's
-// themes along, and leaves a directory alone once the user has put their own gtk.css there.
+// themes along, and leaves a directory alone once the user has put their own gtk.css there. It
+// also seeds Ghostty's configuration (seedGhostty).
 func themeCmd(args []string, stdout io.Writer) error {
 	fl := flag.NewFlagSet("theme", flag.ContinueOnError)
 	themes := fl.String("themes", "/usr/share/themes", "where the image's themes are")
@@ -61,7 +75,41 @@ func themeCmd(args []string, stdout io.Writer) error {
 			fmt.Fprintf(stdout, "%s holds the user's own theme: left as it is\n", c[1])
 		}
 	}
-	return nil
+	return seedGhostty(*config)
+}
+
+// seedGhostty writes ghosttySeed to <config>/ghostty/config.ghostty when Ghostty has no
+// configuration there, neither config.ghostty nor the legacy config it also reads. Ghostty reads
+// no system-wide file, so this is the only way the desktop's terminal theme reaches it; and it is
+// written once, never refreshed: from then on the file is the user's. It runs before the session,
+// ahead of Ghostty's first start, which would otherwise write a template there that sets nothing.
+func seedGhostty(config string) error {
+	dir := filepath.Join(config, "ghostty")
+	for _, name := range []string{"config", "config.ghostty"} {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err == nil || !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	// O_EXCL: a Ghostty started meanwhile wrote its own file, which is then the one to keep.
+	f, err := os.OpenFile(filepath.Join(dir, "config.ghostty"), os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if errors.Is(err, fs.ErrExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	_, err = f.WriteString(ghosttySeed)
+	if cerr := f.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		// A half-written seed would count as the user's file at the next login.
+		_ = os.Remove(f.Name())
+	}
+	return err
 }
 
 // syncTheme makes dst a copy of src, unless dst's gtk.css is not one theme wrote (absent counts as
