@@ -56,9 +56,9 @@ func TestWriteNotes(t *testing.T) {
 		Version: "20261004.1", Date: time.Date(2026, 10, 4, 0, 0, 0, 0, time.UTC),
 		Commits:  []string{"gdm: x"},
 		Packages: map[string]string{"linux": "7.2.8-r0", "gnome-shell": "51.0-r1"},
-		Grype:    &g, Ours: map[string]bool{},
-		Tests: []testRun{{Name: "test", Passed: 450, Total: 454, Failed: []string{"suspend and resume"}}},
-		DLURL: "https://dl.example",
+		Grype:    &g,
+		Tests:    []testRun{{Name: "test", Passed: 450, Total: 454, Failed: []string{"suspend and resume"}}},
+		DLURL:    "https://dl.example",
 	}
 	var b strings.Builder
 	writeNotes(&b, in)

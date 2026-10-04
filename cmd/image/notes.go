@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -31,7 +30,6 @@ type notesInput struct {
 	// Packages and PrevPackages are name => version; PrevPackages is nil for a first release.
 	Packages, PrevPackages map[string]string
 	Grype                  *grype.Report
-	Ours                   map[string]bool
 	Tests                  []testRun
 	// DLURL is where the USB sticks are (dl.<domain>).
 	DLURL string
@@ -77,9 +75,6 @@ func releaseNotes(args []string) error {
 			return fmt.Errorf("%s: %w", *grypeFile, err)
 		}
 		in.Grype = &g
-		if in.Ours, err = grype.RecipePackages("recipes"); err != nil {
-			return err
-		}
 	}
 	for _, f := range strings.Split(*tests, ",") {
 		if r, err := readTestRun(f); err == nil {
@@ -165,8 +160,6 @@ func readPackages(file string) (map[string]string, error) {
 	}
 	return pkgs, nil
 }
-
-var reportSummary = regexp.MustCompile(`(?m)^(\d+)/(\d+) passed`)
 
 // readTestRun reads a harness report.txt: its PASS and FAIL lines and its summary.
 func readTestRun(file string) (testRun, error) {
