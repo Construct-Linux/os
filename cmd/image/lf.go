@@ -507,6 +507,8 @@ func (l *lf) view(name string) {
 		l.lock(img)
 	case "installer":
 		l.installer(img)
+	case "gtk-popover-light", "gtk-tooltip-light", "gtk-dialog-light", "gtk-maximized-light", "gtk-banner-light", "gtk-destructive-light":
+		l.gtkLight(name, img)
 	default:
 		// E2: both bars' edge over every wallpaper. At another scale St's extents are not the
 		// screenshot's pixels.
@@ -1167,12 +1169,13 @@ func (l *lf) settingsLight(img image.Image) {
 	rad /= float64(l.k)
 	l.check("radius", "settings-light window", err == nil && math.Abs(rad-float64(want)) <= lfRadiusTol,
 		fmt.Sprintf("its top-left corner fits a %.2f px radius, want %d%s", rad, want, errText(err)))
-	l.lightWindow(img, r)
+	l.lightFrame("settings-light", img, r)
+	l.lightPanes(img, r)
 }
 
-// lightWindow is settingsLight's pixel probes on a light window with a sidebar at r, a stage
-// rectangle.
-func (l *lf) lightWindow(img image.Image, r lfRect) {
+// lightFrame is a light window's pixel probes at r, a stage rectangle, named for surface: the desk
+// beside it, no bright accent inside it, and the ring line outside it (S5, C2).
+func (l *lf) lightFrame(surface string, img image.Image, r lfRect) {
 	desk, muted := l.c("light-desk"), l.c("light-muted")
 	k := l.k
 	// The desk: the widest stretch of desktop beside the window, clear of its shadow and the bars.
@@ -1182,9 +1185,9 @@ func (l *lf) lightWindow(img image.Image, r lfRect) {
 	}
 	side = l.px(side)
 	ground, share := modeColor(img, side)
-	l.check("desk", "settings-light", near(ground, desk, lfSurfaceTol),
+	l.check("desk", surface, near(ground, desk, lfSurfaceTol),
 		fmt.Sprintf("the desktop %s over %.0f%% of %v, want %s", hexOf(ground), share*100, side, hexOf(desk)))
-	l.lightAccent("settings-light window", img, r)
+	l.lightAccent(surface+" window", img, r)
 	// The ring line, light.muted at its alpha over what is outside the window there - the shadow
 	// darkens the desk under it, so the nominal value holds only on a bare desk.
 	ringA := l.pal.nums["line-light-ring"]
@@ -1200,8 +1203,16 @@ func (l *lf) lightWindow(img image.Image, r lfRect) {
 			edges = append(edges, fmt.Sprintf("%s %s, want %s over %s", e.name, hexOf(got), hexOf(w), hexOf(out)))
 		}
 	}
-	l.check("ring", "settings-light window", len(edges) == 0,
+	l.check("ring", surface+" window", len(edges) == 0,
 		fmt.Sprintf("the line outside the window, light.muted at %.0f%% (%s on a bare desk): %v", ringA*100, hexOf(tint(muted, desk, ringA)), edges))
+}
+
+// lightPanes is Settings' light window with a sidebar at r: the shelf, the selected row the sheet,
+// and the headerbar's rule one line across both panes (S5, S6, C11).
+func (l *lf) lightPanes(img image.Image, r lfRect) {
+	muted := l.c("light-muted")
+	k := l.k
+	p := l.px(r)
 	// The panes: the separator is the first line down the window's left half.
 	midY := p.Y + p.H/3
 	sep, _, ok := vRule(img, p.X+60*k, p.X+p.W/2, midY, midY+p.H/6, k)
@@ -1222,6 +1233,27 @@ func (l *lf) lightWindow(img image.Image, r lfRect) {
 	l.check("rule", "settings-light headerbar", sideOK && mainOK && ys == yb && near(yc2, wantRule, lfRingTol),
 		fmt.Sprintf("sidebar's at y %d (%v, %s), content's at y %d (%v, %s); want one y, and light.muted at %.0f%% over %s, %s",
 			ys, sideOK, hexOf(yc), yb, mainOK, hexOf(yc2), borderA*100, hexOf(above), hexOf(wantRule)))
+}
+
+// gtkLight is a GTK view in the light scheme: Settings' window probes on the window it is about,
+// where they reach. A libadwaita dialog dims the window under it and a maximized one has no desk
+// or ring, so on those only no bright accent is asked; Text Editor has no sidebar, so no panes.
+func (l *lf) gtkLight(name string, img image.Image) {
+	id := "org.gnome.TextEditor.desktop"
+	if name == "gtk-destructive-light" {
+		id = "org.gnome.Nautilus.desktop"
+	}
+	r, err := l.appWindow(id)
+	if err != nil {
+		l.check("window", name, false, err.Error())
+		return
+	}
+	switch name {
+	case "gtk-popover-light", "gtk-tooltip-light", "gtk-banner-light":
+		l.lightFrame(name, img, r)
+	default:
+		l.lightAccent(name+" window", img, r)
+	}
 }
 
 // lightAccent is C2 for the accent on light, from the pixels: dark's accent reads 1.5:1 on white,

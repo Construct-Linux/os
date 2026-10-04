@@ -313,7 +313,8 @@ func test(args []string) error {
 		if err := g.fixClock(); err != nil {
 			r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
 		}
-		r.gtkViews(v, g, l)
+		r.gtkViews(v, g, l, false)
+		r.gtkViews(v, g, l, true)
 		r.shellViews(v, g, l)
 		r.desktopViews(v, g, l, sc)
 		l.guestLook()
@@ -806,19 +807,39 @@ var gtkViewAbout = map[string]struct {
 
 // gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip, a
 // dialog, a warning banner, a maximized window, and a destructive confirmation, in Text Editor and
-// Files in the dark scheme. They are screenshots for the needles; each passes when what opens it
-// worked.
-func (r *report) gtkViews(v *vm, g *guest, l *lf) {
+// Files. They are screenshots for the needles; each passes when what opens it worked. light shoots
+// them in the light scheme, named -light: only Settings exercised light's own rules (the sheet,
+// the lines inside a state, the light accent) before, and every other GTK view ran dark.
+func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	const id = "org.gnome.TextEditor.desktop"
+	suffix := ""
+	if light {
+		suffix = "-light"
+		_, _ = g.run(asLive+`gsettings set org.gnome.desktop.interface color-scheme default`, "")
+		defer func() {
+			_, _ = g.run(asLive+`gsettings set org.gnome.desktop.interface color-scheme prefer-dark`, "")
+			time.Sleep(2 * time.Second)
+		}()
+		time.Sleep(2 * time.Second)
+	}
 	if ok, detail := g.runApp(app{id, 20 * time.Second}); !ok {
-		r.add("view:gtk", false, detail)
+		r.add("view:gtk"+suffix, false, detail)
 		return
 	}
 	time.Sleep(3 * time.Second)
-	shot := func(name string) {
-		a := gtkViewAbout[name]
-		r.shotLook(v, g, viewMeta{name, groupGTK, a.about, a.rules})
-		l.view(name)
+	shot := func(base string) {
+		a := gtkViewAbout[base]
+		about, rules := a.about, a.rules
+		if light {
+			// The light window's own rules: no bright accent, and but maximized, on the desk with
+			// the ring line.
+			about, rules = "In the light scheme: "+about, slices.Concat(rules, []string{"C2"})
+			if base != "gtk-maximized" {
+				rules = append(rules, "S5")
+			}
+		}
+		r.shotLook(v, g, viewMeta{base + suffix, groupGTK, about, rules})
+		l.view(base + suffix)
 	}
 	windows := func() int {
 		n, _ := g.eval(`global.get_window_actors().length`)
@@ -828,7 +849,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	var frame struct{ X, Y, W, H int }
 	if err := g.evalJSON(fmt.Sprintf(`const w = Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0];
 		w.activate(global.get_current_time()); return lfWindow(w);`, id), &frame); err != nil {
-		r.add("view:gtk", false, err.Error())
+		r.add("view:gtk"+suffix, false, err.Error())
 		return
 	}
 	time.Sleep(time.Second)
@@ -836,7 +857,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	before := windows()
 	_ = v.key("f10")
 	time.Sleep(2 * time.Second)
-	r.add("view:gtk-popover", windows() > before, fmt.Sprintf("%d surfaces, %d before F10", windows(), before))
+	r.add("view:gtk-popover"+suffix, windows() > before, fmt.Sprintf("%d surfaces, %d before F10", windows(), before))
 	shot("gtk-popover")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
@@ -850,7 +871,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	time.Sleep(300 * time.Millisecond)
 	_ = v.pointTo(absPoint(x, y, sw, sh))
 	time.Sleep(3 * time.Second)
-	r.add("view:gtk-tooltip", windows() > before, fmt.Sprintf("%d surfaces with the pointer at (%d, %d), %d before", windows(), x, y, before))
+	r.add("view:gtk-tooltip"+suffix, windows() > before, fmt.Sprintf("%d surfaces with the pointer at (%d, %d), %d before", windows(), x, y, before))
 	shot("gtk-tooltip")
 	_ = v.pointTo(16000, 30000)
 	time.Sleep(time.Second)
@@ -858,18 +879,18 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	out, err := g.run(`b='`+asLive+`gdbus call --session --dest org.gnome.TextEditor --object-path /org/gnome/TextEditor --method org.gtk.Actions.Activate'; `+
 		`$b preferences '[]' '{}' >/dev/null 2>&1 && echo preferences || { $b about '[]' '{}' 2>&1 && echo about; }`, "")
 	time.Sleep(2 * time.Second)
-	r.add("view:gtk-dialog", err == nil && (strings.Contains(out, "preferences") || strings.Contains(out, "about")), "app action: "+oneLine(out)+errText(err))
+	r.add("view:gtk-dialog"+suffix, err == nil && (strings.Contains(out, "preferences") || strings.Contains(out, "about")), "app action: "+oneLine(out)+errText(err))
 	shot("gtk-dialog")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
 	// A window maximized: no ring, no radius, no shadow (S3).
 	if err := g.evalJSON(fmt.Sprintf(`const w = Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0]; w.maximize(); return true;`, id), new(bool)); err != nil {
-		r.add("view:gtk-maximized", false, err.Error())
+		r.add("view:gtk-maximized"+suffix, false, err.Error())
 	} else {
 		time.Sleep(2 * time.Second)
-		r.add("view:gtk-maximized", true, "Text Editor maximized")
+		r.add("view:gtk-maximized"+suffix, true, "Text Editor maximized")
 		shot("gtk-maximized")
-		l.maximized(id, "gtk-maximized")
+		l.maximized(id, "gtk-maximized"+suffix)
 		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0].unmaximize(); true`, id))
 		time.Sleep(time.Second)
 	}
@@ -884,7 +905,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 		_, err = g.run(asLive+`sh -c 'printf "two\n" >> `+changed+`'`, "")
 		time.Sleep(3 * time.Second)
 	}
-	r.add("view:gtk-banner", err == nil, "a file Text Editor has open, changed on disk"+errText(err))
+	r.add("view:gtk-banner"+suffix, err == nil, "a file Text Editor has open, changed on disk"+errText(err))
 	shot("gtk-banner")
 	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, id))
 	time.Sleep(2 * time.Second)
@@ -895,7 +916,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 		`{ $u timeout 30 gdbus call --session --dest org.gnome.Nautilus --object-path /org/gnome/Nautilus/FileOperations2 `+
 		`--method org.gnome.Nautilus.FileOperations2.EmptyTrash '{}' >/dev/null 2>&1 & } ; echo asked`, "")
 	time.Sleep(5 * time.Second)
-	r.add("view:gtk-destructive", err == nil && strings.Contains(out, "asked"), "Files' Empty Trash, confirmed first: "+oneLine(out)+errText(err))
+	r.add("view:gtk-destructive"+suffix, err == nil && strings.Contains(out, "asked"), "Files' Empty Trash, confirmed first: "+oneLine(out)+errText(err))
 	shot("gtk-destructive")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
