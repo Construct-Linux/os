@@ -58,9 +58,10 @@ const (
 	lfDayFocusRing = 0.60
 	lfTodayNoRing  = 0.20
 	// The quick toggle's disc: 24 px (THEMING's largest mark), and at least this share of its box
-	// the accent (a disc is 0.785 of its box, less the glyph).
+	// the accent: a disc is 0.785 of its box, less the glyph in on_accent and the antialiased rim
+	// (measured 0.45 on the Dark Style toggle); an icon with no disc stays under 0.1.
 	lfDiscSize  = 24
-	lfDiscShare = 0.5
+	lfDiscShare = 0.35
 	// A mark is at most 4 px of stroke or a 24 px disc (THEMING, the accent scale): a solid accent
 	// area thicker and larger than that is a primary action, and a view has at most one.
 	lfMarkStroke     = 4

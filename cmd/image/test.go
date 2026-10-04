@@ -453,10 +453,10 @@ var shellViews = []shellView{
 	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, "", 0},
 	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, "", 0},
 	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, "", 0},
-	// The first quick toggle with the key focus, once the menu is open: its focus ring, against
-	// the view above.
+	// The first quick toggle on screen with the key focus, once the menu is open: its focus ring,
+	// against the view above. Hidden toggles (no Bluetooth, no Wi-Fi) come first in the tree.
 	{"quick-settings-focus",
-		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { find(m.box, 'quick-toggle')?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
+		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle')).find(t => t.is_mapped() && t.reactive)?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
 		`Main.panel.statusArea.quickSettings.menu.close()`, "", 0},
 	// A toggle's menu expanded (the network's): a well in the menu, not a light slab.
 	{"quick-settings-submenu",
