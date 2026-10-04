@@ -14,7 +14,9 @@
 //	image secureboot-keys -dir dir -pk -kek -db  PK's, KEK's and db's certificates and variables, once
 //	image release-key -key ref -o release.pgp   the release key's OpenPGP public key, once
 //	image public-key -key ref -o pem            a key's public half
+//	image packages-list -o packages.txt         the baked root's packages, a release asset
 //	image release-version                       the next vYYYYMMDD.N, from the remote's tags (cmd/image/calver.go)
+//	image release-notes -version v -packages f  a release's notes (cmd/image/notes.go)
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
@@ -89,8 +91,12 @@ func main() {
 		err = signRelease(os.Args[2:])
 	case "public-key":
 		err = publicKey(os.Args[2:])
+	case "packages-list":
+		err = packagesList(os.Args[2:])
 	case "release-version":
 		err = releaseVersion(os.Args[2:])
+	case "release-notes":
+		err = releaseNotes(os.Args[2:])
 	case "play":
 		err = play(os.Args[2:])
 	case "check-langs":

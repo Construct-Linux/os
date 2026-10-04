@@ -137,3 +137,16 @@ func publicKey(args []string) error {
 	}
 	return os.WriteFile(*to, pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}), 0o644)
 }
+
+// packagesList writes the baked root's packages as packages.txt (writePackages): a release asset,
+// which the next release's notes compare against.
+func packagesList(args []string) error {
+	fl := flag.NewFlagSet("packages-list", flag.ExitOnError)
+	root := fl.String("root", filepath.Join(out, "usb", "root"), "the baked root")
+	to := fl.String("o", "", "packages.txt to write")
+	_ = fl.Parse(args)
+	if *to == "" {
+		return errors.New("packages-list: -o is required")
+	}
+	return writePackages(filepath.Join(*root, "usr/lib/apk/db/installed"), *to)
+}
