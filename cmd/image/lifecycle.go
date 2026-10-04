@@ -438,9 +438,15 @@ func (r *report) person(g *guest) {
 // installAsTheInstaller runs what construct-installer runs, from inside the live session (GNOME
 // Shell starts it, so polkit sees the session's process), and answers what construct printed: its
 // JSON records, then its errors.
+// sessionsScript prints each login session's user, class and whether it is the seat's active one.
+const sessionsScript = `for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do ` +
+	`echo "session $s $(loginctl show-session $s -p Name -p Class -p Active --value | tr '\n' ' ')"; done; `
+
 func (g *guest) installAsTheInstaller() (string, error) {
 	if _, err := g.waitShell(5 * time.Minute); err != nil {
-		return "", err
+		// Which session the seat shows - a greeter in front of the live one, once - and what GDM said.
+		outs, _ := g.run(sessionsScript+`journalctl -b -q -o short-monotonic --no-pager -u gdm -u construct-live -t gdm-autologin -t gnome-shell -t systemd-logind | tail -60`, "")
+		return outs, err
 	}
 	run := "/run/user/1000/install"
 	script := `printf '%s\n' '` + lifecyclePassword + `' | pkexec /usr/bin/construct install --yes --json --disk /dev/nvme0n1 ` +
@@ -465,7 +471,6 @@ func (g *guest) installAsTheInstaller() (string, error) {
 	// What it was doing when the time ran out: its progress so far, its errors, a password the
 	// session was asked for, and the journal's last words.
 	outs, _ := g.run(`tail -3 `+run+`.json; tail -5 `+run+`.err; ps -eo pid,etime,args | grep -E 'pkexec|construct install|polkit' | grep -v grep; `+
-		`for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do echo "session $s $(loginctl show-session $s -p Name --value) active=$(loginctl show-session $s -p Active --value)"; done; `+
-		`journalctl -b -q -o short-monotonic -n 25 --no-pager`, "")
+		sessionsScript+`journalctl -b -q -o short-monotonic -n 25 --no-pager`, "")
 	return outs, fmt.Errorf("construct install did not end")
 }
