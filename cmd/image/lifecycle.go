@@ -496,13 +496,13 @@ func (r *report) person(g *guest) {
 	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
 }
 
-// installAsTheInstaller runs what construct-installer runs, from inside the live session (GNOME
-// Shell starts it, so polkit sees the session's process), and answers what construct printed: its
-// JSON records, then its errors.
 // sessionsScript prints each login session's user, class and whether it is the seat's active one.
 const sessionsScript = `for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do ` +
 	`echo "session $s $(loginctl show-session $s -p Name -p Class -p Active --value | tr '\n' ' ')"; done; `
 
+// installAsTheInstaller runs what construct-installer runs, from inside the live session (GNOME
+// Shell starts it, so polkit sees the session's process), and answers what construct printed: its
+// JSON records, then its errors.
 func (g *guest) installAsTheInstaller() (string, error) {
 	if _, err := g.waitShell(5 * time.Minute); err != nil {
 		// Which session the seat shows - a greeter in front of the live one, once - and what GDM said.
