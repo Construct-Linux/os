@@ -49,7 +49,9 @@ func blendAt(img *image.NRGBA, x, y int, c color.NRGBA, a float64) {
 
 const tPalette = `{"brand-boot":"#000000","neutral-e":"#0B1116","neutral-f":"#11181E","neutral-g":"#172028",
 "neutral-h":"#1F2A33","dark-border":"#2A3843","dark-accent":"#00E5FF","dark-accent-text":"#00E5FF",
-"dark-text":"#E6EDF2","dark-muted":"#9FB3C0","light-accent":"#007A85","light-accent-text":"#00646D",
+"dark-text":"#E6EDF2","dark-muted":"#9FB3C0","dark-on-accent":"#0B1116","light-accent":"#007A85","light-accent-text":"#00646D",
+"light-on-accent":"#FFFFFF","light-text":"#11181E","light-muted":"#536672","light-desk":"#DEE4E8","light-shelf":"#E9EDF0",
+"neutral-a":"#FFFFFF","line-light-ring":0.4,"line-light-border":0.3,"ansi-dark-blue":"#5DB2F7",
 "tint-dark-rest":0.16,"shape-inset":6,"shape-radius-control":9,"shape-radius-surface":15,"shape-radius-sheet":24,
 "shape-space":[3,6,12,18,24],"type-ui":"Adwaita Sans","type-mono":"Adwaita Mono"}`
 
@@ -101,10 +103,10 @@ func TestSurfacePixels(t *testing.T) {
 		t.Errorf("mode %s over %.2f", hexOf(c), share)
 	}
 	// The extent says y 9, the ring is at 10.
-	if p, ok := edgeHit(img, 100, 9, 0, -1, lfRingReach, tRing, lfRingTol); !ok || p.Y != 10 {
+	if p, ok := ringHit(img, 100, 9, 0, -1, lfRingReach, tRing, lfRingTol); !ok || p.Y != 10 {
 		t.Errorf("top ring: %v %v", p, ok)
 	}
-	if _, ok := edgeHit(img, 100, 5, 0, -1, lfRingReach, tRing, lfRingTol); ok {
+	if _, ok := ringHit(img, 100, 5, 0, -1, lfRingReach, tRing, lfRingTol); ok {
 		t.Error("a ring 5 px away was taken for this edge's")
 	}
 	if n := countNear(img, lfRect{0, 0, 200, 60}, tRing, 0); n != 2*160+2*34 {
@@ -365,7 +367,8 @@ func TestCSSChecks(t *testing.T) {
 	}
 
 	ok, detail = cssFocus(rules, tAccent)
-	if ok || !strings.Contains(detail, "3 rules") || !strings.Contains(detail, ".quick-toggle:focus") || strings.Contains(detail, "calendar-day") ||
+	if ok || !strings.Contains(detail, "3 rules") || !strings.Contains(detail, ".quick-toggle:focus") || !strings.Contains(detail, ".calendar-day:focus") ||
+		strings.Contains(detail, "popup-menu-item") ||
 		strings.Contains(detail, "pager-button") || strings.Contains(detail, "clock-display") {
 		t.Errorf("G2: %v %s", ok, detail)
 	}
@@ -381,5 +384,152 @@ func TestCSSChecks(t *testing.T) {
 	ok, detail = cssWeights(rules)
 	if ok || !strings.Contains(detail, ".dash-label: 800") || strings.Contains(detail, "#panel") {
 		t.Errorf("G6: %v %s", ok, detail)
+	}
+}
+
+// A pill's end over the light desk: its apex pixel is the ring antialiased against the desk, a
+// blend the plain tolerance refuses; ringHit takes it, and not the desk alone.
+func TestRingHitBlend(t *testing.T) {
+	desk := color.NRGBA{0xF4, 0xF6, 0xF8, 255}
+	img := solid(20, 10, desk)
+	fill(img, lfRect{6, 0, 14, 10}, tG)
+	img.SetNRGBA(6, 5, tint(tRing, desk, 0.975))
+	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing, lfRingTol); !ok {
+		t.Errorf("the apex %s was not taken for the ring", hexOf(at(img, 6, 5)))
+	}
+	img.SetNRGBA(6, 5, tint(tRing, desk, 0.5))
+	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing, lfRingTol); ok {
+		t.Error("half a ring was taken for one")
+	}
+	if a, res := coverOf(tint(tAccent, tH, 0.18), tAccent, tH); math.Abs(a-0.18) > 0.01 || res > 1 {
+		t.Errorf("the rest tint read as %.3f, %d off", a, res)
+	}
+}
+
+// Ghostty's stock background as a surface counts; the same colour on single antialiased pixels
+// does not.
+func TestFlatCount(t *testing.T) {
+	stock := color.NRGBA{0x28, 0x2C, 0x34, 255}
+	img := solid(40, 40, tG)
+	for i := range 10 {
+		img.SetNRGBA(3+3*i, 5, stock)
+	}
+	if n := flatCount(img, lfRect{0, 0, 40, 40}, stock, lfSurfaceTol); n != 0 {
+		t.Errorf("antialiasing counted: %d", n)
+	}
+	fill(img, lfRect{10, 20, 10, 10}, stock)
+	if n := flatCount(img, lfRect{0, 0, 40, 40}, stock, lfSurfaceTol); n != 64 {
+		t.Errorf("a 10x10 surface has 64 inner pixels, counted %d", n)
+	}
+}
+
+// Marks are not areas: text-thin strokes, a 2 px ring and a 24 px disc stay marks; a solid button
+// and a 6 px bar are areas larger than a mark.
+func TestSolidAreas(t *testing.T) {
+	img := solid(400, 200, tH)
+	acc := []color.NRGBA{tAccent}
+	all := lfRect{0, 0, 400, 200}
+	fill(img, lfRect{10, 10, 200, 3}, tAccent) // a slider's fill
+	fill(img, lfRect{10, 30, 4, 60}, tAccent)  // a 4 px stroke
+	fill(img, lfRect{50, 50, 24, 24}, tAccent) // the disc's box
+	fill(img, lfRect{100, 40, 40, 2}, tAccent) // a ring's side
+	if a := solidAreas(img, all, acc, lfSweepTol); len(a) != 0 {
+		t.Errorf("marks taken for areas: %v", a)
+	}
+	fill(img, lfRect{200, 100, 120, 36}, tAccent)
+	fill(img, lfRect{20, 150, 300, 6}, tAccent)
+	a := solidAreas(img, all, acc, lfSweepTol)
+	if len(a) != 2 || a[0] != (lfRect{20, 150, 300, 6}) && a[1] != (lfRect{20, 150, 300, 6}) {
+		t.Errorf("a button and a bar: %v", a)
+	}
+	if s := accentShare(img, all, acc, lfSweepTol); s < 0.05 || s > 0.1 {
+		t.Errorf("share %.3f", s)
+	}
+	// Tela's teal in the dock is not light's accent.
+	if s := accentShare(solid(10, 10, color.NRGBA{0x00, 0x82, 0x92, 255}), lfRect{0, 0, 10, 10}, []color.NRGBA{{0x00, 0x7A, 0x85, 255}}, lfSweepTol); s != 0 {
+		t.Errorf("Tela's teal counted: %.2f", s)
+	}
+}
+
+// A line across a pane is found where it is, past text on the rows above it; a column of icons
+// is no separator, the line between two panes is.
+func TestRules(t *testing.T) {
+	shelf, c := color.NRGBA{0xE9, 0xED, 0xF0, 255}, color.NRGBA{0xF4, 0xF6, 0xF8, 255}
+	line := color.NRGBA{0xCF, 0xD5, 0xD9, 255}
+	img := solid(300, 200, c)
+	fill(img, lfRect{0, 0, 100, 200}, shelf)
+	fill(img, lfRect{100, 0, 1, 200}, line)
+	fill(img, lfRect{0, 47, 300, 1}, line)
+	fill(img, lfRect{140, 20, 60, 10}, tInk) // a title
+	for y := 60; y < 200; y += 20 {
+		fill(img, lfRect{20, y, 16, 16}, tInk) // the sidebar's icons
+	}
+	if y, col, ok := hRule(img, 110, 290, 8, 80); !ok || y != 47 || col != line {
+		t.Errorf("content's rule: %d %s %v", y, hexOf(col), ok)
+	}
+	if y, _, ok := hRule(img, 10, 90, 8, 80); !ok || y != 47 {
+		t.Errorf("sidebar's rule: %d %v", y, ok)
+	}
+	if x, _, ok := vRule(img, 10, 150, 60, 190); !ok || x != 100 {
+		t.Errorf("separator: %d %v", x, ok)
+	}
+	if _, _, ok := hRule(solid(100, 100, c), 0, 100, 8, 80); ok {
+		t.Error("a rule found on a bare pane")
+	}
+}
+
+// C1 as G3 reads it: the accent and white at an alpha over a surface, written opaque, are the
+// palette's; a mix of the accent and the error colour, or a grey, are not.
+func TestComposite(t *testing.T) {
+	p, err := parseLFPalette([]byte(tPalette))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []color.NRGBA{tint(tAccent, tH, 0.5), tint(color.NRGBA{255, 255, 255, 255}, tH, 0.06), tint(tInk, tAccent, 0.08)} {
+		if !p.composite(c) {
+			t.Errorf("%s is a composite", hexOf(c))
+		}
+	}
+	for _, c := range []color.NRGBA{{0x28, 0x28, 0x28, 255}, {0xE3, 0x59, 0x84, 255}, {0x2D, 0x46, 0x5A, 255}} {
+		if p.composite(c) {
+			t.Errorf("%s taken for a composite", hexOf(c))
+		}
+	}
+}
+
+// C8: a ring of the accent is focus's; decoration's 1 px edge on a tint and the Alt+Esc frame are
+// not rings to hold.
+func TestAccentRings(t *testing.T) {
+	css := `
+.button:focus { box-shadow: inset 0 0 0 2px #00E5FF; }
+.calendar-day:selected:focus { box-shadow: inset 0 0 0 2px #00E5FF !important; }
+.calendar-today { box-shadow: inset 0 0 0 2px #00E5FF; }
+.workspace-thumbnail-indicator { border: 2px solid #00E5FF; border-radius: 3px; }
+.tile-preview { background-color: rgba(0, 229, 255, 0.08); border: 1px solid #00E5FF; border-radius: 9px; }
+.cycler-highlight { border: 5px solid #00E5FF; }
+.slider { box-shadow: 0 2px 4px #00E5FF; }
+.quick-toggle:checked .quick-toggle-icon { background-color: #00E5FF; }
+.magnifier-zoom-region.full-screen { border-width: 0; }`
+	ok, detail := cssAccentRings(parseCSS(css), tAccent)
+	if ok || !strings.Contains(detail, ".calendar-today") || !strings.Contains(detail, ".workspace-thumbnail-indicator") ||
+		strings.Contains(detail, ".button") || strings.Contains(detail, ":selected") || strings.Contains(detail, "tile-preview") || strings.Contains(detail, "cycler") ||
+		strings.Contains(detail, ".slider") || strings.Contains(detail, "quick-toggle") || strings.Contains(detail, "magnifier") {
+		t.Errorf("C8: %v %s", ok, detail)
+	}
+}
+
+// GTK's CSS keeps most of a scheme's rules in @media blocks: they are rules of the sheet.
+func TestParseCSSMedia(t *testing.T) {
+	rules := parseCSS(`@import url("a.css");
+window { color: red; }
+@media (prefers-color-scheme: dark) {
+label.title { font-weight: 800; }
+}
+@keyframes spin { to { transform: rotate(1turn); } }`)
+	if len(rules) != 2 {
+		t.Fatalf("%d rules: %v", len(rules), rules)
+	}
+	if ok, detail := cssWeights(rules); ok || !strings.Contains(detail, "label.title: 800") {
+		t.Errorf("G6 in a @media block: %s", detail)
 	}
 }

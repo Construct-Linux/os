@@ -67,7 +67,8 @@ button-layout='appmenu:minimize,maximize,close'
 # The dock takes the shell theme's top-bar color, opaque g with a ring: dash-to-panel paints
 # itself with the theme's #panel, so it sets no background, opacity or border of its own, and
 # Orchis owns its 15 px radius. Both bars sit 6 px from the screen's edge. Its focus highlight is
-# the accent as a tint, like the quick settings: 14% over g is #143C46, the accent on it 7.74:1.
+# the accent as the brand's rest tint, like a selected item: 18% over g is #13434F, the accent on
+# it 7.02:1. Two px of margin a side: at six the icons stood about 30 px apart.
 # The session starts in the overview: neither hide-overview-on-startup here nor Just
 # Perfection's startup-status is set, because a desktop-first start fades the desktop in over
 # GNOME's startup stage instead of rising from the boot's black.
@@ -79,10 +80,10 @@ panel-anchors='{"0":"MIDDLE","1":"MIDDLE","2":"MIDDLE"}'
 panel-sizes='{"0":44,"1":44,"2":44}'
 panel-element-positions='{"0":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}],"1":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}],"2":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}]}'
 panel-top-bottom-margins=6
-appicon-margin=6
+appicon-margin=2
 global-border-radius=0
 focus-highlight-color='#00E5FF'
-focus-highlight-opacity=14
+focus-highlight-opacity=18
 highlight-appicon-hover-background-color='rgba(230,237,242,0.08)'
 highlight-appicon-pressed-background-color='rgba(230,237,242,0.14)'
 trans-use-border=false
@@ -104,3 +105,9 @@ usb-protection=false
 
 [org/gnome/shell/keybindings]
 show-screenshot-ui=['Print', 'XF86SelectiveScreenshot']
+
+# Vitals' readings at their own widths: fixed widths reserved room for the widest value each can
+# take, which spread the bar out; the bar's numbers are tabular, so a reading keeps its width as
+# it changes.
+[org/gnome/shell/extensions/vitals]
+fixed-widths=false

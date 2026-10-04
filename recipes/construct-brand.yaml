@@ -10,7 +10,7 @@
 package:
   name: construct-brand
   version: 0_git20261003
-  epoch: 1
+  epoch: 2
   description: CONSTRUCT's logo, boot animation, wallpaper and palette
   copyright:
     - license: CC-BY-SA-4.0
@@ -27,7 +27,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/brand
       branch: main
-      expected-commit: 19bf42da964a20d0aa554f2cf7fdf6af7c78b4ae
+      expected-commit: 0afea73cbbd2aa3242703b7f62b2d9e9c88e3c38
 
   - runs: |
       d=${{targets.destdir}}/usr/share
@@ -48,6 +48,8 @@ pipeline:
         mkdir -p $d/icons/hicolor/${s}x${s}/apps
         cp logos/construct-$s.png $d/icons/hicolor/${s}x${s}/apps/construct-logo.png
       done
-      cp wallpapers/construct-dark.png wallpapers/construct-light.png $d/backgrounds/construct/
+      # The default pair and its quieter variants (quiet, offset, mark): construct.xml lists them all.
+      cp wallpapers/construct*.png $d/backgrounds/construct/
+      test "$(ls $d/backgrounds/construct/*.png | wc -l)" -eq 8
       cp wallpapers/construct.xml $d/gnome-background-properties/construct.xml
       cp LICENSES/CC-BY-SA-4.0.txt LICENSES/OFL-1.1.txt $d/licenses/construct-brand/

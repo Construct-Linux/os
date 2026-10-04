@@ -275,6 +275,7 @@ func test(args []string) error {
 		// Maps its tiles. The screenshot is what a person sees a few seconds in.
 		time.Sleep(5 * time.Second)
 		r.shotLook(v, g, strings.TrimSuffix(a.id, ".desktop"))
+		l.view(strings.TrimSuffix(a.id, ".desktop"))
 		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
 		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, a.id))
 		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
@@ -289,11 +290,13 @@ func test(args []string) error {
 		ok, detail := g.runPanel(p)
 		r.add("panel:"+p, ok, detail)
 		r.shotLook(v, g, "panel-"+p)
+		l.view("panel-" + p)
 	}
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
 	if len(want) == 0 || want["views"] {
-		r.gtkViews(v, g)
+		r.gtkViews(v, g, l)
 		r.shellViews(v, g, l)
+		r.desktopViews(v, g, l)
 		l.guestLook()
 	}
 	l.finish()
@@ -433,31 +436,47 @@ func (g *guest) notifications() (bool, string) {
 // shellView is a part of the shell drawn only by the shell theme: a screenshot of each is how a
 // theme written for an older shell shows what it does not style. wake is input sent before the
 // screenshot: a locked session turns its display off at once, and only input brings it back.
-type shellView struct{ name, open, close, wake string }
+// settle is how long the view takes to be what is shot, when not shellSettle.
+type shellView struct {
+	name, open, close, wake string
+	settle                  time.Duration
+}
+
+// shellSettle is how long a view is given: menus open in under a second; a window (Settings)
+// needs a few to draw.
+const shellSettle = 4 * time.Second
 
 // shellViews ends with the lock screen: its prompt is the unlock dialog the shell's AuthPrompt
 // draws, which GNOME 51 restyled, and nothing after it in the run must find the session locked.
 var shellViews = []shellView{
-	{"overview", `Main.overview.show()`, `Main.overview.hide()`, ""},
-	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, ""},
-	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, ""},
-	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, ""},
+	{"overview", `Main.overview.show()`, `Main.overview.hide()`, "", 0},
+	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, "", 0},
+	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, "", 0},
+	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, "", 0},
 	// The first quick toggle with the key focus, once the menu is open: its focus ring, against
 	// the view above.
 	{"quick-settings-focus",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { find(m.box, 'quick-toggle')?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
-		`Main.panel.statusArea.quickSettings.menu.close()`, ""},
+		`Main.panel.statusArea.quickSettings.menu.close()`, "", 0},
 	// A toggle's menu expanded (the network's): a well in the menu, not a light slab.
 	{"quick-settings-submenu",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle-has-menu')).find(t => t.is_mapped() && t.menuEnabled)?.menu.open(true); return GLib.SOURCE_REMOVE; })`,
-		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, ""},
-	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, ""},
+		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, "", 0},
+	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, "", 0},
+	// A day that is not today with the key focus: the ring is focus's alone (F1).
+	{"calendar-focus",
+		`const m = Main.panel.statusArea.dateMenu; m.menu.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { (m._calendar._buttons ?? []).find(b => b.is_mapped() && b.reactive && !b.has_style_class_name('calendar-today') && !b.has_style_class_name('calendar-other-month'))?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
+		`Main.panel.statusArea.dateMenu.menu.close()`, "", 0},
+	// The message list dense with notifications, once their banners have gone.
+	{"notifications",
+		`[["Backup finished", "312 files were copied to the external disk; the oldest copy was removed to make room."], ["Software updates", "A new version of Construct is ready: restart to use it."], ["Disk almost full", "Only 2.1 GB is left on /var. Empty the trash or remove what you no longer need."], ["Connected", "Wired connection established."]].forEach(([t, b]) => Main.notify(t, b)); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 7000, () => { Main.panel.statusArea.dateMenu.menu.open(); return GLib.SOURCE_REMOVE; })`,
+		`Main.panel.statusArea.dateMenu.menu.close(); Main.messageTray.getSources().forEach(s => s.destroy())`, "", 10 * time.Second},
 	// libadwaita apps must follow the light/dark switch: Settings, opened in the light scheme.
 	{"settings-light",
 		`new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").activate()`,
-		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, ""},
-	{"lock-screen", `Main.screenShield.lock(false)`, ``, "pointer"},
-	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`, "key"},
+		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, "", 0},
+	{"lock-screen", `Main.screenShield.lock(false)`, ``, "pointer", 0},
+	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`, "key", 0},
 }
 
 // Each view opens and closes with lf.go's helpers at hand (find, lfAll), and its lf checks measure
@@ -466,8 +485,11 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 	for _, s := range shellViews {
 		_, err := g.eval(lfPrelude + s.open + "; true")
 		r.add("view:"+s.name, err == nil, "screenshot shell-"+s.name+".png")
-		// Menus open in under a second; a window (Settings) needs a few to draw.
-		time.Sleep(4 * time.Second)
+		settle := s.settle
+		if settle == 0 {
+			settle = shellSettle
+		}
+		time.Sleep(settle)
 		switch s.wake {
 		case "pointer":
 			_ = v.pointTo(16000, 16000)
@@ -491,6 +513,73 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 			time.Sleep(time.Second)
 		}
 	}
+}
+
+// asLive runs a command in the live user's session.
+const asLive = `sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus `
+
+// desktopViews are the desktop over each of the brand's wallpapers (E2: the bars' edge over every
+// one), the desktop at 150%, and Settings in Spanish, whose strings run longer than English's.
+func (r *report) desktopViews(v *vm, g *guest, l *lf) {
+	walls, err := g.run(`ls /usr/share/backgrounds/construct/*.png`, "")
+	if err != nil || strings.TrimSpace(walls) == "" {
+		r.add("view:desktop wallpapers", false, "no wallpaper in /usr/share/backgrounds/construct"+errText(err))
+	}
+	for _, f := range strings.Fields(walls) {
+		name := "desktop-" + strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "construct-"), ".png")
+		// Both keys, so the scheme in force shows it.
+		_, err := g.run(asLive+`gsettings set org.gnome.desktop.background picture-uri 'file://`+f+`' && `+
+			asLive+`gsettings set org.gnome.desktop.background picture-uri-dark 'file://`+f+`'`, "")
+		r.add("view:"+name, err == nil, f+errText(err))
+		time.Sleep(3 * time.Second)
+		r.shotLook(v, g, name)
+		l.view(name)
+	}
+	_, _ = g.run(asLive+`gsettings reset org.gnome.desktop.background picture-uri; `+asLive+`gsettings reset org.gnome.desktop.background picture-uri-dark`, "")
+	time.Sleep(2 * time.Second)
+
+	// 150%: mutter's native backend lays monitors out logically, so fractional scales are offered
+	// without its experimental key; gdctl takes the supported scale nearest 1.5. Temporary: it is
+	// not written to monitors.xml, and the run sets 1 back.
+	monitor := `c=$(` + asLive + `gdctl show | grep -o 'Monitor [^ ]*' | head -1 | cut -d' ' -f2) && `
+	out, err := g.run(monitor+asLive+`gdctl set --logical-monitor --primary --monitor "$c" --scale 1.5 2>&1 && `+asLive+`gdctl show 2>&1 | grep -m1 'Scale:'`, "")
+	if err != nil {
+		r.skip("view:"+lfScaledDesktop, "gdctl could not set 150%: "+oneLine(out)+errText(err))
+	} else {
+		time.Sleep(4 * time.Second)
+		r.add("view:"+lfScaledDesktop, true, oneLine(out))
+		r.shotLook(v, g, lfScaledDesktop)
+		l.view(lfScaledDesktop)
+		back, err := g.run(monitor+asLive+`gdctl set --logical-monitor --primary --monitor "$c" --scale 1 2>&1`, "")
+		r.add("view:"+lfScaledDesktop+" restored", err == nil, "scale 1 again: "+oneLine(back)+errText(err))
+		time.Sleep(3 * time.Second)
+	}
+
+	// Settings in Spanish: a process of its own, started with the language, once no instance is
+	// left for the request to go to.
+	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
+		if n, err := g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").get_windows().length`); err == nil && n == "0" {
+			break
+		}
+	}
+	if _, err := g.eval(`GLib.spawn_command_line_async("env LANGUAGE=es LANG=es_ES.UTF-8 LC_ALL=es_ES.UTF-8 gnome-control-center power")`); err != nil {
+		r.add("view:panel-power-es", false, err.Error())
+		return
+	}
+	var title string
+	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline) && title == ""; time.Sleep(time.Second) {
+		t, err := g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").get_windows()[0]?.get_title() ?? ""`)
+		if err == nil {
+			title = strings.Trim(t, `"`)
+		}
+	}
+	time.Sleep(3 * time.Second)
+	r.add("view:panel-power-es", title != "", "window "+title)
+	r.shotLook(v, g, "panel-power-es")
+	l.view("panel-power-es")
+	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
+	time.Sleep(2 * time.Second)
 }
 
 // lockScreenRoles are the panel's own indicators the lock screen shows (gnome-shell's

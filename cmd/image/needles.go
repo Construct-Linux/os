@@ -11,6 +11,7 @@ import (
 	"image/color"
 	"image/png"
 	"io/fs"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,9 +61,11 @@ var needleBarFallback = needleRect{X: 640, Y: 8, W: 634, H: 32, Why: "the top ba
 
 // needleActors is the JavaScript that measures, in the running shell, what changes from one run to
 // the next: inside the top bar, its clock and Vitals' readings, kept inside the bar's ring so the
-// ring and the bar's surface around them are compared; with the calendar open, today's date and
-// the month's days; on the lock screen, its clock. Each grows by 2 px for antialiasing. No
-// apostrophe in what it answers: gdbus would quote it otherwise, and guest.eval reads single quotes.
+// ring and the bar's surface around them are compared; with the calendar open, today's date, the
+// month's days and each notification's time; on the lock screen, its clock. Each grows by 2 px for
+// antialiasing. It answers them with the stage's width: at a fractional scale the stage is in
+// logical pixels and the screenshot in physical ones. No apostrophe in what it answers: gdbus would
+// quote it otherwise, and guest.eval reads single quotes.
 const needleActors = `
 const out = [];
 const box = a => {
@@ -95,25 +98,50 @@ add(vitals?.container ?? vitals, 'the readings of Vitals', bar);
 if (dm?.menu.isOpen) {
     add(dm._date, 'the date of today');
     add(dm._calendar, 'the days of the month');
+    const times = a => {
+        if (a.has_style_class_name?.('event-time'))
+            add(a, 'the time of a notification');
+        a.get_children().forEach(times);
+    };
+    times(dm.menu.box);
 }
 add(Main.screenShield?._dialog?._clock, 'the lock clock');
-JSON.stringify(out)`
+JSON.stringify({w: global.stage.width, actors: out})`
+
+// stageActors is what needleActors answers: the stage's width and the actors on it.
+type stageActors struct {
+	W      float64      `json:"w"`
+	Actors []needleRect `json:"actors"`
+}
 
 // measureActors is what needleActors finds on the screen now.
-func measureActors(g *guest) ([]needleRect, error) {
+func measureActors(g *guest) (stageActors, error) {
+	var seen stageActors
 	raw, err := g.eval(needleActors)
 	if err != nil {
-		return nil, err
+		return seen, err
 	}
 	var inner string
-	var rects []needleRect
 	if err := json.Unmarshal([]byte(raw), &inner); err != nil {
-		return nil, fmt.Errorf("eval answered %.80q: %w", raw, err)
+		return seen, fmt.Errorf("eval answered %.80q: %w", raw, err)
 	}
-	if err := json.Unmarshal([]byte(inner), &rects); err != nil {
-		return nil, err
+	return seen, json.Unmarshal([]byte(inner), &seen)
+}
+
+// onScreen is a stage's rectangles in a screenshot width px wide: scaled by the screenshot over
+// the stage, outward to whole pixels so a scaled rectangle still covers what it held.
+func (s stageActors) onScreen(width int) []needleRect {
+	if s.W <= 0 || width <= 0 || math.Abs(float64(width)-s.W) < 0.5 {
+		return s.Actors
 	}
-	return rects, nil
+	k := float64(width) / s.W
+	out := make([]needleRect, 0, len(s.Actors))
+	for _, r := range s.Actors {
+		x0, y0 := math.Floor(float64(r.X)*k), math.Floor(float64(r.Y)*k)
+		x1, y1 := math.Ceil(float64(r.X+r.W)*k), math.Ceil(float64(r.Y+r.H)*k)
+		out = append(out, needleRect{X: int(x0), Y: int(y0), W: int(x1 - x0), H: int(y1 - y0), Why: r.Why})
+	}
+	return out
 }
 
 // shotLook saves the screen as name.png, as shot does, and beside it name.json with where the
@@ -124,7 +152,14 @@ func (r *report) shotLook(v *vm, g *guest, name string) {
 	before, errBefore := measureActors(g)
 	r.shot(v, name)
 	after, errAfter := measureActors(g)
-	spec := needleSpec{Actors: append(before, after...)}
+	width := 0
+	if f, err := os.Open(filepath.Join(r.dir, name+".png")); err == nil {
+		if c, err := png.DecodeConfig(f); err == nil {
+			width = c.Width
+		}
+		f.Close()
+	}
+	spec := needleSpec{Actors: append(before.onScreen(width), after.onScreen(width)...)}
 	if err := errors.Join(errBefore, errAfter); err != nil {
 		spec.Actors = append(spec.Actors, needleBarFallback)
 		r.add("look: "+name+" actors", false, "the clock and Vitals could not be measured: "+oneLine(err.Error()))

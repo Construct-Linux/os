@@ -96,3 +96,17 @@ func TestCompareNeedle(t *testing.T) {
 		t.Error("a different size: no error")
 	}
 }
+
+// At 150% the stage is logical and the screenshot physical: the actors' rectangles grow outward
+// to whole pixels, and at 1 they are as measured.
+func TestStageActorsOnScreen(t *testing.T) {
+	s := stageActors{W: 853, Actors: []needleRect{{X: 10, Y: 5, W: 21, H: 11, Why: "the clock"}}}
+	got := s.onScreen(1280)
+	if len(got) != 1 || got[0].Why != "the clock" || got[0].X != 15 || got[0].Y != 7 || got[0].X+got[0].W < 47 || got[0].Y+got[0].H < 24 {
+		t.Errorf("scaled: %+v", got)
+	}
+	s.W = 1280
+	if got := s.onScreen(1280); got[0] != s.Actors[0] {
+		t.Errorf("unscaled: %+v", got)
+	}
+}

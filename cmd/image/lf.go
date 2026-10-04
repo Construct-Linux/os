@@ -32,6 +32,9 @@ const (
 	lfRingTol = 3
 	// How far either side of an extent's edge the ring is looked for.
 	lfRingReach = 2
+	// A 1 px ring on a curve's apex is antialiased against what is outside it: it still covers at
+	// least this much of its pixel (the top bar's end over the light desk: 0.975). Less is no ring.
+	lfRingCover = 0.85
 	// Text and tinted fills, against their tokens: glyph hinting and alpha rounding.
 	lfTextTol = 4
 	// The accent, counted: what is within this of it on every channel reads as the accent, the
@@ -50,8 +53,29 @@ const (
 	// tinted, only the text and the marks are the accent.
 	lfAccentQuickSettings = 2500
 	lfAccentCalendar      = 450
-	// Today's ring: at least this share of its outline is the accent.
-	lfTodayRing = 0.60
+	// A focused day's ring: at least this share of its outline is the accent. Today draws none:
+	// under this share, which a bold accent number crossing the outline stays well below.
+	lfDayFocusRing = 0.60
+	lfTodayNoRing  = 0.20
+	// The quick toggle's disc: 24 px (THEMING's largest mark), and at least this share of its box
+	// the accent (a disc is 0.785 of its box, less the glyph).
+	lfDiscSize  = 24
+	lfDiscShare = 0.5
+	// A mark is at most 4 px of stroke or a 24 px disc (THEMING, the accent scale): a solid accent
+	// area thicker and larger than that is a primary action, and a view has at most one.
+	lfMarkStroke     = 4
+	lfMarkDisc       = 24
+	lfAccentAreasMax = 1
+	// The accent as the sweep counts it: a fill of it is drawn exact, and Tela's teal in the dock's
+	// icons (#008292, 13 off light's accent) is imagery, not the accent.
+	lfSweepTol = 4
+	// The full accent's share of a view's pixels: tinted toggles and today keep every view under
+	// it (round 2's sweep: solid toggles were 1.29% of quick settings, Clocks 1.12%, Users 0.95%).
+	lfAccentShareMax = 0.009
+	// The top bar's buttons: the spacing scale's step either side (Orchis eb033362).
+	lfPanelHPadding = 6
+	// A line across a pane covers this much of its row (or column); text and icons never do.
+	lfRuleShare = 0.9
 	// The focus ring's A/B: of the pixels focus changed, at least this share are the accent, and
 	// at least this many changed at all (a 2 px ring around a toggle is ~800).
 	lfFocusAccentShare = 0.5
@@ -79,9 +103,11 @@ type lfPalette struct {
 
 // The tokens the checks read: a palette without one fails at once, rather than as black.
 var (
-	lfColorTokens = []string{"brand-boot", "neutral-e", "neutral-f", "neutral-g", "neutral-h", "dark-border",
-		"dark-accent", "dark-accent-text", "dark-text", "dark-muted", "light-accent", "light-accent-text"}
-	lfNumTokens = []string{"tint-dark-rest", "shape-inset", "shape-radius-control", "shape-radius-surface", "shape-radius-sheet"}
+	lfColorTokens = []string{"brand-boot", "neutral-a", "neutral-e", "neutral-f", "neutral-g", "neutral-h", "dark-border",
+		"dark-accent", "dark-accent-text", "dark-text", "dark-muted", "dark-on-accent", "light-accent", "light-accent-text",
+		"light-on-accent", "light-text", "light-muted", "light-desk", "light-shelf"}
+	lfNumTokens = []string{"tint-dark-rest", "line-light-ring", "line-light-border", "shape-inset", "shape-radius-control",
+		"shape-radius-surface", "shape-radius-sheet"}
 	lfStrTokens = []string{"type-ui", "type-mono"}
 )
 
@@ -132,6 +158,39 @@ func (p lfPalette) has(c color.NRGBA) bool {
 	for _, v := range p.colors {
 		if v.R == c.R && v.G == c.G && v.B == c.B {
 			return true
+		}
+	}
+	return false
+}
+
+// lfInks are what C1 lets a theme write at an alpha over a palette colour: white, black and the
+// accent, and on_accent over the accent (the solid primary's hover and active).
+var lfInks = []string{"dark-accent", "light-accent", "dark-on-accent", "light-on-accent"}
+
+// composite is whether an opaque c is one of lfInks, white or black at some alpha over a palette
+// colour, to a channel of rounding: what a theme writes where St cannot stack two backgrounds.
+// The terminal's colours are no ground for it, and a grey is never one: the palette's surfaces
+// carry the ink's hue, and a grey of its own is what no state is.
+func (p lfPalette) composite(c color.NRGBA) bool {
+	inks := []color.NRGBA{{0, 0, 0, 255}, {255, 255, 255, 255}}
+	for _, k := range lfInks {
+		inks = append(inks, p.colors[k])
+	}
+	grey := func(c color.NRGBA) bool { return c.R == c.G && c.G == c.B }
+	if grey(c) {
+		return false
+	}
+	for k, ground := range p.colors {
+		if strings.HasPrefix(k, "ansi-") || strings.HasPrefix(k, "term-") {
+			continue
+		}
+		for _, ink := range inks {
+			if grey(ink) && grey(ground) {
+				continue
+			}
+			if a, res := coverOf(c, ink, ground); a > 0 && res <= 1 {
+				return true
+			}
 		}
 	}
 	return false
@@ -216,14 +275,39 @@ func countNear(img image.Image, r lfRect, want color.NRGBA, tol int) int {
 	return n
 }
 
-// edgeHit looks for want at (x, y) and up to reach px either way along the normal (nx, ny): a 1 px
-// ring lands a pixel to either side of an extent rounded from a fractional allocation.
-func edgeHit(img image.Image, x, y, nx, ny, reach int, want color.NRGBA, tol int) (image.Point, bool) {
+// coverOf reads c as fg drawn over bg: the alpha that blend would have (0 to 1), and how far c
+// is from it, in a channel. An antialiased ring's pixel is the ring over what is outside it.
+func coverOf(c, fg, bg color.NRGBA) (float64, int) {
+	dr, dg, db := float64(fg.R)-float64(bg.R), float64(fg.G)-float64(bg.G), float64(fg.B)-float64(bg.B)
+	den := dr*dr + dg*dg + db*db
+	if den == 0 {
+		return 1, channelDelta(c, fg)
+	}
+	a := ((float64(c.R)-float64(bg.R))*dr + (float64(c.G)-float64(bg.G))*dg + (float64(c.B)-float64(bg.B))*db) / den
+	a = min(max(a, 0), 1)
+	return a, channelDelta(c, tint(fg, bg, a))
+}
+
+// ringHit looks for a 1 px ring at (x, y) and up to reach px either way along the normal (nx, ny):
+// a ring lands a pixel to either side of an extent rounded from a fractional allocation. A pixel is
+// the ring when it is within tol of it, or the ring antialiased over the pixel just outside it,
+// covering at least lfRingCover of it.
+func ringHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA, tol int) (image.Point, bool) {
 	for k := 0; k <= reach; k++ {
 		for _, s := range []int{k, -k} {
 			p := image.Pt(x+s*nx, y+s*ny)
-			if p.In(img.Bounds()) && near(at(img, p.X, p.Y), want, tol) {
+			o := image.Pt(p.X+nx, p.Y+ny)
+			if !p.In(img.Bounds()) {
+				continue
+			}
+			c := at(img, p.X, p.Y)
+			if near(c, ring, tol) {
 				return p, true
+			}
+			if o.In(img.Bounds()) {
+				if a, res := coverOf(c, ring, at(img, o.X, o.Y)); a >= lfRingCover && res <= tol {
+					return p, true
+				}
 			}
 			if k == 0 {
 				break
@@ -231,6 +315,145 @@ func edgeHit(img image.Image, x, y, nx, ny, reach int, want color.NRGBA, tol int
 		}
 	}
 	return image.Point{}, false
+}
+
+// flatCount is how many of r's pixels are within tol of want with their four neighbours too: a
+// surface of that colour, not the antialiasing of an edge that passes through it.
+func flatCount(img image.Image, r lfRect, want color.NRGBA, tol int) int {
+	b := r.image().Intersect(img.Bounds())
+	n := 0
+	for y := b.Min.Y + 1; y < b.Max.Y-1; y++ {
+		for x := b.Min.X + 1; x < b.Max.X-1; x++ {
+			if near(at(img, x, y), want, tol) && near(at(img, x-1, y), want, tol) && near(at(img, x+1, y), want, tol) &&
+				near(at(img, x, y-1), want, tol) && near(at(img, x, y+1), want, tol) {
+				n++
+			}
+		}
+	}
+	return n
+}
+
+// accentMask is which of r's pixels are within tol of any of cols, row by row.
+func accentMask(img image.Image, r lfRect, cols []color.NRGBA, tol int) ([]bool, image.Rectangle) {
+	b := r.image().Intersect(img.Bounds())
+	m := make([]bool, b.Dx()*b.Dy())
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			c := at(img, x, y)
+			for _, w := range cols {
+				if near(c, w, tol) {
+					m[(y-b.Min.Y)*b.Dx()+x-b.Min.X] = true
+					break
+				}
+			}
+		}
+	}
+	return m, b
+}
+
+// accentShare is the share of r's pixels within tol of any of cols.
+func accentShare(img image.Image, r lfRect, cols []color.NRGBA, tol int) float64 {
+	m, b := accentMask(img, r, cols, tol)
+	if len(m) == 0 {
+		return 0
+	}
+	n := 0
+	for _, v := range m {
+		if v {
+			n++
+		}
+	}
+	return float64(n) / float64(b.Dx()*b.Dy())
+}
+
+// solidAreas are r's areas of cols larger than a mark: what is left of them once every stroke up
+// to lfMarkStroke px is eroded away (a square of side lfMarkStroke+1 must fit), grown back, and
+// wider or taller than lfMarkDisc. Text, rings, a slider's fill and the quick toggle's disc are
+// marks; a solid button or a filled toggle is an area.
+func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, tol int) []lfRect {
+	m, b := accentMask(img, r, cols, tol)
+	w, h := b.Dx(), b.Dy()
+	k := lfMarkStroke/2 + 1
+	// Erosion by a square, as a horizontal run and then a vertical one.
+	erode := func(src []bool, dx, dy int) []bool {
+		out := make([]bool, len(src))
+		for y := range h {
+			for x := range w {
+				ok := true
+				for s := -k + 1; s < k && ok; s++ {
+					xx, yy := x+s*dx, y+s*dy
+					ok = xx >= 0 && yy >= 0 && xx < w && yy < h && src[yy*w+xx]
+				}
+				out[y*w+x] = ok
+			}
+		}
+		return out
+	}
+	core := erode(erode(m, 1, 0), 0, 1)
+	seen := make([]bool, len(core))
+	var out []lfRect
+	var stack []int
+	for i, v := range core {
+		if !v || seen[i] {
+			continue
+		}
+		box := image.Rect(i%w, i/w, i%w+1, i/w+1)
+		seen[i] = true
+		stack = append(stack[:0], i)
+		for len(stack) > 0 {
+			j := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			x, y := j%w, j/w
+			box = box.Union(image.Rect(x, y, x+1, y+1))
+			for dy := -1; dy <= 1; dy++ {
+				for dx := -1; dx <= 1; dx++ {
+					xx, yy := x+dx, y+dy
+					if xx < 0 || yy < 0 || xx >= w || yy >= h || seen[yy*w+xx] || !core[yy*w+xx] {
+						continue
+					}
+					seen[yy*w+xx] = true
+					stack = append(stack, yy*w+xx)
+				}
+			}
+		}
+		// Grown back by what erosion took from each side.
+		box = box.Inset(-(k - 1))
+		if box.Dx() > lfMarkDisc || box.Dy() > lfMarkDisc {
+			out = append(out, lfRect{b.Min.X + box.Min.X, b.Min.Y + box.Min.Y, box.Dx(), box.Dy()})
+		}
+	}
+	return out
+}
+
+// hRule finds a horizontal 1 px line in the columns x0 to x1, from y0 down to y1: the first row
+// whose most common colour covers at least lfRuleShare of it and differs, beyond lfSurfaceTol, from
+// the most common colour of the row above. A line of text never covers a row; a gradient's step
+// is within the tolerance.
+func hRule(img image.Image, x0, x1, y0, y1 int) (int, color.NRGBA, bool) {
+	prev, _ := modeColor(img, lfRect{x0, y0 - 1, x1 - x0, 1})
+	for y := y0; y < y1; y++ {
+		c, share := modeColor(img, lfRect{x0, y, x1 - x0, 1})
+		if share >= lfRuleShare && channelDelta(c, prev) > lfSurfaceTol {
+			return y, c, true
+		}
+		prev = c
+	}
+	return 0, color.NRGBA{}, false
+}
+
+// vRule is hRule across: the first column from x0 to x1, in the rows y0 to y1, that is a line
+// different from the columns on both sides of it.
+func vRule(img image.Image, x0, x1, y0, y1 int) (int, color.NRGBA, bool) {
+	col := func(x int) (color.NRGBA, float64) { return modeColor(img, lfRect{x, y0, 1, y1 - y0}) }
+	for x := x0; x < x1; x++ {
+		c, share := col(x)
+		l, _ := col(x - 1)
+		r, _ := col(x + 1)
+		if share >= lfRuleShare && channelDelta(c, l) > lfSurfaceTol && channelDelta(c, r) > lfSurfaceTol {
+			return x, c, true
+		}
+	}
+	return 0, color.NRGBA{}, false
 }
 
 // luminance is WCAG 2.2's relative luminance.
@@ -558,7 +781,9 @@ function look(a) {
     for (let p = a; p; p = p.get_parent()) {
         opacity *= p.opacity / 255;
         if (p instanceof St.Widget && p.get_stage()) {
-            if (p.has_style_pseudo_class('insensitive'))
+            // St gives every widget that is not reactive :insensitive (st_widget_constructed), labels
+            // and boxes included: only a control that cannot be used is disabled.
+            if (p.has_style_pseudo_class('insensitive') && (p instanceof St.Button || p.track_hover))
                 insensitive = true;
             chain.unshift(lfHex(p.get_theme_node().get_background_color()));
         }
@@ -720,6 +945,7 @@ func (l *lf) view(name string) {
 	if !ok {
 		return
 	}
+	l.sweep(name, img)
 	switch name {
 	case "desktop":
 		l.bars(name, img, true)
@@ -736,6 +962,8 @@ func (l *lf) view(name string) {
 		l.submenu(img)
 	case "shell-calendar":
 		l.calendar(img)
+	case "shell-calendar-focus":
+		l.dayFocus(img)
 	case "shell-overview":
 		l.overview(img)
 	case "shell-overview-search":
@@ -746,7 +974,34 @@ func (l *lf) view(name string) {
 		l.lock(img)
 	case "installer":
 		l.installer(img)
+	default:
+		// E2: both bars' edge over every wallpaper. At another scale St's extents are not the
+		// screenshot's pixels.
+		if strings.HasPrefix(name, "desktop-") && name != lfScaledDesktop {
+			l.bars(name, img, false)
+		}
 	}
+}
+
+// lfScaledDesktop is the desktop at 150%, whose screenshot is in physical pixels and St's extents
+// in logical ones: its needle is its check.
+const lfScaledDesktop = "desktop-scale-150"
+
+// sweep is C3 on any view: at most one solid accent area larger than a mark (the one primary
+// action), and the full accent - dark's and light's - no more than lfAccentShareMax of it.
+func (l *lf) sweep(name string, img image.Image) {
+	cols := []color.NRGBA{l.c("dark-accent"), l.c("light-accent")}
+	all := lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}
+	areas := solidAreas(img, all, cols, lfSweepTol)
+	var where []string
+	for _, a := range areas {
+		where = append(where, a.String())
+	}
+	l.check("accent areas", name, len(areas) <= lfAccentAreasMax,
+		fmt.Sprintf("%d solid accent areas larger than a mark, want <= %d: %v", len(areas), lfAccentAreasMax, where))
+	share := accentShare(img, all, cols, lfSweepTol)
+	l.check("accent share", name, share <= lfAccentShareMax,
+		fmt.Sprintf("%.2f%% of the view the full accent, want <= %.1f%%", share*100, lfAccentShareMax*100))
 }
 
 // surfaceCheck is S1-S3 for one surface: St's background is want and opaque, the pixels inside its
@@ -786,7 +1041,7 @@ func (l *lf) surfaceCheck(name string, a *lfLook, img image.Image, want color.NR
 	}
 	var missed, weak []string
 	for _, e := range edges {
-		p, hit := edgeHit(img, e.x, e.y, e.nx, e.ny, lfRingReach, ring, lfRingTol)
+		p, hit := ringHit(img, e.x, e.y, e.nx, e.ny, lfRingReach, ring, lfRingTol)
 		if !hit {
 			missed = append(missed, fmt.Sprintf("%s %s", e.name, hexOf(at(img, e.x, e.y))))
 			continue
@@ -840,6 +1095,7 @@ func (l *lf) bars(view string, img image.Image, desktop bool) {
 	var s struct {
 		Panel, Dock, Menu, Banner *lfLook
 		Labels                    []*lfLook
+		Pads                      []float64
 	}
 	err := l.g.evalJSON(`
 		const menu = Object.values(Main.panel.statusArea).map(i => i.menu?.box).find(b => b instanceof St.Widget &&
@@ -849,7 +1105,10 @@ func (l *lf) bars(view string, img image.Image, desktop bool) {
 		Main.uiGroup.add_child(banner);
 		const b = look(banner);
 		banner.destroy();
-		return {panel: look(Main.panel), dock: look(lfDock()), menu: look(menu), banner: b, labels: lfLabels(Main.panel)};`, &s)
+		// The clock's button has no padding of its own: its label carries it.
+		const pads = lfAll(Main.panel, lfClass('panel-button')).filter(a => a.is_mapped() && !a.has_style_class_name('clock-display'))
+			.map(a => a.get_theme_node().get_length('-natural-hpadding'));
+		return {panel: look(Main.panel), dock: look(lfDock()), menu: look(menu), banner: b, labels: lfLabels(Main.panel), pads};`, &s)
 	if err != nil {
 		l.check("bars", view, false, err.Error())
 		return
@@ -873,6 +1132,14 @@ func (l *lf) bars(view string, img image.Image, desktop bool) {
 	gap := img.Bounds().Dy() - (s.Dock.Y + s.Dock.H)
 	l.check("spacing", "bars", s.Panel.Y == inset && abs(gap-inset) <= 1 && s.Panel.H == lfBarHeight,
 		fmt.Sprintf("top bar at y %d, %d px high; dock %d px off the bottom; want %d, %d and %d", s.Panel.Y, s.Panel.H, gap, inset, lfBarHeight, inset))
+	var offPad []float64
+	for _, p := range s.Pads {
+		if math.Abs(p-lfPanelHPadding) > 0.5 {
+			offPad = append(offPad, p)
+		}
+	}
+	l.check("spacing", "top bar buttons", len(s.Pads) > 0 && len(offPad) == 0,
+		fmt.Sprintf("%d buttons; -natural-hpadding not %d px: %v", len(s.Pads), lfPanelHPadding, offPad))
 	family := l.pal.strs["type-ui"]
 	var off []string
 	for _, t := range s.Labels {
@@ -914,6 +1181,7 @@ type quickToggle struct {
 	Checked  bool    `json:"checked"`
 	Title    *lfLook `json:"title"`
 	Subtitle *lfLook `json:"subtitle"`
+	Icon     *lfLook `json:"icon"`
 }
 
 const lfQuickSettings = `const m = Main.panel.statusArea.quickSettings.menu;`
@@ -926,7 +1194,8 @@ func (l *lf) quickSettings(img image.Image) {
 	}
 	if err := l.g.evalJSON(lfQuickSettings+`
 		const toggles = lfAll(m.box, lfClass('quick-toggle')).filter(a => a.is_mapped()).map(a => ({
-			look: look(a), checked: a.checked, title: look(a._title), subtitle: a._subtitle?.visible ? look(a._subtitle) : null}));
+			look: look(a), checked: a.checked, title: look(a._title), subtitle: a._subtitle?.visible ? look(a._subtitle) : null,
+			icon: look(find(a, 'quick-toggle-icon'))}));
 		return {box: look(m.box), toggles, labels: lfLabels(m.box)};`, &s); err != nil {
 		l.check("quick settings", "eval", false, err.Error())
 		return
@@ -942,11 +1211,14 @@ func (l *lf) quickSettings(img image.Image) {
 	fill := tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
 	ground := l.c("neutral-e")
 	var on, off int
-	var bad []string
+	var bad, discs []string
+	minH, maxH := math.MaxInt, 0
 	for _, t := range s.Toggles {
 		if t.Look == nil || t.Title == nil {
 			continue
 		}
+		minH, maxH = min(minH, t.Look.H), max(maxH, t.Look.H)
+		discs = append(discs, l.disc(img, t)...)
 		if t.Checked {
 			on++
 			mode, _ := modeColor(img, t.Look.rect().inset(4, 4))
@@ -970,7 +1242,38 @@ func (l *lf) quickSettings(img image.Image) {
 		}
 	}
 	l.check("toggles", "quick settings", on > 0 && off > 0 && len(bad) == 0, fmt.Sprintf("%d on, %d off: %v", on, off, bad))
+	// The disc must not grow the toggle it sits in: every toggle is one height, on or off.
+	l.check("disc", "quick toggles", on > 0 && len(discs) == 0 && maxH-minH <= 1,
+		fmt.Sprintf("%d on; heights %d to %d px; %v", on, minH, maxH, discs))
 	l.labelsCheck("quick settings", s.Labels)
+}
+
+// disc is what is wrong with a quick toggle's icon: on, it sits on a 24 px accent disc, drawn;
+// off, on nothing.
+func (l *lf) disc(img image.Image, t quickToggle) []string {
+	if t.Icon == nil || t.Icon.W == 0 {
+		return []string{fmt.Sprintf("%q has no icon", t.Title.Text)}
+	}
+	bg, _ := parseHex(t.Icon.BG)
+	accent := l.c("dark-accent")
+	if !t.Checked {
+		if bg.A != 0 {
+			return []string{fmt.Sprintf("%q off has an icon ground %s", t.Title.Text, t.Icon.BG)}
+		}
+		return nil
+	}
+	var bad []string
+	if bg != (color.NRGBA{accent.R, accent.G, accent.B, 255}) {
+		bad = append(bad, fmt.Sprintf("%q on: icon ground %s, not %s", t.Title.Text, t.Icon.BG, hexOf(accent)))
+	}
+	if abs(t.Icon.W-lfDiscSize) > 1 || abs(t.Icon.H-lfDiscSize) > 1 || maxRadius(t.Icon)*2 < t.Icon.H {
+		bad = append(bad, fmt.Sprintf("%q on: icon %dx%d radius %v, not a %d px disc", t.Title.Text, t.Icon.W, t.Icon.H, t.Icon.Radius, lfDiscSize))
+	}
+	r := t.Icon.rect()
+	if share := float64(countNear(img, r, accent, lfAccentTol)) / float64(max(1, r.W*r.H)); share < lfDiscShare {
+		bad = append(bad, fmt.Sprintf("%q on: %.0f%% of its icon drawn the accent, want >= %.0f%%", t.Title.Text, share*100, lfDiscShare*100))
+	}
+	return bad
 }
 
 // focus is S8: the first quick toggle, given the key focus, shows the accent's inset ring, and the
@@ -1011,33 +1314,57 @@ func (l *lf) focus(img image.Image) {
 			changed, r, share*100, lfFocusMinChanged, lfFocusAccentShare*100))
 }
 
-// submenu is the expanded submenu: a g well in the h menu, with no light slab in it.
+// submenu is the expanded submenu: a g well in the h menu, with no light slab in it. A toggle's
+// menu is not under the menu's box: QuickSettingsMenu lays them in an overlay of its own.
 func (l *lf) submenu(img image.Image) {
-	var s struct {
-		Box  *lfLook
-		Open bool
-	}
+	var s struct{ Box, Well *lfLook }
 	if err := l.g.evalJSON(lfQuickSettings+`
-		return {box: look(m.box), open: find(m.box, 'quick-toggle-menu') !== null};`, &s); err != nil || s.Box == nil {
+		const t = lfAll(m.box, lfClass('quick-toggle-has-menu')).find(t => t.menu?.isOpen);
+		return {box: look(m.box), well: look(t?.menu.box ?? null)};`, &s); err != nil || s.Box == nil {
 		l.check("submenu", "quick settings", false, fmt.Sprintf("no quick settings box%s", errText(err)))
 		return
 	}
+	if s.Well == nil || !s.Well.Mapped || s.Well.W == 0 {
+		l.check("submenu", "quick settings", false, "no toggle's menu is open")
+		return
+	}
+	g := l.c("neutral-g")
+	bg, _ := parseHex(s.Well.BG)
+	rad := maxRadius(s.Well)
+	mode, share := modeColor(img, s.Well.rect().inset(max(rad, 3), max(rad/2, 3)))
 	area := lightSlab(img, s.Box.rect(), lfSlabLightness)
-	l.check("submenu", "quick settings", s.Open && area <= lfSlabMaxArea,
-		fmt.Sprintf("a submenu open: %v; largest area lighter than %.0f%%: %d px, want <= %d", s.Open, lfSlabLightness*100, area, lfSlabMaxArea))
+	l.check("submenu", "quick settings", bg == color.NRGBA{g.R, g.G, g.B, 255} && near(mode, g, lfSurfaceTol) && area <= lfSlabMaxArea,
+		fmt.Sprintf("well St %s, drawn %s over %.0f%% (want %s); largest area lighter than %.0f%%: %d px, want <= %d",
+			s.Well.BG, hexOf(mode), share*100, hexOf(g), lfSlabLightness*100, area, lfSlabMaxArea))
 }
+
+// calendarDay is a day of the month's grid as the checks see it.
+type calendarDay struct {
+	Look    *lfLook `json:"look"`
+	Today   bool    `json:"today"`
+	Other   bool    `json:"other"`
+	Weekend bool    `json:"weekend"`
+	Label   string  `json:"label"`
+}
+
+// lfDays are the date menu's day buttons, each with what calendar.js marks it.
+const lfDays = `const dm = Main.panel.statusArea.dateMenu;
+	const days = (dm._calendar._buttons ?? []).filter(b => b.is_mapped() && b.has_style_class_name('calendar-day'));`
 
 func (l *lf) calendar(img image.Image) {
 	var s struct {
-		Box, Today, Day *lfLook
-		Selected        bool
+		Box, Heading    *lfLook
+		Selected, Focus bool
+		Days            []calendarDay
 		Labels          []*lfLook
 	}
-	if err := l.g.evalJSON(`
-		const dm = Main.panel.statusArea.dateMenu;
-		const today = (dm._calendar._buttons ?? []).find(b => b.has_style_class_name('calendar-today'));
-		return {box: look(dm.menu.box), today: look(today), selected: today?.has_style_pseudo_class('selected') ?? false,
-			day: look(dm._date?._dayLabel), labels: lfLabels(dm.menu.box)};`, &s); err != nil {
+	if err := l.g.evalJSON(lfDays+`
+		const today = days.find(b => b.has_style_class_name('calendar-today'));
+		return {box: look(dm.menu.box), selected: today?.has_style_pseudo_class('selected') ?? false,
+			focus: today !== undefined && global.stage.key_focus === today, heading: look(dm._date?._dayLabel),
+			days: days.map(b => ({look: look(b), today: b === today, other: b.has_style_class_name('calendar-other-month'),
+				weekend: b.has_style_class_name('calendar-weekend'), label: b.label ?? ''})),
+			labels: lfLabels(dm.menu.box)};`, &s); err != nil {
 		l.check("calendar", "eval", false, err.Error())
 		return
 	}
@@ -1049,30 +1376,101 @@ func (l *lf) calendar(img image.Image) {
 	}
 	n := countNear(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
 	l.check("accent", "calendar", n < lfAccentCalendar, fmt.Sprintf("%d px of the accent, want under %d", n, lfAccentCalendar))
-	if s.Today == nil || s.Today.W == 0 {
-		l.check("today", "calendar", false, "no day styled calendar-today")
-	} else {
-		// The ring is 2 px inside the edge; the number is in the middle. The menu opens on today, so
-		// it is the selected day too, which takes the accent's resting tint inside the ring.
-		mode, _ := modeColor(img, s.Today.rect().inset(4, 4))
-		centre := h
-		if s.Selected {
-			centre = tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
+	l.today(img, s.Days, s.Selected, s.Focus)
+	// F1 and Orchis eb033362: every day of the month is text, weekends too; only the other months'
+	// days are muted, so the month's edge reads.
+	ground := l.c("neutral-e")
+	var off []string
+	month := 0
+	for _, d := range s.Days {
+		if d.Look == nil || d.Today {
+			continue
 		}
-		share := ringShare(img, s.Today.rect(), 1, l.c("dark-accent"), lfRingAccentTol)
-		l.check("today", "calendar", near(mode, centre, lfTextTol) && share >= lfTodayRing,
-			fmt.Sprintf("centre %s, want %s (selected: %v); %.0f%% of its ring the accent, want >= %.0f%%", hexOf(mode), hexOf(centre), s.Selected, share*100, lfTodayRing*100))
+		want := l.c("dark-text")
+		if d.Other {
+			want = l.c("dark-muted")
+		} else {
+			month++
+		}
+		if c := d.Look.ink(ground); !near(c, want, lfTextTol) {
+			off = append(off, fmt.Sprintf("%q (other month %v, weekend %v) %s, want %s", d.Label, d.Other, d.Weekend, hexOf(c), hexOf(want)))
+		}
 	}
-	if s.Day == nil {
-		l.check("text", "calendar day", false, "no day label")
+	l.check("text", "calendar days", month > 0 && len(off) == 0, fmt.Sprintf("%d days of the month; off: %v", month, off))
+	// The menu's title, today's weekday: primary text, as the date under it.
+	if s.Heading == nil {
+		l.check("text", "calendar heading", false, "no day label")
 	} else {
-		c := s.Day.ink(l.c("neutral-e"))
-		l.check("text", "calendar day", near(c, l.c("dark-text"), lfTextTol), fmt.Sprintf("%s, want %s", hexOf(c), hexOf(l.c("dark-text"))))
+		c := s.Heading.ink(ground)
+		l.check("text", "calendar heading", near(c, l.c("dark-text"), lfTextTol), fmt.Sprintf("%q %s, want %s", s.Heading.Text, hexOf(c), hexOf(l.c("dark-text"))))
 	}
 	l.labelsCheck("calendar", s.Labels)
 	if q, ok := l.menuY["quick settings"]; ok && s.Box != nil {
 		l.check("spacing", "menus", abs(q-s.Box.Y) <= 1, fmt.Sprintf("quick settings at y %d, the calendar at %d", q, s.Box.Y))
 	}
+}
+
+// today is F1's today: accent_text at 700 with no ring and no box-shadow, unless it has the key
+// focus; the menu opens on it, so it is the selected day too, the rest tint inside.
+func (l *lf) today(img image.Image, days []calendarDay, selected, focus bool) {
+	var t *lfLook
+	for _, d := range days {
+		if d.Today {
+			t = d.Look
+		}
+	}
+	if t == nil || t.W == 0 {
+		l.check("today", "calendar", false, "no day styled calendar-today")
+		return
+	}
+	h := l.c("neutral-h")
+	centre := h
+	if selected {
+		centre = tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
+	}
+	mode, _ := modeColor(img, t.rect().inset(4, 4))
+	share := ringShare(img, t.rect(), 1, l.c("dark-accent"), lfRingAccentTol)
+	fg, _ := parseHex(t.FG)
+	accent := l.c("dark-accent-text")
+	shadow := t.Shadow != nil && !strings.HasSuffix(t.Shadow.Color, "00")
+	ok := near(mode, centre, lfTextTol) && t.Weight == 700 && fg == color.NRGBA{accent.R, accent.G, accent.B, 255}
+	if !focus {
+		ok = ok && !shadow && share < lfTodayNoRing
+	}
+	l.check("today", "calendar", ok,
+		fmt.Sprintf("centre %s, want %s (selected %v); %s %d, want %s 700; box-shadow %v, %.0f%% of its outline the accent, want none and under %.0f%% (focused %v)",
+			hexOf(mode), hexOf(centre), selected, t.FG, t.Weight, hexOf(accent), shadow, share*100, lfTodayNoRing*100, focus))
+}
+
+// dayFocus is F1 on a calendar day that is not today: with the key focus it draws the inset 2px
+// accent ring, in St and on the screen.
+func (l *lf) dayFocus(img image.Image) {
+	var s struct {
+		Day     *lfLook
+		Label   string
+		Focused bool
+	}
+	if err := l.g.evalJSON(lfDays+`
+		const f = global.stage.key_focus;
+		return {day: days.includes(f) ? look(f) : null, label: days.includes(f) ? f.label ?? '' : '',
+			focused: days.includes(f) && !f.has_style_class_name('calendar-today')};`, &s); err != nil {
+		l.check("focus", "calendar day", false, err.Error())
+		return
+	}
+	if s.Day == nil || !s.Focused {
+		l.check("focus", "calendar day", false, "no day but today has the key focus")
+		return
+	}
+	accent := l.c("dark-accent")
+	ok, detail := false, "no box-shadow"
+	if sh := s.Day.Shadow; sh != nil {
+		c, _ := parseHex(sh.Color)
+		ok = sh.Inset && sh.Spread >= 2 && c == color.NRGBA{accent.R, accent.G, accent.B, 255}
+		detail = fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
+	}
+	share := ringShare(img, s.Day.rect(), 1, accent, lfRingAccentTol)
+	l.check("focus", "calendar day", ok && share >= lfDayFocusRing,
+		fmt.Sprintf("%q: %s; %.0f%% of its outline the accent, want inset, spread >= 2, %s and >= %.0f%%", s.Label, detail, share*100, hexOf(accent), lfDayFocusRing*100))
 }
 
 // ground is the overview's and the app grid's: the boot's black.
@@ -1085,8 +1483,16 @@ func (l *lf) overview(img image.Image) {
 	l.ground("shell-overview", img)
 	var s struct{ Group, Card *lfLook }
 	if err := l.g.evalJSON(`
+		// The active workspace's card is the one most on the screen: the next one is as wide, mostly
+		// past the right edge.
+		const shown = a => {
+			const b = lfBox(a);
+			const w = Math.min(b.x + b.w, global.stage.width) - Math.max(b.x, 0);
+			const h = Math.min(b.y + b.h, global.stage.height) - Math.max(b.y, 0);
+			return Math.max(w, 0) * Math.max(h, 0);
+		};
 		const cards = lfAll(Main.layoutManager.overviewGroup, lfClass('workspace-background')).filter(a => a.is_mapped());
-		cards.sort((a, b) => b.width - a.width);
+		cards.sort((a, b) => shown(b) - shown(a));
 		return {group: look(Main.layoutManager.overviewGroup), card: look(cards[0])};`, &s); err != nil {
 		l.check("ground", "overview", false, err.Error())
 		return
@@ -1168,8 +1574,8 @@ func (l *lf) focusWindow() (lfRect, string, error) {
 	return lfRect{s.Win.X, s.Win.Y, s.Win.W, s.Win.H}, s.Cls, nil
 }
 
-// installer is S4 on the installer's window: its body is f, its left and bottom edges the ring,
-// its headerbar g.
+// installer is S3 on the installer's window: its body is f, its outer ring the border on the left
+// and the bottom, its headerbar g, and between headerbar and body one solid line of the border.
 func (l *lf) installer(img image.Image) {
 	r, cls, err := l.focusWindow()
 	if err != nil || cls != "io.github.construct_linux.Installer" {
@@ -1178,25 +1584,119 @@ func (l *lf) installer(img image.Image) {
 	}
 	body, _ := modeColor(img, lfRect{630, 590, 21, 21})
 	ring := l.c("dark-border")
-	_, left := edgeHit(img, r.X-1, r.Y+r.H/2, -1, 0, lfRingReach, ring, lfRingTol)
-	_, bottom := edgeHit(img, r.X+r.W/2, r.Y+r.H, 0, 1, lfRingReach, ring, lfRingTol)
+	_, left := ringHit(img, r.X-1, r.Y+r.H/2, -1, 0, lfRingReach, ring, lfRingTol)
+	_, bottom := ringHit(img, r.X+r.W/2, r.Y+r.H, 0, 1, lfRingReach, ring, lfRingTol)
 	head, _ := modeColor(img, lfRect{r.X + 8, r.Y + 3, r.W - 16, 8})
 	l.check("window", "installer", near(body, l.c("neutral-f"), lfSurfaceTol) && left && bottom && near(head, l.c("neutral-g"), lfSurfaceTol),
-		fmt.Sprintf("frame %v: body %s (want %s), ring left %v bottom %v, headerbar %s (want %s)",
-			r, hexOf(body), hexOf(l.c("neutral-f")), left, bottom, hexOf(head), hexOf(l.c("neutral-g"))))
+		fmt.Sprintf("frame %v: body %s (want %s), ring left %v (%s) bottom %v (%s), want %s; headerbar %s (want %s)",
+			r, hexOf(body), hexOf(l.c("neutral-f")), left, hexOf(at(img, r.X-1, r.Y+r.H/2)), bottom, hexOf(at(img, r.X+r.W/2, r.Y+r.H)),
+			hexOf(ring), hexOf(head), hexOf(l.c("neutral-g"))))
+	// E3: where g meets f, dark draws one solid line, the border (THEMING, Lines).
+	y, c, ok := hRule(img, r.X+24, r.X+r.W-24, r.Y+12, r.Y+r.H/3)
+	l.check("rule", "installer headerbar", ok && near(c, ring, lfRingTol),
+		fmt.Sprintf("the line under the headerbar at y %d (found %v) is %s, want %s", y, ok, hexOf(c), hexOf(ring)))
 }
 
+// settingsLight is S5, S6 and C11 on Settings in the light scheme, from the pixels: the window on
+// the desk with the ring line outside it, the sidebar the shelf, the selected row the white sheet
+// with its label in text, and the headerbar's rule one line across both panes.
 func (l *lf) settingsLight(img image.Image) {
 	var s struct{ Win *struct{ X, Y, W, H int } }
 	if err := l.g.evalJSON(`return {win: lfWindow(Shell.AppSystem.get_default().lookup_app('org.gnome.Settings.desktop')?.get_windows()[0])};`, &s); err != nil || s.Win == nil {
 		l.check("radius", "settings-light window", false, "no Settings window"+errText(err))
 		return
 	}
+	r := lfRect{s.Win.X, s.Win.Y, s.Win.W, s.Win.H}
 	want := int(l.pal.nums["shape-radius-surface"])
-	r, err := cornerRadius(img, s.Win.X, s.Win.Y, 2*want)
-	l.check("radius", "settings-light window", err == nil && math.Abs(r-float64(want)) <= lfRadiusTol,
-		fmt.Sprintf("its top-left corner fits a %.2f px radius, want %d%s", r, want, errText(err)))
+	rad, err := cornerRadius(img, r.X, r.Y, 2*want)
+	l.check("radius", "settings-light window", err == nil && math.Abs(rad-float64(want)) <= lfRadiusTol,
+		fmt.Sprintf("its top-left corner fits a %.2f px radius, want %d%s", rad, want, errText(err)))
 	l.r.skip("lf: radius settings-light card", "a card's extents come only from AT-SPI, which the harness does not read yet")
+	l.lightWindow(img, r)
+}
+
+// lightWindow is settingsLight's pixel probes on a light window with a sidebar at r.
+func (l *lf) lightWindow(img image.Image, r lfRect) {
+	desk, muted := l.c("light-desk"), l.c("light-muted")
+	// The desk: the widest stretch of desktop beside the window, clear of its shadow and the bars.
+	side := lfRect{8, 60, r.X - 40, img.Bounds().Dy() - 120}
+	if right := img.Bounds().Dx() - (r.X + r.W) - 48; right > side.W {
+		side = lfRect{r.X + r.W + 40, 60, right, img.Bounds().Dy() - 120}
+	}
+	ground, share := modeColor(img, side)
+	l.check("desk", "settings-light", near(ground, desk, lfSurfaceTol),
+		fmt.Sprintf("the desktop %s over %.0f%% of %v, want %s", hexOf(ground), share*100, side, hexOf(desk)))
+	// The ring line, light.muted at its alpha over what is outside the window there - the shadow
+	// darkens the desk under it, so the nominal value holds only on a bare desk.
+	ringA := l.pal.nums["line-light-ring"]
+	var edges []string
+	for _, e := range []struct {
+		name         string
+		x, y, nx, ny int
+	}{{"top", r.X + r.W/2, r.Y - 1, 0, -1}, {"left", r.X - 1, r.Y + r.H/2, -1, 0}} {
+		got, out := at(img, e.x, e.y), at(img, e.x+e.nx, e.y+e.ny)
+		if w := tint(muted, out, ringA); !near(got, w, lfRingTol) {
+			edges = append(edges, fmt.Sprintf("%s %s, want %s over %s", e.name, hexOf(got), hexOf(w), hexOf(out)))
+		}
+	}
+	l.check("ring", "settings-light window", len(edges) == 0,
+		fmt.Sprintf("the line outside the window, light.muted at %.0f%% (%s on a bare desk): %v", ringA*100, hexOf(tint(muted, desk, ringA)), edges))
+	// The panes: the separator is the first line down the window's left half.
+	midY := r.Y + r.H/3
+	sep, _, ok := vRule(img, r.X+60, r.X+r.W/2, midY, midY+r.H/6)
+	if !ok {
+		l.check("panes", "settings-light", false, "no pane separator in the window's left half")
+		return
+	}
+	shelf, _ := modeColor(img, lfRect{r.X + 4, r.Y + 64, sep - r.X - 8, r.H - 128})
+	l.check("shelf", "settings-light", near(shelf, l.c("light-shelf"), lfSurfaceTol),
+		fmt.Sprintf("the sidebar (%d px) is %s, want %s", sep-r.X, hexOf(shelf), hexOf(l.c("light-shelf"))))
+	l.selectedRow(img, lfRect{r.X + 4, r.Y + 64, sep - r.X - 8, r.H - 72})
+	// S6: the headerbar's rule at one height in both panes, the border line over each.
+	borderA := l.pal.nums["line-light-border"]
+	ys, yc, sideOK := hRule(img, r.X+24, sep-24, r.Y+8, r.Y+80)
+	yb, yc2, mainOK := hRule(img, sep+24, r.X+r.W-24, r.Y+8, r.Y+80)
+	above, _ := modeColor(img, lfRect{sep + 24, yb - 3, r.W - (sep - r.X) - 48, 1})
+	wantRule := tint(muted, above, borderA)
+	l.check("rule", "settings-light headerbar", sideOK && mainOK && ys == yb && near(yc2, wantRule, lfRingTol),
+		fmt.Sprintf("sidebar's at y %d (%v, %s), content's at y %d (%v, %s); want one y, and light.muted at %.0f%% over %s, %s",
+			ys, sideOK, hexOf(yc), yb, mainOK, hexOf(yc2), borderA*100, hexOf(above), hexOf(wantRule)))
+}
+
+// selectedRow is C11's navigation sidebar on light: the selected row is the white sheet, its label
+// in text. The row is the band of the sidebar whose right part is white.
+func (l *lf) selectedRow(img image.Image, side lfRect) {
+	sheet := l.c("neutral-a")
+	x := side.X + side.W*3/4
+	top, bottom := -1, -1
+	for y := side.Y; y < side.Y+side.H; y++ {
+		if near(at(img, x, y), sheet, lfSurfaceTol) {
+			if top < 0 {
+				top = y
+			}
+			bottom = y
+		} else if top >= 0 {
+			break
+		}
+	}
+	if top < 0 {
+		c, _ := modeColor(img, side)
+		l.check("selected row", "settings-light", false, fmt.Sprintf("no band of %s in the sidebar at x %d (its ground %s)", hexOf(sheet), x, hexOf(c)))
+		return
+	}
+	band := lfRect{side.X, top, side.W, bottom - top + 1}
+	darkest, dl := sheet, luminance(sheet)
+	b := band.image().Intersect(img.Bounds())
+	for y := b.Min.Y; y < b.Max.Y; y++ {
+		for x := b.Min.X; x < b.Max.X; x++ {
+			if c := at(img, x, y); luminance(c) < dl {
+				darkest, dl = c, luminance(c)
+			}
+		}
+	}
+	text := l.c("light-text")
+	l.check("selected row", "settings-light", near(darkest, text, lfTextTol),
+		fmt.Sprintf("the %s sheet %v; its darkest ink %s, want %s", hexOf(sheet), band, hexOf(darkest), hexOf(text)))
 }
 
 // appWindow is the frame of an app's first window.
@@ -1222,6 +1722,16 @@ func (l *lf) app(id, shot string) {
 	default:
 		return
 	}
+	// VS Code greets a fresh user with its onboarding, a modal over a 40% black scrim that dims
+	// every surface of the workbench to 0.6 of its colour: Escape, as a person would, and the
+	// workbench is what is measured.
+	if id == "code.desktop" {
+		_ = l.v.key("esc")
+		time.Sleep(2 * time.Second)
+		shot = "code-workbench"
+		l.r.shotLook(l.v, l.g, shot)
+		l.view(shot)
+	}
 	img, ok := l.img(shot)
 	if !ok {
 		return
@@ -1240,10 +1750,11 @@ func (l *lf) app(id, shot string) {
 	case "com.mitchellh.ghostty.desktop":
 		head := region(8, 3, r.W-16, 8)
 		term := region(r.W/4, r.H*2/3, r.W/2, r.H/4)
-		// Ghostty's own default background, which a missing theme leaves.
-		stock := countNear(img, r, color.NRGBA{0x28, 0x2C, 0x34, 255}, lfSurfaceTol)
+		// Ghostty's own default background, which a missing theme leaves, as a surface: text
+		// antialiased on g passes through it a pixel at a time.
+		stock := flatCount(img, r, color.NRGBA{0x28, 0x2C, 0x34, 255}, lfSurfaceTol)
 		l.check("app", "ghostty", near(head, g, lfSurfaceTol) && near(term, g, lfSurfaceTol) && stock == 0,
-			fmt.Sprintf("headerbar %s, terminal %s, want %s; %d px of #282C34", hexOf(head), hexOf(term), hexOf(g), stock))
+			fmt.Sprintf("headerbar %s, terminal %s, want %s; %d px of a #282C34 surface", hexOf(head), hexOf(term), hexOf(g), stock))
 	case "code.desktop":
 		title := region(8, 4, r.W-16, 16)
 		editor := region(r.W/2, r.H/3, r.W/3, r.H/3)
@@ -1296,16 +1807,21 @@ func (l *lf) finish() {
 			l.bootMark[0], l.bootMark[1], l.cardMark[0], l.cardMark[1]))
 }
 
-// gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip and a
-// dialog, in Text Editor in the dark scheme. They are screenshots for the needles; each passes
-// when what opens it worked.
-func (r *report) gtkViews(v *vm, g *guest) {
+// gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip, a
+// dialog, a warning banner, a maximized window, and a destructive confirmation, in Text Editor and
+// Files in the dark scheme. They are screenshots for the needles; each passes when what opens it
+// worked.
+func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	const id = "org.gnome.TextEditor.desktop"
 	if ok, detail := g.runApp(app{id, 20 * time.Second}); !ok {
 		r.add("view:gtk", false, detail)
 		return
 	}
 	time.Sleep(3 * time.Second)
+	shot := func(name string) {
+		r.shotLook(v, g, name)
+		l.view(name)
+	}
 	windows := func() int {
 		n, _ := g.eval(`global.get_window_actors().length`)
 		k, _ := strconv.Atoi(n)
@@ -1323,17 +1839,21 @@ func (r *report) gtkViews(v *vm, g *guest) {
 	_ = v.key("f10")
 	time.Sleep(2 * time.Second)
 	r.add("view:gtk-popover", windows() > before, fmt.Sprintf("%d surfaces, %d before F10", windows(), before))
-	r.shotLook(v, g, "gtk-popover")
+	shot("gtk-popover")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
-	// The pointer over the close button, the headerbar's last, until GTK shows its tooltip.
+	// The pointer over the headerbar's New Tab button, the second from the start, until GTK shows
+	// its tooltip; GTK 4's window controls have none. Two moves: GTK starts the tooltip's timer on
+	// motion inside the widget.
 	before = windows()
 	sw, sh := 1280, 800
-	x, y := frame.X+frame.W-22, frame.Y+23
+	x, y := frame.X+105, frame.Y+23
+	_ = v.pointTo((x-6)*32767/(sw-1), y*32767/(sh-1))
+	time.Sleep(300 * time.Millisecond)
 	_ = v.pointTo(x*32767/(sw-1), y*32767/(sh-1))
 	time.Sleep(3 * time.Second)
 	r.add("view:gtk-tooltip", windows() > before, fmt.Sprintf("%d surfaces with the pointer at (%d, %d), %d before", windows(), x, y, before))
-	r.shotLook(v, g, "gtk-tooltip")
+	shot("gtk-tooltip")
 	_ = v.pointTo(16000, 30000)
 	time.Sleep(time.Second)
 	// A libadwaita dialog, opened by the app's own action over its bus: preferences, else about.
@@ -1341,10 +1861,70 @@ func (r *report) gtkViews(v *vm, g *guest) {
 		`$b preferences '[]' '{}' >/dev/null 2>&1 && echo preferences || { $b about '[]' '{}' 2>&1 && echo about; }`, "")
 	time.Sleep(2 * time.Second)
 	r.add("view:gtk-dialog", err == nil && (strings.Contains(out, "preferences") || strings.Contains(out, "about")), "app action: "+oneLine(out)+errText(err))
-	r.shotLook(v, g, "gtk-dialog")
+	shot("gtk-dialog")
 	_ = v.key("esc")
+	time.Sleep(time.Second)
+	// A window maximized: no ring, no radius, no shadow (S3).
+	if err := g.evalJSON(fmt.Sprintf(`const w = Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0]; w.maximize(); return true;`, id), new(bool)); err != nil {
+		r.add("view:gtk-maximized", false, err.Error())
+	} else {
+		time.Sleep(2 * time.Second)
+		r.add("view:gtk-maximized", true, "Text Editor maximized")
+		shot("gtk-maximized")
+		l.maximized(id, "gtk-maximized")
+		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0].unmaximize(); true`, id))
+		time.Sleep(time.Second)
+	}
+	// A warning: a file the editor has open changes on disk, and it says so in a banner.
+	const changed = "/tmp/construct-banner.txt"
+	_, err = g.run(`sudo -u live sh -c 'printf "one\n" > `+changed+`'`, "")
+	if err == nil {
+		err = g.evalJSON(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_app_info().launch_uris([%q], null); return true;`, id, "file://"+changed), new(bool))
+	}
+	if err == nil {
+		time.Sleep(4 * time.Second)
+		_, err = g.run(`sudo -u live sh -c 'printf "two\n" >> `+changed+`'`, "")
+		time.Sleep(3 * time.Second)
+	}
+	r.add("view:gtk-banner", err == nil, "a file Text Editor has open, changed on disk"+errText(err))
+	shot("gtk-banner")
 	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, id))
 	time.Sleep(2 * time.Second)
+	// A destructive confirmation: Files asks before it empties the trash, a libadwaita alert with
+	// the destructive response. Escape answers Cancel; the probe file stays in the trash.
+	out, err = g.run(`u='sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus'; `+
+		`$u sh -c 'f=$(mktemp -p "$HOME" construct-trash.XXXXXX) && gio trash "$f"' && `+
+		`{ $u timeout 30 gdbus call --session --dest org.gnome.Nautilus --object-path /org/gnome/Nautilus/FileOperations2 `+
+		`--method org.gnome.Nautilus.FileOperations2.EmptyTrash '{}' >/dev/null 2>&1 & } ; echo asked`, "")
+	time.Sleep(5 * time.Second)
+	r.add("view:gtk-destructive", err == nil && strings.Contains(out, "asked"), "Files' Empty Trash, confirmed first: "+oneLine(out)+errText(err))
+	shot("gtk-destructive")
+	_ = v.key("esc")
+	time.Sleep(time.Second)
+	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Nautilus.desktop")?.request_quit(); true`)
+	time.Sleep(2 * time.Second)
+}
+
+// maximized is S3's last clause on a window that fills the work area: it keeps neither its corner's
+// radius nor the outer ring.
+func (l *lf) maximized(id, shot string) {
+	if l == nil || !l.ok {
+		return
+	}
+	img, ok := l.img(shot)
+	if !ok {
+		return
+	}
+	r, err := l.appWindow(id)
+	if err != nil {
+		l.check("window", shot, false, err.Error())
+		return
+	}
+	head, _ := modeColor(img, lfRect{r.X + 8, r.Y + 3, r.W - 16, 8})
+	corner := at(img, r.X, r.Y)
+	_, ring := ringHit(img, r.X-1, r.Y+r.H/2, -1, 0, 1, l.c("dark-border"), lfRingTol)
+	l.check("window", "maximized", near(corner, head, lfSurfaceTol) && !ring,
+		fmt.Sprintf("frame %v: corner %s, headerbar %s (square: the same); the border outside its left edge: %v, want none", r, hexOf(corner), hexOf(head), ring))
 }
 
 // guestLook is the checks on the guest itself: the shell's CSS as the running shell loaded it,
@@ -1401,6 +1981,8 @@ func (l *lf) guestLook() {
 		l.check("css palette", "G3", ok, detail)
 		ok, detail = cssWeights(rules)
 		l.check("css weights", "G6", ok, detail)
+		ok, detail = cssAccentRings(rules, l.c("dark-accent"))
+		l.check("css rings", "C8", ok, detail)
 	}
 	l.check("gresource", "toggle-on", s.ToggleOn, "/org/gnome/shell/theme/assets/toggle-on.svg in the shell's resources (orchis-theme-shell)")
 	l.check("startup stage", "background.js", strings.Contains(s.Background, "red: 0, green: 0, blue: 0"), "gnome-shell's "+strings.TrimSpace(s.Background))
@@ -1424,7 +2006,8 @@ func (l *lf) guestLook() {
 
 	dconf, err := l.g.run(`for k in dash-to-panel/focus-highlight-color dash-to-panel/focus-highlight-opacity dash-to-panel/trans-use-border tilingshell/window-border-color; do sudo -u live dconf read /org/gnome/shell/extensions/$k; done`, "")
 	accent := hexOf(l.c("dark-accent"))
-	wantDconf := fmt.Sprintf("'%s'\n14\nfalse\n'%s'\n", accent, accent)
+	// The dock's focus highlight is the rest tint, in dash-to-panel's percent.
+	wantDconf := fmt.Sprintf("'%s'\n%.0f\nfalse\n'%s'\n", accent, l.pal.nums["tint-dark-rest"]*100, accent)
 	l.check("extensions", "G5 settings", err == nil && strings.EqualFold(dconf, wantDconf), fmt.Sprintf("%s; want %s", oneLine(dconf), oneLine(wantDconf))+errText(err))
 	for _, uuid := range []string{"dash-to-panel@jderose9.github.com", "tilingshell@ferrarodomenico.com", "Vitals@CoreCoding.com"} {
 		css, err := l.g.run("cat /usr/share/gnome-shell/extensions/"+uuid+"/stylesheet.css", "")
@@ -1440,12 +2023,26 @@ func (l *lf) guestLook() {
 	got := strings.TrimSpace(gtk4[strings.LastIndex(gtk4, "#")+1:])
 	l.check("gtk4", "light accent", err == nil && strings.EqualFold("#"+got, hexOf(l.c("light-accent-text"))),
 		fmt.Sprintf("Orchis-Construct-Light's gtk-4.0 %s, want --accent-color: %s", oneLine(gtk4), hexOf(l.c("light-accent-text")))+errText(err))
+	// T2 in GTK: the CSS libadwaita and GTK 3 apps load from the theme, @media blocks included.
+	// libadwaita's own stylesheet under it is not the theme's to change.
+	gtkCSS, err := l.g.run(`cat /var/home/live/.config/gtk-4.0/gtk.css /usr/share/themes/Orchis-Construct-Dark/gtk-3.0/gtk.css /usr/share/themes/Orchis-Construct-Light/gtk-3.0/gtk.css`, "")
+	if err != nil {
+		l.check("css weights", "G6 gtk", false, "the GTK themes' CSS: "+err.Error())
+	} else {
+		ok, detail := cssWeights(parseCSS(gtkCSS))
+		l.check("css weights", "G6 gtk", ok, detail)
+	}
 	link, err := l.g.run(`readlink /usr/share/themes/Orchis-Construct && test -f /usr/share/themes/Orchis-Construct/gtk-3.0/gtk.css && echo gtk-3.0`, "")
 	l.check("firefox theme", "Orchis-Construct", err == nil && link == "Orchis-Construct-Light\ngtk-3.0\n", "link to "+oneLine(link)+errText(err))
 	ghostty, err := l.g.run(`test -s "/usr/share/ghostty/themes/Construct Dark" && test -s "/usr/share/ghostty/themes/Construct Light" && echo themes; `+
 		`test -s /var/home/live/.config/ghostty/config.ghostty && echo seed; `+
-		`out=$(`+user+`ghostty +validate-config 2>&1); rc=$?; echo "$out" | tail -3; echo "rc=$rc"`, "")
-	l.check("ghostty", "themes and seed", err == nil && strings.Contains(ghostty, "themes\nseed\n") && strings.Contains(ghostty, "rc=0"), oneLine(ghostty)+errText(err))
+		`out=$(`+user+`ghostty +validate-config 2>&1); rc=$?; echo "$out"; echo "rc=$rc"; ls -l /var/home/live/.config/ghostty; cat /var/home/live/.config/ghostty/config.ghostty`, "")
+	// All of it, for a failure that says nothing on the line (rc=1 with no diagnostic, once).
+	_ = os.WriteFile(filepath.Join(l.r.dir, "ghostty.txt"), []byte(ghostty), 0o644)
+	said, rest, _ := strings.Cut(ghostty, "rc=")
+	rc, _, _ := strings.Cut(rest, "\n")
+	l.check("ghostty", "themes and seed", err == nil && strings.Contains(said, "themes\nseed\n") && rc == "0",
+		oneLine(said)+" rc="+rc+" (ghostty.txt)"+errText(err))
 	code, err := l.g.run(`cd /usr/share/code/resources/app/extensions/construct-theme && python3 -c 'import json,glob; fs=["package.json"]+sorted(glob.glob("themes/*.json")); [json.load(open(f)) for f in fs]; print(len(fs))'`, "")
 	parsed, _ := strconv.Atoi(strings.TrimSpace(code))
 	// package.json and the two themes, dark and light.
@@ -1464,7 +2061,9 @@ type cssRule struct {
 
 var cssComment = regexp.MustCompile(`(?s)/\*.*?\*/`)
 
-// parseCSS reads St's CSS: rules of selectors and declarations, no nesting; @-rules are skipped.
+// parseCSS reads St's and GTK's CSS: rules of selectors and declarations. The rules inside @media
+// and @supports are read as rules of the sheet, whichever scheme or support they ask for; other
+// @-rules are skipped.
 func parseCSS(text string) []cssRule {
 	text = cssComment.ReplaceAllString(text, "")
 	var rules []cssRule
@@ -1495,6 +2094,10 @@ func parseCSS(text string) []cssRule {
 			sel = sel[i+1:]
 		}
 		sel = strings.TrimSpace(sel)
+		if strings.HasPrefix(sel, "@media") || strings.HasPrefix(sel, "@supports") {
+			rules = append(rules, parseCSS(body)...)
+			continue
+		}
 		if strings.HasPrefix(sel, "@") {
 			continue
 		}
@@ -1712,8 +2315,8 @@ func cssContract(rules []cssRule, text string, p lfPalette) (bool, string) {
 }
 
 // cssFocusExempt are the controls whose focus is not the ring: a popup-menu item's hover is its
-// focus, and a calendar day's ring means today.
-var cssFocusExempt = []string{"popup-menu-item", "calendar-day"}
+// focus (F1). Calendar days are not: today is a label, so their focus is the ring.
+var cssFocusExempt = []string{"popup-menu-item"}
 
 // cssFocus is G2: no :focus rule takes the box-shadow away from a control that is not exempt, and
 // focus is drawn as the inset 2 px accent ring. A none that a later rule draws the ring over again,
@@ -1772,15 +2375,17 @@ func cssFocus(rules []cssRule, accent color.NRGBA) (bool, string) {
 	return len(left) == 0 && rings > 0, fmt.Sprintf("%d rules draw the inset 2px %s ring; box-shadow none on focus: %v", rings, hexOf(accent), left)
 }
 
-// cssPalette is G3: every colour a stylesheet writes is the palette's, or white or black, at any
-// alpha - a mix() or darken() result is neither, and an opaque grey least of all.
+// cssPalette is G3, C1 as the stylesheet writes it: every colour is the palette's, or white or
+// black, at any alpha, or opaque, white, black or the accent at an alpha over a palette colour -
+// what St, which stacks no backgrounds, needs written out. A mix() or darken() of two palette
+// colours is none of these, and an opaque grey least of all.
 func cssPalette(rules []cssRule, p lfPalette) (bool, string) {
 	off := map[string]int{}
 	greys := 0
 	for _, r := range rules {
 		for _, d := range r.decls {
 			for _, c := range cssColors(d[1]) {
-				if c.A == 0 || p.has(c) || (c.R == c.G && c.G == c.B && (c.R == 0 || c.R == 255)) {
+				if c.A == 0 || p.has(c) || (c.R == c.G && c.G == c.B && (c.R == 0 || c.R == 255)) || (c.A == 255 && p.composite(c)) {
 					continue
 				}
 				k := hexOf(c)
@@ -1808,6 +2413,62 @@ func cssPalette(rules []cssRule, p lfPalette) (bool, string) {
 		fmt.Fprintf(&b, " %s x%d", k, off[k])
 	}
 	return len(off) == 0, fmt.Sprintf("%d colours off the palette (%d greys):%s", len(off), greys, b.String())
+}
+
+// cssRingExempt are the accent rings that are focus, though no :focus selects them (THEMING, the
+// accent scale's level 5): the Alt+Esc frame around the window it will focus.
+var cssRingExempt = []string{".cycler-highlight"}
+
+// cssAccentRings is C8: an accent ring - an outline, a border, or a box-shadow with no offset and
+// no blur - only on :focus. A 1 px border on the accent at an alpha is decoration's edge (the
+// rubberband, the tile preview: level 7), not a ring.
+func cssAccentRings(rules []cssRule, accent color.NRGBA) (bool, string) {
+	isAccent := func(v string) bool {
+		for _, c := range cssColors(v) {
+			if c == (color.NRGBA{accent.R, accent.G, accent.B, 255}) {
+				return true
+			}
+		}
+		return false
+	}
+	var bad []string
+	for _, r := range rules {
+		ring, tinted, width := false, false, -1
+		for _, d := range r.decls {
+			switch k, v := d[0], d[1]; {
+			case k == "box-shadow":
+				for _, sh := range splitOutside(v, ',') {
+					f := strings.Fields(cssRGB.ReplaceAllString(sh, ""))
+					var n []float64
+					for _, t := range f {
+						if x, err := strconv.ParseFloat(strings.TrimSuffix(t, "px"), 64); err == nil {
+							n = append(n, x)
+						}
+					}
+					if len(n) == 4 && n[0] == 0 && n[1] == 0 && n[2] == 0 && n[3] > 0 && isAccent(sh) {
+						ring = true
+					}
+				}
+			case (strings.HasPrefix(k, "border") || strings.HasPrefix(k, "outline")) && !strings.HasSuffix(k, "radius") && k != "outline-offset":
+				w, _, _ := cssRing(map[string]string{"border": v})
+				width = max(width, w)
+				ring = ring || (isAccent(v) && w != 0)
+			case k == "background-color" || k == "background":
+				for _, c := range cssColors(v) {
+					tinted = tinted || (c.R == accent.R && c.G == accent.G && c.B == accent.B && c.A > 0 && c.A < 255)
+				}
+			}
+		}
+		if !ring || (tinted && width == 1) {
+			continue
+		}
+		for _, s := range r.selectors {
+			if !strings.Contains(s, ":focus") && !slices.Contains(cssRingExempt, s) {
+				bad = append(bad, s)
+			}
+		}
+	}
+	return len(bad) == 0, fmt.Sprintf("accent rings outside :focus: %v", bad)
 }
 
 // cssWeights is G6: the shell's text is regular or bold, nothing between or beyond.
