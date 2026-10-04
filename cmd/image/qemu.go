@@ -224,7 +224,7 @@ func (m machine) start() (*vm, error) {
 		args = append(args, "-chardev", "socket,id=chrtpm,path="+sock,
 			"-tpmdev", "emulator,id=tpm0,chardev=chrtpm", "-device", "tpm-crb,tpmdev=tpm0")
 	}
-	cmd := qemuCommand(m.window, m.tpm, args...)
+	cmd := qemuCommand(inContainer, m.tpm, args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
 		return nil, err
@@ -339,12 +339,13 @@ func harnessQEMUBuilt(window bool) bool {
 	return !window && exec.Command("docker", "image", "inspect", harnessQEMU).Run() == nil
 }
 
-// qemuCommand is QEMU with args: the harness's own (task harness-qemu) when it is built - a
-// container that sees the repository at the same path, the host's KVM, vsock and network (the
-// lifecycle's HTTP server at 10.0.2.2 is the host's), the host's UEFI firmware, and the TPM in
-// tpm, whose swtpm it starts itself - or the host's QEMU.
-func qemuCommand(window bool, tpm string, args ...string) *exec.Cmd {
-	if !harnessQEMUBuilt(window) {
+// qemuCommand is QEMU with args: the harness's own (task harness-qemu) in a container - one that
+// sees the repository at the same path, the host's KVM, vsock and network (the lifecycle's HTTP
+// server at 10.0.2.2 is the host's), the host's UEFI firmware, and the TPM in tpm, whose swtpm it
+// starts itself - or the host's QEMU. The caller decides which once (harnessQEMUBuilt), since
+// the TPM it starts depends on it too.
+func qemuCommand(inContainer bool, tpm string, args ...string) *exec.Cmd {
+	if !inContainer {
 		return exec.Command("qemu-system-x86_64", args...)
 	}
 	wd, _ := os.Getwd()
@@ -367,7 +368,7 @@ func groupOf(path string) string {
 // qemuHasCanoKey is whether the QEMU the harness runs was built with CanoKey (libcanokey-qemu),
 // the emulated security key the lifecycle opens /var with; most distributions' QEMU is not.
 func qemuHasCanoKey() bool {
-	out, err := qemuCommand(false, "", "-device", "help").CombinedOutput()
+	out, err := qemuCommand(harnessQEMUBuilt(false), "", "-device", "help").CombinedOutput()
 	return err == nil && strings.Contains(string(out), `"canokey"`)
 }
 
