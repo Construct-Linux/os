@@ -1,0 +1,40 @@
+name: Look
+description: Something looks wrong - spacing, color, type, icons.
+labels: [look, "area:desktop"]
+body:
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: Screenshot
+      description: Drop a screenshot here (Print Screen takes one). Mark what looks wrong if it is small.
+    validations:
+      required: true
+  - type: dropdown
+    id: style
+    attributes:
+      label: Light or dark
+      options:
+        - Light
+        - Dark
+        - Both
+    validations:
+      required: true
+  - type: input
+    id: surface
+    attributes:
+      label: Where
+      description: The app, or the part of the shell - top bar, dock, overview, quick settings, a notification, the lock screen.
+    validations:
+      required: true
+  - type: textarea
+    id: wrong
+    attributes:
+      label: What looks wrong
+  - type: textarea
+    id: report
+    attributes:
+      label: construct report
+      description: Run `construct report` in a terminal and paste what it prints.
+      render: text
+    validations:
+      required: true

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -20,6 +21,41 @@ func TestTheRepositorysLabels(t *testing.T) {
 	for _, name := range []string{"bug", "look", "security", "update", "area:kernel", "area:packages", "agent-ready", "severity:critical", "severity:high"} {
 		if !have[name] {
 			t.Errorf("no %s", name)
+		}
+	}
+}
+
+// formLabels is an issue form's labels line: labels: [bug, "area:desktop"].
+var formLabels = regexp.MustCompile(`(?m)^labels:\s*\[(.*)\]\s*$`)
+
+// An issue form that names a label the file does not list makes issues GitHub labels with
+// nothing: every form's labels are in the file.
+func TestIssueFormsUseTheLabels(t *testing.T) {
+	labels, err := readLabels("../../.github/labels.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	have := map[string]bool{}
+	for _, l := range labels {
+		have[l.Name] = true
+	}
+	forms, err := filepath.Glob("../../.github/ISSUE_TEMPLATE/*.yml")
+	if err != nil || len(forms) == 0 {
+		t.Fatalf("no issue forms: %v", err)
+	}
+	for _, f := range forms {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		m := formLabels.FindSubmatch(b)
+		if m == nil {
+			continue
+		}
+		for _, name := range strings.Split(string(m[1]), ",") {
+			if name = strings.Trim(strings.TrimSpace(name), `"'`); !have[name] {
+				t.Errorf("%s: label %q is not in labels.json", filepath.Base(f), name)
+			}
 		}
 	}
 }
