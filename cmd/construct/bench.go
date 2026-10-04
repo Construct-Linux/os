@@ -152,7 +152,10 @@ func runWorkloads(dir string, seconds int) (map[string]float64, error) {
 	}
 	oomBefore, _ := vmstat("oom_kill")
 	yaml := filepath.Join(dir, "stress.yaml")
-	if err := exec.Command("stress-ng", "--vm", "2", "--vm-bytes", strconv.FormatUint(total*6/10, 10), "--vm-keep",
+	// In a scope of its own that outlives a kill: systemd stops a unit the kernel's OOM killer
+	// reached, and stress-ng's in the caller's took the terminal, or the SSH session, with it.
+	if err := exec.Command("systemd-run", "--scope", "--quiet", "-p", "OOMPolicy=continue", "--",
+		"stress-ng", "--vm", "2", "--vm-bytes", strconv.FormatUint(total*6/10, 10), "--vm-keep",
 		"--timeout", strconv.Itoa(seconds)+"s", "--metrics-brief", "--yaml", yaml, "--quiet").Run(); err != nil {
 		return nil, fmt.Errorf("stress-ng --vm: %w", err)
 	}
