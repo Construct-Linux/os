@@ -274,6 +274,9 @@ tasks:
     deps: [keygen:test]
     cmds:
       - mkdir -p _output/lifecycle
+      # The three releases, the forged sticks and the installed disk are ~50 GB a run, of no use
+      # once it ends: gone whatever its outcome, the report, screens and journal kept.
+      - defer: rm -rf _output/lifecycle/*.raw _output/lifecycle/*.stick _output/lifecycle/*.release
       - for: [v1, v2, v3]
         cmd: >-
           task usb SIGNING_HOME=.cache/test-gnupg -- -test {{if eq .ITEM "v3"}}-broken{{end}} > .cache/logs/usb-{{.ITEM}}.log 2>&1
