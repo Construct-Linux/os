@@ -77,7 +77,11 @@ func devUp(args []string) error {
 	case <-stop:
 		return nil
 	case err := <-exited:
-		return fmt.Errorf("the machine stopped: %v", err)
+		// dev:down quits QEMU over QMP, which exits 0: anything else stopped it.
+		if err != nil {
+			return fmt.Errorf("the machine stopped: %w", err)
+		}
+		return nil
 	}
 }
 
