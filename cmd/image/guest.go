@@ -209,9 +209,9 @@ func runIn(args []string) error {
 	if err != nil {
 		return err
 	}
-	m := machine{mem: "6G", pubkey: pub, vars: *vars, nvme: *nvme, tpm: *tpm, credentials: creds, cmdline: extra}
+	m := machine{mem: vmMemory, pubkey: pub, vars: *vars, nvme: *nvme, tpm: *tpm, credentials: creds, cmdline: extra}
 	if *vars == "" {
-		if m, err = testMachine("6G", pub, *stick); err != nil {
+		if m, err = testMachine(vmMemory, pub, *stick); err != nil {
 			return err
 		}
 	} else if *sticks != "" {

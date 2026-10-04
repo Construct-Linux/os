@@ -58,7 +58,7 @@ func lifecycle(args []string) error {
 	// password as the TPM's PIN, as if typed: systemd-cryptsetup asks for it through libcryptsetup's
 	// token plugin, which reads cryptsetup.luks2-pin. No passphrase credential: a TPM that refuses
 	// leaves the boot waiting, and the check fails.
-	m := machine{mem: "6G", pubkey: pub, vars: vars, nvme: nvme, tpm: tpm,
+	m := machine{mem: vmMemory, pubkey: pub, vars: vars, nvme: nvme, tpm: tpm,
 		credentials: []string{"cryptsetup.luks2-pin=" + lifecyclePassword}}
 	boot := func(sticks ...string) (*vm, *guest, error) {
 		m := m

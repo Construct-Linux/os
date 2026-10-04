@@ -62,7 +62,7 @@ var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power
 func test(args []string) error {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
 	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, type, bench, suspend); all by default")
-	mem := fl.String("m", "6G", "memory")
+	mem := fl.String("m", vmMemory, "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	needles := fl.String("needles", "", "a checkout of github.com/Construct-Linux/needles: every screenshot is compared with its needle")
 	scale := fl.Int("scale", 2, "2: the X9-15's 2880x1800 panel at 200%; 1: 1280x800 at 100%")

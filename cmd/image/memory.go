@@ -8,11 +8,14 @@ import (
 	"strings"
 )
 
-// The harness's machines are given memory by a guess (6 GB); what a run needs is measured here,
-// so the guess becomes a number: the guest samples /proc/meminfo every second from the boot on,
-// and the report has its peak - in use (MemTotal - MemAvailable) and in swap (zram) - as data,
+// What a run needs is measured here: the guest samples /proc/meminfo every second from the boot
+// on, and the report has its peak - in use (MemTotal - MemAvailable) and in swap (zram) - as data,
 // not a gate, as boot time is. The bench asks for more than there is on purpose, so the sampling
 // stops before it.
+
+// vmMemory is what the harness's machines are given: test:usb's peak was 2.61 GiB in use and 0.02
+// GiB in swap (2026-10-04, every view and app), so 4 GB leaves the page cache over a gigabyte.
+const vmMemory = "4G"
 
 // memWatch is where the guest keeps its samples: "uptime used_kib swap_kib total_kib" a line.
 const memWatch = "/run/construct-memwatch"
