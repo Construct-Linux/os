@@ -326,3 +326,8 @@ tasks:
     desc: "Create or update the repository's issue labels from .github/labels.json, never deleting one it does not list: GITHUB_REPOSITORY and GITHUB_TOKEN; task labels -- -dry-run prints what would change."
     cmds:
       - go run ./cmd/watch labels {{.CLI_ARGS}}
+
+  watch:
+    desc: "Open, update or close the issues of what needs a person: a Critical or High a version fixes in the latest release (-grype FILE, Grype's report of its SBOM), a new kernel series, a new GNOME major, Intel's microcode. GITHUB_REPOSITORY and GITHUB_TOKEN; task watch -- -dry-run changes nothing."
+    cmds:
+      - go run ./cmd/watch run {{.CLI_ARGS}}

@@ -1,0 +1,68 @@
+# Once a week, the issues a person must act on: a Critical or High vulnerability a version fixes in
+# the latest release, a new kernel series, a new GNOME major, a new Intel microcode (cmd/watch).
+# Routine updates are not issues. It holds no secret but the job's own token.
+name: watch
+
+on:
+  schedule:
+    - cron: "0 7 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      # The Taskfile is how every step is run, here as anywhere; the module's checksum pins it.
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
+
+      # Grype, pinned in build/versions.env, over the SBOM the latest release carries, held to
+      # build/grype.yaml as task scan is. Its exit status says a Critical or High was found, which
+      # is what watch reads the report for; a report that is not written is the failure.
+      - name: Scan the latest release's SBOM
+        id: scan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 1 --json tagName --jq '.[0].tagName // ""')
+          if [ -z "$tag" ]; then
+            echo "::notice::No release yet: the security check is skipped."
+            exit 0
+          fi
+          mkdir -p _output/watch/grype-db _output/watch/tmp
+          if ! gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern sbom.spdx.json --dir _output/watch; then
+            echo "::warning::$tag has no sbom.spdx.json: the security check is skipped."
+            exit 0
+          fi
+          grype_image=$(sed -n 's/^GRYPE_IMAGE=//p' build/versions.env)
+          docker run --rm -u "$(id -u)" -v "$PWD/_output/watch:/scan" -v "$PWD/build/grype.yaml:/grype.yaml:ro" \
+            -e GRYPE_DB_CACHE_DIR=/scan/grype-db -e TMPDIR=/scan/tmp \
+            "$grype_image" -c /grype.yaml -q sbom:/scan/sbom.spdx.json -o json=/scan/grype.json || true
+          test -s _output/watch/grype.json
+          echo "grype=_output/watch/grype.json" >> "$GITHUB_OUTPUT"
+          echo "release=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Open, update and close issues
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GRYPE: ${{ steps.scan.outputs.grype }}
+          RELEASE: ${{ steps.scan.outputs.release }}
+        run: task watch -- ${GRYPE:+-grype "$GRYPE" -release "$RELEASE"}
