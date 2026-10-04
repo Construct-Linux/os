@@ -36,6 +36,10 @@ func channelCmd(args []string, w io.Writer, root string) error {
 	if !slices.Contains(available, ch) {
 		return fmt.Errorf("no channel %q: this release has %s", ch, strings.Join(available, ", "))
 	}
+	// The machine's own /etc is root's to write: said before a permission error says it less well.
+	if root == "/" && os.Geteuid() != 0 {
+		return errors.New("following a channel changes the machine's updates: sudo construct channel " + ch)
+	}
 	file := filepath.Join(root, channelFile)
 	if ch == defaultChannel {
 		if err := os.Remove(file); err != nil && !errors.Is(err, os.ErrNotExist) {
