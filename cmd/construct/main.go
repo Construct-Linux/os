@@ -10,6 +10,7 @@
 //	construct power      [--seconds N] | suspend             what the machine draws, or what each suspend cost
 //	construct bench      [--rounds N] [--seconds N]           CONSTRUCT's settings against the kernel's, measured here
 //	construct kernel-profile [--minutes N] [-o FILE]          the kernel at work, recorded for its AutoFDO profile
+//	construct report                                         what a bug report needs to know of this machine
 //
 // install's release is the construct-update partition of the stick it runs from (or --from, a
 // directory), checked against the public key the root carries (internal/update's KeyringPath)
@@ -52,7 +53,8 @@ const usage = `usage:
   construct firmware   ish FILE
   construct power      [--seconds N] | suspend
   construct bench      [--rounds N] [--seconds N]
-  construct kernel-profile [--minutes N] [-o FILE]`
+  construct kernel-profile [--minutes N] [-o FILE]
+  construct report`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -89,6 +91,8 @@ func main() {
 		err = powerCmd(os.Args[2:], os.Stdout)
 	case "bench":
 		err = benchCmd(os.Args[2:], os.Stdout)
+	case "report":
+		err = reportCmd(ctx, os.Args[2:], os.Stdout)
 	case "kernel-profile":
 		err = kernelProfileCmd(os.Args[2:], os.Stdout)
 	default:
