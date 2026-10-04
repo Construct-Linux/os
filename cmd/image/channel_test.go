@@ -66,6 +66,10 @@ func TestChannelIndex(t *testing.T) {
 	if !strings.HasPrefix(string(b), strings.Repeat("a", 64)+"  construct_20261005.1") {
 		t.Errorf("the newest is not first:\n%s", b)
 	}
+	old := write("rel-20261003.1", releaseSums("20261003.1"))
+	if err := channelIndex([]string{"-current", filepath.Join(ch, "SHA256SUMS"), "-add", old, "-version", "20261003.1", "-keep", "3", "-o", ch}); err == nil {
+		t.Error("a release older than every version kept: no error")
+	}
 	if err := channelIndex([]string{"-current", filepath.Join(ch, "SHA256SUMS"), "-withdraw", "-version", "20261005.1", "-o", ch}); err != nil {
 		t.Fatal(err)
 	}

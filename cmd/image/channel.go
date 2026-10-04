@@ -118,7 +118,7 @@ func (idx index) keep(n int) (dropped []string) {
 }
 
 // channelIndex writes a channel's index: the current one (-current, or -new for a channel's first)
-// with a release added (-add, a release directory or another channel's index with -version) or a
+// with a release added (-add, a release's SHA256SUMS or another channel's index, with -version) or a
 // version withdrawn (-withdraw), and the newest -keep versions kept. task release:publish and
 // release:promote sign it (image sign-release) and upload it. -kind dl is the same for the sticks
 // at dl.<domain>: its "dropped" lists the sticks the index no longer names, which the task deletes
@@ -178,6 +178,11 @@ func channelIndex(args []string) error {
 		}
 		idx[*version] = lines
 		dropped = idx.keep(*keep)
+		// Older than every version kept, it was dropped at once: the index is the one already up,
+		// and signing and uploading it again would say the release was offered.
+		if _, ok := idx[*version]; !ok {
+			return fmt.Errorf("%s is older than the %d versions the index keeps", *version, *keep)
+		}
 	}
 	if err := os.MkdirAll(*to, 0o755); err != nil {
 		return err
