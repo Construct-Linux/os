@@ -145,6 +145,11 @@ func themeDev(args []string) error {
 	if *orchis == "" {
 		return errors.New("theme-dev: -orchis names an Orchis-theme checkout (ORCHIS)")
 	}
+	// The Wolfi base every build is pinned to (build/versions.env), not whatever :latest is today.
+	base := os.Getenv("WOLFI_BASE_IMAGE")
+	if base == "" {
+		return errors.New("theme-dev: WOLFI_BASE_IMAGE unset: run it through task theme:dev")
+	}
 	d, err := readDevVM()
 	if err != nil {
 		return err
@@ -169,7 +174,7 @@ func themeDev(args []string) error {
 	start := time.Now()
 	// As recipes/orchis-theme.yaml builds it: install.sh, light and dark, with sassc.
 	build := exec.Command("docker", "run", "--rm", "-v", src+":/src:ro", "-v", abs+":/out",
-		"cgr.dev/chainguard/wolfi-base", "sh", "-c",
+		base, "sh", "-c",
 		fmt.Sprintf(`apk add -q bash coreutils sassc >/dev/null && cp -r /src /w && cd /w && ./install.sh -d /out -c light dark >/dev/null && chown -R %d:%d /out`, os.Getuid(), os.Getgid()))
 	build.Stdout, build.Stderr = os.Stdout, os.Stderr
 	if err := build.Run(); err != nil {
