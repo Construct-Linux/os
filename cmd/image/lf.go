@@ -7,7 +7,6 @@ import (
 	"image"
 	"image/color"
 	"math"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -1330,7 +1329,14 @@ const firefoxPage = `<meta name="color-scheme" content="light"><body style="marg
 	`<progress value="60" max="100"></progress> <button>Button</button> <input value="text" autofocus></p>`
 
 func (l *lf) firefoxControls(id string) {
-	uri := "data:text/html;charset=utf-8," + url.PathEscape(firefoxPage)
+	// A file, not a data: URI: Firefox does not navigate to a data: URI it is handed from outside,
+	// and showed a blank tab - which the check passed until it asked for the accent.
+	page := "/var/home/live/firefox-controls.html"
+	if _, err := l.g.run(asLive+`tee `+page+` >/dev/null`, firefoxPage); err != nil {
+		l.check("app", "firefox controls", false, "writing the page: "+err.Error())
+		return
+	}
+	uri := "file://" + page
 	if err := l.g.evalJSON(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_app_info().launch_uris([%q], null); return true;`, id, uri), new(bool)); err != nil {
 		l.check("app", "firefox controls", false, err.Error())
 		return

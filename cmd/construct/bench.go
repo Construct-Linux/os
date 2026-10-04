@@ -206,13 +206,31 @@ func useProfile(p bench.Profile) error {
 			return fmt.Errorf("%w; systemd-zram-setup: %s", err, strings.TrimSpace(string(log)))
 		}
 		if !p.Zram {
-			for i := 0; i < 50 && strings.TrimSpace(readSys("/sys/block/zram0/disksize")) != "0"; i++ {
-				time.Sleep(100 * time.Millisecond)
+			if err := zramEmpty(); err != nil {
+				return err
 			}
 		}
 	}
 	_ = exec.Command("sync").Run()
 	return os.WriteFile("/proc/sys/vm/drop_caches", []byte("3"), 0o644)
+}
+
+// zramEmpty waits for the stop's reset to empty the device, and resets it itself if the reset did
+// not take - something held the device open the moment it was asked, and it stays set up: the next
+// setup then fails on its comp_algorithm (busy), and systemd retries it into start-limit-hit, a
+// failed unit and the journal's errors (test:usb, 2026-10-04).
+func zramEmpty() error {
+	const disksize, reset = "/sys/block/zram0/disksize", "/sys/block/zram0/reset"
+	for try := 0; try < 10; try++ {
+		for i := 0; i < 10; i++ {
+			if strings.TrimSpace(readSys(disksize)) == "0" {
+				return nil
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		_ = os.WriteFile(reset, []byte("1"), 0o200)
+	}
+	return fmt.Errorf("zram0 kept its %s bytes after it was stopped and reset", strings.TrimSpace(readSys(disksize)))
 }
 
 func zramOn() bool {
