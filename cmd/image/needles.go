@@ -428,6 +428,13 @@ func unionActors(a, b []needleRect) []needleRect {
 	return slices.Compact(sortedActors(slices.Concat(a, b)))
 }
 
+// needleSpecError is a needle whose .json is missing or not as the harness writes it: nothing of
+// the view can be compared with it.
+type needleSpecError struct{ err error }
+
+func (e needleSpecError) Error() string { return e.err.Error() }
+func (e needleSpecError) Unwrap() error { return e.err }
+
 // readSpec reads the needleSpec at p and validates it, as a needle's when needle is set: every
 // view has one, in a run and in the needles.
 func readSpec(p string, needle bool) (needleSpec, error) {
@@ -437,10 +444,10 @@ func readSpec(p string, needle bool) (needleSpec, error) {
 		return spec, err
 	}
 	if err := json.Unmarshal(raw, &spec); err != nil {
-		return spec, fmt.Errorf("%s: %w", p, err)
+		return spec, fmt.Errorf("%s: %w", filepath.Base(p), err)
 	}
 	if err := spec.validate(needle); err != nil {
-		return spec, fmt.Errorf("%s: %w", p, err)
+		return spec, fmt.Errorf("%s: %w", filepath.Base(p), err)
 	}
 	return spec, nil
 }
@@ -578,6 +585,10 @@ func (r *report) compareNeedles(needles string) {
 		v.NeedleNoise = needleNoise(filepath.Join(needles, x.name+".json"))
 		if x.err != nil {
 			v.Error = x.err.Error()
+			// The pull request's table says it in a line; the report keeps the whole of it.
+			if errors.As(x.err, new(needleSpecError)) {
+				v.Error = "its needle has no metadata the harness reads (no .json, or one from before): the view is approved again"
+			}
 		}
 		l.Views = append(l.Views, v)
 	}
@@ -629,7 +640,7 @@ func compareNeedle(ref, shot, specPath, diff string) (float64, error) {
 	// view: all of it differs.
 	spec, err := readSpec(specPath, true)
 	if err != nil {
-		return 1, err
+		return 1, needleSpecError{err}
 	}
 	run, err := readSpec(strings.TrimSuffix(shot, ".png")+".json", false)
 	if err != nil {
@@ -816,7 +827,17 @@ func needlesPropose(args []string) error {
 		if err := git("push", "-q", "-f", "origin", branch); err != nil {
 			return err
 		}
-		pr := exec.Command("gh", "pr", "create", "--title", title, "--body", table+"\n"+reviewChecklist(), "--head", branch, "--base", "main")
+		// A proposal run again for the same build updates its pull request, which the branch's
+		// push already did for the commit. By REST: gh pr edit asks GraphQL for classic projects,
+		// which GitHub refuses.
+		body := table + "\n" + reviewChecklist()
+		pr := exec.Command("gh", "pr", "create", "--title", title, "--body", body, "--head", branch, "--base", "main")
+		open := exec.Command("gh", "pr", "view", branch, "--json", "state,number", "--jq", `select(.state == "OPEN") | .number`)
+		open.Dir = *needles
+		if n, err := open.Output(); err == nil && strings.TrimSpace(string(n)) != "" {
+			pr = exec.Command("gh", "api", "-X", "PATCH", "--silent", "repos/{owner}/{repo}/pulls/"+strings.TrimSpace(string(n)),
+				"-f", "title="+title, "-f", "body="+body)
+		}
 		pr.Dir = *needles
 		pr.Stdout, pr.Stderr = os.Stdout, os.Stderr
 		if err := pr.Run(); err != nil {
