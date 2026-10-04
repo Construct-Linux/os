@@ -113,6 +113,8 @@ contents:
     - xwayland
     - networkmanager
     - networkmanager-wifi
+    # .local names through avahi, the one mDNS stack (etc/nsswitch.conf's mdns4_minimal).
+    - nss-mdns
     # VPNs: WireGuard is NetworkManager's own (wireguard-tools for wg); OpenVPN is a plugin.
     - networkmanager-openvpn
     - wireguard-tools
@@ -137,7 +139,6 @@ contents:
     - gnome-keyring
     - adwaita-icon-theme
     - hicolor-icon-theme
-    - font-cantarell
     - adwaita-fonts
     - font-noto
     - glycin-2
@@ -195,6 +196,9 @@ contents:
     - gnome-shell-extension-drive-menu
     - gnome-shell-extension-night-theme-switcher
     - flatpak
+    # p11-kit's server, which flatpak-session-helper starts to share the host's PKCS#11 modules
+    # (certificates, smartcards) with sandboxed apps: without it the helper logs a failure.
+    - p11-kit-server
     # sched_ext schedulers (kernel/desktop.config's SCHED_CLASS_EXT).
     - scx
     # scx_loader, which starts and switches it (etc/scx_loader.toml).

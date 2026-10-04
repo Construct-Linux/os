@@ -7,7 +7,7 @@ package:
   name: bluez
   version: "5.87"
   # Replaces Wolfi's bluez 5.87 (epoch 1): see the header.
-  epoch: 2
+  epoch: 3
   description: Tools for the Bluetooth protocol stack
   copyright:
     - license: GPL-2.0 AND LGPL-2.1 AND BSD-2-Clause AND MIT
@@ -81,11 +81,13 @@ pipeline:
       install -Dm644 obexd/src/org.bluez.obex.service \
         "${{targets.destdir}}"/usr/share/dbus-1/services/org.bluez.obex.service
 
-      # Workaround permission issue. Fixed upstream, but pulling in patch requires
-      # running autoreconf which seems to generate issues.
-      # https://github.com/bluez/bluez/commit/b1fd409960001a77cda2a09ecc00147ebd9c3667
+      # Upstream b1fd409 makes /etc/bluetooth 0755 in the unit too (pulling the patch in needs
+      # autoreconf): with the directory 0755 and the unit's 0555, systemd warns at every start.
       # Fixes: https://github.com/wolfi-dev/os/issues/31026
       chmod 0755 "${{targets.destdir}}"/etc/bluetooth
+      sed -i 's/^ConfigurationDirectoryMode=0555$/ConfigurationDirectoryMode=0755/' \
+        "${{targets.destdir}}"/usr/lib/systemd/system/bluetooth.service
+      grep -qx 'ConfigurationDirectoryMode=0755' "${{targets.destdir}}"/usr/lib/systemd/system/bluetooth.service
 
   - name: remove libtool .la files
     runs: find "${{targets.destdir}}" -name '*.la' -delete

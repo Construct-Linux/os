@@ -1,0 +1,41 @@
+# .local names through avahi-daemon, for glibc's resolver (nsswitch.conf's mdns4_minimal): the
+# one mDNS stack on the machine is avahi's, which Files' network browsing and printer discovery
+# already use, and systemd-resolved's mDNS is off (resolved.conf.d/10-construct.conf). Wolfi has
+# no package of it.
+package:
+  name: nss-mdns
+  version: 0.15.1
+  epoch: 0
+  description: glibc NSS module resolving .local names through avahi-daemon
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - avahi
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/avahi/nss-mdns/releases/download/v${{package.version}}/nss-mdns-${{package.version}}.tar.gz
+      expected-sha256: ddf71453d7a7cdc5921fe53ef387b24fd0c3c49f4dcf94a2a437498596761a21
+
+  # The tests need the check library, which the build does not otherwise.
+  - uses: autoconf/configure
+    with:
+      opts: --disable-tests
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: |
+      find "${{targets.destdir}}" -name '*.la' -delete
+      test -e "${{targets.destdir}}"/usr/lib/libnss_mdns4_minimal.so.2
+
+  - uses: strip
