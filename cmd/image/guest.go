@@ -97,7 +97,7 @@ func (g *guest) wait(d time.Duration) error {
 
 // evalScript calls org.gnome.Shell.Eval in the test user's session with the JavaScript on stdin,
 // so nothing in it needs quoting for a shell.
-const evalScript = `js=$(cat); exec sudo -u live env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus ` +
+const evalScript = `js=$(cat); exec ` + asLive +
 	`gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval "$js"`
 
 // eval runs JavaScript in GNOME Shell and returns its JSON-encoded result. The script travels

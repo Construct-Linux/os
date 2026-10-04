@@ -127,7 +127,7 @@ func test(args []string) error {
 	l.bootMark = bootMark
 	// The run takes longer than GNOME's idle delay: with the display blanked, every screenshot
 	// after it is a black "Display output is not active".
-	_, _ = g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
+	_, _ = g.run(asLive+`gsettings set org.gnome.desktop.session idle-delay 0`, "")
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.installer(v, g, l, *stick)
@@ -141,7 +141,7 @@ func test(args []string) error {
 	}
 	r.shotLook(v, g, "desktop")
 	l.view("desktop")
-	sinks, err := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
+	sinks, err := g.run(asLive+`wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
 	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched)+errText(err))
@@ -165,7 +165,7 @@ func test(args []string) error {
 	idle, _ := g.run(`systemctl is-active docker.service containerd.service`, "")
 	r.add("on demand only", len(strings.Fields(idle)) == 2 && !slices.Contains(strings.Fields(idle), "active"), oneLine(idle))
 	// The default terminal, as GLib and the session's "open a terminal" find it.
-	term, _ := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 xdg-terminal-exec --print-id 2>&1`, "")
+	term, _ := g.run(asLive+`xdg-terminal-exec --print-id 2>&1`, "")
 	r.add("default terminal", strings.Contains(term, "com.mitchellh.ghostty.desktop"), oneLine(term))
 	// A machine nobody named is os-release's DEFAULT_HOSTNAME.
 	name, err := g.run(`hostnamectl hostname`, "")
@@ -197,11 +197,11 @@ func test(args []string) error {
 		`ip netns exec fwtest curl -s -o /dev/null -m 3 http://10.99.0.1:8765/; echo network=$?; kill $p; }; `+
 		`ip netns del fwtest`, "")
 	r.add("firewall", strings.HasPrefix(fw, "1\n") && strings.Contains(fw, "local=0") && strings.Contains(fw, "network=28"), oneLine(fw))
-	dock, err := g.run(`sudo -u live docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
+	dock, err := g.run(asLive+`docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
 	// A port Docker publishes without an address is this machine's (etc/docker/daemon.json).
-	published, err := g.run(`c=$(sudo -u live docker run -d --rm -p 8766:8080 cgr.dev/chainguard/wolfi-base sleep 30) && sudo -u live docker port "$c"; sudo -u live docker rm -f "$c" >/dev/null 2>&1`, "")
+	published, err := g.run(`c=$(`+asLive+`docker run -d --rm -p 8766:8080 cgr.dev/chainguard/wolfi-base sleep 30) && `+asLive+`docker port "$c"; `+asLive+`docker rm -f "$c" >/dev/null 2>&1`, "")
 	r.add("docker publishes on loopback", err == nil && strings.Contains(published, "127.0.0.1:8766") && !strings.Contains(published, "0.0.0.0"), oneLine(published))
 	// NetworkManager's Wi-Fi is wpa_supplicant, started by the bus when it is asked for: a VM has
 	// no Wi-Fi card to join a network with, but the supplicant must be there to be started.
@@ -216,7 +216,7 @@ func test(args []string) error {
 	va, err := g.run(`test -f /usr/lib/dri/iHD_drv_video.so && gst-inspect-1.0 va 2>&1 | grep -m1 Filename`, "")
 	r.add("vaapi", err == nil && strings.Contains(va, "libgstva.so"), oneLine(va)+errText(err))
 	// Visual Studio Code: its command line answers (it needs no display).
-	code, err := g.run(`sudo -u live code --version 2>&1 | head -1`, "")
+	code, err := g.run(asLive+`code --version 2>&1 | head -1`, "")
 	r.add("vscode", err == nil && strings.HasPrefix(strings.TrimSpace(code), "1."), oneLine(code)+errText(err))
 	// Printing: cupsd starts when asked, through its socket.
 	lp, err := g.run(`lpstat -r 2>&1`, "")
@@ -232,7 +232,7 @@ func test(args []string) error {
 	r.add("no fingerprint login", strings.TrimSpace(finger) == "", oneLine(finger))
 	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it, and the
 	// cloud CLIs distrobox.conf installs into it.
-	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 900 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1; test -s /usr/share/terminfo/x/xterm-ghostty && echo ghostty-terminfo' 2>&1 | tail -4`, "")
+	box, err := g.run(`cd /tmp && `+asLive+`timeout 900 distrobox create --yes >/dev/null 2>&1 && `+asLive+`timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1; test -s /usr/share/terminfo/x/xterm-ghostty && echo ghostty-terminfo' 2>&1 | tail -4`, "")
 	r.add("wolfi container", err == nil && strings.Contains(box, "apk-tools") && strings.Contains(box, "aws-cli/2.") && strings.Contains(box, "Google Cloud SDK") && strings.Contains(box, "ghostty-terminfo"), oneLine(box)+errText(err))
 	// Ghostty's TERM, which ncurses programs (top, nano, htop) refuse to start without.
 	colors, err := g.run(`TERM=xterm-ghostty tput colors`, "")
@@ -246,14 +246,14 @@ func test(args []string) error {
 	// libadwaita apps, the image's and Flathub's, take Orchis from ~/.config/gtk-4.0: real files
 	// (construct theme), which a Flatpak reads through the image's read-only override. The marker
 	// is the dark styles' media query, which only the Orchis fork's light gtk.css carries.
-	gtk4, err := g.run(`f=/var/home/live/.config/gtk-4.0/gtk.css; test -f "$f" && ! test -L "$f" && sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c 'grep -c "prefers-color-scheme" "$HOME/.config/gtk-4.0/gtk.css"' 2>&1`, "")
+	gtk4, err := g.run(`f=/var/home/live/.config/gtk-4.0/gtk.css; test -f "$f" && ! test -L "$f" && `+asLive+`flatpak run --command=sh com.google.Chrome -c 'grep -c "prefers-color-scheme" "$HOME/.config/gtk-4.0/gtk.css"' 2>&1`, "")
 	r.add("gtk4 theme in flatpak", err == nil && strings.TrimSpace(lastLine(gtk4)) != "0", "Chrome's sandbox reads the copied gtk.css: "+lastLine(gtk4))
 	// GTK 3 apps from Flathub - Chrome's own window - find the theme gtk-theme names in ~/.themes,
 	// which construct theme fills and the same override shows them.
-	gtk3, err := g.run(`t=$(sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.desktop.interface gtk-theme | tr -d "'"); sudo -u live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus flatpak run --command=sh com.google.Chrome -c "test -s \"\$HOME/.themes/$t/gtk-3.0/gtk.css\" && echo \"$t\"" 2>&1`, "")
+	gtk3, err := g.run(`t=$(`+asLive+`gsettings get org.gnome.desktop.interface gtk-theme | tr -d "'"); `+asLive+`flatpak run --command=sh com.google.Chrome -c "test -s \"\$HOME/.themes/$t/gtk-3.0/gtk.css\" && echo \"$t\"" 2>&1`, "")
 	r.add("gtk3 theme in flatpak", err == nil && strings.HasPrefix(strings.TrimSpace(lastLine(gtk3)), "Orchis-Construct-"), "Chrome's sandbox finds gtk-theme in ~/.themes: "+lastLine(gtk3))
 	// The brand's wallpaper, light and dark: both files the session's background names are there.
-	wall, err := g.run(`for k in picture-uri picture-uri-dark; do u=$(sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.desktop.background $k | tr -d "'"); f=${u#file://}; test -s "$f" && echo "$f"; done`, "")
+	wall, err := g.run(`for k in picture-uri picture-uri-dark; do u=$(`+asLive+`gsettings get org.gnome.desktop.background $k | tr -d "'"); f=${u#file://}; test -s "$f" && echo "$f"; done`, "")
 	r.add("the brand's wallpaper", err == nil && strings.Count(wall, "/usr/share/backgrounds/construct/") == 2, oneLine(wall)+errText(err))
 
 	want := map[string]bool{}
@@ -386,7 +386,7 @@ func (e extension) detail() string {
 // enabled-extensions, which the image's dconf defaults set), each with the state the running shell
 // gives it: an extension that broke with this shell, or is not there, fails the test.
 func (g *guest) extensions() []extension {
-	list, err := g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings get org.gnome.shell enabled-extensions`, "")
+	list, err := g.run(asLive+`gsettings get org.gnome.shell enabled-extensions`, "")
 	if err != nil {
 		return []extension{{uuid: "(enabled-extensions)", err: err.Error()}}
 	}
@@ -636,8 +636,7 @@ func (r *report) installer(v *vm, g *guest, l *lf, stick bool) {
 	want := map[bool]string{true: "1", false: "0"}[stick]
 	r.add("installer offered", strings.Trim(n, `"`) == want, fmt.Sprintf("%s installer windows on a stick=%v", n, stick))
 	// Its pages, walked as a person does (image/test/rootfs/usr/lib/construct-test).
-	walked, err := g.run(`sudo -u live env XDG_RUNTIME_DIR=/run/user/1000 WAYLAND_DISPLAY=wayland-0 `+
-		`DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus /usr/lib/construct-test/walk-installer.py 2>&1`, "")
+	walked, err := g.run(asLive+`WAYLAND_DISPLAY=wayland-0 /usr/lib/construct-test/walk-installer.py 2>&1`, "")
 	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), oneLine(walked)+errText(err))
 	if stick && strings.Trim(n, `"`) == "1" {
 		time.Sleep(2 * time.Second)

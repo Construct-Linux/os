@@ -72,7 +72,7 @@ func devUp(args []string) error {
 		return fmt.Errorf("GNOME Shell never answered Eval: %w", err)
 	}
 	// As the harness does: no blanking, and the installer the live session opens closed.
-	_, _ = g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
+	_, _ = g.run(asLive+`gsettings set org.gnome.desktop.session idle-delay 0`, "")
 	// The installer autostarts a few seconds after the login: it is waited for before it is
 	// closed, or it opens over the views a moment later.
 	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
@@ -184,8 +184,8 @@ func themeDev(args []string) error {
 	if err != nil {
 		return err
 	}
-	if out, err := g.run(`base64 -d | sudo -u live sh -c 'rm -rf `+liveThemes+` && mkdir -p `+liveThemes+` && tar -xz -C `+liveThemes+`' && `+
-		`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 construct theme --themes `+liveThemes, archive); err != nil {
+	if out, err := g.run(`base64 -d | `+asLive+`sh -c 'rm -rf `+liveThemes+` && mkdir -p `+liveThemes+` && tar -xz -C `+liveThemes+`' && `+
+		asLive+`construct theme --themes `+liveThemes, archive); err != nil {
 		return fmt.Errorf("putting the themes in the machine: %w: %s", err, out)
 	}
 	css := liveThemes + "/Orchis-Construct-Dark/gnome-shell/gnome-shell.css"

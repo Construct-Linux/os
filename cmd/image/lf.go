@@ -1936,7 +1936,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	_ = v.pointTo(16000, 30000)
 	time.Sleep(time.Second)
 	// A libadwaita dialog, opened by the app's own action over its bus: preferences, else about.
-	out, err := g.run(`b='sudo -u live env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gdbus call --session --dest org.gnome.TextEditor --object-path /org/gnome/TextEditor --method org.gtk.Actions.Activate'; `+
+	out, err := g.run(`b='`+asLive+`gdbus call --session --dest org.gnome.TextEditor --object-path /org/gnome/TextEditor --method org.gtk.Actions.Activate'; `+
 		`$b preferences '[]' '{}' >/dev/null 2>&1 && echo preferences || { $b about '[]' '{}' 2>&1 && echo about; }`, "")
 	time.Sleep(2 * time.Second)
 	r.add("view:gtk-dialog", err == nil && (strings.Contains(out, "preferences") || strings.Contains(out, "about")), "app action: "+oneLine(out)+errText(err))
@@ -1956,13 +1956,13 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	}
 	// A warning: a file the editor has open changes on disk, and it says so in a banner.
 	const changed = "/tmp/construct-banner.txt"
-	_, err = g.run(`sudo -u live sh -c 'printf "one\n" > `+changed+`'`, "")
+	_, err = g.run(asLive+`sh -c 'printf "one\n" > `+changed+`'`, "")
 	if err == nil {
 		err = g.evalJSON(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_app_info().launch_uris([%q], null); return true;`, id, "file://"+changed), new(bool))
 	}
 	if err == nil {
 		time.Sleep(4 * time.Second)
-		_, err = g.run(`sudo -u live sh -c 'printf "two\n" >> `+changed+`'`, "")
+		_, err = g.run(asLive+`sh -c 'printf "two\n" >> `+changed+`'`, "")
 		time.Sleep(3 * time.Second)
 	}
 	r.add("view:gtk-banner", err == nil, "a file Text Editor has open, changed on disk"+errText(err))
@@ -1971,7 +1971,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	time.Sleep(2 * time.Second)
 	// A destructive confirmation: Files asks before it empties the trash, a libadwaita alert with
 	// the destructive response. Escape answers Cancel; the probe file stays in the trash.
-	out, err = g.run(`u='sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus'; `+
+	out, err = g.run(`u='`+asLive+`'; `+
 		`$u sh -c 'f=$(mktemp -p "$HOME" construct-trash.XXXXXX) && gio trash "$f"' && `+
 		`{ $u timeout 30 gdbus call --session --dest org.gnome.Nautilus --object-path /org/gnome/Nautilus/FileOperations2 `+
 		`--method org.gnome.Nautilus.FileOperations2.EmptyTrash '{}' >/dev/null 2>&1 & } ; echo asked`, "")
@@ -2077,14 +2077,14 @@ func (l *lf) guestLook() {
 	}
 	l.check("icons", "apps", len(s.Icons) > 0 && len(unresolved) == 0, fmt.Sprintf("%d apps shown; not drawn by Tela or a brand tile: %v", len(s.Icons), unresolved))
 
-	user := `sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus `
+	user := asLive
 	fonts, err := l.g.run(user+`gsettings get org.gnome.desktop.interface font-name; `+user+`gsettings get org.gnome.desktop.interface monospace-font-name; `+
 		`for f in monospace sans-serif system-ui; do fc-match -f '%{family[0]}\n' $f; done`, "")
 	ui, mono := l.pal.strs["type-ui"], l.pal.strs["type-mono"]
 	want := fmt.Sprintf("'%s 11'\n'%s 11'\n%s\n%s\n%s\n", ui, mono, mono, ui, ui)
 	l.check("fonts", "G4", err == nil && fonts == want, fmt.Sprintf("font-name, monospace-font-name, fc-match monospace/sans-serif/system-ui: %s; want %s", oneLine(fonts), oneLine(want))+errText(err))
 
-	dconf, err := l.g.run(`for k in dash-to-panel/focus-highlight-color dash-to-panel/focus-highlight-opacity dash-to-panel/trans-use-border tilingshell/window-border-color; do sudo -u live dconf read /org/gnome/shell/extensions/$k; done`, "")
+	dconf, err := l.g.run(`for k in dash-to-panel/focus-highlight-color dash-to-panel/focus-highlight-opacity dash-to-panel/trans-use-border tilingshell/window-border-color; do `+asLive+`dconf read /org/gnome/shell/extensions/$k; done`, "")
 	accent := hexOf(l.c("dark-accent"))
 	// The dock's focus highlight is the rest tint, in dash-to-panel's percent.
 	wantDconf := fmt.Sprintf("'%s'\n%.0f\nfalse\n'%s'\n", accent, l.pal.nums["tint-dark-rest"]*100, accent)
