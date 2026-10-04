@@ -79,6 +79,14 @@ func lifecycle(args []string) error {
 	// on standard input - read from the stick it runs from.
 	outs, err := g.installAsTheInstaller()
 	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
+	if err != nil {
+		// The live session's screen when the install did not end: a password asked, a dialog.
+		shot := filepath.Join(*dir, "install.ppm")
+		if v.screenshot(shot) == nil {
+			time.Sleep(500 * time.Millisecond)
+			_ = ppmToPNG(shot, filepath.Join(*dir, "install.png"))
+		}
+	}
 	if err == nil && (!strings.Contains(outs, `"percent":100`) || !strings.Contains(outs, `"msg":"done"`)) {
 		err = fmt.Errorf("no 100%% or done record")
 	}
@@ -454,5 +462,10 @@ func (g *guest) installAsTheInstaller() (string, error) {
 		}
 		time.Sleep(5 * time.Second)
 	}
-	return "", fmt.Errorf("construct install did not end")
+	// What it was doing when the time ran out: its progress so far, its errors, a password the
+	// session was asked for, and the journal's last words.
+	outs, _ := g.run(`tail -3 `+run+`.json; tail -5 `+run+`.err; ps -eo pid,etime,args | grep -E 'pkexec|construct install|polkit' | grep -v grep; `+
+		`for s in $(loginctl list-sessions --no-legend | awk '{print $1}'); do echo "session $s $(loginctl show-session $s -p Name --value) active=$(loginctl show-session $s -p Active --value)"; done; `+
+		`journalctl -b -q -o short-monotonic -n 25 --no-pager`, "")
+	return outs, fmt.Errorf("construct install did not end")
 }
