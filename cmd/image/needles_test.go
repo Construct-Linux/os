@@ -274,6 +274,49 @@ func TestProposalBody(t *testing.T) {
 	}
 }
 
+// Noise is the share of pixels on an edge and the palette colours that cover a surface; a colour
+// the palette shares between tokens counts once, a speck of one not at all.
+func TestNoiseOf(t *testing.T) {
+	pal, err := parseLFPalette([]byte(tPalette))
+	if err != nil {
+		t.Fatal(err)
+	}
+	img := solid(100, 100, tG)
+	fill(img, lfRect{50, 0, 50, 100}, tAccent)
+	img.SetNRGBA(10, 10, tRing)
+	n := noiseOf(img, &pal)
+	// The boundary's column, and the speck's left, top and own pixel.
+	if n.Edges != 103.0/10000 || n.PaletteColors != 2 {
+		t.Errorf("noise %+v", n)
+	}
+	if n := noiseOf(img, nil); n.PaletteColors != 0 || n.Edges == 0 {
+		t.Errorf("without a palette %+v", n)
+	}
+	if c := noiseCell(viewNoise{0.031, 9}, &viewNoise{0.029, 8}); c != "edges 3.10%, 9 colours (+0.20, +1)" {
+		t.Errorf("cell %q", c)
+	}
+	if c := noiseCell(viewNoise{0.031, 9}, nil); c != "edges 3.10%, 9 colours" {
+		t.Errorf("cell without a needle's %q", c)
+	}
+}
+
+// noiseOf runs on every view a run shoots: what it costs on the X9's screen.
+func BenchmarkNoiseOf(b *testing.B) {
+	pal, err := parseLFPalette([]byte(tPalette))
+	if err != nil {
+		b.Fatal(err)
+	}
+	img := solid(2880, 1800, tG)
+	for y := range 1800 {
+		for x := 0; x < 2880; x += 7 {
+			img.SetNRGBA(x, y, color.NRGBA{uint8(x), uint8(y), uint8(x ^ y), 255})
+		}
+	}
+	for b.Loop() {
+		noiseOf(img, &pal)
+	}
+}
+
 // Up to 20 views are one proposal; more are one per group, in the groups' order.
 func TestProposalBatches(t *testing.T) {
 	few := []lookView{{Name: "a", Group: groupGTK}, {Name: "b", Group: groupShell}}

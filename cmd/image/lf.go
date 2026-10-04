@@ -439,6 +439,7 @@ func newLF(r *report, v *vm, g *guest) *lf {
 		return l
 	}
 	l.ok = true
+	r.pal = &l.pal
 	return l
 }
 

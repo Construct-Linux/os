@@ -10,6 +10,7 @@ import (
 	"html"
 	"image"
 	"image/color"
+	"image/draw"
 	"image/png"
 	"io/fs"
 	"math"
@@ -67,6 +68,74 @@ type needleSpec struct {
 	Actors   []needleRect    `json:"actors"`
 	Approved *needleApproval `json:"approved,omitempty"`
 	LF       viewLF          `json:"lf"`
+	Noise    viewNoise       `json:"noise"`
+}
+
+// viewNoise is how busy a view is, measured on its screenshot: the share of its pixels on an edge
+// (a neighbour, right or below, beyond needleChannelDelta), and how many of the palette's colours
+// cover a surface of it. Informative, never a gate: it is for a reviewer to see a view grow
+// noisier from one approval to the next, which no single rule says.
+type viewNoise struct {
+	Edges         float64 `json:"edges"`
+	PaletteColors int     `json:"palette_colors"`
+}
+
+// noisePaletteShare is the least of a view a palette colour covers to count: less is antialiasing
+// or a mark's edge, not a surface the eye takes as one of the view's colours (at 2x, 0.1% of the
+// screen is a 72 px square).
+const noisePaletteShare = 0.001
+
+// noiseOf measures img's noise against the palette's colours, each within lfSurfaceTol; without a
+// palette it counts none.
+func noiseOf(img image.Image, pal *lfPalette) viewNoise {
+	b := img.Bounds()
+	n := image.NewNRGBA(b)
+	draw.Draw(n, b, img, b.Min, draw.Src)
+	w, h := b.Dx(), b.Dy()
+	if w == 0 || h == 0 {
+		return viewNoise{}
+	}
+	px := func(x, y int) []uint8 { i := y*n.Stride + x*4; return n.Pix[i : i+3] }
+	delta := func(a, c []uint8) int {
+		d := 0
+		for i := range 3 {
+			d = max(d, abs(int(a[i])-int(c[i])))
+		}
+		return d
+	}
+	edges := 0
+	hist := map[[3]uint8]int{}
+	for y := range h {
+		for x := range w {
+			p := px(x, y)
+			hist[[3]uint8(p)]++
+			if (x+1 < w && delta(p, px(x+1, y)) > needleChannelDelta) || (y+1 < h && delta(p, px(x, y+1)) > needleChannelDelta) {
+				edges++
+			}
+		}
+	}
+	out := viewNoise{Edges: float64(edges) / float64(w*h)}
+	if pal == nil {
+		return out
+	}
+	seen := map[[3]uint8]bool{}
+	for _, c := range pal.colors {
+		rgb := [3]uint8{c.R, c.G, c.B}
+		if seen[rgb] {
+			continue
+		}
+		seen[rgb] = true
+		covered := 0
+		for k, v := range hist {
+			if delta(k[:], rgb[:]) <= lfSurfaceTol {
+				covered += v
+			}
+		}
+		if float64(covered) >= noisePaletteShare*float64(w*h) {
+			out.PaletteColors++
+		}
+	}
+	return out
 }
 
 // needleScreen is the screen a view was drawn on: the panel in physical pixels, the stage in
@@ -292,11 +361,10 @@ func (r *report) shotLook(v *vm, g *guest, m viewMeta) {
 	r.shot(v, name)
 	after, errAfter := measureActors(g)
 	width, height := 0, 0
-	if f, err := os.Open(filepath.Join(r.dir, name+".png")); err == nil {
-		if c, err := png.DecodeConfig(f); err == nil {
-			width, height = c.Width, c.Height
-		}
-		f.Close()
+	var noise viewNoise
+	if img, err := readPNG(filepath.Join(r.dir, name+".png")); err == nil {
+		width, height = img.Bounds().Dx(), img.Bounds().Dy()
+		noise = noiseOf(img, r.pal)
 	}
 	seen := after
 	if errAfter != nil {
@@ -304,7 +372,7 @@ func (r *report) shotLook(v *vm, g *guest, m viewMeta) {
 	}
 	was, is := before.onScreen(width), after.onScreen(width)
 	spec := &needleSpec{Group: m.group, About: m.about, Rules: m.rules, Scheme: seen.Scheme,
-		Screen: screenOf(width, height, seen, r.scale), Actors: unionActors(was, is)}
+		Screen: screenOf(width, height, seen, r.scale), Actors: unionActors(was, is), Noise: noise}
 	if err := errors.Join(errBefore, errAfter); err != nil {
 		spec.Actors = append(spec.Actors, needleBarFallback(width, r.scale))
 		r.add("look: "+name+" actors", false, "the clock and Vitals could not be measured: "+oneLine(err.Error()))
@@ -405,6 +473,22 @@ type lookView struct {
 	Error string    `json:"error,omitempty"`
 	LF    viewLF    `json:"lf"`
 	Sweep lookSweep `json:"sweep"`
+	Noise viewNoise `json:"noise"`
+	// NeedleNoise is the needle's, for the change; none when the needle measured none.
+	NeedleNoise *viewNoise `json:"needle_noise,omitempty"`
+}
+
+// needleNoise is the noise a needle's .json records, or none: a needle approved before noise
+// was measured has none to compare with.
+func needleNoise(p string) *viewNoise {
+	var s struct {
+		Noise *viewNoise `json:"noise"`
+	}
+	raw, err := os.ReadFile(p)
+	if err != nil || json.Unmarshal(raw, &s) != nil {
+		return nil
+	}
+	return s.Noise
 }
 
 // lookSweep is C3's sweep of a view: its solid accent areas larger than a mark, in the
@@ -440,7 +524,7 @@ func (r *report) lookViewOf(name string) lookView {
 		v.Sweep.Areas = []sweepArea{}
 	}
 	if s := r.views[name]; s != nil {
-		v.Group, v.LF = s.Group, s.LF
+		v.Group, v.LF, v.Noise = s.Group, s.LF, s.Noise
 	}
 	return v
 }
@@ -491,6 +575,7 @@ func (r *report) compareNeedles(needles string) {
 	for _, x := range results {
 		v := r.lookViewOf(x.name)
 		v.Share, v.OK = x.share, x.err == nil && x.share <= needleMaxShare
+		v.NeedleNoise = needleNoise(filepath.Join(needles, x.name+".json"))
 		if x.err != nil {
 			v.Error = x.err.Error()
 		}
@@ -852,7 +937,7 @@ func retireNeedles(needles string) ([]string, error) {
 // which views only their own eyes cover.
 func proposalTable(l look, views []lookView) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Build `%s`, against needles `%s`.\n\n| View | Differs | lf |\n|---|---|---|\n", l.Version, l.Needles)
+	fmt.Fprintf(&b, "Build `%s`, against needles `%s`.\n\n| View | Differs | lf | Noise |\n|---|---|---|---|\n", l.Version, l.Needles)
 	for _, v := range views {
 		state := fmt.Sprintf("%.3f%%", v.Share*100)
 		switch {
@@ -861,9 +946,18 @@ func proposalTable(l look, views []lookView) string {
 		case v.Error != "":
 			state = v.Error
 		}
-		fmt.Fprintf(&b, "| `%s` | %s | %s |\n", v.Name, state, lfCell(v.LF))
+		fmt.Fprintf(&b, "| `%s` | %s | %s | %s |\n", v.Name, state, lfCell(v.LF), noiseCell(v.Noise, v.NeedleNoise))
 	}
 	return b.String()
+}
+
+// noiseCell is a view's noise, and how far it moved from its needle's when the needle has one.
+func noiseCell(n viewNoise, was *viewNoise) string {
+	s := fmt.Sprintf("edges %.2f%%, %d colours", n.Edges*100, n.PaletteColors)
+	if was != nil {
+		s += fmt.Sprintf(" (%+.2f, %+d)", (n.Edges-was.Edges)*100, n.PaletteColors-was.PaletteColors)
+	}
+	return s
 }
 
 // lfCell is lf's word on a view for the table: what failed, how many passed, or that it measured

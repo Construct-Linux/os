@@ -31,6 +31,8 @@ type report struct {
 	views map[string]*needleSpec
 	// sweeps are C3's sweep of each view, for look.json.
 	sweeps map[string]lookSweep
+	// pal is the guest's palette once lf has read it: a view's noise counts its colours.
+	pal *lfPalette
 	// benchWindow is when construct bench ran, in seconds since the guest's boot: the kernel's
 	// out-of-memory report it provokes on purpose is not an error of the image's.
 	benchWindow [2]float64
