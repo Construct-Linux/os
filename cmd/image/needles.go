@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -44,15 +45,132 @@ type needleRect struct {
 	Why string `json:"why"`
 }
 
-// needleSpec is a view's <name>.json beside its <name>.png. Ignore is written by hand: regions a
-// view's own content changes in. Actors is measured when the view is shot (a run writes it beside
-// its screenshot, needles-propose copies it to the needle): where the clock, Vitals' readings,
+// needleSpec is a view's <name>.json beside its <name>.png, in a run and in the needles, where the
+// gallery reads it: every field is required, so a view says what it is without the harness's code.
+//
+// Group is the part of the harness that shoots the view (viewGroups); About, in a sentence, what
+// it validates, and Rules by THEMING.md's ids; Scheme the colour scheme in force when it was shot;
+// Screen the panel and the stage it was drawn on. Ignore is written by hand: regions a view's own
+// content changes in. Actors is measured when the view is shot: where the clock, Vitals' readings,
 // notifications' times and the lock clock were, which move with their text's width, so no fixed
-// rectangle holds them. A comparison leaves out the needle's and the run's both, so text that grew or
-// shrank between them is left out where it was in either.
+// rectangle holds them; a comparison leaves out the needle's and the run's both, so text that grew
+// or shrank between them is left out where it was in either. LF is what lf's checks said of the
+// view in the run. Approved is the needle's alone: which build and commit made it, and how far it
+// was from the needle it replaced.
 type needleSpec struct {
-	Ignore []needleRect `json:"ignore,omitempty"`
-	Actors []needleRect `json:"actors,omitempty"`
+	Group    string          `json:"group"`
+	About    string          `json:"about"`
+	Rules    []string        `json:"rules"`
+	Scheme   string          `json:"scheme"`
+	Screen   needleScreen    `json:"screen"`
+	Ignore   []needleRect    `json:"ignore"`
+	Actors   []needleRect    `json:"actors"`
+	Approved *needleApproval `json:"approved,omitempty"`
+	LF       viewLF          `json:"lf"`
+}
+
+// needleScreen is the screen a view was drawn on: the panel in physical pixels, the stage in
+// logical ones, and the scale between them - 2 for the X9-15 at 200%, 1.5 for desktop-scale-150.
+type needleScreen struct {
+	W      int     `json:"w"`
+	H      int     `json:"h"`
+	Scale  float64 `json:"scale"`
+	StageW int     `json:"stage_w"`
+	StageH int     `json:"stage_h"`
+}
+
+// needleApproval is how a needle came to be: the build that drew it, the os commit that build was
+// made from, and the share of the needle it replaced that differed - none when it was new.
+type needleApproval struct {
+	Build string   `json:"build"`
+	OS    string   `json:"os"`
+	Share *float64 `json:"share"`
+	New   bool     `json:"new"`
+}
+
+// viewLF is lf's checks on one view: how many passed, how many failed, and the failed ones' names.
+// None at all is a view lf does not measure, which only a person's review covers.
+type viewLF struct {
+	Pass   int      `json:"pass"`
+	Fail   int      `json:"fail"`
+	Checks []string `json:"checks"`
+}
+
+// The groups a view is shot in, each by its own part of the harness: the shell's views, the
+// desktop over each wallpaper, libadwaita's own surfaces, the apps as they open, Settings' panels,
+// the type specimen and the installer.
+const (
+	groupShell     = "shell"
+	groupDesktop   = "desktop"
+	groupGTK       = "gtk"
+	groupApp       = "app"
+	groupSettings  = "settings"
+	groupType      = "type"
+	groupInstaller = "installer"
+)
+
+var viewGroups = []string{groupShell, groupDesktop, groupGTK, groupApp, groupSettings, groupType, groupInstaller}
+
+// themingRule is a THEMING.md rule's id: a rule a view names must be one there is.
+var themingRule = regexp.MustCompile(`^(C|P|S|E|F|R|SP|T|TY|X|W)[0-9]+$`)
+
+// viewMeta is what the code that shoots a view knows of it: its name, its group, what it
+// validates and by which rules. The scheme and the screen are measured as it is shot.
+type viewMeta struct {
+	name, group, about string
+	rules              []string
+}
+
+// validate says what a spec lacks; a needle must also say how it was approved.
+func (s needleSpec) validate(needle bool) error {
+	var bad []string
+	if !slices.Contains(viewGroups, s.Group) {
+		bad = append(bad, fmt.Sprintf("group %q is none of %v", s.Group, viewGroups))
+	}
+	if strings.TrimSpace(s.About) == "" {
+		bad = append(bad, "no about")
+	}
+	if len(s.Rules) == 0 {
+		bad = append(bad, "no rules")
+	}
+	for _, r := range s.Rules {
+		if !themingRule.MatchString(r) {
+			bad = append(bad, fmt.Sprintf("rule %q is no THEMING.md id", r))
+		}
+	}
+	if s.Scheme != "dark" && s.Scheme != "light" {
+		bad = append(bad, fmt.Sprintf("scheme %q, want dark or light", s.Scheme))
+	}
+	if c := s.Screen; c.W <= 0 || c.H <= 0 || c.Scale <= 0 || c.StageW <= 0 || c.StageH <= 0 {
+		bad = append(bad, fmt.Sprintf("screen %+v", c))
+	}
+	if needle {
+		switch a := s.Approved; {
+		case a == nil:
+			bad = append(bad, "not approved")
+		case a.Build == "" || a.OS == "":
+			bad = append(bad, fmt.Sprintf("approved by build %q at os %q", a.Build, a.OS))
+		case (a.Share == nil) != a.New:
+			bad = append(bad, "approved: a share is what a view that was not new differed by")
+		}
+	}
+	if len(bad) > 0 {
+		return errors.New(strings.Join(bad, "; "))
+	}
+	return nil
+}
+
+// write saves the spec as JSON at p, its lists as lists even when empty: the gallery reads them.
+func (s needleSpec) write(p string) error {
+	s.Rules = append([]string{}, s.Rules...)
+	s.Ignore = append([]needleRect{}, s.Ignore...)
+	s.Actors = append([]needleRect{}, s.Actors...)
+	s.LF.Checks = append([]string{}, s.LF.Checks...)
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(p, append(b, '\n'), 0o644)
 }
 
 // needleBarFallback is what is left out of a view whose actors could not be measured, in a
@@ -69,8 +187,11 @@ func needleBarFallback(width, scale int) needleRect {
 // ring and the bar's surface around them are compared; with the calendar open, each notification's
 // time; on the lock screen, its clock. Each grows by 2 px for antialiasing. Today's date and the
 // month's days are not among them: the views are shot at viewsTime, so they are the same in every
-// run, and leaving them out hid 9% of the calendar's views - the focus ring on a day among it. It answers them with the stage's width: at a fractional scale the stage is in
-// logical pixels and the screenshot in physical ones.
+// run, and leaving them out hid 9% of the calendar's views - the focus ring on a day among it.
+//
+// It answers them with the stage's size - at a fractional scale the stage is in logical pixels and
+// the screenshot in physical ones - and the colour scheme in force, which a view records as it is
+// rather than as the code meant it.
 const needleActors = `
 const out = [];
 const box = a => {
@@ -109,12 +230,32 @@ if (dm?.menu.isOpen) {
     times(dm.menu.box);
 }
 add(Main.screenShield?._dialog?._clock, 'the lock clock');
-return {w: global.stage.width, actors: out};`
+const scheme = new Gio.Settings({schema_id: 'org.gnome.desktop.interface'}).get_string('color-scheme');
+return {w: global.stage.width, h: global.stage.height, scheme: scheme === 'prefer-dark' ? 'dark' : 'light', actors: out};`
 
-// stageActors is what needleActors answers: the stage's width and the actors on it.
+// stageActors is what needleActors answers: the stage's size, the colour scheme and the actors on
+// the stage.
 type stageActors struct {
 	W      float64      `json:"w"`
+	H      float64      `json:"h"`
+	Scheme string       `json:"scheme"`
 	Actors []needleRect `json:"actors"`
+}
+
+// screenOf is the screen a screenshot w x h px was drawn on, over the stage seen; a stage not
+// measured is taken as the panel over the run's scale.
+func screenOf(w, h int, seen stageActors, scale int) needleScreen {
+	sw, sh := int(math.Round(seen.W)), int(math.Round(seen.H))
+	if sw <= 0 || sh <= 0 {
+		scale = max(scale, 1)
+		sw, sh = w/scale, h/scale
+	}
+	k := 0.0
+	if sw > 0 {
+		// To the hundredth: mutter's nearest supported scale to 1.5 lays out a stage a pixel off.
+		k = math.Round(float64(w)/float64(sw)*100) / 100
+	}
+	return needleScreen{W: w, H: h, Scale: k, StageW: sw, StageH: sh}
 }
 
 // measureActors is what needleActors finds on the screen now.
@@ -139,23 +280,31 @@ func (s stageActors) onScreen(width int) []needleRect {
 	return out
 }
 
-// shotLook saves the screen as name.png, as shot does, and beside it name.json with where the
-// actors whose content changes from run to run were, measured before and after the screenshot: the
+// shotLook saves the screen as m.name.png, as shot does, and beside it m.name.json, the view's
+// needleSpec: what m says of it, the scheme and the screen it was drawn on, and where the actors
+// whose content changes from run to run were, measured before and after the screenshot - the
 // clock may tick between them. A view whose actors cannot be measured leaves out the top bar's
-// inside instead, and fails a check that says so.
-func (r *report) shotLook(v *vm, g *guest, name string) {
+// inside instead, and fails a check that says so. The spec is kept for lf's results on the view,
+// which writeViews adds once every view is measured.
+func (r *report) shotLook(v *vm, g *guest, m viewMeta) {
+	name := m.name
 	before, errBefore := measureActors(g)
 	r.shot(v, name)
 	after, errAfter := measureActors(g)
-	width := 0
+	width, height := 0, 0
 	if f, err := os.Open(filepath.Join(r.dir, name+".png")); err == nil {
 		if c, err := png.DecodeConfig(f); err == nil {
-			width = c.Width
+			width, height = c.Width, c.Height
 		}
 		f.Close()
 	}
+	seen := after
+	if errAfter != nil {
+		seen = before
+	}
 	was, is := before.onScreen(width), after.onScreen(width)
-	spec := needleSpec{Actors: unionActors(was, is)}
+	spec := &needleSpec{Group: m.group, About: m.about, Rules: m.rules, Scheme: seen.Scheme,
+		Screen: screenOf(width, height, seen, r.scale), Actors: unionActors(was, is)}
 	if err := errors.Join(errBefore, errAfter); err != nil {
 		spec.Actors = append(spec.Actors, needleBarFallback(width, r.scale))
 		r.add("look: "+name+" actors", false, "the clock and Vitals could not be measured: "+oneLine(err.Error()))
@@ -164,8 +313,35 @@ func (r *report) shotLook(v *vm, g *guest, name string) {
 		// changed while it was shot may have been shot half-drawn.
 		r.add("look: "+name+" actors", true, fmt.Sprintf("moved during the capture: %v, then %v", was, is))
 	}
-	if b, err := json.MarshalIndent(spec, "", "  "); err == nil {
-		_ = os.WriteFile(filepath.Join(r.dir, name+".json"), b, 0o644)
+	if r.views == nil {
+		r.views = map[string]*needleSpec{}
+	}
+	r.views[name] = spec
+	if err := spec.write(filepath.Join(r.dir, name+".json")); err != nil {
+		r.add("look: "+name+" spec", false, err.Error())
+	}
+}
+
+// viewCheck counts an lf check towards the view it measured, when it measured one.
+func (r *report) viewCheck(view, check string, ok bool) {
+	s := r.views[view]
+	if s == nil {
+		return
+	}
+	if ok {
+		s.LF.Pass++
+		return
+	}
+	s.LF.Fail++
+	s.LF.Checks = append(s.LF.Checks, check)
+}
+
+// writeViews writes every view's spec again, now with what lf said of it.
+func (r *report) writeViews() {
+	for name, s := range r.views {
+		if err := s.write(filepath.Join(r.dir, name+".json")); err != nil {
+			r.add("look: "+name+" spec", false, err.Error())
+		}
 	}
 }
 
@@ -184,17 +360,18 @@ func unionActors(a, b []needleRect) []needleRect {
 	return slices.Compact(sortedActors(slices.Concat(a, b)))
 }
 
-// readSpec reads a needleSpec; a view without one has nothing left out.
-func readSpec(p string) (needleSpec, error) {
+// readSpec reads the needleSpec at p and validates it, as a needle's when needle is set: every
+// view has one, in a run and in the needles.
+func readSpec(p string, needle bool) (needleSpec, error) {
 	var spec needleSpec
 	raw, err := os.ReadFile(p)
-	if errors.Is(err, fs.ErrNotExist) {
-		return spec, nil
-	}
 	if err != nil {
 		return spec, err
 	}
 	if err := json.Unmarshal(raw, &spec); err != nil {
+		return spec, fmt.Errorf("%s: %w", p, err)
+	}
+	if err := spec.validate(needle); err != nil {
 		return spec, fmt.Errorf("%s: %w", p, err)
 	}
 	return spec, nil
@@ -207,10 +384,12 @@ type lookResult struct {
 	err   error
 }
 
-// look is a run's comparison, _output/test/look.json: which build, against which needles, and
-// each view - what needles-propose turns into a pull request in the needles repository.
+// look is a run's comparison, _output/test/look.json: which build, from which os commit (the
+// checkout the harness ran from), against which needles, and each view - what needles-propose
+// turns into a pull request in the needles repository.
 type look struct {
 	Version string     `json:"version"`
+	OS      string     `json:"os_commit"`
 	Needles string     `json:"needles_commit"`
 	Views   []lookView `json:"views"`
 }
@@ -225,8 +404,10 @@ type lookView struct {
 
 // compareNeedles compares every screenshot in dir that has a needle in needles, writes each
 // difference to dir/diff/<name>.png and the side by side to dir/look.html, and reports a check
-// per view. Screenshots without a needle are listed as new.
+// per view. Screenshots without a needle are listed as new. Every view's spec is written first,
+// with what lf said of it: it is the run's record of the view, needles or not.
 func (r *report) compareNeedles(needles string) {
+	r.writeViews()
 	if needles == "" {
 		r.skip("look", "no needles: NEEDLES names a checkout of github.com/Construct-Linux/needles")
 		return
@@ -263,7 +444,7 @@ func (r *report) compareNeedles(needles string) {
 		r.skip("look: new views", strings.Join(unmatched, " ")+": no needle yet (task needles:propose)")
 	}
 	_ = os.WriteFile(filepath.Join(r.dir, "look.html"), []byte(lookPage(needles, results)), 0o644)
-	l := look{Version: builtVersion(), Needles: gitHead(needles)}
+	l := look{Version: builtVersion(), OS: gitHead("."), Needles: gitHead(needles)}
 	for _, x := range results {
 		v := lookView{Name: x.name, Share: x.share, OK: x.err == nil && x.share <= needleMaxShare}
 		if x.err != nil {
@@ -313,13 +494,18 @@ func compareNeedle(ref, shot, specPath, diff string) (float64, error) {
 	if a.Bounds() != b.Bounds() {
 		return 1, fmt.Errorf("%v, the needle %v: the screen size changed", b.Bounds().Size(), a.Bounds().Size())
 	}
-	spec, err := readSpec(specPath)
+	// A needle that cannot say what it is, or was drawn on another screen, is no needle for this
+	// view: all of it differs.
+	spec, err := readSpec(specPath, true)
 	if err != nil {
-		return 0, err
+		return 1, err
 	}
-	run, err := readSpec(strings.TrimSuffix(shot, ".png") + ".json")
+	run, err := readSpec(strings.TrimSuffix(shot, ".png")+".json", false)
 	if err != nil {
-		return 0, err
+		return 1, err
+	}
+	if spec.Screen != run.Screen {
+		return 1, fmt.Errorf("drawn on %+v, the needle on %+v: the screen changed", run.Screen, spec.Screen)
 	}
 	ignore := slices.Concat(spec.Ignore, spec.Actors, run.Actors)
 	rb := a.Bounds()
@@ -411,7 +597,9 @@ small{color:#9FB3C0}</style><h1>Look: this run against the needles</h1>`)
 // needlesPropose opens a pull request in the needles repository with the views this run drew
 // differently from their needles, or that have none: GitHub shows each image's difference (side by
 // side, swipe, onion skin), and merging it is approving the new look. A run whose views all match
-// proposes nothing. The branch is look/<version>, from the needles' main.
+// proposes nothing. The branch is look/<version>, from the needles' main. Each needle it writes
+// carries its whole spec and its approval; tolerance.json is written beside them, and the retired
+// views' needles go.
 func needlesPropose(args []string) error {
 	fl := flag.NewFlagSet("needles-propose", flag.ExitOnError)
 	from := fl.String("from", filepath.Join(out, "test"), "the run")
@@ -438,8 +626,8 @@ func needlesPropose(args []string) error {
 		fmt.Println("every view matches its needle: nothing to propose")
 		return nil
 	}
-	if l.Version == "" {
-		return errors.New("needles-propose: look.json names no build")
+	if l.Version == "" || l.OS == "" {
+		return fmt.Errorf("needles-propose: look.json names build %q at os commit %q: a needle records both", l.Version, l.OS)
 	}
 	git := func(args ...string) error {
 		c := exec.Command("git", append([]string{"-C", *needles}, args...)...)
@@ -459,38 +647,23 @@ func needlesPropose(args []string) error {
 	}
 	// Back on main whatever happens: the checkout is where the next run compares from.
 	defer func() { _ = git("checkout", "-q", "main") }()
+	paths := []string{toleranceFile}
+	if err := writeTolerance(*needles); err != nil {
+		return err
+	}
 	for _, v := range changed {
-		b, err := os.ReadFile(filepath.Join(*from, v.Name+".png"))
-		if err != nil {
+		if err := proposeNeedle(*from, *needles, l, v); err != nil {
 			return err
 		}
-		if err := os.WriteFile(filepath.Join(*needles, v.Name+".png"), b, 0o644); err != nil {
-			return err
-		}
-		if err := git("add", v.Name+".png"); err != nil {
-			return err
-		}
-		// The needle keeps its hand-written regions and takes where this run's actors were.
-		spec, err := readSpec(filepath.Join(*needles, v.Name+".json"))
-		if err != nil {
-			return err
-		}
-		run, err := readSpec(filepath.Join(*from, v.Name+".json"))
-		if err != nil {
-			return err
-		}
-		spec.Actors = run.Actors
-		// Every needle has its .json, empty or not: the gallery reads each view's from it.
-		b, err = json.MarshalIndent(spec, "", "  ")
-		if err != nil {
-			return err
-		}
-		if err := os.WriteFile(filepath.Join(*needles, v.Name+".json"), b, 0o644); err != nil {
-			return err
-		}
-		if err := git("add", v.Name+".json"); err != nil {
-			return err
-		}
+		paths = append(paths, v.Name+".png", v.Name+".json")
+	}
+	gone, err := retireNeedles(*needles)
+	if err != nil {
+		return err
+	}
+	// -A stages the retired needles' removal with the rest.
+	if err := git(append([]string{"add", "-A", "--"}, append(paths, gone...)...)...); err != nil {
+		return err
 	}
 	table := proposalTable(l, changed)
 	title := fmt.Sprintf("Look of %s: %d view(s)", l.Version, len(changed))
@@ -504,6 +677,81 @@ func needlesPropose(args []string) error {
 	pr.Dir = *needles
 	pr.Stdout, pr.Stderr = os.Stdout, os.Stderr
 	return pr.Run()
+}
+
+// toleranceFile is needleChannelDelta and needleMaxShare at the needles' root, for the gallery to
+// show what "matches" means without reading this file.
+const toleranceFile = "tolerance.json"
+
+func writeTolerance(needles string) error {
+	b, err := json.MarshalIndent(map[string]any{"channel": needleChannelDelta, "share": needleMaxShare}, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(needles, toleranceFile), append(b, '\n'), 0o644)
+}
+
+// proposeNeedle makes the run's view v the needle in the needles checkout: its screenshot, and its
+// spec as the run wrote it, with the needle's hand-written regions kept and how it was approved.
+func proposeNeedle(from, needles string, l look, v lookView) error {
+	b, err := os.ReadFile(filepath.Join(from, v.Name+".png"))
+	if err != nil {
+		return err
+	}
+	spec, err := readSpec(filepath.Join(from, v.Name+".json"), false)
+	if err != nil {
+		return err
+	}
+	// The regions are a person's and stay; the rest of the old spec is the old run's. Read as
+	// regions alone: the needle it replaces may predate any other field.
+	var old struct {
+		Ignore []needleRect `json:"ignore"`
+	}
+	raw, err := os.ReadFile(filepath.Join(needles, v.Name+".json"))
+	switch {
+	case err == nil:
+		if err := json.Unmarshal(raw, &old); err != nil {
+			return fmt.Errorf("%s.json in the needles: %w", v.Name, err)
+		}
+	case !errors.Is(err, fs.ErrNotExist):
+		return err
+	}
+	spec.Ignore = old.Ignore
+	spec.Approved = &needleApproval{Build: l.Version, OS: l.OS, New: v.New}
+	if !v.New {
+		share := v.Share
+		spec.Approved.Share = &share
+	}
+	if err := spec.validate(true); err != nil {
+		return fmt.Errorf("%s: %w", v.Name, err)
+	}
+	if err := os.WriteFile(filepath.Join(needles, v.Name+".png"), b, 0o644); err != nil {
+		return err
+	}
+	return spec.write(filepath.Join(needles, v.Name+".json"))
+}
+
+// retiredViews are views no run shoots any more, whose needles a proposal removes. desktop-dark was
+// the desktop view again: the default dark wallpaper (construct-dark.png) under the same bars,
+// 0.165% from it, under the tolerance - it held nothing desktop did not.
+var retiredViews = []string{"desktop-dark"}
+
+// retireNeedles removes the retired views' needles from the checkout, and answers the files it
+// removed.
+func retireNeedles(needles string) ([]string, error) {
+	var gone []string
+	for _, name := range retiredViews {
+		for _, f := range []string{name + ".png", name + ".json"} {
+			err := os.Remove(filepath.Join(needles, f))
+			switch {
+			case err == nil:
+				gone = append(gone, f)
+			case !errors.Is(err, fs.ErrNotExist):
+				return gone, err
+			}
+		}
+	}
+	return gone, nil
 }
 
 // proposalTable is what a proposal changes, view by view: the commit's message, and the top of

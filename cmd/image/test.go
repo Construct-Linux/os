@@ -141,7 +141,9 @@ func test(args []string) error {
 	if *stick {
 		r.secureBoot(g)
 	}
-	r.shotLook(v, g, "desktop")
+	r.shotLook(v, g, viewMeta{"desktop", groupDesktop,
+		"The desktop at login over the default dark wallpaper: both bars opaque g with their ring, the top bar a 36 px pill 6 px from the edge, its text Adwaita Sans 400, and no accent",
+		[]string{"S1", "SP2", "R1", "T2", "E2"}})
 	l.view("desktop")
 	sinks, err := g.run(asLive+`wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
@@ -286,7 +288,7 @@ func test(args []string) error {
 		// A window exists before it is drawn: Software loads its catalogue, Calendar its sources,
 		// Maps its tiles. The screenshot is what a person sees a few seconds in.
 		time.Sleep(5 * time.Second)
-		r.shotLook(v, g, strings.TrimSuffix(a.id, ".desktop"))
+		r.shotLook(v, g, appView(a.id))
 		l.view(strings.TrimSuffix(a.id, ".desktop"))
 		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
 		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, a.id))
@@ -301,7 +303,9 @@ func test(args []string) error {
 		}
 		ok, detail := g.runPanel(p)
 		r.add("panel:"+p, ok, detail)
-		r.shotLook(v, g, "panel-"+p)
+		r.shotLook(v, g, viewMeta{"panel-" + p, groupSettings,
+			"Settings' " + p + " panel, among the pages a person reaches first: a dark window's sidebar, rows and preference groups",
+			[]string{"S3", "TY4", "TY5"}})
 		l.view("panel-" + p)
 	}
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
@@ -328,6 +332,25 @@ func test(args []string) error {
 	}
 	r.compareNeedles(*needles)
 	return r.write(g)
+}
+
+// appView is an app's first window as a view: what its screenshot validates, by the app.
+func appView(id string) viewMeta {
+	name := strings.TrimSuffix(id, ".desktop")
+	m := viewMeta{name, groupApp,
+		"The first window " + name + " opens, a few seconds in: a dark window on f with its ring, the headerbar and views on g, at most one solid primary",
+		[]string{"S3", "C3", "T2"}}
+	switch id {
+	case "com.mitchellh.ghostty.desktop":
+		m.about, m.rules = "Ghostty's first window: its headerbar and terminal on g, Construct Dark from the palette, never its own grey", []string{"X1", "S3"}
+	case "code.desktop":
+		m.about, m.rules = "VS Code as it first opens, its onboarding over the workbench", []string{"X1"}
+	case "com.google.Chrome.desktop":
+		m.about, m.rules = "Chrome's first window in GTK mode: its tab strip from the theme, not Chrome's own dark grey", []string{"X3"}
+	case "firefox.desktop":
+		m.about, m.rules = "Firefox's first window under Orchis-Construct", []string{"X3"}
+	}
+	return m
 }
 
 func (g *guest) runApp(a app) (bool, string) {
@@ -445,10 +468,13 @@ func (g *guest) notifications() (bool, string) {
 // shellView is a part of the shell drawn only by the shell theme: a screenshot of each is how a
 // theme written for an older shell shows what it does not style. wake is input sent before the
 // screenshot: a locked session turns its display off at once, and only input brings it back.
-// settle is how long the view takes to be what is shot, when not shellSettle.
+// settle is how long the view takes to be what is shot, when not shellSettle. about and rules are
+// what the view validates, for its needle.
 type shellView struct {
 	name, open, close, wake string
 	settle                  time.Duration
+	about                   string
+	rules                   []string
 }
 
 // shellSettle is how long a view is given: menus open in under a second; a window (Settings)
@@ -458,34 +484,58 @@ const shellSettle = 4 * time.Second
 // shellViews ends with the lock screen: its prompt is the unlock dialog the shell's AuthPrompt
 // draws, which GNOME 51 restyled, and nothing after it in the run must find the session locked.
 var shellViews = []shellView{
-	{"overview", `Main.overview.show()`, `Main.overview.hide()`, "", 0},
-	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, "", 0},
-	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, "", 0},
-	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, "", 0},
+	{"overview", `Main.overview.show()`, `Main.overview.hide()`, "", 0,
+		"The overview on the boot's black, the workspace card the wallpaper drawn small, its mark where the wallpaper puts it",
+		[]string{"S4", "W1"}},
+	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, "", 0,
+		"The overview's search: the entry and the results' section on h with the ring, the section's radius concentric with its controls'",
+		[]string{"S2", "R1"}},
+	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, "", 0,
+		"The app grid on the boot's black, every app's icon Tela's or a brand tile",
+		[]string{"S4", "X2"}},
+	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, "", 0,
+		"Quick settings: the menu on h with its ring and concentric radius, toggles on as the rest tint with the accent's 24 px disc and accent_text, off in text",
+		[]string{"S2", "C3", "C4", "R1"}},
 	// The first quick toggle on screen with the key focus, once the menu is open: its focus ring,
 	// against the view above. Hidden toggles (no Bluetooth, no Wi-Fi) come first in the tree.
 	{"quick-settings-focus",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle')).find(t => t.is_mapped() && t.reactive)?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
-		`Main.panel.statusArea.quickSettings.menu.close()`, "", 0},
+		`Main.panel.statusArea.quickSettings.menu.close()`, "", 0,
+		"A quick toggle with the key focus: the accent's inset 2 px ring, and nothing else on the screen changed",
+		[]string{"F1", "C8"}},
 	// A toggle's menu expanded (the network's): a well in the menu, not a light slab.
 	{"quick-settings-submenu",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle-has-menu')).find(t => t.is_mapped() && t.menuEnabled)?.menu.open(true); return GLib.SOURCE_REMOVE; })`,
-		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, "", 0},
-	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, "", 0},
+		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, "", 0,
+		"A quick toggle's menu expanded: a well of g inside the menu, not a light slab",
+		[]string{"S2", "E3"}},
+	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, "", 0,
+		"The date menu: the calendar on h at the quick settings' height, today accent_text at 700 with no ring, the month's days in text, the other months' muted",
+		[]string{"S2", "F1", "C2", "R1"}},
 	// A day that is not today with the key focus: the ring is focus's alone (F1).
 	{"calendar-focus",
 		`const m = Main.panel.statusArea.dateMenu; m.menu.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { (m._calendar._buttons ?? []).find(b => b.is_mapped() && b.reactive && !b.has_style_class_name('calendar-today') && !b.has_style_class_name('calendar-other-month'))?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
-		`Main.panel.statusArea.dateMenu.menu.close()`, "", 0},
+		`Main.panel.statusArea.dateMenu.menu.close()`, "", 0,
+		"A day that is not today with the key focus: the accent's inset ring is focus's alone",
+		[]string{"F1", "C8"}},
 	// The message list dense with notifications, once their banners have gone.
 	{"notifications",
 		`[["Backup finished", "312 files were copied to the external disk; the oldest copy was removed to make room."], ["Software updates", "A new version of Construct is ready: restart to use it."], ["Disk almost full", "Only 2.1 GB is left on /var. Empty the trash or remove what you no longer need."], ["Connected", "Wired connection established."]].forEach(([t, b]) => Main.notify(t, b)); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 7000, () => { Main.panel.statusArea.dateMenu.menu.open(); return GLib.SOURCE_REMOVE; })`,
-		`Main.panel.statusArea.dateMenu.menu.close(); Main.messageTray.getSources().forEach(s => s.destroy())`, "", 10 * time.Second},
+		`Main.panel.statusArea.dateMenu.menu.close(); Main.messageTray.getSources().forEach(s => s.destroy())`, "", 10 * time.Second,
+		"The message list dense with notifications: each on h with its ring, its title, body and time readable",
+		[]string{"S2", "C2"}},
 	// libadwaita apps must follow the light/dark switch: Settings, opened in the light scheme.
 	{"settings-light",
 		`new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").activate()`,
-		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, "", 0},
-	{"lock-screen", `Main.screenShield.lock(false)`, ``, "pointer", 0},
-	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`, "key", 0},
+		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, "", 0,
+		"Settings in the light scheme, the shell still dark: the window on the desk with its ring line, the sidebar the shelf, the selected row the sheet, one headerbar rule across both panes, no bright accent",
+		[]string{"S5", "S6", "C11", "E3", "C2"}},
+	{"lock-screen", `Main.screenShield.lock(false)`, ``, "pointer", 0,
+		"The lock screen on the boot's black, its clock regular, nothing of an extension in the panel",
+		[]string{"S4", "T2"}},
+	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`, "key", 0,
+		"The unlock prompt the shell's AuthPrompt draws: the entry, and the dialog's default its one primary action",
+		[]string{"S2", "C3"}},
 }
 
 // Each view opens and closes with lf.go's helpers at hand (find, lfAll), and its lf checks measure
@@ -512,7 +562,7 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 			_ = v.key("spc")
 			time.Sleep(2 * time.Second)
 		}
-		r.shotLook(v, g, "shell-"+s.name)
+		r.shotLook(v, g, viewMeta{"shell-" + s.name, groupShell, s.about, s.rules})
 		l.view("shell-" + s.name)
 		if s.name == "lock-screen" {
 			r.locked(g)
@@ -535,13 +585,23 @@ func (r *report) desktopViews(v *vm, g *guest, l *lf, sc screen) {
 		r.add("view:desktop wallpapers", false, "no wallpaper in /usr/share/backgrounds/construct"+errText(err))
 	}
 	for _, f := range strings.Fields(walls) {
-		name := "desktop-" + strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "construct-"), ".png")
+		wall := strings.TrimSuffix(strings.TrimPrefix(filepath.Base(f), "construct-"), ".png")
+		// The default dark wallpaper is the one the desktop view is shot over: a view of it again
+		// differed from desktop by 0.165%, under the tolerance.
+		if wall == "dark" {
+			continue
+		}
+		name := "desktop-" + wall
 		// Both keys, so the scheme in force shows it.
 		_, err := g.run(asLive+`gsettings set org.gnome.desktop.background picture-uri 'file://`+f+`' && `+
 			asLive+`gsettings set org.gnome.desktop.background picture-uri-dark 'file://`+f+`'`, "")
 		r.add("view:"+name, err == nil, f+errText(err))
 		time.Sleep(3 * time.Second)
-		r.shotLook(v, g, name)
+		about := fmt.Sprintf("Both bars over the %s wallpaper (%s): their edge shows over it", wall, filepath.Base(f))
+		if strings.HasSuffix(wall, "light") {
+			about += "; a light wallpaper under the shell, which is dark in both schemes"
+		}
+		r.shotLook(v, g, viewMeta{name, groupDesktop, about, []string{"E2", "S1"}})
 		l.view(name)
 	}
 	_, _ = g.run(asLive+`gsettings reset org.gnome.desktop.background picture-uri; `+asLive+`gsettings reset org.gnome.desktop.background picture-uri-dark`, "")
@@ -556,7 +616,9 @@ func (r *report) desktopViews(v *vm, g *guest, l *lf, sc screen) {
 	} else {
 		time.Sleep(4 * time.Second)
 		r.add("view:"+lfScaledDesktop, true, "Scale: 1.5")
-		r.shotLook(v, g, lfScaledDesktop)
+		r.shotLook(v, g, viewMeta{lfScaledDesktop, groupDesktop,
+			"The desktop at 150%, a fractional scale: the bars, their ring and their text drawn on physical pixels a stage pixel does not divide",
+			[]string{"S1", "SP2"}})
 		l.view(lfScaledDesktop)
 		w, h := sc.logical()
 		_, err := g.setSessionScale(float64(sc.Scale), w, h)
@@ -585,7 +647,9 @@ func (r *report) desktopViews(v *vm, g *guest, l *lf, sc screen) {
 	}
 	time.Sleep(3 * time.Second)
 	r.add("view:panel-power-es", title != "", "window "+title)
-	r.shotLook(v, g, "panel-power-es")
+	r.shotLook(v, g, viewMeta{"panel-power-es", groupSettings,
+		"Settings' Power panel in Spanish, whose strings run longer than English's: rows and groups that still fit",
+		[]string{"S3", "TY4", "TY5"}})
 	l.view("panel-power-es")
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
 	time.Sleep(2 * time.Second)
@@ -647,7 +711,9 @@ func (r *report) installer(v *vm, g *guest, l *lf, stick bool) {
 	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), oneLine(walked)+errText(err))
 	if stick && strings.Trim(n, `"`) == "1" {
 		time.Sleep(2 * time.Second)
-		r.shotLook(v, g, "installer")
+		r.shotLook(v, g, viewMeta{"installer", groupInstaller,
+			"The graphical installer as a stick's live session offers it: its body f, its headerbar g with one rule under it, the ring outside it",
+			[]string{"S3", "E3", "C3"}})
 		l.view("installer")
 		_, _ = g.eval(installerWindows + `.forEach(w => w.delete(global.get_current_time())); true`)
 		time.Sleep(time.Second)
@@ -725,6 +791,19 @@ func (r *report) bench(g *guest) {
 	r.add("construct bench", err == nil && strings.Contains(out, "wakeup latency p99") && before == after, oneLine(out)+errText(err))
 }
 
+// gtkViewAbout is what each of gtkViews validates, for its needle.
+var gtkViewAbout = map[string]struct {
+	about string
+	rules []string
+}{
+	"gtk-popover":     {"Text Editor's primary menu, a popover: a surface of its own on h with the ring", []string{"S2"}},
+	"gtk-tooltip":     {"A tooltip over Text Editor's headerbar: h with the ring, its text readable", []string{"S2", "C2"}},
+	"gtk-dialog":      {"A libadwaita dialog, Text Editor's preferences: h with the ring and a shadow by level, its groups and rows", []string{"S2", "TY4", "TY5"}},
+	"gtk-maximized":   {"Text Editor maximized: no ring, no radius, no shadow", []string{"S3"}},
+	"gtk-banner":      {"A warning banner in Text Editor, a file it has open changed on disk: the banner's button the view's one primary", []string{"C3", "S3"}},
+	"gtk-destructive": {"Files' confirmation before it empties the trash: an alert dialog with the destructive response", []string{"R2", "C3", "S2"}},
+}
+
 // gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip, a
 // dialog, a warning banner, a maximized window, and a destructive confirmation, in Text Editor and
 // Files in the dark scheme. They are screenshots for the needles; each passes when what opens it
@@ -737,7 +816,8 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	}
 	time.Sleep(3 * time.Second)
 	shot := func(name string) {
-		r.shotLook(v, g, name)
+		a := gtkViewAbout[name]
+		r.shotLook(v, g, viewMeta{name, groupGTK, a.about, a.rules})
 		l.view(name)
 	}
 	windows := func() int {

@@ -233,7 +233,9 @@ func (r *report) typeMatrix(v *vm, g *guest, l *lf) {
 		if s.Name == "default" {
 			// The image's own rendering is a view, compared with its needle like any other.
 			name = "type-specimen"
-			r.shotLook(v, g, name)
+			r.shotLook(v, g, viewMeta{name, groupType,
+				"The type specimen at the image's own rendering: GTK's text at each size of the type scale, Adwaita Sans and Mono at 400 and 700",
+				[]string{"TY2", "T2", "T3"}})
 		} else {
 			r.shot(v, name)
 		}

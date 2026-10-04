@@ -414,6 +414,9 @@ type lf struct {
 	cardMark, bootMark *[2]float64
 	// The stage's size, and k, the physical pixels a stage pixel is in the screenshot last read.
 	stageW, stageH, k int
+	// cur is the view the checks now measure, whose spec counts them; none for the checks on the
+	// guest and across views.
+	cur string
 }
 
 // newLF reads the guest's palette.json; without it no lf check can be measured, and one failure
@@ -441,6 +444,7 @@ func newLF(r *report, v *vm, g *guest) *lf {
 
 func (l *lf) check(rule, surface string, ok bool, detail string) {
 	l.r.add("lf: "+rule+" "+surface, ok, detail)
+	l.r.viewCheck(l.cur, rule+" "+surface, ok)
 }
 
 func (l *lf) c(token string) color.NRGBA { return l.pal.colors[token] }
@@ -469,6 +473,7 @@ func (l *lf) view(name string) {
 	if l == nil || !l.ok {
 		return
 	}
+	l.cur = name
 	img, ok := l.img(name)
 	if !ok {
 		return
@@ -1289,9 +1294,12 @@ func (l *lf) app(id, shot string) {
 		_ = l.v.key("esc")
 		time.Sleep(2 * time.Second)
 		shot = "code-workbench"
-		l.r.shotLook(l.v, l.g, shot)
+		l.r.shotLook(l.v, l.g, viewMeta{shot, groupApp,
+			"VS Code's workbench once its onboarding is dismissed: the title bar and the editor on g, the side and status bars on f, from the palette's construct-theme",
+			[]string{"X1", "S3"}})
 		l.view(shot)
 	}
+	l.cur = shot
 	img, ok := l.img(shot)
 	if !ok {
 		return
@@ -1352,7 +1360,10 @@ func (l *lf) firefoxControls(id string) {
 		return
 	}
 	time.Sleep(6 * time.Second)
-	l.r.shotLook(l.v, l.g, "firefox-controls")
+	l.r.shotLook(l.v, l.g, viewMeta{"firefox-controls", groupApp,
+		"A light page of the form controls GTK draws with the accent: Firefox fills them with the light accent through Orchis-Construct, not Adwaita's blue",
+		[]string{"X3", "C1"}})
+	l.cur = "firefox-controls"
 	img, ok := l.img("firefox-controls")
 	if !ok {
 		return
@@ -1378,6 +1389,7 @@ func (l *lf) finish() {
 	if l == nil || !l.ok || l.bootMark == nil || l.cardMark == nil {
 		return
 	}
+	l.cur = ""
 	bx, by := l.bootMark[0]*float64(l.stageW*l.k), l.bootMark[1]*float64(l.stageH*l.k)
 	dx, dy := math.Abs(bx-l.cardMark[0]), math.Abs(by-l.cardMark[1])
 	across, down := float64(lfCardMarkTol*l.k), float64(lfBootMarkDownTol*l.k)
@@ -1392,6 +1404,7 @@ func (l *lf) maximized(id, shot string) {
 	if l == nil || !l.ok {
 		return
 	}
+	l.cur = shot
 	img, ok := l.img(shot)
 	if !ok {
 		return
@@ -1415,6 +1428,7 @@ func (l *lf) guestLook() {
 	if l == nil || !l.ok {
 		return
 	}
+	l.cur = ""
 	var s struct {
 		URI, CSS   string
 		ToggleOn   bool

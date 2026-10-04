@@ -27,6 +27,8 @@ type report struct {
 	results []result
 	// scale is how many physical pixels a stage pixel is in its screenshots: 0 is 1.
 	scale int
+	// views are the specs of the views shot so far, by name: lf's checks count on them.
+	views map[string]*needleSpec
 	// benchWindow is when construct bench ran, in seconds since the guest's boot: the kernel's
 	// out-of-memory report it provokes on purpose is not an error of the image's.
 	benchWindow [2]float64
