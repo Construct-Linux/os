@@ -34,11 +34,6 @@ type Snapshot struct {
 	Suspends int
 }
 
-// Reader takes snapshots.
-type Reader interface {
-	Snapshot() (Snapshot, error)
-}
-
 // Sysfs reads a snapshot from the kernel's files under Root ("/" on a machine).
 type Sysfs struct {
 	Root string
@@ -46,7 +41,7 @@ type Sysfs struct {
 
 func (s Sysfs) path(rel string) string { return filepath.Join(s.Root, rel) }
 
-// Snapshot implements Reader.
+// Snapshot reads the power supplies, the CPU package's energy and the suspend counters now.
 func (s Sysfs) Snapshot() (Snapshot, error) {
 	snap := Snapshot{Time: time.Now(), OnBattery: true}
 	supplies, err := os.ReadDir(s.path("sys/class/power_supply"))
