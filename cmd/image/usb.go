@@ -73,7 +73,7 @@ func usb(args []string) error {
 	if err := espTree(root, esp, label, v, strings.Join(extra, " "), filepath.Join(stage, pcrPublic), *sbKeys); err != nil {
 		return err
 	}
-	b, err := json.Marshal(built{Version: version, RootHash: v.rootHash, Test: *test || *broken})
+	b, err := json.Marshal(built{Version: version, RootHash: v.rootHash, Test: *test || *broken, Release: *release != ""})
 	if err != nil {
 		return err
 	}
@@ -91,6 +91,9 @@ type built struct {
 	// Test is whether the root carries the test layer (an unsafe shell, the harness's hooks) or
 	// the broken release's: such a build is never signed with a release's keys (refuseKMS).
 	Test bool `json:"test"`
+	// Release is whether Version is a release's (-version), not the build's time: YYYYMMDD.HHMMSS
+	// reads as YYYYMMDD.N, so the version alone cannot say.
+	Release bool `json:"release"`
 }
 
 const builtFile = "built.json"
@@ -163,11 +166,18 @@ func readBuilt(stage string) (built, error) {
 	return b, json.Unmarshal(raw, &b)
 }
 
-// refuseKMS refuses a release's key (KMS) for a build with the test layer: signed with it, a test
-// build would be a release to every machine.
+// refuseKMS refuses a release's key (KMS) for a build with the test layer, or one without a
+// release's version (image usb without -version): signed with it, either would be a release to
+// every machine.
 func refuseKMS(b built, ref string) error {
-	if b.Test && sign.IsKMS(ref) {
+	if !sign.IsKMS(ref) {
+		return nil
+	}
+	if b.Test {
 		return fmt.Errorf("%s is a test build: it is never signed with a release's key (%s)", b.Version, ref)
+	}
+	if !b.Release {
+		return fmt.Errorf("%s is a build's time, not a release's version (-version): it is never signed with a release's key (%s)", b.Version, ref)
 	}
 	return nil
 }

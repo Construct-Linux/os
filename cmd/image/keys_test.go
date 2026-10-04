@@ -11,7 +11,10 @@ func TestRefuseKMS(t *testing.T) {
 	if err := refuseKMS(built{Version: "20261004.1", Test: true}, ".cache/test-keys/pcr.pem"); err != nil {
 		t.Errorf("a test build with a file: %v", err)
 	}
-	if err := refuseKMS(built{Version: "20261004.1"}, "kms:alias/construct-pcr"); err != nil {
+	if err := refuseKMS(built{Version: "20261004.1", Release: true}, "kms:alias/construct-pcr"); err != nil {
 		t.Errorf("a release with a KMS key: %v", err)
+	}
+	if err := refuseKMS(built{Version: "20261004.150701"}, "kms:alias/construct-release"); err == nil {
+		t.Error("a build without a release's version, with a KMS key: no error")
 	}
 }

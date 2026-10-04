@@ -76,7 +76,36 @@ func signRelease(args []string) error {
 		}
 		*dir = d
 	}
+	if err := refuseKMSRelease(*dir, *ref); err != nil {
+		return err
+	}
 	return signSums(*ref, *pubring, filepath.Join(*dir, "SHA256SUMS"))
+}
+
+// refuseKMSRelease holds a release directory's SHA256SUMS to what sign-pcr and usb-sign hold the
+// build to: a release's key (KMS) signs it only as the release image usb last built, which
+// refuseKMS takes. A channel's or dl's index, also signed by sign-release, is no release
+// directory.
+func refuseKMSRelease(dir, ref string) error {
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return err
+	}
+	releases, err := filepath.Abs(filepath.Join(out, "release"))
+	if err != nil {
+		return err
+	}
+	if !sign.IsKMS(ref) || filepath.Dir(abs) != releases {
+		return nil
+	}
+	b, err := readBuilt(filepath.Join(out, "usb"))
+	if err != nil {
+		return err
+	}
+	if b.Version != filepath.Base(abs) {
+		return fmt.Errorf("%s is not the release image usb last built (%s): it is not signed with a release's key", filepath.Base(abs), b.Version)
+	}
+	return refuseKMS(b, ref)
 }
 
 // signSums signs a SHA256SUMS file - a release's, or a channel's index - next to it.
