@@ -1662,7 +1662,6 @@ func (l *lf) settingsLight(img image.Image) {
 	rad /= float64(l.k)
 	l.check("radius", "settings-light window", err == nil && math.Abs(rad-float64(want)) <= lfRadiusTol,
 		fmt.Sprintf("its top-left corner fits a %.2f px radius, want %d%s", rad, want, errText(err)))
-	l.r.skip("lf: radius settings-light card", "a card's extents come only from AT-SPI, which the harness does not read yet")
 	l.lightWindow(img, r)
 }
 
@@ -2755,9 +2754,7 @@ func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 			worst = f
 		}
 	}
-	r.add("boot film: ground", worst.cover <= filmMaxCover,
-		fmt.Sprintf("%d frames from Plymouth at %.1fs; the most a wrong ground covered: %s %.0f%% at %.1fs, want <= %.0f%% (film/worst-ground.png)",
-			len(frames)-first, frames[first].at.Seconds(), worst.coverHex, worst.cover*100, worst.at.Seconds(), filmMaxCover*100))
+	// How long systemd-boot's menu showed is a measurement, not a check: it goes with the ground's.
 	var menuFrom, menuTo time.Duration = -1, -1
 	for _, f := range frames[:first] {
 		if f.menu {
@@ -2767,11 +2764,13 @@ func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 			menuTo = f.at
 		}
 	}
+	menu := "never on screen"
 	if menuFrom >= 0 {
-		r.add("boot film: systemd-boot menu", true, fmt.Sprintf("on screen %.1fs, from %.1fs", (menuTo-menuFrom+filmInterval).Seconds(), menuFrom.Seconds()))
-	} else {
-		r.add("boot film: systemd-boot menu", true, "never on screen")
+		menu = fmt.Sprintf("on screen %.1fs, from %.1fs", (menuTo - menuFrom + filmInterval).Seconds(), menuFrom.Seconds())
 	}
+	r.add("boot film: ground", worst.cover <= filmMaxCover,
+		fmt.Sprintf("%d frames from Plymouth at %.1fs; the most a wrong ground covered: %s %.0f%% at %.1fs, want <= %.0f%% (film/worst-ground.png); systemd-boot's menu %s",
+			len(frames)-first, frames[first].at.Seconds(), worst.coverHex, worst.cover*100, worst.at.Seconds(), filmMaxCover*100, menu))
 	// The mark once it is whole - the intro draws it piece by piece - on the last screen Plymouth
 	// drew on: it starts on the firmware's framebuffer, and its frames there are another size.
 	last := frames[first]

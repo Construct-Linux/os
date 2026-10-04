@@ -270,8 +270,8 @@ func TestFilmReport(t *testing.T) {
 	if g := got["boot film: ground"]; !g.ok || !strings.Contains(g.detail, "#11181E 30%") {
 		t.Errorf("ground: %+v", g)
 	}
-	if m := got["boot film: systemd-boot menu"]; !strings.Contains(m.detail, "on screen 1.5s") {
-		t.Errorf("menu: %+v", m)
+	if g := got["boot film: ground"]; !strings.Contains(g.detail, "menu on screen 1.5s") {
+		t.Errorf("menu: %+v", g)
 	}
 	frames = append(frames, filmFrame{at: ms(3100), cover: 0.5, coverHex: "#282828"})
 	r = &report{dir: t.TempDir()}
