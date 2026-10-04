@@ -51,6 +51,11 @@ anim.SetPosition(frame_x, frame_y, 1);
 part = "intro";
 shown = 1;
 tick = 0;
+# Every variable the functions share is made here: a script function's first assignment to a name
+# nobody made yet makes it local to that call, and back_at made in display_normal was never the
+# one refresh read - the outro never went back. The loop's kept frames likewise.
+back_at = -1;
+kept["none"] = 0;
 
 # The prompt, hidden until asked for: a title, the field, a dot per character, and two notes.
 title.password = Image.Text(password_text, {{.Text}}, 1, font);
