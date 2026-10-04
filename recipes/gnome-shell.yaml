@@ -1,7 +1,7 @@
 package:
   name: gnome-shell
   version: "51.0"
-  epoch: 0
+  epoch: 1
   description: GNOME Shell, the core user interface of the GNOME desktop
   copyright:
     - license: GPL-2.0-or-later
@@ -80,6 +80,14 @@ pipeline:
     with:
       uri: https://download.gnome.org/sources/gnome-shell/${{vars.series}}/gnome-shell-${{package.version}}.tar.xz
       expected-sha256: 2179bab13af353427065096af8bf3d30da7b86e0c516e5ba86a14998af9575f6
+
+  # The stage under the session's start is the boot's black: firmware, Plymouth and the shell's
+  # ground are #000, and GNOME's grey system background would flash between them. The grep fails
+  # the build when a release moves the line.
+  - runs: |
+      sed -i '/^const DEFAULT_BACKGROUND_COLOR /s/red: 40, green: 40, blue: 40,/red: 0, green: 0, blue: 0,/' \
+        js/ui/background.js
+      grep -q 'red: 0, green: 0, blue: 0, alpha: 255' js/ui/background.js
 
   # portal_helper off: the captive-portal login window is a WebKitGTK browser, not shipped
   - uses: meson/configure

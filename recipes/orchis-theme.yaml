@@ -1,7 +1,7 @@
 package:
   name: orchis-theme
   version: "20260914"
-  epoch: 6
+  epoch: 7
   description: Orchis GTK and GNOME Shell theme in Construct's colors, light and dark
   copyright:
     - license: GPL-3.0-only
@@ -13,6 +13,9 @@ environment:
       - busybox
       # install.sh finds itself with readlink -m, which busybox lacks.
       - coreutils
+      # The shell's stock theme resource, which orchis-theme-shell rebuilds, and the tools for it.
+      - glib-dev
+      - gnome-shell
       - sassc
 
 pipeline:
@@ -24,7 +27,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/Orchis-theme
       branch: gnome-shell-51
-      expected-commit: b90ce9bcb3b5ebd3fdc1a584bfcc011c3cc4944f
+      expected-commit: 4ce6159ab4cecfcfcb76504a811e276d9b6ae475
 
   # No -l: it links into a home directory, and the image links libadwaita per user.
   - runs: |
@@ -32,3 +35,55 @@ pipeline:
       ./install.sh -d ${{targets.destdir}}/usr/share/themes -c light dark
       test -f ${{targets.destdir}}/usr/share/themes/Orchis-Construct-Dark/gnome-shell/gnome-shell.css
       grep -q prefers-color-scheme ${{targets.destdir}}/usr/share/themes/Orchis-Construct-Light/gtk-4.0/gtk.css
+
+  # Firefox looks up the other color scheme's theme by dropping "-Dark" from the name: without an
+  # Orchis-Construct it falls back to GTK's built-in Adwaita, blue.
+  - runs: |
+      ln -s Orchis-Construct-Light ${{targets.destdir}}/usr/share/themes/Orchis-Construct
+      test -f ${{targets.destdir}}/usr/share/themes/Orchis-Construct/gtk-3.0/gtk.css
+
+subpackages:
+  # The shell's own theme resource with Orchis in it: the user-theme extension is off in the lock
+  # screen's session mode and GDM has no user, so only the system resource reaches them. Every
+  # stock file stays (the high-contrast stylesheet, the pad OSD's, the start and placeholder
+  # images); the dark and the light stylesheet both become Orchis' dark one, because the shell is
+  # dark in both modes, and its assets go beside them, where its relative url()s look.
+  - name: orchis-theme-shell
+    description: GNOME Shell's theme resource in Orchis, for the session, the lock screen and GDM
+    dependencies:
+      runtime:
+        - gnome-shell
+      # The resource is gnome-shell's own file, overwritten.
+      replaces:
+        - gnome-shell
+    pipeline:
+      - runs: |
+          stock=/usr/share/gnome-shell/gnome-shell-theme.gresource
+          orchis=${{targets.destdir}}/usr/share/themes/Orchis-Construct-Dark/gnome-shell
+          prefix=/org/gnome/shell/theme
+          mkdir -p shell-theme/assets
+          for r in $(gresource list $stock); do
+            case $r in
+              $prefix/gnome-shell-dark.css|$prefix/gnome-shell-light.css) ;;
+              *) gresource extract $stock $r > shell-theme/${r#$prefix/} ;;
+            esac
+          done
+          test -s shell-theme/gnome-shell-high-contrast.css
+          test -s shell-theme/pad-osd.css
+          test -s shell-theme/gnome-shell-start.svg
+          cp $orchis/gnome-shell.css shell-theme/gnome-shell-dark.css
+          cp $orchis/gnome-shell.css shell-theme/gnome-shell-light.css
+          cp $orchis/assets/*.svg shell-theme/assets/
+          {
+            echo '<?xml version="1.0" encoding="UTF-8"?>'
+            echo "<gresources><gresource prefix=\"$prefix\">"
+            (cd shell-theme && find . -type f | sed 's|^\./||' | sort) | sed 's|.*|<file>&</file>|'
+            echo '</gresource></gresources>'
+          } > shell-theme.gresource.xml
+          out=${{targets.subpkgdir}}/usr/share/gnome-shell
+          mkdir -p $out
+          glib-compile-resources --sourcedir=shell-theme --target=$out/gnome-shell-theme.gresource \
+            shell-theme.gresource.xml
+          gresource list $out/gnome-shell-theme.gresource > shell-theme.list
+          grep -qx $prefix/assets/toggle-on.svg shell-theme.list
+          grep -qx $prefix/gnome-shell-dark.css shell-theme.list

@@ -1,11 +1,13 @@
 # Wolfi's firefox ships no desktop entry: it is packaged for headless browsers.
+# An unofficial build carries the unbranded globe, not Firefox's logo; a theme name lets the icon
+# theme draw it, like every other app on the dock.
 [Desktop Entry]
 Type=Application
 Name=Firefox
 GenericName=Web Browser
 Comment=Browse the Web
 Exec=/usr/bin/firefox --name firefox %u
-Icon=/usr/lib/firefox/browser/chrome/icons/default/default128.png
+Icon=web-browser
 Terminal=false
 Categories=Network;WebBrowser;
 MimeType=text/html;text/xml;application/xhtml+xml;x-scheme-handler/http;x-scheme-handler/https;

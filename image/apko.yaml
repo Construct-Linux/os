@@ -179,8 +179,10 @@ contents:
     - gnome-software
     - papers
     - gnome-calendar
-    # The look (etc/dconf/db/local.d/00-construct): Orchis, Tela, Bibata.
+    # The look (etc/dconf/db/local.d/00-construct): Orchis, Tela, Bibata. orchis-theme-shell is
+    # the shell's own theme resource drawn by Orchis, the one the lock screen and GDM read too.
     - orchis-theme
+    - orchis-theme-shell
     - tela-icon-theme
     - bibata-cursor-theme
     # GNOME Shell extensions, built for 51; the defaults enable the first eight.

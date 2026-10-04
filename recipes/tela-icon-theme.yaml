@@ -1,7 +1,7 @@
 package:
   name: tela-icon-theme
   version: 2026.08.10
-  epoch: 2
+  epoch: 3
   description: Tela flat icon theme (Tela, Tela-dark)
   copyright:
     - license: GPL-3.0-or-later
@@ -19,12 +19,13 @@ environment:
 
 pipeline:
   # The fork's gnome-51 branch: upstream master (2026-08-10) plus an icon for Decibels, the
-  # one visible app of the image Tela had none for.
+  # one visible app of the image Tela had none for, and upstream's blues recolored to the
+  # palette's folder teal.
   - uses: git-checkout
     with:
       repository: https://github.com/Construct-Linux/Tela-icon-theme
       branch: gnome-51
-      expected-commit: d57c29abab34534840577f64bf5cff05e4942dcd
+      expected-commit: c04ab2651851c529d516153338fadecfbed837aa
 
   # Only the standard folder colour: each further colour is another full copy of the theme.
   - runs: |
@@ -34,6 +35,11 @@ pipeline:
         test -f "${{targets.destdir}}/usr/share/icons/$t/index.theme"
         test -e "${{targets.destdir}}/usr/share/icons/$t/scalable/apps/org.gnome.Decibels.svg"
       done
+      # Upstream's two blues, the theme color (#5294e2) and the software icons' (#549bff): one left
+      # over is an icon the recolor missed.
+      if grep -rliE '#(5294e2|549bff)' "${{targets.destdir}}"/usr/share/icons; then
+        exit 1
+      fi
       # The read-only root's icon caches are baked by the image build; a cache shipped
       # here would be overwritten there anyway.
       rm -f "${{targets.destdir}}"/usr/share/icons/*/icon-theme.cache

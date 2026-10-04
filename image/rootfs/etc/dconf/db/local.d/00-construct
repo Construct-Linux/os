@@ -1,8 +1,9 @@
 # Construct's look, the defaults every user starts from; each person changes them in Settings
-# or Tweaks, in their own dconf database. Orchis for the shell and GTK 3; libadwaita apps take
-# it from ~/.config/gtk-4.0 (construct-theme.service, Flatpaks too), built for
-# this GNOME by the Orchis fork and checked in task test's screenshots, since each release can
-# break it.
+# or Tweaks, in their own dconf database. Orchis for the shell and GTK 3: the shell's is the
+# system theme (orchis-theme-shell's gnome-shell-theme.gresource), so the lock screen and GDM
+# draw it too, where User Themes never runs. libadwaita apps take it from ~/.config/gtk-4.0
+# (construct-theme.service, Flatpaks too), built for this GNOME by the Orchis fork and checked in
+# task test's screenshots, since each release can break it.
 
 [org/gnome/desktop/interface]
 gtk-theme='Orchis-Construct-Dark'
@@ -10,9 +11,6 @@ icon-theme='Tela-dark'
 cursor-theme='Bibata-Modern-Construct'
 accent-color='teal'
 color-scheme='prefer-dark'
-
-[org/gnome/shell/extensions/user-theme]
-name='Orchis-Construct-Dark'
 
 # The brand's wallpaper (construct-brand), light and dark, on its own colour while it loads.
 [org/gnome/desktop/background]
@@ -35,12 +33,12 @@ toggle-tiled-right=@as []
 maximize=@as []
 unmaximize=@as []
 
-# The set a developer keeps on: the shell theme, tray icons, clipboard history, the panel's
-# tweaks, staying awake, system monitors, tiling, and a taskbar. Workspace Indicator, Removable
-# Drive Menu and Night Theme Switcher are installed, off: the last turns libadwaita light by day
-# while the shell and GTK 3 stay on Orchis's dark theme.
+# The set a developer keeps on: tray icons, clipboard history, the panel's tweaks, staying
+# awake, system monitors, tiling, and a taskbar. User Themes, Workspace Indicator, Removable
+# Drive Menu and Night Theme Switcher are installed, off: Orchis is the system shell theme, and
+# the last turns libadwaita light by day while the shell and GTK 3 stay on Orchis's dark theme.
 [org/gnome/shell]
-enabled-extensions=['user-theme@gnome-shell-extensions.gcampax.github.com', 'appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com']
+enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com']
 
 # The dock: Files, the browser, the editor, the terminal, Software, Calendar.
 favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'code.desktop', 'com.mitchellh.ghostty.desktop', 'org.gnome.Software.desktop', 'org.gnome.Calendar.desktop']
@@ -66,6 +64,13 @@ button-layout='appmenu:minimize,maximize,close'
 # Panel becomes a small dock, centred at the bottom and sized to its icons. Its per-monitor keys
 # are JSON by monitor id, falling back to the index: "0" to "2" cover three monitors whatever
 # their serials, until the user changes one in its preferences.
+# The dock takes the shell theme's top-bar color, opaque g with a ring: dash-to-panel paints
+# itself with the theme's #panel, so it sets no background, opacity or border of its own, and
+# Orchis owns its 15 px radius. Both bars sit 6 px from the screen's edge. Its focus highlight is
+# the accent as a tint, like the quick settings: 14% over g is #143C46, the accent on it 7.74:1.
+# The session starts in the overview: neither hide-overview-on-startup here nor Just
+# Perfection's startup-status is set, because a desktop-first start fades the desktop in over
+# GNOME's startup stage instead of rising from the boot's black.
 [org/gnome/shell/extensions/dash-to-panel]
 stockgs-keep-top-panel=true
 panel-positions='{"0":"BOTTOM","1":"BOTTOM","2":"BOTTOM"}'
@@ -73,9 +78,19 @@ panel-lengths='{"0":-1,"1":-1,"2":-1}'
 panel-anchors='{"0":"MIDDLE","1":"MIDDLE","2":"MIDDLE"}'
 panel-sizes='{"0":44,"1":44,"2":44}'
 panel-element-positions='{"0":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}],"1":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}],"2":[{"element":"showAppsButton","visible":true,"position":"stackedTL"},{"element":"activitiesButton","visible":false,"position":"stackedTL"},{"element":"leftBox","visible":false,"position":"stackedTL"},{"element":"taskbar","visible":true,"position":"stackedTL"},{"element":"centerBox","visible":false,"position":"stackedBR"},{"element":"rightBox","visible":false,"position":"stackedBR"},{"element":"dateMenu","visible":false,"position":"stackedBR"},{"element":"systemMenu","visible":false,"position":"stackedBR"},{"element":"desktopButton","visible":false,"position":"stackedBR"}]}'
-panel-top-bottom-margins=8
-appicon-margin=4
-global-border-radius=4
+panel-top-bottom-margins=6
+appicon-margin=6
+global-border-radius=0
+focus-highlight-color='#00E5FF'
+focus-highlight-opacity=14
+highlight-appicon-hover-background-color='rgba(230,237,242,0.08)'
+highlight-appicon-pressed-background-color='rgba(230,237,242,0.14)'
+trans-use-border=false
+dot-color-override=false
+
+# The focused window's border, when a person turns it on, is the accent.
+[org/gnome/shell/extensions/tilingshell]
+window-border-color='#00E5FF'
 
 [org/gnome/shell/extensions/just-perfection]
 clock-menu-position=1

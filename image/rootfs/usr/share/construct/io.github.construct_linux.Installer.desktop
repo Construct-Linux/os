@@ -2,7 +2,7 @@
 Type=Application
 Name=Install Construct
 Comment=Install Construct on this computer's disk
-Icon=system-software-install
+Icon=io.github.construct_linux.Installer
 Exec=construct-installer
 Categories=System;
 StartupNotify=true
