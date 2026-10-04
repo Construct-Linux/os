@@ -3,4 +3,7 @@ Description=Tell the person a new Construct waits for a reboot
 
 [Service]
 Type=oneshot
+# Active after the notice is sent: the path unit fires again whenever its service goes inactive
+# and the mark, which stays until the reboot, still exists.
+RemainAfterExit=yes
 ExecStart=/bin/sh -c 'v=$(cat /run/construct/reboot-required); gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify "Construct" 0 system-software-update "Construct $v is ready" "Restart to start it. If it does not come up, the version you have now starts again by itself." "[]" "{\"urgency\": <byte 1>, \"resident\": <true>}" 0'

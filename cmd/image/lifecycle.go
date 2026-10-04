@@ -219,6 +219,12 @@ func lifecycle(args []string) error {
 	r.add("v2 is counted on the ESP", strings.Contains(esp, "construct_"+versions["v2"]+"+3"), oneLine(esp))
 	mark, _ := g.run(`cat /run/construct/reboot-required`, "")
 	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
+	// Told once: the mark stays until the reboot, and a path unit whose service went inactive
+	// fires again while it does - a new notice each time, until the trigger limit fails the path.
+	told, _ := g.run(fmt.Sprintf(`sleep 10; sudo -u %s XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-failed construct-reboot-notice.path; `+
+		`journalctl -b -o cat --user-unit construct-reboot-notice.service | grep -c '^Starting '`, lifecycleUser), "")
+	r.add("the reboot notice is shown once", strings.Join(strings.Fields(told), " ") == "active 1",
+		"path, notices: "+oneLine(told))
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
 		// What the screen shows where the boot stopped: a prompt, an emergency shell.
