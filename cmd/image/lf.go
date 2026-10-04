@@ -854,11 +854,11 @@ func (l *lf) focus(img image.Image) {
 		return
 	}
 	r := l.px(s.Toggle.rect()).inset(-2*l.k, -2*l.k)
-	changed, share := focusDiff(before, img, r, accent, lfFocusRingTol)
+	drawn, share := focusDiff(before, img, r, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
-	l.check("focus", "quick toggle drawn", changed >= least && share >= lfFocusAccentShare,
-		fmt.Sprintf("%d px changed in %v against shell-quick-settings, %.0f%% of them the accent; want >= %d and >= %.0f%%",
-			changed, r, share*100, least, lfFocusAccentShare*100))
+	l.check("focus", "quick toggle drawn", drawn >= least && share >= lfFocusAccentShare,
+		fmt.Sprintf("%d px of the accent drawn in %v against shell-quick-settings, %.0f%% of the change the accent; want >= %d and >= %.0f%%",
+			drawn, r, share*100, least, lfFocusAccentShare*100))
 }
 
 // submenu is the expanded submenu: a g well in the h menu, with no light slab in it. A toggle's
@@ -1337,7 +1337,8 @@ func (l *lf) lockError() {
 }
 
 // gtkFocus is F2: Tab moved the key focus in a GTK dialog, and what that changed on the screen is
-// mostly the accent's outline - dark's accent, or light's in the light scheme.
+// mostly the accent's outline - dark's accent, or light's in the light scheme - drawn on the
+// control it reached and gone from the one it left.
 func (l *lf) gtkFocus(name string, img image.Image) {
 	ref := strings.Replace(name, "gtk-focus", "gtk-dialog", 1)
 	before, ok := l.img(ref)
@@ -1349,11 +1350,11 @@ func (l *lf) gtkFocus(name string, img image.Image) {
 		accent = l.c("light-accent")
 	}
 	all := lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}
-	changed, share := focusDiff(before, img, all, accent, lfFocusRingTol)
+	drawn, share := focusDiff(before, img, all, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
-	l.check("focus", name, changed >= least && share >= lfFocusAccentShare,
-		fmt.Sprintf("%d px changed against %s, %.0f%% of them %s; want >= %d and >= %.0f%%",
-			changed, ref, share*100, hexOf(accent), least, lfFocusAccentShare*100))
+	l.check("focus", name, drawn >= least && share >= lfFocusAccentShare,
+		fmt.Sprintf("%d px of %s drawn against %s, %.0f%% of the change the ring, drawn or left; want >= %d and >= %.0f%%",
+			drawn, hexOf(accent), ref, share*100, least, lfFocusAccentShare*100))
 }
 
 // buttonState is S2 on a GTK button at btn, a stage rectangle, in view name against ref, the same

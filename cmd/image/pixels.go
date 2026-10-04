@@ -499,25 +499,30 @@ func markBox(img image.Image, r lfRect) (lfRect, bool) {
 	return lfRect{box.Min.X, box.Min.Y, box.Dx(), box.Dy()}, found
 }
 
-// focusDiff compares two screenshots inside r: how many pixels differ beyond the needles' channel
-// tolerance, and the share of those within tol of accent in b.
-func focusDiff(a, b image.Image, r lfRect, accent color.NRGBA, tol int) (int, float64) {
+// focusDiff compares two screenshots inside r, a before and an after the key focus moved: of the
+// pixels that differ beyond the needles' channel tolerance, how many are within tol of accent in
+// b - the ring drawn - and the share that are in a or in b: the ring leaves the control the focus
+// left as it reaches the next, and both are the move.
+func focusDiff(a, b image.Image, r lfRect, accent color.NRGBA, tol int) (drawn int, share float64) {
 	rb := r.image().Intersect(a.Bounds()).Intersect(b.Bounds())
-	changed, cyan := 0, 0
+	changed, ring := 0, 0
 	for y := rb.Min.Y; y < rb.Max.Y; y++ {
 		for x := rb.Min.X; x < rb.Max.X; x++ {
-			cb := at(b, x, y)
-			if channelDelta(at(a, x, y), cb) <= needleChannelDelta {
+			ca, cb := at(a, x, y), at(b, x, y)
+			if channelDelta(ca, cb) <= needleChannelDelta {
 				continue
 			}
 			changed++
 			if near(cb, accent, tol) {
-				cyan++
+				drawn++
+				ring++
+			} else if near(ca, accent, tol) {
+				ring++
 			}
 		}
 	}
 	if changed == 0 {
 		return 0, 0
 	}
-	return changed, float64(cyan) / float64(changed)
+	return drawn, float64(ring) / float64(changed)
 }

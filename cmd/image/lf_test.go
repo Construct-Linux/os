@@ -737,6 +737,31 @@ func TestGTKFocus(t *testing.T) {
 	if res := lastResult(t, l.r); res.ok {
 		t.Errorf("a change that is no outline passed: %+v", res)
 	}
+	// The focus moves: the outline leaves one control as it reaches another.
+	moved := ring(tAccent)
+	fill(moved, lfRect{400, 500, 200, 4}, tAccent)
+	write("gtk-dialog", moved)
+	l.gtkFocus("gtk-focus", func() *image.NRGBA {
+		img := solid(1280, 800, tG)
+		fill(img, lfRect{400, 500, 200, 4}, tAccent)
+		fill(img, lfRect{700, 300, 200, 4}, tAccent)
+		fill(img, lfRect{700, 380, 200, 4}, tAccent)
+		fill(img, lfRect{700, 300, 4, 84}, tAccent)
+		fill(img, lfRect{896, 300, 4, 84}, tAccent)
+		return img
+	}())
+	if res := lastResult(t, l.r); !res.ok {
+		t.Errorf("an outline that moved: %+v", res)
+	}
+	// The outline only leaves: Tab drew none.
+	l.gtkFocus("gtk-focus", func() *image.NRGBA {
+		img := solid(1280, 800, tG)
+		fill(img, lfRect{400, 500, 200, 4}, tAccent)
+		return img
+	}())
+	if res := lastResult(t, l.r); res.ok {
+		t.Errorf("an outline that only left passed: %+v", res)
+	}
 }
 
 // A light window draws the light accent; dark's cyan inside it fails, the dock's dot outside it does
