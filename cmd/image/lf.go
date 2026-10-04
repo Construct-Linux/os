@@ -42,6 +42,10 @@ const (
 	lfAccentTol = 14
 	// The calendar's today ring is 2 px on a curve: its pixels are half blends of the accent.
 	lfRingAccentTol = 40
+	// A quick toggle's title on its tint, and the focus ring's inset shadow over a toggle: thin
+	// accent strokes on a fill, so, like the today ring, most of their pixels are blends of it.
+	lfAccentTitleTol = 40
+	lfFocusRingTol   = 40
 	// The ring against what is 6 px outside it: the brand's minimum edge contrast.
 	lfEdgeContrast = 1.5
 	lfEdgeGap      = 6
@@ -49,6 +53,13 @@ const (
 	lfTextContrast = 4.5
 	// Radii, in px of St's computed style.
 	lfRadiusTol = 1
+	// Concentric radii (THEMING): quick settings is its toggles' 22 plus its 18 of padding; the
+	// overview's search section a control's radius plus its 12 of padding.
+	lfQuickSettingsRadius  = 40
+	lfSearchSectionPadding = 12
+	// A window's corner is fitted from the blend between it and what is outside it: closer than
+	// this on every channel, the half-way crossing it looks for is noise.
+	lfCornerContrast = 8
 	// Cyan pixels a view may show: filled toggles and today put 12,982 and 862 there, measured;
 	// tinted, only the text and the marks are the accent.
 	lfAccentQuickSettings = 2500
@@ -93,11 +104,18 @@ const (
 	// pixels. The card's place on the screen changes with the screen's size; this does not.
 	lfCardMarkShare = 0.4222
 	lfCardMarkTol   = 6
+	// Plymouth's mark against the card's: across, within lfCardMarkTol; down, within this, a
+	// looser bound not yet measured.
+	lfBootMarkDownTol = 12
 	// The top bar's outer height, ring included.
 	lfBarHeight = 36
 	// Firefox's page of controls drew them in the accent: its checked box alone is ~14x14 px of
 	// it, beside a radio, a range's fill and a progress bar at 60%. Fewer is a page not drawn.
 	lfFirefoxAccentMin = 100
+	// Adwaita's blue and the light accent as Firefox fills its controls: flat, so close; the
+	// accent a little looser, its checked box's mark antialiased over it.
+	lfFirefoxColorTol  = 8
+	lfFirefoxAccentTol = 12
 )
 
 // Every pixel count, distance and coordinate above and in the checks is in the stage's pixels, as
@@ -567,7 +585,7 @@ func ringShare(img image.Image, r lfRect, inset float64, want color.NRGBA) float
 func cornerRadius(img image.Image, x, y, maxR int) (float64, error) {
 	inside, _ := modeColor(img, lfRect{x + maxR + 2, y + 1, 32, 4})
 	outside := at(img, x, y)
-	if channelDelta(inside, outside) < 8 {
+	if channelDelta(inside, outside) < lfCornerContrast {
 		return 0, fmt.Errorf("the window (%s) and what is outside its corner (%s) are too alike to see the corner", hexOf(inside), hexOf(outside))
 	}
 	dr, dg, db := float64(inside.R)-float64(outside.R), float64(inside.G)-float64(outside.G), float64(inside.B)-float64(outside.B)
@@ -1239,7 +1257,7 @@ func (l *lf) quickSettings(img image.Image) {
 	}
 	h := l.c("neutral-h")
 	l.surfaceCheck("quick settings", s.Box, img, h)
-	l.radiusCheck("quick settings", s.Box, 40)
+	l.radiusCheck("quick settings", s.Box, lfQuickSettingsRadius)
 	if s.Box != nil {
 		l.menuY["quick settings"] = s.Box.Y
 	}
@@ -1263,7 +1281,7 @@ func (l *lf) quickSettings(img image.Image) {
 			if !near(mode, fill, lfTextTol) {
 				bad = append(bad, fmt.Sprintf("%q on is %s, not the tint %s", t.Title.Text, hexOf(mode), hexOf(fill)))
 			}
-			if c := t.Title.ink(ground); !near(c, l.c("dark-accent-text"), lfTextTol) || countNear(img, l.px(t.Title.rect()), l.c("dark-accent-text"), lfRingAccentTol) == 0 {
+			if c := t.Title.ink(ground); !near(c, l.c("dark-accent-text"), lfTextTol) || countNear(img, l.px(t.Title.rect()), l.c("dark-accent-text"), lfAccentTitleTol) == 0 {
 				bad = append(bad, fmt.Sprintf("%q on titled %s, not the accent", t.Title.Text, hexOf(c)))
 			}
 			if t.Subtitle != nil && !near(t.Subtitle.ink(ground), l.c("dark-text"), lfTextTol) {
@@ -1346,7 +1364,7 @@ func (l *lf) focus(img image.Image) {
 		return
 	}
 	r := l.px(s.Toggle.rect()).inset(-2*l.k, -2*l.k)
-	changed, share := focusDiff(before, img, r, accent, lfRingAccentTol)
+	changed, share := focusDiff(before, img, r, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
 	l.check("focus", "quick toggle drawn", changed >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px changed in %v against shell-quick-settings, %.0f%% of them the accent; want >= %d and >= %.0f%%",
@@ -1571,7 +1589,7 @@ func (l *lf) search(img image.Image) {
 	l.surfaceCheck("search entry", s.Entry, img, h)
 	l.surfaceCheck("search section", s.Section, img, h)
 	// Concentric: a control's radius plus the section's padding.
-	l.radiusCheck("search section", s.Section, int(l.pal.nums["shape-radius-control"])+12)
+	l.radiusCheck("search section", s.Section, int(l.pal.nums["shape-radius-control"])+lfSearchSectionPadding)
 }
 
 func (l *lf) lock(img image.Image) {
@@ -1853,8 +1871,8 @@ func (l *lf) firefoxControls(id string) {
 		return
 	}
 	blue := color.NRGBA{0x35, 0x84, 0xE4, 255}
-	n := countNear(img, l.px(win), blue, 8)
-	accent := countNear(img, l.px(win), l.c("light-accent"), 12)
+	n := countNear(img, l.px(win), blue, lfFirefoxColorTol)
+	accent := countNear(img, l.px(win), l.c("light-accent"), lfFirefoxAccentTol)
 	// No Adwaita blue proves nothing alone: a page that never drew has none either.
 	l.check("app", "firefox controls", n == 0 && accent >= lfFirefoxAccentMin*l.k*l.k,
 		fmt.Sprintf("%d px of Adwaita's #3584E4 on a light page, want none; %d px of %s, want at least %d",
@@ -1868,7 +1886,7 @@ func (l *lf) finish() {
 	}
 	bx, by := l.bootMark[0]*float64(l.stageW*l.k), l.bootMark[1]*float64(l.stageH*l.k)
 	dx, dy := math.Abs(bx-l.cardMark[0]), math.Abs(by-l.cardMark[1])
-	across, down := float64(6*l.k), float64(12*l.k)
+	across, down := float64(lfCardMarkTol*l.k), float64(lfBootMarkDownTol*l.k)
 	l.check("mark", "boot to overview", dx <= across && dy <= down,
 		fmt.Sprintf("Plymouth's mark at (%.0f, %.0f) on the session's screen, the overview card's at (%.0f, %.0f): want within %.0f px across, %.0f down",
 			bx, by, l.cardMark[0], l.cardMark[1], across, down))
@@ -2804,6 +2822,21 @@ func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 // under the logo, so the shares hold within the band at 1440x900 too.
 const promptFromShare, promptToShare = 560.0 / 800, 680.0 / 800
 
+// Plymouth's prompt is a 320x36 pill with a 2 px ring (plymouth.go, entry.png): its inside is
+// sampled over the middle half of it, 6 px under the ring's top and 24 high, clear of the ring and
+// the round ends; its left end on the ring's top row is outside the pill, the boot's black. The
+// ring down the middle column is flat, within promptRingTol of the accent.
+const (
+	promptPillHalfW   = 160
+	promptInsideHalfW = 80
+	promptInsideTop   = 6
+	promptInsideH     = 24
+	promptRingTol     = 8
+	// gridBack counts the mark's cyan this far above the band at the least, clear of the title
+	// over the field, which starts at the band's top.
+	promptGridMargin = 20
+)
+
 // promptRows is the band of rows the prompt is looked for in, in a screenshot h px high.
 func promptRows(h int) (int, int) {
 	return int(math.Round(promptFromShare * float64(h))), int(math.Round(promptToShare * float64(h)))
@@ -2818,7 +2851,7 @@ func promptLook(img image.Image, accent, fill, ground color.NRGBA) (bool, string
 	promptFrom, promptTo := promptRows(img.Bounds().Dy())
 	top := -1
 	for y := promptFrom; y < min(promptTo, img.Bounds().Dy()); y++ {
-		if near(at(img, cx, y), accent, 8) {
+		if near(at(img, cx, y), accent, promptRingTol) {
 			top = y
 			break
 		}
@@ -2826,8 +2859,8 @@ func promptLook(img image.Image, accent, fill, ground color.NRGBA) (bool, string
 	if top < 0 {
 		return false, fmt.Sprintf("no %s ring at x %d from y %d to %d", hexOf(accent), cx, promptFrom, promptTo)
 	}
-	inside, _ := modeColor(img, lfRect{cx - 80*k, top + 6*k, 160 * k, 24 * k})
-	corner := at(img, cx-160*k, top)
+	inside, _ := modeColor(img, lfRect{cx - promptInsideHalfW*k, top + promptInsideTop*k, 2 * promptInsideHalfW * k, promptInsideH * k})
+	corner := at(img, cx-promptPillHalfW*k, top)
 	ok := near(inside, fill, lfTextTol) && near(corner, ground, lfTextTol)
 	return ok, fmt.Sprintf("ring at y %d; inside %s (want %s), the pill's corner %s (want %s)", top, hexOf(inside), hexOf(fill), hexOf(corner), hexOf(ground))
 }
@@ -2884,7 +2917,7 @@ func gridBack(prompt, after image.Image, promptTop int) (bool, string) {
 	const more = 1.25
 	count := func(img image.Image) int {
 		n := 0
-		for y := 0; y < promptTop-20; y++ {
+		for y := 0; y < promptTop-promptGridMargin; y++ {
 			for x := 0; x < img.Bounds().Dx(); x++ {
 				c := at(img, x, y)
 				if markHue(c.R, c.G, c.B) {
