@@ -859,9 +859,9 @@ var gtkViewAbout = map[string]struct {
 	"gtk-dialog":      {"A libadwaita dialog, Text Editor's preferences: h with the ring and a shadow by level, its groups and rows", []string{"S2", "TY4", "TY5"}},
 	"gtk-maximized":   {"Text Editor maximized: no ring, no radius, no shadow", []string{"S3"}},
 	"gtk-banner":      {"A warning banner in Text Editor, a file it has open changed on disk: the banner's button the view's one primary", []string{"C3", "S3"}},
-	"gtk-destructive": {"Files' confirmation before it empties the trash: an alert dialog with the destructive response", []string{"R2", "C3", "S2"}},
-	"gtk-hover":       {"Text Editor's close button under the pointer: GTK's hover, a step from rest in a colour the palette allows", []string{"S2", "C1"}},
-	"gtk-pressed":     {"Text Editor's close button held down: GTK's active, a step from hover in a colour the palette allows", []string{"S2", "C1"}},
+	"gtk-destructive": {"Text Editor's confirmation before it quits with a change unsaved: an alert dialog with the destructive response", []string{"R2", "C3", "S2"}},
+	"gtk-hover":       {"Text Editor's maximize button under the pointer: GTK's hover, a step from rest in a colour the palette allows", []string{"S2", "C1"}},
+	"gtk-pressed":     {"Text Editor's maximize button held down: GTK's active, a step from hover in a colour the palette allows", []string{"S2", "C1"}},
 	"gtk-focus":       {"Text Editor's preferences after Tab: GTK's focus outline, the accent, is what the key focus changed", []string{"F2", "C8"}},
 }
 
@@ -922,27 +922,29 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	_ = v.key("esc")
 	time.Sleep(time.Second)
 	sw, sh := l.stageW, l.stageH
-	// The headerbar's close button under the pointer, then held down: GTK's hover and active, which
-	// no key draws. GTK 4's window controls have no tooltip to cover them; the press is released
-	// away from the button, which closes nothing. Two moves, as for the tooltip below: GTK takes
-	// hover from motion inside the widget.
-	closeBtn := lfRect{frame.X + frame.W - 33, frame.Y + 13, 20, 20}
-	cx, cy := closeBtn.X+closeBtn.W/2, closeBtn.Y+closeBtn.H/2
+	// The headerbar's maximize button under the pointer, then held down: GTK's hover and active,
+	// which no key draws. GTK 4's window controls have no tooltip to cover them. The press is
+	// released on the button, which maximizes the window, undone after: released anywhere else, it
+	// is a drag of the headerbar, and moved the window off its frame. Two moves, as for the tooltip
+	// below: GTK takes hover from motion inside the widget.
+	maxBtn := lfRect{frame.X + frame.W - 71, frame.Y + 13, 20, 20}
+	cx, cy := maxBtn.X+maxBtn.W/2, maxBtn.Y+maxBtn.H/2
 	_ = v.pointTo(absPoint(cx-6, cy, sw, sh))
 	time.Sleep(300 * time.Millisecond)
 	err := v.pointTo(absPoint(cx, cy, sw, sh))
 	time.Sleep(time.Second)
-	r.add("view:gtk-hover"+suffix, err == nil, fmt.Sprintf("the pointer over the close button at (%d, %d)%s", cx, cy, errText(err)))
+	r.add("view:gtk-hover"+suffix, err == nil, fmt.Sprintf("the pointer over the maximize button at (%d, %d)%s", cx, cy, errText(err)))
 	shot("gtk-hover")
-	l.buttonState("gtk-hover"+suffix, "gtk-popover"+suffix, closeBtn)
+	l.buttonState("gtk-hover"+suffix, "gtk-popover"+suffix, maxBtn)
 	err = v.button(true)
 	time.Sleep(500 * time.Millisecond)
-	r.add("view:gtk-pressed"+suffix, err == nil, "the close button held down"+errText(err))
+	r.add("view:gtk-pressed"+suffix, err == nil, "the maximize button held down"+errText(err))
 	shot("gtk-pressed")
-	l.buttonState("gtk-pressed"+suffix, "gtk-hover"+suffix, closeBtn)
-	_ = v.pointTo(16000, 30000)
-	time.Sleep(300 * time.Millisecond)
+	l.buttonState("gtk-pressed"+suffix, "gtk-hover"+suffix, maxBtn)
 	_ = v.button(false)
+	time.Sleep(time.Second)
+	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0].unmaximize(); true`, id))
+	_ = v.pointTo(16000, 30000)
 	time.Sleep(time.Second)
 	// The pointer over the headerbar's New Tab button, the second from the start, until GTK shows
 	// its tooltip; GTK 4's window controls have none. Two moves: GTK starts the tooltip's timer on
@@ -995,20 +997,25 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	}
 	r.add("view:gtk-banner"+suffix, err == nil, "a file Text Editor has open, changed on disk"+errText(err))
 	shot("gtk-banner")
-	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, id))
+	// A destructive confirmation: the document typed into, Text Editor asked to quit asks first,
+	// a libadwaita alert with Discard as the destructive response. Escape answers Cancel, and the
+	// editor is stopped without its answer: nothing it holds is anyone's.
+	// The alert draws inside the window, no surface of its own: that the editor is still running
+	// is what says it waits on the answer.
+	err = v.typeText("construct")
+	if err == nil {
+		time.Sleep(time.Second)
+		_, err = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).request_quit(); true`, id))
+	}
 	time.Sleep(2 * time.Second)
-	// A destructive confirmation: Files asks before it empties the trash, a libadwaita alert with
-	// the destructive response. Escape answers Cancel; the probe file stays in the trash.
-	out, err = g.run(`u='`+asLive+`'; `+
-		`$u sh -c 'f=$(mktemp -p "$HOME" construct-trash.XXXXXX) && gio trash "$f"' && `+
-		`{ $u timeout 30 gdbus call --session --dest org.gnome.Nautilus --object-path /org/gnome/Nautilus/FileOperations2 `+
-		`--method org.gnome.Nautilus.FileOperations2.EmptyTrash '{}' >/dev/null 2>&1 & } ; echo asked`, "")
-	time.Sleep(5 * time.Second)
-	r.add("view:gtk-destructive"+suffix, err == nil && strings.Contains(out, "asked"), "Files' Empty Trash, confirmed first: "+oneLine(out)+errText(err))
+	if err == nil {
+		_, err = g.run(`pgrep -x gnome-text-editor`, "")
+	}
+	r.add("view:gtk-destructive"+suffix, err == nil, "Text Editor asked to quit with a change unsaved, still running"+errText(err))
 	shot("gtk-destructive")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
-	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Nautilus.desktop")?.request_quit(); true`)
+	_, _ = g.run(`pkill -x gnome-text-editor`, "")
 	time.Sleep(2 * time.Second)
 }
 

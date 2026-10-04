@@ -1380,11 +1380,7 @@ func (l *lf) buttonState(name, ref string, btn lfRect) {
 // where they reach. A libadwaita dialog dims the window under it and a maximized one has no desk
 // or ring, so on those only no bright accent is asked; Text Editor has no sidebar, so no panes.
 func (l *lf) gtkLight(name string, img image.Image) {
-	id := "org.gnome.TextEditor.desktop"
-	if name == "gtk-destructive-light" {
-		id = "org.gnome.Nautilus.desktop"
-	}
-	r, err := l.appWindow(id)
+	r, err := l.appWindow("org.gnome.TextEditor.desktop")
 	if err != nil {
 		l.check("window", name, false, err.Error())
 		return
@@ -1442,10 +1438,11 @@ func (l *lf) selectedRow(img image.Image, side lfRect) {
 		fmt.Sprintf("the %s sheet %v; its darkest ink %s, want %s", hexOf(sheet), band, hexOf(darkest), hexOf(text)))
 }
 
-// appWindow is the frame of an app's first window.
+// appWindow is the frame of an app's first normal window: a popover open over it is a window of
+// its own, the app's newest.
 func (l *lf) appWindow(id string) (lfRect, error) {
 	var s struct{ Win *struct{ X, Y, W, H int } }
-	if err := l.g.evalJSON(fmt.Sprintf(`return {win: lfWindow(Shell.AppSystem.get_default().lookup_app(%q)?.get_windows()[0])};`, id), &s); err != nil {
+	if err := l.g.evalJSON(fmt.Sprintf(`return {win: lfWindow(Shell.AppSystem.get_default().lookup_app(%q)?.get_windows().find(w => w.get_window_type() === imports.gi.Meta.WindowType.NORMAL))};`, id), &s); err != nil {
 		return lfRect{}, err
 	}
 	if s.Win == nil {
