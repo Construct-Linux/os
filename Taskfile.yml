@@ -381,7 +381,7 @@ tasks:
         vars: {CLI_ARGS: '-version {{.VERSION}}', KMS: 'true'}
       - task: scan
       - task: release:publish
-        vars: {VERSION: '{{.VERSION}}'}
+        vars: {VERSION: '{{.VERSION}}', NEW: '{{.NEW}}'}
       # Every package's builds but its newest go, and the index is made again before the cache
       # takes packages/ back.
       - go run ./cmd/image packages -prune
@@ -436,25 +436,26 @@ tasks:
       - aws s3 sync --only-show-errors keys/ {{.DIST}}/keys/
       - aws s3 cp --only-show-errors _output/release-key/pcr-public.pem {{.DIST}}/keys/pcr-public.pem
       - task: release:offer
-        vars: {VERSION: '{{.VERSION}}', CHANNEL: testing, FROM: '{{.REL}}/SHA256SUMS'}
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: testing, FROM: '{{.REL}}/SHA256SUMS', NEW: '{{.NEW}}'}
 
   release:offer:
     internal: true
-    desc: Add VERSION, from the SHA256SUMS FROM, to CHANNEL's index, sign the index with the release key and upload it.
+    desc: Add VERSION, from the SHA256SUMS FROM, to CHANNEL's index, sign the index with the release key and upload it. NEW=true starts a channel that has no index yet; otherwise an index that cannot be fetched stops it.
     requires: {vars: [VERSION, CHANNEL, FROM]}
     vars:
       OUT: _output/channel/{{.CHANNEL}}
       DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
     cmds:
       - rm -rf {{.OUT}} && mkdir -p {{.OUT}}
-      - aws s3 cp --only-show-errors {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current || true
-      - go run ./cmd/image channel-index -current {{.OUT}}/current -add {{.FROM}} -version {{.VERSION}} -o {{.OUT}}
+      - cmd: aws s3 cp --only-show-errors {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current
+        if: '[ "{{.NEW}}" != true ]'
+      - go run ./cmd/image channel-index {{if eq .NEW "true"}}-new{{else}}-current {{.OUT}}/current{{end}} -add {{.FROM}} -version {{.VERSION}} -o {{.OUT}}
       - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE | default "alias/construct-release"}} -pubring keys/release.pgp -dir {{.OUT}}
       - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS
       - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS.gpg
 
   release:promote:
-    desc: "Offer a release testing proved to the next channel: task release:promote VERSION=20261004.1 [FROM=testing] [TO=stable]. Signs with the KMS release key: AWS credentials that may, and CONSTRUCT_DIST_BUCKET (infra output buckets.dist)."
+    desc: "Offer a release testing proved to the next channel: task release:promote VERSION=20261004.1 [FROM=testing] [TO=stable] [NEW=true, the first time TO gets a release]. Signs with the KMS release key: AWS credentials that may, and CONSTRUCT_DIST_BUCKET (infra output buckets.dist)."
     requires: {vars: [VERSION, CONSTRUCT_DIST_BUCKET]}
     vars:
       FROM: '{{.FROM | default "testing"}}'
@@ -463,7 +464,7 @@ tasks:
       - mkdir -p _output/channel
       - aws s3 cp --only-show-errors s3://{{.CONSTRUCT_DIST_BUCKET}}/updates/{{.FROM}}/SHA256SUMS _output/channel/{{.FROM}}.from
       - task: release:offer
-        vars: {VERSION: '{{.VERSION}}', CHANNEL: '{{.TO}}', FROM: '_output/channel/{{.FROM}}.from'}
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: '{{.TO}}', FROM: '_output/channel/{{.FROM}}.from', NEW: '{{.NEW}}'}
 
   release:withdraw:
     desc: "Take a release out of a channel, so machines that have not taken it never will: task release:withdraw VERSION=20261004.1 CHANNEL=stable. Signs with the KMS release key; CONSTRUCT_DIST_BUCKET."

@@ -97,13 +97,14 @@ func (idx index) keep(n int) {
 	}
 }
 
-// channelIndex writes a channel's index: the current one (-current, empty for a new channel) with
-// a release added (-add, a release directory or another channel's index with -version) or a
+// channelIndex writes a channel's index: the current one (-current, or -new for a channel's first)
+// with a release added (-add, a release directory or another channel's index with -version) or a
 // version withdrawn (-withdraw), and the newest -keep versions kept. task release:publish and
 // release:promote sign it (image sign-release) and upload it.
 func channelIndex(args []string) error {
 	fl := flag.NewFlagSet("channel-index", flag.ExitOnError)
-	current := fl.String("current", "", "the channel's index now (empty: a new channel)")
+	current := fl.String("current", "", "the channel's index now")
+	first := fl.Bool("new", false, "the channel has no index yet: this is its first")
 	add := fl.String("add", "", "a SHA256SUMS whose -version lines to add: a release's own, or another channel's index")
 	version := fl.String("version", "", "the version -add brings, or -withdraw takes out")
 	withdraw := fl.Bool("withdraw", false, "take -version out instead of adding it")
@@ -113,10 +114,16 @@ func channelIndex(args []string) error {
 	if *version == "" || *to == "" || (*add == "") == !*withdraw {
 		return errors.New("channel-index: -version and -o, and -add or -withdraw")
 	}
+	// A channel is new only when someone says so: an index that could not be fetched, taken as
+	// empty, would be replaced by one listing a single release, and the versions machines fall
+	// back to would be gone.
+	if (*current == "") == !*first {
+		return errors.New("channel-index: -current, or -new for a channel's first index")
+	}
 	idx := index{}
 	if *current != "" {
 		b, err := os.ReadFile(*current)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err != nil {
 			return err
 		}
 		if idx, err = parseIndex(string(b)); err != nil {

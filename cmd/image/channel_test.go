@@ -45,9 +45,13 @@ func TestChannelIndex(t *testing.T) {
 		return p
 	}
 	ch := filepath.Join(dir, "testing")
-	for _, v := range []string{"20261004.1", "20261004.9", "20261004.10", "20261005.1"} {
+	for i, v := range []string{"20261004.1", "20261004.9", "20261004.10", "20261005.1"} {
 		rel := write("rel-"+v, releaseSums(v))
-		if err := channelIndex([]string{"-current", filepath.Join(ch, "SHA256SUMS"), "-add", rel, "-version", v, "-keep", "3", "-o", ch}); err != nil {
+		from := []string{"-current", filepath.Join(ch, "SHA256SUMS")}
+		if i == 0 {
+			from = []string{"-new"}
+		}
+		if err := channelIndex(append(from, "-add", rel, "-version", v, "-keep", "3", "-o", ch)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -70,8 +74,15 @@ func TestChannelIndex(t *testing.T) {
 		t.Errorf("after the withdrawal: %v", idx.versions())
 	}
 	short := write("short", strings.Join(strings.Split(releaseSums("20261006.1"), "\n")[:2], "\n"))
-	if err := channelIndex([]string{"-add", short, "-version", "20261006.1", "-o", ch}); err == nil {
+	if err := channelIndex([]string{"-new", "-add", short, "-version", "20261006.1", "-o", ch}); err == nil {
 		t.Error("a release without its kernel image: no error")
+	}
+	// An index that could not be fetched is not a new channel: only -new starts one.
+	rel := write("rel-20261007.1", releaseSums("20261007.1"))
+	for _, from := range [][]string{{"-current", filepath.Join(dir, "missing")}, {}, {"-new", "-current", filepath.Join(ch, "SHA256SUMS")}} {
+		if err := channelIndex(append(from, "-add", rel, "-version", "20261007.1", "-o", ch)); err == nil {
+			t.Errorf("%v: no error", from)
+		}
 	}
 	if _, err := parseIndex(strings.Repeat("a", 64) + "  evil.sh\n"); err == nil {
 		t.Error("an index naming another file: no error")
