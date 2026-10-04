@@ -70,6 +70,20 @@ func TestReconcileUpdates(t *testing.T) {
 	}
 }
 
+// A finding whose severity changed takes the new one's label and drops the old one's.
+func TestReconcileSeverityChanges(t *testing.T) {
+	gh := &fakeGitHub{issues: []Issue{{Number: 7, Title: openssl.title, Open: true,
+		Body: "one High\n\n<!-- watch:security:openssl -->\n", Labels: []string{"security", "severity:high", "area:packages", "agent-ready"}}}}
+	critical := openssl
+	critical.labels = []string{"security", "severity:critical", "area:packages"}
+	if err := reconcile(t.Context(), gh, []check{found("security", critical)}, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(gh.issues[0].Labels, ","); got != "security,area:packages,agent-ready,severity:critical" {
+		t.Errorf("labels %s", got)
+	}
+}
+
 // An open issue whose finding is gone is closed with its check's reason; another check's issues,
 // and those of a check that failed, are left alone.
 func TestReconcileClosesWhatIsResolved(t *testing.T) {

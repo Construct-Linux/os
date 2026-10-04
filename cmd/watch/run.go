@@ -100,14 +100,17 @@ func reconcile(ctx context.Context, gh GitHub, checks []check, out io.Writer) er
 func file(ctx context.Context, gh GitHub, f finding, open, closed map[string]Issue, out io.Writer) error {
 	body := strings.TrimRight(f.body, "\n") + "\n\n" + marker(f.key) + "\n"
 	if i, ok := open[f.key]; ok {
-		// The labels a person added stay.
-		labels := slices.Clone(i.Labels)
+		// The labels a person added stay; a severity the finding no longer has goes, or a High
+		// that became Critical would carry both.
+		labels := slices.DeleteFunc(slices.Clone(i.Labels), func(l string) bool {
+			return strings.HasPrefix(l, "severity:") && !slices.Contains(f.labels, l)
+		})
 		for _, l := range f.labels {
 			if !slices.Contains(labels, l) {
 				labels = append(labels, l)
 			}
 		}
-		if i.Title == f.title && i.Body == body && len(labels) == len(i.Labels) {
+		if i.Title == f.title && i.Body == body && slices.Equal(labels, i.Labels) {
 			fmt.Fprintf(out, "  #%d %s: as it is\n", i.Number, f.title)
 			return nil
 		}
