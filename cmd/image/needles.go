@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"cmp"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -46,8 +47,8 @@ type needleRect struct {
 // needleSpec is a view's <name>.json beside its <name>.png. Ignore is written by hand: regions a
 // view's own content changes in. Actors is measured when the view is shot (a run writes it beside
 // its screenshot, needles-propose copies it to the needle): where the clock, Vitals' readings,
-// today's date and the lock clock were, which move with their text's width, so no fixed rectangle
-// holds them. A comparison leaves out the needle's and the run's both, so text that grew or
+// notifications' times and the lock clock were, which move with their text's width, so no fixed
+// rectangle holds them. A comparison leaves out the needle's and the run's both, so text that grew or
 // shrank between them is left out where it was in either.
 type needleSpec struct {
 	Ignore []needleRect `json:"ignore,omitempty"`
@@ -65,9 +66,10 @@ func needleBarFallback(width, scale int) needleRect {
 
 // needleActors is the JavaScript that measures, in the running shell, what changes from one run to
 // the next: inside the top bar, its clock and Vitals' readings, kept inside the bar's ring so the
-// ring and the bar's surface around them are compared; with the calendar open, today's date, the
-// month's days and each notification's time; on the lock screen, its clock. Each grows by 2 px for
-// antialiasing. It answers them with the stage's width: at a fractional scale the stage is in
+// ring and the bar's surface around them are compared; with the calendar open, each notification's
+// time; on the lock screen, its clock. Each grows by 2 px for antialiasing. Today's date and the
+// month's days are not among them: the views are shot at viewsTime, so they are the same in every
+// run, and leaving them out hid 9% of the calendar's views - the focus ring on a day among it. It answers them with the stage's width: at a fractional scale the stage is in
 // logical pixels and the screenshot in physical ones.
 const needleActors = `
 const out = [];
@@ -99,8 +101,6 @@ add(dm?._clockDisplay, 'the clock', bar);
 const vitals = Main.panel.statusArea.vitalsMenu;
 add(vitals?.container ?? vitals, 'the readings of Vitals', bar);
 if (dm?.menu.isOpen) {
-    add(dm._date, 'the date of today');
-    add(dm._calendar, 'the days of the month');
     const times = a => {
         if (a.has_style_class_name?.('event-time'))
             add(a, 'the time of a notification');
@@ -154,14 +154,34 @@ func (r *report) shotLook(v *vm, g *guest, name string) {
 		}
 		f.Close()
 	}
-	spec := needleSpec{Actors: append(before.onScreen(width), after.onScreen(width)...)}
+	was, is := before.onScreen(width), after.onScreen(width)
+	spec := needleSpec{Actors: unionActors(was, is)}
 	if err := errors.Join(errBefore, errAfter); err != nil {
 		spec.Actors = append(spec.Actors, needleBarFallback(width, r.scale))
 		r.add("look: "+name+" actors", false, "the clock and Vitals could not be measured: "+oneLine(err.Error()))
+	} else if !slices.Equal(sortedActors(was), sortedActors(is)) {
+		// Both places are left out, so the comparison holds; said, because a view whose bar
+		// changed while it was shot may have been shot half-drawn.
+		r.add("look: "+name+" actors", true, fmt.Sprintf("moved during the capture: %v, then %v", was, is))
 	}
 	if b, err := json.MarshalIndent(spec, "", "  "); err == nil {
 		_ = os.WriteFile(filepath.Join(r.dir, name+".json"), b, 0o644)
 	}
+}
+
+// sortedActors is rs in one order, a copy: by place, then size, then why.
+func sortedActors(rs []needleRect) []needleRect {
+	out := slices.Clone(rs)
+	slices.SortFunc(out, func(a, b needleRect) int {
+		return cmp.Or(cmp.Compare(a.X, b.X), cmp.Compare(a.Y, b.Y), cmp.Compare(a.W, b.W), cmp.Compare(a.H, b.H), cmp.Compare(a.Why, b.Why))
+	})
+	return out
+}
+
+// unionActors is where either measurement found an actor, each rectangle once: an actor that did
+// not move between them is the same rectangle twice, which was half of every view's actors.
+func unionActors(a, b []needleRect) []needleRect {
+	return slices.Compact(sortedActors(slices.Concat(a, b)))
 }
 
 // readSpec reads a needleSpec; a view without one has nothing left out.
@@ -460,17 +480,16 @@ func needlesPropose(args []string) error {
 			return err
 		}
 		spec.Actors = run.Actors
-		if len(spec.Ignore)+len(spec.Actors) > 0 {
-			b, err := json.MarshalIndent(spec, "", "  ")
-			if err != nil {
-				return err
-			}
-			if err := os.WriteFile(filepath.Join(*needles, v.Name+".json"), b, 0o644); err != nil {
-				return err
-			}
-			if err := git("add", v.Name+".json"); err != nil {
-				return err
-			}
+		// Every needle has its .json, empty or not: the gallery reads each view's from it.
+		b, err = json.MarshalIndent(spec, "", "  ")
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(filepath.Join(*needles, v.Name+".json"), b, 0o644); err != nil {
+			return err
+		}
+		if err := git("add", v.Name+".json"); err != nil {
+			return err
 		}
 	}
 	table := proposalTable(l, changed)

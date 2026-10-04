@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -109,6 +110,19 @@ func TestProposalBody(t *testing.T) {
 	review := reviewChecklist()
 	if strings.Count(review, "- [ ] ") != len(reviewAsked) || !strings.Contains(review, "- C3, gated by lf: `accent areas <view>`") {
 		t.Errorf("review:\n%s", review)
+	}
+}
+
+// An actor that stayed put is left out once; one that moved, at both places.
+func TestUnionActors(t *testing.T) {
+	clock := needleRect{X: 700, Y: 8, W: 60, H: 30, Why: "the clock"}
+	vitals := needleRect{X: 900, Y: 8, W: 120, H: 30, Why: "the readings of Vitals"}
+	moved := vitals
+	moved.W = 128
+	got := unionActors([]needleRect{vitals, clock}, []needleRect{clock, moved})
+	want := []needleRect{clock, vitals, moved}
+	if !slices.Equal(got, want) {
+		t.Errorf("union %v, want %v", got, want)
 	}
 }
 
