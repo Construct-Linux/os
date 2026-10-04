@@ -1,7 +1,7 @@
 package:
   name: orchis-theme
   version: "20260914"
-  epoch: 12
+  epoch: 13
   description: Orchis GTK and GNOME Shell theme in Construct's colors, light and dark
   copyright:
     - license: GPL-3.0-only
@@ -27,7 +27,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/Orchis-theme
       branch: gnome-shell-51
-      expected-commit: ea9e2eb2d47df7725b3b5fea678ec67130dcf32a
+      expected-commit: 29726977e64dc8e548d79559807be495567bcfd0
 
   # No -l: it links into a home directory, and the image links libadwaita per user.
   - runs: |
