@@ -305,6 +305,15 @@ func (v *vm) pointTo(x, y int) error {
 	}}})
 }
 
+// button presses (down) or releases the USB tablet's left button where the pointer is. A press
+// held while the screen is shot is how a view shows GTK's :active, which no key and no pointer
+// move draws; released elsewhere, it clicks nothing.
+func (v *vm) button(down bool) error {
+	return qmpRun(v.qmp, map[string]any{"execute": "input-send-event", "arguments": map[string]any{"events": []any{
+		map[string]any{"type": "btn", "data": map[string]any{"down": down, "button": "left"}},
+	}}})
+}
+
 // key presses and releases one key, by QEMU qcode ("shift", "esc").
 func (v *vm) key(qcode string) error {
 	return qmpRun(v.qmp, map[string]any{"execute": "send-key", "arguments": map[string]any{
