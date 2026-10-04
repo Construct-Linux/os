@@ -61,6 +61,7 @@ func test(args []string) error {
 	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, bench, suspend); all by default")
 	mem := fl.String("m", "6G", "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
+	needles := fl.String("needles", "", "a checkout of github.com/Construct-Linux/needles: every screenshot is compared with its needle")
 	_ = fl.Parse(args)
 
 	dir := filepath.Join(out, "test")
@@ -135,6 +136,10 @@ func test(args []string) error {
 	// A machine nobody named is os-release's DEFAULT_HOSTNAME.
 	name, err := g.run(`hostnamectl hostname`, "")
 	r.add("the computer's default name", err == nil && strings.TrimSpace(name) == "construct", "hostname: "+oneLine(name)+errText(err))
+	// .local names go through avahi, the one mDNS stack (nss-mdns): its own resolves, and nothing
+	// else holds port 5353.
+	local, err := g.run(`getent hosts "$(hostname).local"; ss -Hulnp 'sport = :5353' | grep -o 'users:(("[^"]*' | sort -u`, "")
+	r.add("mdns", err == nil && strings.Contains(local, "construct.local") && strings.Contains(local, `"avahi-daemon`) && !strings.Contains(local, `"systemd-resolve`), oneLine(local)+errText(err))
 	// The memory, writeback and network settings (usr/lib/sysctl.d/70-construct.conf, zram,
 	// THP), as the running kernel has them.
 	tune, _ := g.run(`swapon --show=NAME,TYPE --noheadings | tr -s ' ' | tr '\n' ';'; `+
@@ -269,6 +274,7 @@ func test(args []string) error {
 	if len(want) == 0 || want["suspend"] {
 		r.suspend(v, g)
 	}
+	r.compareNeedles(*needles)
 	return r.write(g)
 }
 

@@ -6,7 +6,8 @@ version: "3"
 # Docker with bubblewrap inside, which needs --privileged.
 
 # What each build fetches from outside the repository, pinned by content.
-dotenv: [build/versions.env]
+# .env, not committed: this machine's own settings - NEEDLES, the needles checkout.
+dotenv: [build/versions.env, .env]
 
 vars:
   MELANGE: cgr.dev/chainguard/melange@sha256:3285b57ff3d6f241993f181c1cb154a590ec3ade8c3f6d987686b42693d27afe
@@ -246,7 +247,12 @@ tasks:
     cmds:
       - task: usb
         vars: {CLI_ARGS: -test, SIGNING_HOME: .cache/test-gnupg}
-      - go run ./cmd/image test -usb {{.CLI_ARGS}}
+      - go run ./cmd/image test -usb -needles "{{.NEEDLES}}" {{.CLI_ARGS}}
+
+  needles:propose:
+    desc: "Open a pull request in github.com/Construct-Linux/needles with the views the last test:usb drew differently from their needles, or that have none (_output/test/look.json): merging it approves the new look. Needs NEEDLES, a checkout of it."
+    cmds:
+      - go run ./cmd/image needles-propose -needles "{{.NEEDLES}}"
 
   test:lifecycle:
     desc: "Install from a stick onto an NVMe disk, open it with a security key, refuse forged sticks, update from a URL, roll back from a broken release by stick: three test releases, in QEMU."

@@ -109,8 +109,9 @@ func (r *report) system(g *guest) {
 	errs, errsErr := g.run(`journalctl -b -p err -q --no-pager -o short-monotonic`, "")
 	// What GNOME Shell logs below error priority but is a bug all the same: an extension's
 	// exception, an actor used after it was destroyed (both typical of a lock/unlock cycle, which
-	// disables and enables every extension), a cursor the theme lacks.
-	shell, shellErr := g.run(`journalctl -b --no-pager -o cat _COMM=gnome-shell | grep -E 'JS ERROR|already disposed|Could not load cursor' || true`, "")
+	// disables and enables every extension), a cursor the theme lacks, and St's CSS warnings - a
+	// property the theme writes that the shell ignores ("at line L, col C" of its stylesheet).
+	shell, shellErr := g.run(`journalctl -b --no-pager -o cat _COMM=gnome-shell | grep -E 'JS ERROR|already disposed|Could not load cursor|at line [0-9]+, col [0-9]+' || true`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "shell-log.txt"), []byte(shell), 0o644)
 	lines := strings.Fields(strings.ReplaceAll(strings.TrimSpace(shell), " ", "_"))
 	r.add("shell log", shellErr == nil && len(lines) == 0, fmt.Sprintf("%d lines in shell-log.txt: %s", len(lines), oneLine(firstLine(shell)))+errText(shellErr))

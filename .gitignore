@@ -2,3 +2,4 @@
 /.cache/
 /_output/
 /melange.rsa
+/.env

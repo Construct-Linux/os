@@ -58,6 +58,8 @@ func main() {
 		err = usbDisk(os.Args[2:])
 	case "lifecycle":
 		err = lifecycle(os.Args[2:])
+	case "needles-propose":
+		err = needlesPropose(os.Args[2:])
 	case "scan-report":
 		err = scanReport(os.Args[2:])
 	case "run":
