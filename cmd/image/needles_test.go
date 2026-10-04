@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"image/color"
 	"os"
@@ -252,13 +253,44 @@ func TestScreenOf(t *testing.T) {
 // as boxes to tick, and names what lf held instead of asking it again.
 func TestProposalBody(t *testing.T) {
 	l := look{Version: "20261004.1", Needles: "abc"}
-	table := proposalTable(l, []lookView{{Name: "shell-calendar", Share: 0.013}, {Name: "gtk-focus", New: true}})
-	if !strings.Contains(table, "| `shell-calendar` | 1.300% |") || !strings.Contains(table, "| `gtk-focus` | new view |") || strings.Contains(table, "- [ ]") {
-		t.Errorf("table:\n%s", table)
+	table := proposalTable(l, []lookView{
+		{Name: "shell-calendar", Share: 0.013, LF: viewLF{Pass: 14}},
+		{Name: "gtk-focus", New: true, LF: viewLF{Pass: 2, Fail: 1, Checks: []string{"focus gtk"}}},
+		{Name: "org.gnome.Maps", Share: 0.004, LF: viewLF{Pass: 2}},
+		{Name: "type-specimen", Share: 0.004},
+	})
+	for _, want := range []string{"| `shell-calendar` | 1.300% | 14 passed |", "| `gtk-focus` | new view | **1 failed**: focus gtk |",
+		"| `org.gnome.Maps` | 0.400% | C3 only |", "| `type-specimen` | 0.400% | not measured |"} {
+		if !strings.Contains(table, want) {
+			t.Errorf("table lacks %q:\n%s", want, table)
+		}
+	}
+	if strings.Contains(table, "- [ ]") {
+		t.Errorf("the table asks:\n%s", table)
 	}
 	review := reviewChecklist()
 	if strings.Count(review, "- [ ] ") != len(reviewAsked) || !strings.Contains(review, "- C3, gated by lf: `accent areas <view>`") {
 		t.Errorf("review:\n%s", review)
+	}
+}
+
+// Up to 20 views are one proposal; more are one per group, in the groups' order.
+func TestProposalBatches(t *testing.T) {
+	few := []lookView{{Name: "a", Group: groupGTK}, {Name: "b", Group: groupShell}}
+	if b := proposalBatches(few); len(b) != 1 || b[0].group != "" || len(b[0].views) != 2 {
+		t.Errorf("few: %+v", b)
+	}
+	var many []lookView
+	for i := range 25 {
+		g := groupApp
+		if i%5 == 0 {
+			g = groupShell
+		}
+		many = append(many, lookView{Name: fmt.Sprint(i), Group: g})
+	}
+	b := proposalBatches(many)
+	if len(b) != 2 || b[0].group != groupShell || len(b[0].views) != 5 || b[1].group != groupApp || len(b[1].views) != 20 {
+		t.Errorf("many: %d batches %+v", len(b), b)
 	}
 }
 

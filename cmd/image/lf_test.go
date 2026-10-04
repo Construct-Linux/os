@@ -6,6 +6,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -656,6 +657,26 @@ func lastResult(t *testing.T, r *report) result {
 		t.Fatal("no check recorded")
 	}
 	return r.results[len(r.results)-1]
+}
+
+// A check counts on the view being measured, a failure by its name; a check on the guest counts on
+// none.
+func TestCheckCountsOnView(t *testing.T) {
+	l := testLF(t, 1)
+	l.r.views = map[string]*needleSpec{"shell-calendar": {}}
+	l.cur = "shell-calendar"
+	l.check("today", "calendar", true, "")
+	l.check("focus", "calendar day", false, "")
+	l.cur = ""
+	l.check("fonts", "G4", false, "")
+	got := l.r.views["shell-calendar"].LF
+	if got.Pass != 1 || got.Fail != 1 || !slices.Equal(got.Checks, []string{"focus calendar day"}) {
+		t.Errorf("counted %+v", got)
+	}
+	l.r.viewSweep("shell-calendar", []lfRect{{1, 2, 30, 40}}, 0.004)
+	if v := l.r.lookViewOf("shell-calendar"); len(v.Sweep.Areas) != 1 || v.Sweep.Areas[0].W != 30 || v.LF.Fail != 1 {
+		t.Errorf("look.json's view %+v", v)
+	}
 }
 
 // A light window draws the light accent; dark's cyan inside it fails, the dock's dot outside it does

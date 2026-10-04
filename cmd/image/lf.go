@@ -535,7 +535,12 @@ func (l *lf) sweep(name string, img image.Image) {
 	share := accentShare(img, all, cols, lfSweepTol)
 	l.check("accent share", name, share <= lfAccentShareMax,
 		fmt.Sprintf("%.2f%% of the view the full accent, want <= %.1f%%", share*100, lfAccentShareMax*100))
+	l.r.viewSweep(name, areas, share)
 }
+
+// lfSweepChecks is how many checks the sweep makes on every view: a view with no more than these
+// is one lf measures for C3 alone.
+const lfSweepChecks = 2
 
 // surfaceCheck is S1-S3 for one surface: St's background is want and opaque, the pixels inside its
 // extents are want, its ring is 1 px of the border colour all round in St and on the screen, and

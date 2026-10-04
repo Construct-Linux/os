@@ -29,6 +29,8 @@ type report struct {
 	scale int
 	// views are the specs of the views shot so far, by name: lf's checks count on them.
 	views map[string]*needleSpec
+	// sweeps are C3's sweep of each view, for look.json.
+	sweeps map[string]lookSweep
 	// benchWindow is when construct bench ran, in seconds since the guest's boot: the kernel's
 	// out-of-memory report it provokes on purpose is not an error of the image's.
 	benchWindow [2]float64

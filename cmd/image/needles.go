@@ -394,12 +394,55 @@ type look struct {
 	Views   []lookView `json:"views"`
 }
 
+// lookView is one view of a run against its needle: how much differs, and what lf said of it - its
+// counts, and the sweep's solid accent areas and accent share, which the counts alone do not show.
 type lookView struct {
-	Name  string  `json:"name"`
-	Share float64 `json:"share"`
-	New   bool    `json:"new,omitempty"`
-	OK    bool    `json:"ok"`
-	Error string  `json:"error,omitempty"`
+	Name  string    `json:"name"`
+	Group string    `json:"group"`
+	Share float64   `json:"share"`
+	New   bool      `json:"new,omitempty"`
+	OK    bool      `json:"ok"`
+	Error string    `json:"error,omitempty"`
+	LF    viewLF    `json:"lf"`
+	Sweep lookSweep `json:"sweep"`
+}
+
+// lookSweep is C3's sweep of a view: its solid accent areas larger than a mark, in the
+// screenshot's pixels, and the share of it that is the full accent.
+type lookSweep struct {
+	Areas []sweepArea `json:"areas"`
+	Share float64     `json:"share"`
+}
+
+type sweepArea struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
+}
+
+// viewSweep keeps what the sweep found on a view, for look.json.
+func (r *report) viewSweep(view string, areas []lfRect, share float64) {
+	if r.sweeps == nil {
+		r.sweeps = map[string]lookSweep{}
+	}
+	s := lookSweep{Areas: []sweepArea{}, Share: share}
+	for _, a := range areas {
+		s.Areas = append(s.Areas, sweepArea(a))
+	}
+	r.sweeps[view] = s
+}
+
+// lookViewOf is the run's view name in look.json, with what the run knows of it.
+func (r *report) lookViewOf(name string) lookView {
+	v := lookView{Name: name, Sweep: r.sweeps[name], LF: viewLF{Checks: []string{}}}
+	if v.Sweep.Areas == nil {
+		v.Sweep.Areas = []sweepArea{}
+	}
+	if s := r.views[name]; s != nil {
+		v.Group, v.LF = s.Group, s.LF
+	}
+	return v
 }
 
 // compareNeedles compares every screenshot in dir that has a needle in needles, writes each
@@ -446,14 +489,17 @@ func (r *report) compareNeedles(needles string) {
 	_ = os.WriteFile(filepath.Join(r.dir, "look.html"), []byte(lookPage(needles, results)), 0o644)
 	l := look{Version: builtVersion(), OS: gitHead("."), Needles: gitHead(needles)}
 	for _, x := range results {
-		v := lookView{Name: x.name, Share: x.share, OK: x.err == nil && x.share <= needleMaxShare}
+		v := r.lookViewOf(x.name)
+		v.Share, v.OK = x.share, x.err == nil && x.share <= needleMaxShare
 		if x.err != nil {
 			v.Error = x.err.Error()
 		}
 		l.Views = append(l.Views, v)
 	}
 	for _, n := range unmatched {
-		l.Views = append(l.Views, lookView{Name: n, New: true})
+		v := r.lookViewOf(n)
+		v.New = true
+		l.Views = append(l.Views, v)
 	}
 	if b, err := json.MarshalIndent(l, "", "  "); err == nil {
 		_ = os.WriteFile(filepath.Join(r.dir, "look.json"), b, 0o644)
@@ -618,9 +664,13 @@ func needlesPropose(args []string) error {
 	}
 	var changed []lookView
 	for _, v := range l.Views {
-		if !v.OK {
-			changed = append(changed, v)
+		if v.OK {
+			continue
 		}
+		if !slices.Contains(viewGroups, v.Group) {
+			return fmt.Errorf("needles-propose: %s is in group %q, none of %v", v.Name, v.Group, viewGroups)
+		}
+		changed = append(changed, v)
 	}
 	if len(changed) == 0 {
 		fmt.Println("every view matches its needle: nothing to propose")
@@ -638,45 +688,88 @@ func needlesPropose(args []string) error {
 		}
 		return nil
 	}
-	branch := "look/" + l.Version
 	if err := git("fetch", "-q", "origin"); err != nil {
-		return err
-	}
-	if err := git("checkout", "-q", "-B", branch, "origin/main"); err != nil {
 		return err
 	}
 	// Back on main whatever happens: the checkout is where the next run compares from.
 	defer func() { _ = git("checkout", "-q", "main") }()
-	paths := []string{toleranceFile}
-	if err := writeTolerance(*needles); err != nil {
-		return err
-	}
-	for _, v := range changed {
-		if err := proposeNeedle(*from, *needles, l, v); err != nil {
+	for i, b := range proposalBatches(changed) {
+		branch, title := "look/"+l.Version, fmt.Sprintf("Look of %s: %d view(s)", l.Version, len(b.views))
+		if b.group != "" {
+			branch += "/" + b.group
+			title = fmt.Sprintf("Look of %s, %s: %d view(s)", l.Version, b.group, len(b.views))
+		}
+		if err := git("checkout", "-q", "-B", branch, "origin/main"); err != nil {
 			return err
 		}
-		paths = append(paths, v.Name+".png", v.Name+".json")
+		var paths []string
+		// What is the whole repository's goes with the first proposal alone.
+		if i == 0 {
+			if err := writeTolerance(*needles); err != nil {
+				return err
+			}
+			gone, err := retireNeedles(*needles)
+			if err != nil {
+				return err
+			}
+			paths = append([]string{toleranceFile}, gone...)
+		}
+		for _, v := range b.views {
+			if err := proposeNeedle(*from, *needles, l, v); err != nil {
+				return err
+			}
+			paths = append(paths, v.Name+".png", v.Name+".json")
+		}
+		// -A stages the retired needles' removal with the rest.
+		if err := git(append([]string{"add", "-A", "--"}, paths...)...); err != nil {
+			return err
+		}
+		table := proposalTable(l, b.views)
+		if err := git("commit", "-q", "-m", title, "-m", table); err != nil {
+			return err
+		}
+		if err := git("push", "-q", "-f", "origin", branch); err != nil {
+			return err
+		}
+		pr := exec.Command("gh", "pr", "create", "--title", title, "--body", table+"\n"+reviewChecklist(), "--head", branch, "--base", "main")
+		pr.Dir = *needles
+		pr.Stdout, pr.Stderr = os.Stdout, os.Stderr
+		if err := pr.Run(); err != nil {
+			return err
+		}
 	}
-	gone, err := retireNeedles(*needles)
-	if err != nil {
-		return err
+	return nil
+}
+
+// needlesPerProposal is the most views one pull request asks a person to review: a 70-view
+// proposal could not be reviewed, and was merged without one.
+const needlesPerProposal = 20
+
+// proposalBatch is the views one pull request proposes, and the group they are, when split.
+type proposalBatch struct {
+	group string
+	views []lookView
+}
+
+// proposalBatches is one proposal for up to needlesPerProposal views, else one per group, in
+// viewGroups' order: a group is what a reviewer judges together.
+func proposalBatches(views []lookView) []proposalBatch {
+	if len(views) <= needlesPerProposal {
+		return []proposalBatch{{views: views}}
 	}
-	// -A stages the retired needles' removal with the rest.
-	if err := git(append([]string{"add", "-A", "--"}, append(paths, gone...)...)...); err != nil {
-		return err
+	var out []proposalBatch
+	for _, g := range viewGroups {
+		b := proposalBatch{group: g}
+		for _, v := range views {
+			if v.Group == g {
+				b.views = append(b.views, v)
+			}
+		}
+		if len(b.views) > 0 {
+			out = append(out, b)
+		}
 	}
-	table := proposalTable(l, changed)
-	title := fmt.Sprintf("Look of %s: %d view(s)", l.Version, len(changed))
-	if err := git("commit", "-q", "-m", title, "-m", table); err != nil {
-		return err
-	}
-	if err := git("push", "-q", "-f", "origin", branch); err != nil {
-		return err
-	}
-	pr := exec.Command("gh", "pr", "create", "--title", title, "--body", table+"\n"+reviewChecklist(), "--head", branch, "--base", "main")
-	pr.Dir = *needles
-	pr.Stdout, pr.Stderr = os.Stdout, os.Stderr
-	return pr.Run()
+	return out
 }
 
 // toleranceFile is needleChannelDelta and needleMaxShare at the needles' root, for the gallery to
@@ -755,10 +848,11 @@ func retireNeedles(needles string) ([]string, error) {
 }
 
 // proposalTable is what a proposal changes, view by view: the commit's message, and the top of
-// the pull request.
+// the pull request. Its lf column is what the run's checks held on each view, so a reviewer sees
+// which views only their own eyes cover.
 func proposalTable(l look, views []lookView) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Build `%s`, against needles `%s`.\n\n| View | Differs |\n|---|---|\n", l.Version, l.Needles)
+	fmt.Fprintf(&b, "Build `%s`, against needles `%s`.\n\n| View | Differs | lf |\n|---|---|---|\n", l.Version, l.Needles)
 	for _, v := range views {
 		state := fmt.Sprintf("%.3f%%", v.Share*100)
 		switch {
@@ -767,9 +861,23 @@ func proposalTable(l look, views []lookView) string {
 		case v.Error != "":
 			state = v.Error
 		}
-		fmt.Fprintf(&b, "| `%s` | %s |\n", v.Name, state)
+		fmt.Fprintf(&b, "| `%s` | %s | %s |\n", v.Name, state, lfCell(v.LF))
 	}
 	return b.String()
+}
+
+// lfCell is lf's word on a view for the table: what failed, how many passed, or that it measured
+// nothing but the sweep, or nothing at all.
+func lfCell(r viewLF) string {
+	switch {
+	case r.Fail > 0:
+		return fmt.Sprintf("**%d failed**: %s", r.Fail, strings.Join(r.Checks, ", "))
+	case r.Pass == 0:
+		return "not measured"
+	case r.Pass <= lfSweepChecks:
+		return "C3 only"
+	}
+	return fmt.Sprintf("%d passed", r.Pass)
 }
 
 // reviewAsked is what a person judges before merging a proposal, because no check can: needles say
