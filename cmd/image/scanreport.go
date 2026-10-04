@@ -7,37 +7,14 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/Construct-Linux/os/internal/grype"
 )
 
 // severities in the order a report lists them.
 var severities = []string{"Critical", "High", "Medium", "Low", "Negligible", "Unknown"}
-
-// grypeMatch is what a report needs of one of Grype's matches.
-type grypeMatch struct {
-	Vulnerability struct {
-		ID       string `json:"id"`
-		Severity string `json:"severity"`
-		Fix      struct {
-			Versions []string `json:"versions"`
-		} `json:"fix"`
-		EPSS []struct {
-			EPSS       float64 `json:"epss"`
-			Percentile float64 `json:"percentile"`
-		} `json:"epss"`
-	} `json:"vulnerability"`
-	Artifact struct {
-		Name    string `json:"name"`
-		Version string `json:"version"`
-	} `json:"artifact"`
-}
-
-type grypeReport struct {
-	Matches        []grypeMatch `json:"matches"`
-	IgnoredMatches []grypeMatch `json:"ignoredMatches"`
-}
 
 // scanReport writes what task scan's Grype found as Markdown, by severity: the vulnerabilities a
 // version already fixes - Critical and High fail the scan (build/grype.yaml) - and those nobody
@@ -53,11 +30,11 @@ func scanReport(args []string) error {
 	if err != nil {
 		return err
 	}
-	var g grypeReport
+	var g grype.Report
 	if err := json.Unmarshal(b, &g); err != nil {
 		return fmt.Errorf("%s: %w", *in, err)
 	}
-	ours, err := recipePackages(*recipes)
+	ours, err := grype.RecipePackages(*recipes)
 	if err != nil {
 		return err
 	}
@@ -73,7 +50,7 @@ func scanReport(args []string) error {
 	return nil
 }
 
-func writeScanReport(w io.Writer, g grypeReport, ours map[string]bool) {
+func writeScanReport(w io.Writer, g grype.Report, ours map[string]bool) {
 	fmt.Fprintln(w, "# Vulnerabilities in the image")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "| severity | a version fixes it | nobody has yet |")
@@ -86,7 +63,7 @@ func writeScanReport(w io.Writer, g grypeReport, ours map[string]bool) {
 	fmt.Fprintln(w, "A Critical or High that a version fixes fails `task scan`: a Wolfi package's by rebuilding the root, a recipe's by updating it.")
 	for _, part := range []struct {
 		title string
-		by    map[string][]grypeMatch
+		by    map[string][]grype.Match
 	}{{"A version fixes it", fixed}, {"Nobody has fixed it yet", unfixed}} {
 		for _, s := range severities {
 			if len(part.by[s]) == 0 {
@@ -113,8 +90,8 @@ func writeScanReport(w io.Writer, g grypeReport, ours map[string]bool) {
 
 // bySeverity groups matches by Grype's severity, each group by the likeliest to be exploited
 // first (EPSS), then by name.
-func bySeverity(ms []grypeMatch) map[string][]grypeMatch {
-	by := map[string][]grypeMatch{}
+func bySeverity(ms []grype.Match) map[string][]grype.Match {
+	by := map[string][]grype.Match{}
 	for _, m := range ms {
 		s := m.Vulnerability.Severity
 		if !contains(severities, s) {
@@ -122,15 +99,9 @@ func bySeverity(ms []grypeMatch) map[string][]grypeMatch {
 		}
 		by[s] = append(by[s], m)
 	}
-	epss := func(m grypeMatch) float64 {
-		if len(m.Vulnerability.EPSS) == 0 {
-			return 0
-		}
-		return m.Vulnerability.EPSS[0].EPSS
-	}
 	for _, list := range by {
 		sort.SliceStable(list, func(i, j int) bool {
-			if a, b := epss(list[i]), epss(list[j]); a != b {
+			if a, b := list[i].EPSS(), list[j].EPSS(); a != b {
 				return a > b
 			}
 			return list[i].Artifact.Name+list[i].Vulnerability.ID < list[j].Artifact.Name+list[j].Vulnerability.ID
@@ -146,25 +117,4 @@ func contains(list []string, s string) bool {
 		}
 	}
 	return false
-}
-
-var recipeName = regexp.MustCompile(`(?m)^(?:  name|  - name): *"?([A-Za-z0-9._+-]+)"?\s*$`)
-
-// recipePackages are the packages recipes/ builds: each recipe's package and subpackages.
-func recipePackages(dir string) (map[string]bool, error) {
-	files, err := filepath.Glob(filepath.Join(dir, "*.yaml"))
-	if err != nil {
-		return nil, err
-	}
-	names := map[string]bool{}
-	for _, f := range files {
-		b, err := os.ReadFile(f)
-		if err != nil {
-			return nil, err
-		}
-		for _, m := range recipeName.FindAllSubmatch(b, -1) {
-			names[string(m[1])] = true
-		}
-	}
-	return names, nil
 }

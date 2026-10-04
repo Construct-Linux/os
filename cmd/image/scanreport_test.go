@@ -4,12 +4,14 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+
+	"github.com/Construct-Linux/os/internal/grype"
 )
 
 // The counts split what a version fixes from what nobody has, and each row says whose package it
 // is: a recipe's is updated, a Wolfi package's is fixed by rebuilding the root.
 func TestScanReport(t *testing.T) {
-	var g grypeReport
+	var g grype.Report
 	if err := json.Unmarshal([]byte(`{
 		"matches": [{"vulnerability": {"id": "CVE-1", "severity": "High", "fix": {"versions": ["2.0"]}}, "artifact": {"name": "mesa", "version": "1.0"}}],
 		"ignoredMatches": [
