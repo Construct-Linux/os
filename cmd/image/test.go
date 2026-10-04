@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -716,4 +717,102 @@ func (r *report) bench(g *guest) {
 	r.benchWindow[1] = g.uptime()
 	after, _ := g.run(`sysctl -n vm.swappiness; swapon --show=NAME --noheadings`, "")
 	r.add("construct bench", err == nil && strings.Contains(out, "wakeup latency p99") && before == after, oneLine(out)+errText(err))
+}
+
+// gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip, a
+// dialog, a warning banner, a maximized window, and a destructive confirmation, in Text Editor and
+// Files in the dark scheme. They are screenshots for the needles; each passes when what opens it
+// worked.
+func (r *report) gtkViews(v *vm, g *guest, l *lf) {
+	const id = "org.gnome.TextEditor.desktop"
+	if ok, detail := g.runApp(app{id, 20 * time.Second}); !ok {
+		r.add("view:gtk", false, detail)
+		return
+	}
+	time.Sleep(3 * time.Second)
+	shot := func(name string) {
+		r.shotLook(v, g, name)
+		l.view(name)
+	}
+	windows := func() int {
+		n, _ := g.eval(`global.get_window_actors().length`)
+		k, _ := strconv.Atoi(n)
+		return k
+	}
+	var frame struct{ X, Y, W, H int }
+	if err := g.evalJSON(fmt.Sprintf(`const w = Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0];
+		w.activate(global.get_current_time()); return lfWindow(w);`, id), &frame); err != nil {
+		r.add("view:gtk", false, err.Error())
+		return
+	}
+	time.Sleep(time.Second)
+	// F10 opens a GTK window's primary menu: a popover, its own surface.
+	before := windows()
+	_ = v.key("f10")
+	time.Sleep(2 * time.Second)
+	r.add("view:gtk-popover", windows() > before, fmt.Sprintf("%d surfaces, %d before F10", windows(), before))
+	shot("gtk-popover")
+	_ = v.key("esc")
+	time.Sleep(time.Second)
+	// The pointer over the headerbar's New Tab button, the second from the start, until GTK shows
+	// its tooltip; GTK 4's window controls have none. Two moves: GTK starts the tooltip's timer on
+	// motion inside the widget.
+	before = windows()
+	sw, sh := l.stageW, l.stageH
+	x, y := frame.X+105, frame.Y+23
+	_ = v.pointTo(absPoint(x-6, y, sw, sh))
+	time.Sleep(300 * time.Millisecond)
+	_ = v.pointTo(absPoint(x, y, sw, sh))
+	time.Sleep(3 * time.Second)
+	r.add("view:gtk-tooltip", windows() > before, fmt.Sprintf("%d surfaces with the pointer at (%d, %d), %d before", windows(), x, y, before))
+	shot("gtk-tooltip")
+	_ = v.pointTo(16000, 30000)
+	time.Sleep(time.Second)
+	// A libadwaita dialog, opened by the app's own action over its bus: preferences, else about.
+	out, err := g.run(`b='`+asLive+`gdbus call --session --dest org.gnome.TextEditor --object-path /org/gnome/TextEditor --method org.gtk.Actions.Activate'; `+
+		`$b preferences '[]' '{}' >/dev/null 2>&1 && echo preferences || { $b about '[]' '{}' 2>&1 && echo about; }`, "")
+	time.Sleep(2 * time.Second)
+	r.add("view:gtk-dialog", err == nil && (strings.Contains(out, "preferences") || strings.Contains(out, "about")), "app action: "+oneLine(out)+errText(err))
+	shot("gtk-dialog")
+	_ = v.key("esc")
+	time.Sleep(time.Second)
+	// A window maximized: no ring, no radius, no shadow (S3).
+	if err := g.evalJSON(fmt.Sprintf(`const w = Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0]; w.maximize(); return true;`, id), new(bool)); err != nil {
+		r.add("view:gtk-maximized", false, err.Error())
+	} else {
+		time.Sleep(2 * time.Second)
+		r.add("view:gtk-maximized", true, "Text Editor maximized")
+		shot("gtk-maximized")
+		l.maximized(id, "gtk-maximized")
+		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0].unmaximize(); true`, id))
+		time.Sleep(time.Second)
+	}
+	// A warning: a file the editor has open changes on disk, and it says so in a banner.
+	const changed = "/tmp/construct-banner.txt"
+	_, err = g.run(asLive+`sh -c 'printf "one\n" > `+changed+`'`, "")
+	if err == nil {
+		err = g.evalJSON(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_app_info().launch_uris([%q], null); return true;`, id, "file://"+changed), new(bool))
+	}
+	if err == nil {
+		time.Sleep(4 * time.Second)
+		_, err = g.run(asLive+`sh -c 'printf "two\n" >> `+changed+`'`, "")
+		time.Sleep(3 * time.Second)
+	}
+	r.add("view:gtk-banner", err == nil, "a file Text Editor has open, changed on disk"+errText(err))
+	shot("gtk-banner")
+	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, id))
+	time.Sleep(2 * time.Second)
+	// A destructive confirmation: Files asks before it empties the trash, a libadwaita alert with
+	// the destructive response. Escape answers Cancel; the probe file stays in the trash.
+	out, err = g.run(`u='`+asLive+`'; `+
+		`$u sh -c 'f=$(mktemp -p "$HOME" construct-trash.XXXXXX) && gio trash "$f"' && `+
+		`{ $u timeout 30 gdbus call --session --dest org.gnome.Nautilus --object-path /org/gnome/Nautilus/FileOperations2 `+
+		`--method org.gnome.Nautilus.FileOperations2.EmptyTrash '{}' >/dev/null 2>&1 & } ; echo asked`, "")
+	time.Sleep(5 * time.Second)
+	r.add("view:gtk-destructive", err == nil && strings.Contains(out, "asked"), "Files' Empty Trash, confirmed first: "+oneLine(out)+errText(err))
+	shot("gtk-destructive")
+	_ = v.key("esc")
+	time.Sleep(time.Second)
+	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Nautilus.desktop")?.request_quit(); true`)
+	time.Sleep(2 * time.Second)
 }
