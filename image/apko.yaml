@@ -242,12 +242,10 @@ contents:
     - stress-ng
     - fio
     # A laptop's own: its light, motion and proximity sensors over D-Bus (automatic brightness,
-    # rotation), started by udev; fingerprint login (fprintd, enrolled in Settings, offered by
-    # GDM's gdm-fingerprint), started by D-Bus; Intel's low-power-mode daemon, installed and not
-    # enabled until it is measured (recipes/intel-lpmd).
+    # rotation), started by udev; Intel's low-power-mode daemon, installed and not enabled until
+    # it is measured (recipes/intel-lpmd). No fingerprint reader: the lock screen and sudo ask for
+    # the password, and nothing else would take a finger.
     - iio-sensor-proxy
-    - libfprint
-    - fprintd
     - intel-lpmd
     # libfido2, which systemd-cryptenroll and systemd-cryptsetup open at run time for a security key,
     # and its tools: fido2-token lists keys and sets a new key's PIN, for the installer and a person.
@@ -336,7 +334,6 @@ contents:
     - papers-lang
     - polkit-lang
     - popt-lang
-    - fprintd-lang
     - ghostty-lang
     - ptyxis-lang
     - shared-mime-info-lang

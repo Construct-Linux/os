@@ -224,11 +224,12 @@ func test(args []string) error {
 	// Firmware and the system's own updates, which GNOME Software reaches over the bus.
 	bus, err := g.run(`busctl --system list --activatable --no-legend | awk '{print $1}' | grep -xE 'org.freedesktop.fwupd|org.freedesktop.sysupdate1' | sort | tr '\n' ' '`, "")
 	r.add("updates services", err == nil && strings.TrimSpace(bus) == "org.freedesktop.fwupd org.freedesktop.sysupdate1", oneLine(bus)+errText(err))
-	// A laptop's sensors and fingerprint reader, neither of which a VM has: fprintd starts when
-	// the bus is asked for it, iio-sensor-proxy when udev finds a sensor.
-	laptop, err := g.run(`busctl --system list --activatable --no-legend | awk '$1=="net.reactivated.Fprint"{print $1}'; `+
-		`grep -l iio-sensor-proxy.service /usr/lib/udev/rules.d/*.rules`, "")
-	r.add("laptop services", err == nil && strings.Contains(laptop, "net.reactivated.Fprint") && strings.Contains(laptop, "80-iio-sensor-proxy.rules"), oneLine(laptop)+errText(err))
+	// A laptop's sensors, which a VM has not: iio-sensor-proxy starts when udev finds one.
+	laptop, err := g.run(`grep -l iio-sensor-proxy.service /usr/lib/udev/rules.d/*.rules`, "")
+	r.add("laptop services", err == nil && strings.Contains(laptop, "80-iio-sensor-proxy.rules"), oneLine(laptop)+errText(err))
+	// The lock screen and sudo ask for the password: no PAM service or module takes a finger.
+	finger, _ := g.run(`ls /etc/pam.d/ /usr/lib/security/ | grep -i fprint`, "")
+	r.add("no fingerprint login", strings.TrimSpace(finger) == "", oneLine(finger))
 	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it, and the
 	// cloud CLIs distrobox.conf installs into it.
 	box, err := g.run(`cd /tmp && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 900 distrobox create --yes >/dev/null 2>&1 && sudo -u live env HOME=/var/home/live XDG_RUNTIME_DIR=/run/user/1000 timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1; test -s /usr/share/terminfo/x/xterm-ghostty && echo ghostty-terminfo' 2>&1 | tail -4`, "")
