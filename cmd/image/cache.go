@@ -59,6 +59,18 @@ func cacheCmd(args []string) error {
 			return err
 		}
 	} else {
+		// An output is stored under the key of its committed inputs: built from changes not yet
+		// committed (cache:seed from a person's checkout), it would be a hit for sources it was
+		// not built from. Checked before anything is stored.
+		for _, c := range cacheable {
+			dirty, err := exec.Command("git", append([]string{"status", "--porcelain", "--"}, c.inputs...)...).Output()
+			if err != nil {
+				return fmt.Errorf("git status %v: %w", c.inputs, err)
+			}
+			if len(dirty) > 0 {
+				return fmt.Errorf("cache: %s's inputs have changes git has not committed, which its key would not say:\n%s", c.name, dirty)
+			}
+		}
 		if err := aws("s3", "sync", "--only-show-errors", "--delete", "packages/", s3+"/packages/"); err != nil {
 			return err
 		}
