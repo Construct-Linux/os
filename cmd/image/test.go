@@ -959,11 +959,12 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	shot("gtk-tooltip")
 	_ = v.pointTo(16000, 30000)
 	time.Sleep(time.Second)
-	// A libadwaita dialog, opened by the app's own action over its bus: preferences, else about.
-	out, err := g.run(`b='`+asLive+`gdbus call --session --dest org.gnome.TextEditor --object-path /org/gnome/TextEditor --method org.gtk.Actions.Activate'; `+
-		`$b preferences '[]' '{}' >/dev/null 2>&1 && echo preferences || { $b about '[]' '{}' 2>&1 && echo about; }`, "")
+	// A libadwaita dialog, opened by the window's own action over the app's bus: preferences, a
+	// window action (win.show-preferences) at the first window's path.
+	out, err := g.run(asLive+`gdbus call --session --dest org.gnome.TextEditor --object-path /org/gnome/TextEditor/window/1 `+
+		`--method org.gtk.Actions.Activate show-preferences '[]' '{}'`, "")
 	time.Sleep(2 * time.Second)
-	r.add("view:gtk-dialog"+suffix, err == nil && (strings.Contains(out, "preferences") || strings.Contains(out, "about")), "app action: "+oneLine(out)+errText(err))
+	r.add("view:gtk-dialog"+suffix, err == nil, "win.show-preferences: "+oneLine(out)+errText(err))
 	shot("gtk-dialog")
 	// Tab moves the key focus in the dialog, and GTK draws its focus outline only once the
 	// keyboard has moved it: the outline is what changed against gtk-dialog.
