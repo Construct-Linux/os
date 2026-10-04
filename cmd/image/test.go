@@ -107,6 +107,7 @@ func test(args []string) error {
 
 	r := &report{dir: dir, user: "live", scale: sc.Scale}
 	r.add("boot", true, "sshd over vsock answered")
+	g.startMemWatch()
 	_, shellErr := g.waitShell(3 * time.Minute)
 	var bootMark *[2]float64
 	if reel != nil {
@@ -314,6 +315,8 @@ func test(args []string) error {
 	if len(want) == 0 || want["type"] {
 		r.typeMatrix(v, g, l)
 	}
+	// What the run needed, before the bench asks for more than there is.
+	r.memory(g)
 	if len(want) == 0 || want["bench"] {
 		r.bench(g)
 	}
