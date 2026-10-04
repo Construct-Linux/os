@@ -95,6 +95,9 @@ const (
 	lfCardMarkTol   = 6
 	// The top bar's outer height, ring included.
 	lfBarHeight = 36
+	// Firefox's page of controls drew them in the accent: its checked box alone is ~14x14 px of
+	// it, beside a radio, a range's fill and a progress bar at 60%. Fewer is a page not drawn.
+	lfFirefoxAccentMin = 100
 )
 
 // Every pixel count, distance and coordinate above and in the checks is in the stage's pixels, as
@@ -1821,7 +1824,7 @@ func (l *lf) app(id, shot string) {
 		stock := color.NRGBA{0x20, 0x21, 0x24, 255}
 		l.check("app", "chrome", !near(strip, stock, lfSurfaceTol), fmt.Sprintf("tab strip %s, want not Chrome's own %s", hexOf(strip), hexOf(stock)))
 	case "firefox.desktop":
-		l.firefoxControls(id, r)
+		l.firefoxControls(id)
 	}
 }
 
@@ -1831,7 +1834,7 @@ const firefoxPage = `<meta name="color-scheme" content="light"><body style="marg
 	`<p><input type="checkbox" checked> <input type="radio" checked> <input type="range"> ` +
 	`<progress value="60" max="100"></progress> <button>Button</button> <input value="text" autofocus></p>`
 
-func (l *lf) firefoxControls(id string, win lfRect) {
+func (l *lf) firefoxControls(id string) {
 	uri := "data:text/html;charset=utf-8," + url.PathEscape(firefoxPage)
 	if err := l.g.evalJSON(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_app_info().launch_uris([%q], null); return true;`, id, uri), new(bool)); err != nil {
 		l.check("app", "firefox controls", false, err.Error())
@@ -1843,10 +1846,20 @@ func (l *lf) firefoxControls(id string, win lfRect) {
 	if !ok {
 		return
 	}
+	// The window the page opened in, as it is now: the one measured before the launch may have
+	// moved, or be another.
+	win, err := l.appWindow(id)
+	if err != nil {
+		l.check("app", "firefox controls", false, err.Error())
+		return
+	}
 	blue := color.NRGBA{0x35, 0x84, 0xE4, 255}
 	n := countNear(img, l.px(win), blue, 8)
 	accent := countNear(img, l.px(win), l.c("light-accent"), 12)
-	l.check("app", "firefox controls", n == 0, fmt.Sprintf("%d px of Adwaita's #3584E4 on a light page, want none (%d px of %s)", n, accent, hexOf(l.c("light-accent"))))
+	// No Adwaita blue proves nothing alone: a page that never drew has none either.
+	l.check("app", "firefox controls", n == 0 && accent >= lfFirefoxAccentMin*l.k*l.k,
+		fmt.Sprintf("%d px of Adwaita's #3584E4 on a light page, want none; %d px of %s, want at least %d",
+			n, accent, hexOf(l.c("light-accent")), lfFirefoxAccentMin*l.k*l.k))
 }
 
 // finish checks what spans views: the boot's mark where the overview's card puts it.
