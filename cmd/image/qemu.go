@@ -85,17 +85,22 @@ const vsockCID = 4207
 func testMachine(mem, pubkey string, stick bool) (machine, error) {
 	m := machine{mem: mem, pubkey: pubkey}
 	if stick {
-		dir := filepath.Join(out, "usb")
-		m.vars = filepath.Join(dir, "OVMF_VARS.fd")
-		s := filepath.Join(dir, "stick.raw")
-		if err := freshVars(m.vars); err != nil {
-			return machine{}, err
-		}
-		if err := stickCopy(filepath.Join(dir, "disk.raw"), s); err != nil {
-			return machine{}, err
-		}
-		m.sticks = []string{s}
+		return m.withStick(filepath.Join(out, "usb"))
 	}
+	return m, nil
+}
+
+// withStick is m with fresh UEFI variables and a copy of the USB disk as its stick, both in dir.
+func (m machine) withStick(dir string) (machine, error) {
+	m.vars = filepath.Join(dir, "OVMF_VARS.fd")
+	s := filepath.Join(dir, "stick.raw")
+	if err := freshVars(m.vars); err != nil {
+		return machine{}, err
+	}
+	if err := stickCopy(filepath.Join(out, "usb", "disk.raw"), s); err != nil {
+		return machine{}, err
+	}
+	m.sticks = []string{s}
 	return m, nil
 }
 
@@ -126,6 +131,9 @@ type machine struct {
 	cmdline []string
 	// screen is the virtio GPU's panel; the zero screen is QEMU's default, 1280x800.
 	screen screen
+	// cid is the guest's vsock address, vsockCID without one; its VNC display follows it. dev-up's
+	// machine has its own, and runs beside a test's.
+	cid int
 }
 
 // machineUUID is the test machine's firmware UUID: the same at every boot, as a board's.
@@ -138,6 +146,10 @@ func (m machine) start() (*vm, error) {
 	}
 	qmp := filepath.Join(dir, "qmp.sock")
 	_ = os.Remove(qmp)
+	cid := m.cid
+	if cid == 0 {
+		cid = vsockCID
+	}
 	// A firmware product UUID, as a real board has: systemd.machine_id=firmware makes the
 	// machine's id from it, and /var's partition UUID from that, so without one every boot would
 	// be another machine's and none would find its /var.
@@ -171,7 +183,7 @@ func (m machine) start() (*vm, error) {
 	}
 	// An HDA card, so the sound stack - the kernel's driver, PipeWire, WirePlumber - has a device
 	// to find; its output goes nowhere unless the machine is in a window.
-	display := []string{"-device", m.screen.device(), "-display", "none", "-vnc", "127.0.0.1:7", "-audiodev", "none,id=snd0"}
+	display := []string{"-device", m.screen.device(), "-display", "none", "-vnc", fmt.Sprintf("127.0.0.1:%d", 7+cid-vsockCID), "-audiodev", "none,id=snd0"}
 	if m.window {
 		display = []string{"-device", "virtio-vga-gl", "-display", "gtk,gl=on,show-cursor=on", "-audiodev", "pipewire,id=snd0"}
 	}
@@ -196,7 +208,7 @@ func (m machine) start() (*vm, error) {
 	}
 	if m.pubkey != "" {
 		args = append(args,
-			"-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", vsockCID),
+			"-device", fmt.Sprintf("vhost-vsock-pci,guest-cid=%d", cid),
 			"-smbios", "type=11,value=io.systemd.credential:ssh.ephemeral-authorized_keys-all="+strings.TrimSpace(m.pubkey))
 	}
 	for _, c := range m.credentials {
@@ -223,7 +235,7 @@ func (m machine) start() (*vm, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
-	return &vm{cmd: cmd, qmp: qmp, cid: vsockCID}, nil
+	return &vm{cmd: cmd, qmp: qmp, cid: cid}, nil
 }
 
 // startTPM starts swtpm, a TPM 2.0 keeping its state in dir, and answers the socket QEMU connects

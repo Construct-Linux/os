@@ -32,7 +32,14 @@ type devVM struct {
 	Scale int    `json:"scale"`
 }
 
-var devState = filepath.Join(out, "dev", "vm.json")
+// devDir holds dev-up's machine - its stick, variables, QMP socket and serial log - and devCID is
+// its vsock address: none of them a test's, so a test runs while it is up.
+var (
+	devDir   = filepath.Join(out, "dev")
+	devState = filepath.Join(devDir, "vm.json")
+)
+
+const devCID = vsockCID + 1
 
 // devUp boots the test stick (task usb -- -test) and keeps it until it is told to stop: SIGINT,
 // SIGTERM or task dev:down.
@@ -49,11 +56,13 @@ func devUp(args []string) error {
 	if err != nil {
 		return err
 	}
-	m, err := testMachine(*mem, pub, true)
+	if err := os.MkdirAll(devDir, 0o755); err != nil {
+		return err
+	}
+	m, err := machine{mem: *mem, pubkey: pub, dir: devDir, cid: devCID, screen: sc}.withStick(devDir)
 	if err != nil {
 		return err
 	}
-	m.screen = sc
 	v, g, err := m.bootGuest(4 * time.Minute)
 	if err != nil {
 		return err
@@ -78,9 +87,6 @@ func devUp(args []string) error {
 	}
 	b, err := json.Marshal(devVM{CID: v.cid, QMP: v.qmp, Scale: sc.Scale})
 	if err != nil {
-		return err
-	}
-	if err := os.MkdirAll(filepath.Dir(devState), 0o755); err != nil {
 		return err
 	}
 	if err := os.WriteFile(devState, b, 0o644); err != nil {
@@ -145,7 +151,7 @@ func themeDev(args []string) error {
 	}
 	v, g := &vm{qmp: d.QMP, cid: d.CID}, &guest{cid: d.CID}
 
-	built := filepath.Join(out, "dev", "themes")
+	built := filepath.Join(devDir, "themes")
 	if err := os.RemoveAll(built); err != nil {
 		return err
 	}
