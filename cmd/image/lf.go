@@ -1174,6 +1174,7 @@ func (l *lf) lightWindow(img image.Image, r lfRect) {
 	ground, share := modeColor(img, side)
 	l.check("desk", "settings-light", near(ground, desk, lfSurfaceTol),
 		fmt.Sprintf("the desktop %s over %.0f%% of %v, want %s", hexOf(ground), share*100, side, hexOf(desk)))
+	l.lightAccent("settings-light window", img, r)
 	// The ring line, light.muted at its alpha over what is outside the window there - the shadow
 	// darkens the desk under it, so the nominal value holds only on a bare desk.
 	ringA := l.pal.nums["line-light-ring"]
@@ -1211,6 +1212,15 @@ func (l *lf) lightWindow(img image.Image, r lfRect) {
 	l.check("rule", "settings-light headerbar", sideOK && mainOK && ys == yb && near(yc2, wantRule, lfRingTol),
 		fmt.Sprintf("sidebar's at y %d (%v, %s), content's at y %d (%v, %s); want one y, and light.muted at %.0f%% over %s, %s",
 			ys, sideOK, hexOf(yc), yb, mainOK, hexOf(yc2), borderA*100, hexOf(above), hexOf(wantRule)))
+}
+
+// lightAccent is C2 for the accent on light, from the pixels: dark's accent reads 1.5:1 on white,
+// so inside a light window, a stage rectangle, every mark, ring and fill is the light accent and
+// none of it dark's. The dock's running dot is the shell's, outside the window, and stays cyan.
+func (l *lf) lightAccent(surface string, img image.Image, r lfRect) {
+	bright, light := l.c("dark-accent"), l.c("light-accent")
+	n := countNear(img, l.px(r), bright, lfAccentTol)
+	l.check("accent", surface, n == 0, fmt.Sprintf("%d px of %s inside %v, want none: light draws %s", n, hexOf(bright), r, hexOf(light)))
 }
 
 // selectedRow is C11's navigation sidebar on light: the selected row is the white sheet, its label

@@ -525,7 +525,7 @@ var reviewGated = []struct{ rules, checks string }{
 	{"F1, C8", "`focus quick toggle style`, `focus quick toggle drawn`, `focus calendar day`, `today calendar`, `css focus G2`, `css rings C8`"},
 	{"S2, S4", "`surface quick settings`, `surface calendar`, `submenu quick settings`, `ground <view>`"},
 	{"S3, E3", "`window installer`, `rule installer headerbar`, `window maximized`"},
-	{"S5, S6, C11", "`desk settings-light`, `ring settings-light window`, `shelf settings-light`, `selected row settings-light`, `rule settings-light headerbar`"},
+	{"S5, S6, C11, C2 on light", "`desk settings-light`, `ring settings-light window`, `accent settings-light window`, `shelf settings-light`, `selected row settings-light`, `rule settings-light headerbar`"},
 	{"C1, T2", "`css palette G3`, `css weights G6`, `css weights G6 gtk`"},
 	{"R1, SP2", "`radius <surface>`, `spacing bars`, `spacing top bar buttons`, `spacing menus`"},
 	{"X2", "`icons apps`"},

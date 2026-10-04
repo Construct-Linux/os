@@ -638,3 +638,42 @@ func TestFilmReportSizes(t *testing.T) {
 		t.Errorf("mark %v", mark)
 	}
 }
+
+// testLF is an lf over a report of its own, the test palette, at scale k.
+func testLF(t *testing.T, k int) *lf {
+	t.Helper()
+	p, err := parseLFPalette([]byte(tPalette))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return &lf{r: &report{dir: t.TempDir()}, pal: p, ok: true, k: k, stageW: 640, stageH: 400}
+}
+
+// lastResult is the last check a report recorded.
+func lastResult(t *testing.T, r *report) result {
+	t.Helper()
+	if len(r.results) == 0 {
+		t.Fatal("no check recorded")
+	}
+	return r.results[len(r.results)-1]
+}
+
+// A light window draws the light accent; dark's cyan inside it fails, the dock's dot outside it does
+// not.
+func TestLightAccent(t *testing.T) {
+	l := testLF(t, 2)
+	img := solid(1280, 800, color.NRGBA{0xDE, 0xE4, 0xE8, 255})
+	win := lfRect{100, 50, 400, 300}
+	fill(img, l.px(win), color.NRGBA{0xF4, 0xF6, 0xF8, 255})
+	fill(img, lfRect{300, 200, 40, 40}, color.NRGBA{0x00, 0x7A, 0x85, 255}) // a light switch's track
+	fill(img, lfRect{620, 780, 10, 10}, tAccent)                            // the dock's running dot
+	l.lightAccent("w", img, win)
+	if res := lastResult(t, l.r); res.name != "lf: accent w" || !res.ok {
+		t.Errorf("light accent only: %+v", res)
+	}
+	fill(img, lfRect{400, 300, 6, 6}, tAccent)
+	l.lightAccent("w", img, win)
+	if res := lastResult(t, l.r); res.ok {
+		t.Errorf("dark's accent in the window passed: %+v", res)
+	}
+}
