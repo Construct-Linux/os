@@ -26,7 +26,9 @@ type finding struct {
 
 func marker(key string) string { return "<!-- watch:" + key + " -->" }
 
-var markerRE = regexp.MustCompile(`<!-- watch:([A-Za-z0-9._+:@-]+) -->`)
+// markerRE takes any key a marker was written with: the SBOM names Go modules and npm packages
+// too (golang.org/x/net, @scope/pkg), and a key it could not read back opened an issue every run.
+var markerRE = regexp.MustCompile(`<!-- watch:(\S+) -->`)
 
 // check is one source of findings: every key it finds starts with scope, and an open issue in its
 // scope it no longer finds was resolved, which gone says.

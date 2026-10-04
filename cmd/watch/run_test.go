@@ -37,6 +37,23 @@ func TestReconcileOpensOnceAndDedupesByMarker(t *testing.T) {
 	}
 }
 
+// A key with the characters of a Go module's or an npm package's name is found again by its
+// marker: one issue, however many runs.
+func TestReconcileMarkerKeys(t *testing.T) {
+	for _, key := range []string{"security:golang.org/x/net", "security:@scope/pkg"} {
+		gh := &fakeGitHub{}
+		f := finding{key: key, title: "security: " + key, labels: []string{"security"}, body: "one High"}
+		for range 2 {
+			if err := reconcile(t.Context(), gh, []check{found("security", f)}, io.Discard); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(gh.issues) != 1 || gh.writes != 1 {
+			t.Errorf("%s: %d issues after %d writes, want 1 after 1", key, len(gh.issues), gh.writes)
+		}
+	}
+}
+
 // A finding that changed updates its open issue, keeping the labels a person added.
 func TestReconcileUpdates(t *testing.T) {
 	gh := &fakeGitHub{issues: []Issue{{Number: 7, Title: "old title", Open: true,
