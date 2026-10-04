@@ -23,9 +23,16 @@ const themeStamp = ".construct-theme"
 // image's (/usr/share/ghostty/themes), and their background is the GTK view's, Orchis's
 // headerbar, so the window is one surface; on that surface the default raised toolbar's shadow
 // does not show, and raised-border gives the tab bar an edge. Balanced padding centres the grid
-// in what the cells leave over.
+// in what the cells leave over. The font is Ghostty's own JetBrains Mono at 11 pt - at its 12
+// the X9's 200% drew text near a quarter larger than a MacBook's terminal - and without
+// ligatures, which turned != >= -> in shell output into symbols.
 const ghosttySeed = `# Written once by construct theme; it is yours to change.
 theme = light:Construct Light,dark:Construct Dark
+font-family = JetBrains Mono
+font-size = 11
+font-feature = -calt
+font-feature = -liga
+font-feature = -dlig
 window-padding-x = 12
 window-padding-y = 8
 window-padding-balance = true
