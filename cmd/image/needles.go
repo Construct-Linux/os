@@ -899,6 +899,7 @@ var reviewGated = []struct{ rules, checks string }{
 	{"E2, S1", "`surface`, `ring` and `edge` of `top bar (<view>)` and `dock (<view>)`, over every wallpaper"},
 	{"F1, C8", "`focus quick toggle style`, `focus quick toggle drawn`, `focus calendar day`, `today calendar`, `css focus G2`, `css rings C8`"},
 	{"S2, S4", "`surface quick settings`, `surface calendar`, `submenu quick settings`, `ground <view>`"},
+	{"S2 states, F2", "`states quick toggles`, `state gtk-hover button`, `state gtk-pressed button`, `focus gtk-focus`, `error lock prompt`"},
 	{"S3, E3", "`window installer`, `rule installer headerbar`, `window maximized`"},
 	{"S5, S6, C11, C2 on light", "`desk settings-light`, `ring settings-light window`, `accent settings-light window`, `shelf settings-light`, `selected row settings-light`, `rule settings-light headerbar`"},
 	{"C1, T2", "`css palette G3`, `css weights G6`, `css weights G6 gtk`"},

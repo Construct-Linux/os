@@ -132,7 +132,7 @@ var (
 	lfColorTokens = []string{"brand-boot", "neutral-a", "neutral-e", "neutral-f", "neutral-g", "neutral-h", "dark-border",
 		"dark-accent", "dark-accent-text", "dark-text", "dark-muted", "dark-on-accent", "light-accent", "light-accent-text",
 		"light-on-accent", "light-text", "light-muted", "light-desk", "light-shelf"}
-	lfNumTokens = []string{"tint-dark-rest", "line-light-ring", "line-light-border", "shape-inset", "shape-radius-control",
+	lfNumTokens = []string{"tint-dark-rest", "tint-dark-hover", "tint-dark-active", "line-light-ring", "line-light-border", "shape-inset", "shape-radius-control",
 		"shape-radius-surface", "shape-radius-sheet"}
 	lfStrTokens = []string{"type-ui", "type-mono"}
 )
@@ -509,6 +509,12 @@ func (l *lf) view(name string) {
 		l.installer(img)
 	case "gtk-popover-light", "gtk-tooltip-light", "gtk-dialog-light", "gtk-maximized-light", "gtk-banner-light", "gtk-destructive-light":
 		l.gtkLight(name, img)
+	case "gtk-focus", "gtk-focus-light":
+		l.gtkFocus(name, img)
+	case "shell-states":
+		l.states(img)
+	case "shell-lock-error":
+		l.lockError()
 	default:
 		// E2: both bars' edge over every wallpaper. At another scale St's extents are not the
 		// screenshot's pixels.
@@ -1233,6 +1239,106 @@ func (l *lf) lightPanes(img image.Image, r lfRect) {
 	l.check("rule", "settings-light headerbar", sideOK && mainOK && ys == yb && near(yc2, wantRule, lfRingTol),
 		fmt.Sprintf("sidebar's at y %d (%v, %s), content's at y %d (%v, %s); want one y, and light.muted at %.0f%% over %s, %s",
 			ys, sideOK, hexOf(yc), yb, mainOK, hexOf(yc2), borderA*100, hexOf(above), hexOf(wantRule)))
+}
+
+// states is S2 on the quick toggles shell-states forced into each step - on at rest, under the
+// pointer, pressed: each fill is the accent at its step's tint over h, in St and on the screen,
+// and each label accent_text.
+func (l *lf) states(img image.Image) {
+	var s []struct {
+		State string  `json:"state"`
+		Look  *lfLook `json:"look"`
+		Title *lfLook `json:"title"`
+	}
+	if err := l.g.evalJSON(lfQuickSettings+`
+		return lfAll(m.box, t => t._lfState !== undefined).map(t => ({state: t._lfState, look: look(t), title: look(t._title ?? null)}));`, &s); err != nil {
+		l.check("states", "quick toggles", false, err.Error())
+		return
+	}
+	steps := map[string]string{"rest": "tint-dark-rest", "hover": "tint-dark-hover", "active": "tint-dark-active"}
+	h, ground, accent := l.c("neutral-h"), l.c("neutral-e"), l.c("dark-accent")
+	seen := map[string]bool{}
+	var bad []string
+	for _, t := range s {
+		tok, ok := steps[t.State]
+		if !ok || t.Look == nil {
+			continue
+		}
+		seen[t.State] = true
+		want := tint(accent, h, l.pal.nums[tok])
+		st := t.Look.surface(ground)
+		drawn, _ := modeColor(img, l.px(t.Look.rect()).inset(4*l.k, 4*l.k))
+		if !near(st, want, lfTextTol) || !near(drawn, want, lfTextTol) {
+			bad = append(bad, fmt.Sprintf("%s: St %s, drawn %s, want %s (%s)", t.State, hexOf(st), hexOf(drawn), hexOf(want), tok))
+		}
+		if t.Title != nil && !near(t.Title.ink(ground), l.c("dark-accent-text"), lfTextTol) {
+			bad = append(bad, fmt.Sprintf("%s: %q titled %s, not accent_text", t.State, t.Title.Text, hexOf(t.Title.ink(ground))))
+		}
+	}
+	l.check("states", "quick toggles", len(seen) == len(steps) && len(bad) == 0,
+		fmt.Sprintf("states forced: %v; off: %v", seen, bad))
+}
+
+// lockError is the unlock prompt after a wrong password: it says so, readable on its surface.
+func (l *lf) lockError() {
+	var s struct {
+		Message *lfLook
+		Labels  []*lfLook
+	}
+	if err := l.g.evalJSON(`const p = Main.screenShield._dialog?._authPrompt ?? null;
+		return {message: look(p?._message ?? null), labels: lfLabels(p)};`, &s); err != nil {
+		l.check("error", "lock prompt", false, err.Error())
+		return
+	}
+	shown := s.Message != nil && s.Message.Mapped && s.Message.Text != ""
+	text := ""
+	if s.Message != nil {
+		text = s.Message.Text
+	}
+	l.check("error", "lock prompt", shown, fmt.Sprintf("the prompt's message %q after a wrong password", text))
+	l.labelsCheck("lock prompt error", s.Labels)
+}
+
+// gtkFocus is F2: Tab moved the key focus in a GTK dialog, and what that changed on the screen is
+// mostly the accent's outline - dark's accent, or light's in the light scheme.
+func (l *lf) gtkFocus(name string, img image.Image) {
+	ref := strings.Replace(name, "gtk-focus", "gtk-dialog", 1)
+	before, ok := l.img(ref)
+	if !ok {
+		return
+	}
+	accent := l.c("dark-accent")
+	if strings.HasSuffix(name, "-light") {
+		accent = l.c("light-accent")
+	}
+	all := lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}
+	changed, share := focusDiff(before, img, all, accent, lfFocusRingTol)
+	least := lfFocusMinChanged * l.k * l.k
+	l.check("focus", name, changed >= least && share >= lfFocusAccentShare,
+		fmt.Sprintf("%d px changed against %s, %.0f%% of them %s; want >= %d and >= %.0f%%",
+			changed, ref, share*100, hexOf(accent), least, lfFocusAccentShare*100))
+}
+
+// buttonState is S2 on a GTK button at btn, a stage rectangle, in view name against ref, the same
+// button a step before: the step reads - another colour - and is a colour C1 allows, the
+// palette's or an ink over one.
+func (l *lf) buttonState(name, ref string, btn lfRect) {
+	if l == nil || !l.ok {
+		return
+	}
+	img, ok := l.img(name)
+	if !ok {
+		return
+	}
+	before, ok := l.img(ref)
+	if !ok {
+		return
+	}
+	r := l.px(btn)
+	now, _ := modeColor(img, r)
+	was, _ := modeColor(before, r)
+	l.check("state", name+" button", !near(now, was, lfSurfaceTol) && (l.pal.has(now) || l.pal.composite(now)),
+		fmt.Sprintf("the button %s, %s in %s; want another colour, the palette's or an ink over it", hexOf(now), hexOf(was), ref))
 }
 
 // gtkLight is a GTK view in the light scheme: Settings' window probes on the window it is about,

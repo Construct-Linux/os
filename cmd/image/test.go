@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -510,6 +512,14 @@ var shellViews = []shellView{
 		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, "", 0,
 		"A quick toggle's menu expanded: a well of g inside the menu, not a light slab",
 		[]string{"S2", "E3"}},
+	// A quick toggle in each step of its states, forced with St's pseudo-classes since no pointer
+	// holds three toggles at once: on at rest, under the pointer, pressed. Only the classes it
+	// added are taken off again: a toggle that is on keeps its own.
+	{"states",
+		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle')).filter(t => t.is_mapped() && t.reactive).slice(0, 3).forEach((t, i) => { t._lfAdded = [['checked'], ['checked', 'hover'], ['checked', 'active']][i].filter(c => !t.has_style_pseudo_class(c)); t._lfAdded.forEach(c => t.add_style_pseudo_class(c)); t._lfState = ['rest', 'hover', 'active'][i]; }); return GLib.SOURCE_REMOVE; })`,
+		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, t => t._lfState !== undefined).forEach(t => { t._lfAdded.forEach(c => t.remove_style_pseudo_class(c)); delete t._lfAdded; delete t._lfState; }); m.close()`, "", 0,
+		"Quick toggles on at rest, under the pointer and pressed: each the accent's tint at its own step, the label accent_text on all three",
+		[]string{"S2", "C3"}},
 	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, "", 0,
 		"The date menu: the calendar on h at the quick settings' height, today accent_text at 700 with no ring, the month's days in text, the other months' muted",
 		[]string{"S2", "F1", "C2", "R1"}},
@@ -534,15 +544,25 @@ var shellViews = []shellView{
 	{"lock-screen", `Main.screenShield.lock(false)`, ``, "pointer", 0,
 		"The lock screen on the boot's black, its clock regular, nothing of an extension in the panel",
 		[]string{"S4", "T2"}},
-	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`, "key", 0,
+	{"lock-prompt", `Main.screenShield.showDialog()`, ``, "key", 0,
 		"The unlock prompt the shell's AuthPrompt draws: the entry, and the dialog's default its one primary action",
 		[]string{"S2", "C3"}},
+	// A wrong password typed into the prompt: its error state.
+	{"lock-error", ``, `Main.screenShield.deactivate(false)`, "password", 0,
+		"The unlock prompt after a wrong password: it says so, readable on its surface",
+		[]string{"S2", "C2"}},
 }
 
 // Each view opens and closes with lf.go's helpers at hand (find, lfAll), and its lf checks measure
 // it while it is open.
 func (r *report) shellViews(v *vm, g *guest, l *lf) {
+	// The live user has no password, so no wrong one to type: the lock views get one of their
+	// own, random and never written down, taken off again after them.
+	defer func() { _, _ = g.run(`passwd -d live`, "") }()
 	for _, s := range shellViews {
+		if s.name == "lock-screen" {
+			r.lockPassword(g)
+		}
 		_, err := g.eval(lfPrelude + s.open + "; true")
 		r.add("view:"+s.name, err == nil, "screenshot shell-"+s.name+".png")
 		settle := s.settle
@@ -562,6 +582,10 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 			time.Sleep(2 * time.Second)
 			_ = v.key("spc")
 			time.Sleep(2 * time.Second)
+		case "password":
+			// PAM takes its time to refuse: the message comes after its delay.
+			_ = v.typeText("wrong")
+			time.Sleep(4 * time.Second)
 		}
 		r.shotLook(v, g, viewMeta{"shell-" + s.name, groupShell, s.about, s.rules})
 		l.view("shell-" + s.name)
@@ -573,6 +597,15 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 			time.Sleep(time.Second)
 		}
 	}
+}
+
+// lockPassword gives the live user a random password: the lock screen's prompt then asks for one,
+// as it does a person, and a wrong one is refused. Its words are typed nowhere but chpasswd's input.
+func (r *report) lockPassword(g *guest) {
+	b := make([]byte, 12)
+	_, _ = rand.Read(b)
+	_, err := g.run(`chpasswd`, "live:"+hex.EncodeToString(b)+"\n")
+	r.add("view:lock password", err == nil, "a random password for the live user, until the lock views end"+errText(err))
 }
 
 // asLive runs a command in the live user's session.
@@ -803,6 +836,9 @@ var gtkViewAbout = map[string]struct {
 	"gtk-maximized":   {"Text Editor maximized: no ring, no radius, no shadow", []string{"S3"}},
 	"gtk-banner":      {"A warning banner in Text Editor, a file it has open changed on disk: the banner's button the view's one primary", []string{"C3", "S3"}},
 	"gtk-destructive": {"Files' confirmation before it empties the trash: an alert dialog with the destructive response", []string{"R2", "C3", "S2"}},
+	"gtk-hover":       {"Text Editor's close button under the pointer: GTK's hover, a step from rest in a colour the palette allows", []string{"S2", "C1"}},
+	"gtk-pressed":     {"Text Editor's close button held down: GTK's active, a step from hover in a colour the palette allows", []string{"S2", "C1"}},
+	"gtk-focus":       {"Text Editor's preferences after Tab: GTK's focus outline, the accent, is what the key focus changed", []string{"F2", "C8"}},
 }
 
 // gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip, a
@@ -861,11 +897,33 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	shot("gtk-popover")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
+	sw, sh := l.stageW, l.stageH
+	// The headerbar's close button under the pointer, then held down: GTK's hover and active, which
+	// no key draws. GTK 4's window controls have no tooltip to cover them; the press is released
+	// away from the button, which closes nothing. Two moves, as for the tooltip below: GTK takes
+	// hover from motion inside the widget.
+	closeBtn := lfRect{frame.X + frame.W - 33, frame.Y + 13, 20, 20}
+	cx, cy := closeBtn.X+closeBtn.W/2, closeBtn.Y+closeBtn.H/2
+	_ = v.pointTo(absPoint(cx-6, cy, sw, sh))
+	time.Sleep(300 * time.Millisecond)
+	err := v.pointTo(absPoint(cx, cy, sw, sh))
+	time.Sleep(time.Second)
+	r.add("view:gtk-hover"+suffix, err == nil, fmt.Sprintf("the pointer over the close button at (%d, %d)%s", cx, cy, errText(err)))
+	shot("gtk-hover")
+	l.buttonState("gtk-hover"+suffix, "gtk-popover"+suffix, closeBtn)
+	err = v.button(true)
+	time.Sleep(500 * time.Millisecond)
+	r.add("view:gtk-pressed"+suffix, err == nil, "the close button held down"+errText(err))
+	shot("gtk-pressed")
+	l.buttonState("gtk-pressed"+suffix, "gtk-hover"+suffix, closeBtn)
+	_ = v.pointTo(16000, 30000)
+	time.Sleep(300 * time.Millisecond)
+	_ = v.button(false)
+	time.Sleep(time.Second)
 	// The pointer over the headerbar's New Tab button, the second from the start, until GTK shows
 	// its tooltip; GTK 4's window controls have none. Two moves: GTK starts the tooltip's timer on
 	// motion inside the widget.
 	before = windows()
-	sw, sh := l.stageW, l.stageH
 	x, y := frame.X+105, frame.Y+23
 	_ = v.pointTo(absPoint(x-6, y, sw, sh))
 	time.Sleep(300 * time.Millisecond)
@@ -881,6 +939,12 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	time.Sleep(2 * time.Second)
 	r.add("view:gtk-dialog"+suffix, err == nil && (strings.Contains(out, "preferences") || strings.Contains(out, "about")), "app action: "+oneLine(out)+errText(err))
 	shot("gtk-dialog")
+	// Tab moves the key focus in the dialog, and GTK draws its focus outline only once the
+	// keyboard has moved it: the outline is what changed against gtk-dialog.
+	err = v.key("tab")
+	time.Sleep(time.Second)
+	r.add("view:gtk-focus"+suffix, err == nil, "Tab in the dialog"+errText(err))
+	shot("gtk-focus")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
 	// A window maximized: no ring, no radius, no shadow (S3).

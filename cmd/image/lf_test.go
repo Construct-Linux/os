@@ -55,7 +55,7 @@ const tPalette = `{"brand-boot":"#000000","neutral-e":"#0B1116","neutral-f":"#11
 "dark-text":"#E6EDF2","dark-muted":"#9FB3C0","dark-on-accent":"#0B1116","light-accent":"#007A85","light-accent-text":"#00646D",
 "light-on-accent":"#FFFFFF","light-text":"#11181E","light-muted":"#536672","light-desk":"#DEE4E8","light-shelf":"#E9EDF0",
 "neutral-a":"#FFFFFF","line-light-ring":0.4,"line-light-border":0.3,"ansi-dark-blue":"#5DB2F7",
-"tint-dark-rest":0.16,"shape-inset":6,"shape-radius-control":9,"shape-radius-surface":15,"shape-radius-sheet":24,
+"tint-dark-rest":0.16,"tint-dark-hover":0.23,"tint-dark-active":0.28,"shape-inset":6,"shape-radius-control":9,"shape-radius-surface":15,"shape-radius-sheet":24,
 "shape-space":[3,6,12,18,24],"type-ui":"Adwaita Sans","type-mono":"Adwaita Mono"}`
 
 // palette.json is flat and mixed - colours, numbers, families, a list - and a token a check needs
@@ -676,6 +676,66 @@ func TestCheckCountsOnView(t *testing.T) {
 	l.r.viewSweep("shell-calendar", []lfRect{{1, 2, 30, 40}}, 0.004)
 	if v := l.r.lookViewOf("shell-calendar"); len(v.Sweep.Areas) != 1 || v.Sweep.Areas[0].W != 30 || v.LF.Fail != 1 {
 		t.Errorf("look.json's view %+v", v)
+	}
+}
+
+// A step under the pointer reads: another colour than the step before, and one C1 allows - white at
+// an alpha over g is; a grey of its own, or the same colour, is not.
+func TestButtonState(t *testing.T) {
+	l := testLF(t, 2)
+	btn := lfRect{600, 10, 20, 20}
+	shoot := func(name string, c color.NRGBA) {
+		img := solid(1280, 800, tG)
+		fill(img, l.px(btn), c)
+		if err := writePNG(filepath.Join(l.r.dir, name+".png"), img); err != nil {
+			t.Fatal(err)
+		}
+	}
+	shoot("rest", tG)
+	shoot("hover", tint(color.NRGBA{255, 255, 255, 255}, tG, 0.08))
+	shoot("grey", color.NRGBA{0x50, 0x50, 0x50, 255})
+	shoot("same", tG)
+	for _, c := range []struct {
+		name string
+		ok   bool
+	}{{"hover", true}, {"grey", false}, {"same", false}} {
+		l.buttonState(c.name, "rest", btn)
+		if res := lastResult(t, l.r); res.ok != c.ok {
+			t.Errorf("%s: %+v", c.name, res)
+		}
+	}
+}
+
+// Tab's focus outline is what changed against the dialog, mostly the accent: dark's in dark,
+// light's in the light scheme; a change in another colour is no outline.
+func TestGTKFocus(t *testing.T) {
+	l := testLF(t, 2)
+	write := func(name string, img image.Image) {
+		if err := writePNG(filepath.Join(l.r.dir, name+".png"), img); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ring := func(c color.NRGBA) *image.NRGBA {
+		img := solid(1280, 800, tG)
+		fill(img, lfRect{400, 300, 200, 4}, c)
+		fill(img, lfRect{400, 380, 200, 4}, c)
+		fill(img, lfRect{400, 300, 4, 84}, c)
+		fill(img, lfRect{596, 300, 4, 84}, c)
+		return img
+	}
+	write("gtk-dialog", solid(1280, 800, tG))
+	write("gtk-dialog-light", solid(1280, 800, tG))
+	l.gtkFocus("gtk-focus", ring(tAccent))
+	if res := lastResult(t, l.r); !res.ok {
+		t.Errorf("dark's outline: %+v", res)
+	}
+	l.gtkFocus("gtk-focus-light", ring(color.NRGBA{0x00, 0x7A, 0x85, 255}))
+	if res := lastResult(t, l.r); !res.ok {
+		t.Errorf("light's outline: %+v", res)
+	}
+	l.gtkFocus("gtk-focus", ring(color.NRGBA{0xE6, 0xED, 0xF2, 255}))
+	if res := lastResult(t, l.r); res.ok {
+		t.Errorf("a change that is no outline passed: %+v", res)
 	}
 }
 
