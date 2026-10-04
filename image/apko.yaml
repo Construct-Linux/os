@@ -101,6 +101,8 @@ contents:
     # The session.
     - gdm
     - gnome-shell
+    # notify-send: the session's notice that an update waits for a reboot (construct-reboot-notice).
+    - libnotify
     - gnome-session
     - gnome-settings-daemon
     - gnome-control-center
