@@ -7,10 +7,14 @@
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
 //	image usb   -pcr-public pem -secureboot dir [-test] [-append opt]  the stick's verified root and kernel image, in build/tools as root
-//	image sign-pcr -key pem                     on the host: sign the kernel image's PCR 11 policy (cmd/image/pcrsig.go)
+//	image sign-pcr -key ref                     on the host: sign the kernel image's PCR 11 policy (cmd/image/pcrsig.go)
 //	image usb-join                              the kernel image with its signed policy, in build/tools
-//	image usb-sign -keys dir                    on the host: Secure Boot signatures, and the release (cmd/image/secureboot.go)
-//	image secureboot-keys -dir dir              on the host: PK, KEK and db, once
+//	image usb-sign -key ref -cert db.crt        on the host: Secure Boot signatures, and the release (cmd/image/secureboot.go)
+//	image sign-release -key ref -pubring pgp    on the host: the release's SHA256SUMS.gpg (cmd/image/keys.go)
+//	image secureboot-keys -dir dir -pk -kek -db  PK's, KEK's and db's certificates and variables, once
+//	image release-key -key ref -o release.pgp   the release key's OpenPGP public key, once
+//	image public-key -key ref -o pem            a key's public half
+//	image release-version                       the next vYYYYMMDD.N, from the remote's tags (cmd/image/calver.go)
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
@@ -20,6 +24,8 @@
 //	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
 //	image check-langs                           every package in the root comes with its translations
 //	image check                                 every ELF's NEEDED libraries are in the root
+//
+// A key is a reference (internal/sign): a PEM file, or kms:<key> for one in AWS KMS.
 package main
 
 import (
@@ -77,6 +83,14 @@ func main() {
 		err = forge(os.Args[2:])
 	case "check-key":
 		err = checkKey(os.Args[2:])
+	case "release-key":
+		err = releaseKey(os.Args[2:])
+	case "sign-release":
+		err = signRelease(os.Args[2:])
+	case "public-key":
+		err = publicKey(os.Args[2:])
+	case "release-version":
+		err = releaseVersion(os.Args[2:])
 	case "play":
 		err = play(os.Args[2:])
 	case "check-langs":

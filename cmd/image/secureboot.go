@@ -27,10 +27,11 @@ import (
 // Secure Boot. The firmware runs only EFI binaries a certificate in its db signed: systemd-boot
 // and the kernel image, whose command line names the root's dm-verity hash, so one signature
 // holds the whole boot to Construct's. The keys are RSA-2048, PKCS #1 v1.5 over SHA-256 - the one
-// algorithm firmware and Authenticode agree on - and made once on the host (image
-// secureboot-keys). PK and KEK sign their own variables and db's then and are thrown away: they
-// would only ever sign a change to db, and a new db is a new key set. db's key stays in
-// SIGNING_HOME, never in a container, and signs on the host (image usb-sign).
+// algorithm firmware and Authenticode agree on - and the key set is made once (image
+// secureboot-keys): PK signs its own variable and KEK's, KEK signs db's, and they sign nothing
+// after, unless db changes. db's key signs every release, on the host (image usb-sign), never in a
+// container. The keys are files for the harness's throwaway set and KMS keys for a release's
+// (internal/sign); the certificates and the signed variables are public.
 //
 // systemd-boot enrolls the three variables from the ESP's loader/keys/auto while the firmware is
 // in setup mode: by itself in a VM, from its menu on a machine (loader.conf's secure-boot-enroll
@@ -48,30 +49,38 @@ var microsoftCAs embed.FS
 // sbOwner is the owner GUID of the signatures Construct adds.
 var sbOwner = *util.StringToGUID("0239b3ac-9f59-4d16-84ae-cdd4977061a5")
 
-// The key set in its directory: db's key and certificate, and the three variables to enroll.
-const (
-	dbKey  = "db.key"
-	dbCert = "db.crt"
-)
+// The key set's public half in its directory: db's certificate, and the three variables to enroll.
+const dbCert = "db.crt"
 
 var sbVariables = []string{"PK.auth", "KEK.auth", "db.auth"}
 
-// secureBootKeys makes the key set in -dir: refused if one is there, which is a decision to
-// replace.
+// secureBootKeys makes the key set's public half in -dir from the three keys: refused if one is
+// there, which is a decision to replace.
 func secureBootKeys(args []string) error {
 	fl := flag.NewFlagSet("secureboot-keys", flag.ExitOnError)
-	dir := fl.String("dir", "", "where the key set goes (SIGNING_HOME/secureboot)")
+	dir := fl.String("dir", "", "where the certificates and signed variables go")
+	pkRef := fl.String("pk", "", "PK: a PEM file, or kms:<key>")
+	kekRef := fl.String("kek", "", "KEK: a PEM file, or kms:<key>")
+	dbRef := fl.String("db", "", "db: a PEM file, or kms:<key>")
 	_ = fl.Parse(args)
-	if *dir == "" {
-		return errors.New("secureboot-keys: -dir is required")
+	if *dir == "" || *pkRef == "" || *kekRef == "" || *dbRef == "" {
+		return errors.New("secureboot-keys: -dir, -pk, -kek and -db are required")
 	}
-	if _, err := os.Stat(filepath.Join(*dir, dbKey)); err == nil {
+	if _, err := os.Stat(filepath.Join(*dir, dbCert)); err == nil {
 		return fmt.Errorf("%s holds a key set already: a new one is a new db, which every machine must enroll again", *dir)
 	}
-	if err := os.MkdirAll(*dir, 0o700); err != nil {
+	var keys [3]crypto.Signer
+	for i, ref := range []string{*pkRef, *kekRef, *dbRef} {
+		s, err := rsaSigner(ref)
+		if err != nil {
+			return err
+		}
+		keys[i] = s
+	}
+	if err := os.MkdirAll(*dir, 0o755); err != nil {
 		return err
 	}
-	vars, key, cert, err := makeKeySet()
+	vars, cert, err := makeKeySet(keys[0], keys[1], keys[2])
 	if err != nil {
 		return err
 	}
@@ -80,43 +89,36 @@ func secureBootKeys(args []string) error {
 			return err
 		}
 	}
-	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(filepath.Join(*dir, dbKey), pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}), 0o600); err != nil {
-		return err
-	}
 	return os.WriteFile(filepath.Join(*dir, dbCert), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), 0o644)
 }
 
-// makeKeySet answers the three signed variables, by file name, and db's key and certificate.
-func makeKeySet() (map[string][]byte, *rsa.PrivateKey, *x509.Certificate, error) {
-	pk, pkCert, err := newKey("Construct PK")
+// makeKeySet answers the three signed variables, by file name, and db's certificate.
+func makeKeySet(pk, kek, db crypto.Signer) (map[string][]byte, *x509.Certificate, error) {
+	pkCert, err := newCert("Construct PK", pk)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	kek, kekCert, err := newKey("Construct KEK")
+	kekCert, err := newCert("Construct KEK", kek)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
-	db, dbCertificate, err := newKey("Construct db")
+	dbCertificate, err := newCert("Construct db", db)
 	if err != nil {
-		return nil, nil, nil, err
+		return nil, nil, err
 	}
 	dbList := []*x509.Certificate{dbCertificate}
 	cas, err := fs.Glob(microsoftCAs, "secureboot/*.der")
 	if err != nil || len(cas) != 2 {
-		return nil, nil, nil, fmt.Errorf("Microsoft's option ROM CAs: %v %v", cas, err)
+		return nil, nil, fmt.Errorf("Microsoft's option ROM CAs: %v %v", cas, err)
 	}
 	for _, f := range cas {
 		raw, err := microsoftCAs.ReadFile(f)
 		if err != nil {
-			return nil, nil, nil, err
+			return nil, nil, err
 		}
 		c, err := x509.ParseCertificate(raw)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("%s: %w", f, err)
+			return nil, nil, fmt.Errorf("%s: %w", f, err)
 		}
 		dbList = append(dbList, c)
 	}
@@ -136,31 +138,27 @@ func makeKeySet() (map[string][]byte, *rsa.PrivateKey, *x509.Certificate, error)
 		list := signature.NewSignatureDatabase()
 		for _, c := range v.certs {
 			if err := list.Append(signature.CERT_X509_GUID, sbOwner, c.Raw); err != nil {
-				return nil, nil, nil, err
+				return nil, nil, err
 			}
 		}
 		_, signed, err := signature.SignEFIVariable(v.v, list, v.signer, v.by)
 		if err != nil {
-			return nil, nil, nil, fmt.Errorf("%s: %w", v.file, err)
+			return nil, nil, fmt.Errorf("%s: %w", v.file, err)
 		}
 		var b bytes.Buffer
 		signed.Marshal(&b)
 		vars[v.file] = b.Bytes()
 	}
-	return vars, db, dbCertificate, nil
+	return vars, dbCertificate, nil
 }
 
-// newKey is an RSA-2048 key and a self-signed certificate for it. Firmware checks a signature
-// against the certificate's key and reads nothing else of it; the name says whose it is to a
-// person who dumps the variables.
-func newKey(name string) (*rsa.PrivateKey, *x509.Certificate, error) {
-	key, err := rsa.GenerateKey(rand.Reader, 2048)
-	if err != nil {
-		return nil, nil, err
-	}
+// newCert is a self-signed certificate for key. Firmware checks a signature against the
+// certificate's key and reads nothing else of it; the name says whose it is to a person who dumps
+// the variables.
+func newCert(name string, key crypto.Signer) (*x509.Certificate, error) {
 	serial, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 	now := time.Now().UTC()
 	tmpl := &x509.Certificate{
@@ -172,46 +170,33 @@ func newKey(name string) (*rsa.PrivateKey, *x509.Certificate, error) {
 		ExtKeyUsage:        []x509.ExtKeyUsage{x509.ExtKeyUsageCodeSigning},
 		SignatureAlgorithm: x509.SHA256WithRSA,
 	}
-	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, &key.PublicKey, key)
+	der, err := x509.CreateCertificate(rand.Reader, tmpl, tmpl, key.Public(), key)
+	if err != nil {
+		return nil, err
+	}
+	return x509.ParseCertificate(der)
+}
+
+// dbSigner is db's key (ref) and its certificate (certFile), refusing a key that is not the
+// certificate's or not RSA-2048.
+func dbSigner(ref, certFile string) (crypto.Signer, *x509.Certificate, error) {
+	key, err := rsaSigner(ref)
 	if err != nil {
 		return nil, nil, err
 	}
-	cert, err := x509.ParseCertificate(der)
-	return key, cert, err
-}
-
-// readDBKey reads db's key and certificate from the key set in dir, refusing a key that is not the
-// certificate's or not RSA-2048.
-func readDBKey(dir string) (*rsa.PrivateKey, *x509.Certificate, error) {
-	b, err := os.ReadFile(filepath.Join(dir, dbKey))
+	b, err := os.ReadFile(certFile)
 	if err != nil {
 		return nil, nil, err
 	}
 	block, _ := pem.Decode(b)
 	if block == nil {
-		return nil, nil, fmt.Errorf("%s: no PEM", dbKey)
-	}
-	k, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-	if err != nil {
-		return nil, nil, err
-	}
-	key, ok := k.(*rsa.PrivateKey)
-	if !ok || key.N.BitLen() != 2048 {
-		return nil, nil, fmt.Errorf("%s is not an RSA-2048 key", dbKey)
-	}
-	b, err = os.ReadFile(filepath.Join(dir, dbCert))
-	if err != nil {
-		return nil, nil, err
-	}
-	block, _ = pem.Decode(b)
-	if block == nil {
-		return nil, nil, fmt.Errorf("%s: no PEM", dbCert)
+		return nil, nil, fmt.Errorf("%s: no PEM", certFile)
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
 		return nil, nil, err
 	}
-	if pub, ok := cert.PublicKey.(*rsa.PublicKey); !ok || !pub.Equal(&key.PublicKey) {
+	if pub, ok := cert.PublicKey.(*rsa.PublicKey); !ok || !pub.Equal(key.Public()) {
 		return nil, nil, errors.New("db's key is not its certificate's: what it signs boots nowhere")
 	}
 	return key, cert, nil

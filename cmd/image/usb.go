@@ -34,9 +34,13 @@ func usb(args []string) error {
 	broken := fl.Bool("broken", false, "add image/test/broken: a release whose GDM fails, for the lifecycle test's rollback")
 	pcrPub := fl.String("pcr-public", "", "the PCR key's public half, PEM (pcrsig.go)")
 	sbKeys := fl.String("secureboot", "", "the Secure Boot variables to enroll, PK.auth, KEK.auth and db.auth (secureboot.go)")
+	release := fl.String("version", "", "the release's version, YYYYMMDD.N (image release-version); without it, the build's time")
 	_ = fl.Parse(args)
 	if *pcrPub == "" || *sbKeys == "" {
 		return fmt.Errorf("usb: -pcr-public and -secureboot are required")
+	}
+	if *release != "" && !calver.MatchString(*release) {
+		return fmt.Errorf("usb: -version %q is not YYYYMMDD.N", *release)
 	}
 
 	stage := filepath.Join(out, "usb")
@@ -45,7 +49,7 @@ func usb(args []string) error {
 	if *broken {
 		layers = append(layers, dirLayer{dir: "image/test/broken"})
 	}
-	version, err := bakedRoot(stage, root, layers)
+	version, err := bakedRoot(stage, root, layers, *release)
 	if err != nil {
 		return err
 	}
@@ -107,9 +111,10 @@ const joinedUKI = "uki.joined.efi"
 // written, its SHA256SUMS for gpg to sign before image usb-disk.
 func usbSign(args []string) error {
 	fl := flag.NewFlagSet("usb-sign", flag.ExitOnError)
-	keys := fl.String("keys", "", "the Secure Boot key set (SIGNING_HOME/secureboot)")
+	ref := fl.String("key", "", "Secure Boot db's key: a PEM file, or kms:<key>")
+	cert := fl.String("cert", "", "db's certificate (image secureboot-keys)")
 	_ = fl.Parse(args)
-	key, cert, err := readDBKey(*keys)
+	key, dbCertificate, err := dbSigner(*ref, *cert)
 	if err != nil {
 		return err
 	}
@@ -129,7 +134,7 @@ func usbSign(args []string) error {
 		return fmt.Errorf("the joined kernel image (image usb-join): %w", err)
 	}
 	for _, p := range []string{uki, filepath.Join(esp, "EFI/BOOT/BOOTX64.EFI"), filepath.Join(esp, "EFI/systemd/systemd-bootx64.efi")} {
-		if err := signPE(p, key, cert); err != nil {
+		if err := signPE(p, key, dbCertificate); err != nil {
 			return err
 		}
 	}
@@ -227,7 +232,7 @@ func usbDisk(args []string) error {
 // bakedRoot lays the root a disk is made of in root, under a fresh stage: the layers merged,
 // unpacked, and baked. The USB disk and the ext4 test disk are made from the same tree, so what
 // the harness boots is what a machine boots. It answers the version it is baked as.
-func bakedRoot(stage, root string, layers []layer) (string, error) {
+func bakedRoot(stage, root string, layers []layer, version string) (string, error) {
 	if err := os.RemoveAll(stage); err != nil {
 		return "", err
 	}
@@ -251,7 +256,11 @@ func bakedRoot(stage, root string, layers []layer) (string, error) {
 	if err := run("tar", "--numeric-owner", "--xattrs", "-xpf", merged, "-C", root); err != nil {
 		return "", err
 	}
-	version := time.Now().UTC().Format("20060102.150405")
+	// A release's version is the builder's (calver.go); any other build's is its time, which sorts
+	// after the day's releases.
+	if version == "" {
+		version = time.Now().UTC().Format("20060102.150405")
+	}
 	if err := bake(root, version); err != nil {
 		return "", err
 	}

@@ -21,8 +21,10 @@ vars:
     --build-arg "KBUILD_BUILD_TIMESTAMP=$(TZ=UTC git log -1 --date=format-local:'%a %b %e %H:%M:%S UTC %Y' --format=%cd)"
   UID:
     sh: id -u
-  # The release key's keyring: outside the repository, and never in a container (task usb).
-  SIGNING_HOME: '{{.SIGNING_HOME | default (print .HOME "/.local/share/construct/gnupg")}}'
+  # The signing keys as files, outside the repository and never in a container (task usb): a
+  # person's own builds and the harness's throwaway keys. A release's are in AWS KMS instead, and
+  # the builder names them (CONSTRUCT_KMS_*, infra builder/user-data.sh).
+  SIGNING_HOME: '{{.SIGNING_HOME | default (print .HOME "/.local/share/construct/keys")}}'
 
 tasks:
   keygen:
@@ -146,20 +148,27 @@ tasks:
       - go run ./cmd/image boot {{.CLI_ARGS}}
 
   keygen:test:
-    desc: Throwaway release, PCR and Secure Boot keys under .cache/test-gnupg, for the harness's disks.
+    desc: Throwaway release, PCR and Secure Boot keys under .cache/test-keys, for the harness's disks.
     cmds:
-      - mkdir -p -m 700 .cache/test-gnupg
-      - test -f .cache/test-gnupg/pubring.kbx || gpg --homedir .cache/test-gnupg --batch --passphrase '' --quick-generate-key "Construct test release" ed25519 sign never
+      - task: keygen:release
+        vars: {SIGNING_HOME: .cache/test-keys, UID_NAME: Construct test release}
       - task: keygen:pcr
-        vars: {SIGNING_HOME: .cache/test-gnupg}
+        vars: {SIGNING_HOME: .cache/test-keys}
       - task: keygen:secureboot
-        vars: {SIGNING_HOME: .cache/test-gnupg}
+        vars: {SIGNING_HOME: .cache/test-keys}
 
   keygen:secureboot:
-    desc: "The Secure Boot keys, {{.SIGNING_HOME}}/secureboot: db's key, which signs systemd-boot and the kernel images, and the PK, KEK and db variables systemd-boot enrolls (cmd/image/secureboot.go). RSA-2048: UEFI verifies nothing else."
-    status: ['test -f {{.SIGNING_HOME}}/secureboot/db.key']
+    desc: "The Secure Boot keys as files, {{.SIGNING_HOME}}/secureboot: db's key, which signs systemd-boot and the kernel images, its certificate, and the PK, KEK and db variables systemd-boot enrolls (cmd/image/secureboot.go). RSA-2048: UEFI verifies nothing else."
+    status: ['test -f {{.SIGNING_HOME}}/secureboot/db.crt']
+    vars:
+      SB: '{{.SIGNING_HOME}}/secureboot'
     cmds:
-      - go run ./cmd/image secureboot-keys -dir {{.SIGNING_HOME}}/secureboot
+      - mkdir -p -m 700 {{.SB}}
+      - for k in PK KEK db; do openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out {{.SB}}/$k.pem; done
+      - chmod 600 {{.SB}}/*.pem
+      - go run ./cmd/image secureboot-keys -dir {{.SB}} -pk {{.SB}}/PK.pem -kek {{.SB}}/KEK.pem -db {{.SB}}/db.pem
+      # PK and KEK have signed what they sign: a change to db is a new key set.
+      - rm {{.SB}}/PK.pem {{.SB}}/KEK.pem
 
   keygen:pcr:
     desc: "The PCR key, {{.SIGNING_HOME}}/pcr.pem, beside the release key: it signs each kernel image's PCR 11 policy, which an installed machine's TPM releases /var's key to (cmd/image/pcrsig.go). RSA-2048, the one kind of key besides Ed25519: a TPM cannot verify Ed25519, and systemd verifies PCR policies as RSA."
@@ -171,48 +180,61 @@ tasks:
       - chmod 600 {{.SIGNING_HOME}}/pcr.pem
 
   keygen:release:
-    desc: "The release key, in {{.SIGNING_HOME}} - outside the repository; gpg asks for its passphrase. Back it up, or move it to a YubiKey."
-    # Done once the keyring holds a secret key: a run cut short leaves an empty one behind.
-    status: ["gpg --homedir {{.SIGNING_HOME}} --list-secret-keys --with-colons 2>/dev/null | grep -q '^sec'"]
+    desc: "The release key as a file, {{.SIGNING_HOME}}/release.pem (Ed25519), and its OpenPGP public key release.pgp, which machines trust: for a person's own builds; a release's is in KMS (task keys:kms)."
+    status: ['test -f {{.SIGNING_HOME}}/release.pgp']
+    vars:
+      UID_NAME: '{{.UID_NAME | default "Construct release"}}'
     cmds:
       - mkdir -p -m 700 {{.SIGNING_HOME}}
-      # gpg asks for the passphrase itself, as a line on the terminal (loopback): pinentry's
-      # full-screen prompt fails on some consoles ("Screen or window too small").
-      - gpg --homedir {{.SIGNING_HOME}} --pinentry-mode loopback --quick-generate-key "Construct release" ed25519 sign never
-      - task: keygen:pcr
-      - task: keygen:secureboot
+      - test -f {{.SIGNING_HOME}}/release.pem || openssl genpkey -algorithm ed25519 -out {{.SIGNING_HOME}}/release.pem
+      - chmod 600 {{.SIGNING_HOME}}/release.pem
+      - go run ./cmd/image release-key -key {{.SIGNING_HOME}}/release.pem -uid "{{.UID_NAME}}" -o {{.SIGNING_HOME}}/release.pgp
+
+  keys:kms:
+    desc: "Once: the public half of a release's KMS keys into keys/ - release.pgp and the Secure Boot key set (PK, KEK and db sign their variables here, the only time PK and KEK sign) - to commit. Needs AWS credentials that may sign with all five keys (infra kms.tf)."
+    status: ['test -f keys/release.pgp && test -f keys/secureboot/db.crt']
+    cmds:
+      - go run ./cmd/image release-key -key kms:alias/construct-release -o keys/release.pgp
+      - >-
+        go run ./cmd/image secureboot-keys -dir keys/secureboot -pk kms:alias/construct-secureboot-pk
+        -kek kms:alias/construct-secureboot-kek -db kms:alias/construct-secureboot-db
 
   usb:
-    desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release (SIGNING_HOME=, the release key's by default) on its construct-update partition (task usb -- -test for the harness's)."
+    desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release on its construct-update partition. Signed by the keys in SIGNING_HOME, or in KMS on the builder (task usb -- -test for the harness's, -version for a release's)."
     deps: [tools]
+    vars:
+      # Each key a reference (internal/sign): KMS when the builder names the keys, files otherwise.
+      # Their public halves are in the repository for KMS (keys/, task keys:kms), beside the files
+      # otherwise.
+      RELEASE_KEY: '{{if .CONSTRUCT_KMS_RELEASE}}kms:{{.CONSTRUCT_KMS_RELEASE}}{{else}}{{.SIGNING_HOME}}/release.pem{{end}}'
+      PCR_KEY: '{{if .CONSTRUCT_KMS_PCR}}kms:{{.CONSTRUCT_KMS_PCR}}{{else}}{{.SIGNING_HOME}}/pcr.pem{{end}}'
+      DB_KEY: '{{if .CONSTRUCT_KMS_SECUREBOOT_DB}}kms:{{.CONSTRUCT_KMS_SECUREBOOT_DB}}{{else}}{{.SIGNING_HOME}}/secureboot/db.pem{{end}}'
+      PUBLIC: '{{if .CONSTRUCT_KMS_RELEASE}}keys{{else}}{{.SIGNING_HOME}}{{end}}'
     cmds:
       - mkdir -p _output/release-key/usr/share/construct
-      - gpg --homedir {{.SIGNING_HOME}} --export > _output/release-key/usr/share/construct/release.pgp
+      - cp {{.PUBLIC}}/release.pgp _output/release-key/usr/share/construct/release.pgp
       # Releases are Ed25519 alone: gpg checks them on the machine (systemd-sysupdate), so the
       # keyring it is given is refused here if it holds any other kind of key.
       - go run ./cmd/image check-key _output/release-key/usr/share/construct/release.pgp
       - mkdir -p _output/release-key/usr/lib/systemd
       - cp _output/release-key/usr/share/construct/release.pgp _output/release-key/usr/lib/systemd/import-pubring.pgp
-      - openssl pkey -in {{.SIGNING_HOME}}/pcr.pem -pubout -out _output/release-key/pcr-public.pem
+      - go run ./cmd/image public-key -key {{.PCR_KEY}} -o _output/release-key/pcr-public.pem
       # The Secure Boot variables the ESP carries for systemd-boot to enroll: signed, public.
       - mkdir -p _output/release-key/secureboot
-      - cp {{.SIGNING_HOME}}/secureboot/PK.auth {{.SIGNING_HOME}}/secureboot/KEK.auth {{.SIGNING_HOME}}/secureboot/db.auth _output/release-key/secureboot/
+      - cp {{.PUBLIC}}/secureboot/PK.auth {{.PUBLIC}}/secureboot/KEK.auth {{.PUBLIC}}/secureboot/db.auth _output/release-key/secureboot/
       - >-
         docker run --rm --privileged -e CONSTRUCT_UPDATE_URL -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work construct-tools -c
         '_output/bin/image usb -pcr-public _output/release-key/pcr-public.pem -secureboot _output/release-key/secureboot {{.CLI_ARGS}};
         rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/root.tar; exit $rc'
-      # The PCR key and db's key sign here, on the host: they never enter a container. The PCR
-      # policy first, which ukify joins to the kernel image; then Secure Boot's signatures over
-      # the kernel image and systemd-boot, and the release.
-      - go run ./cmd/image sign-pcr -key {{.SIGNING_HOME}}/pcr.pem
+      # The keys sign here, on the host: they never enter a container. The PCR policy first, which
+      # ukify joins to the kernel image; then Secure Boot's signatures over the kernel image and
+      # systemd-boot, and the release.
+      - go run ./cmd/image sign-pcr -key {{.PCR_KEY}}
       - >-
         docker run --rm --privileged -v {{.ROOT_DIR}}:/work -w /work construct-tools -c
         '_output/bin/image usb-join; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
-      - go run ./cmd/image usb-sign -keys {{.SIGNING_HOME}}/secureboot
-      # Signed here, by the key in SIGNING_HOME: it never enters a container.
-      - >-
-        rel=$(ls -d _output/release/*/ | sort | tail -1) &&
-        gpg --homedir {{.SIGNING_HOME}} --pinentry-mode loopback --yes --detach-sign -o "$rel/SHA256SUMS.gpg" "$rel/SHA256SUMS"
+      - go run ./cmd/image usb-sign -key {{.DB_KEY}} -cert {{.PUBLIC}}/secureboot/db.crt
+      - go run ./cmd/image sign-release -key {{.RELEASE_KEY}} -pubring {{.PUBLIC}}/release.pgp
       - >-
         docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work construct-tools -c
         '_output/bin/image usb-disk; rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
@@ -227,7 +249,7 @@ tasks:
     deps: [keygen:test]
     cmds:
       - task: usb
-        vars: {SIGNING_HOME: .cache/test-gnupg}
+        vars: {SIGNING_HOME: .cache/test-keys}
       - rm -rf _output/play
 
   scan:
@@ -246,7 +268,7 @@ tasks:
     deps: [keygen:test]
     cmds:
       - task: usb
-        vars: {CLI_ARGS: -test, SIGNING_HOME: .cache/test-gnupg}
+        vars: {CLI_ARGS: -test, SIGNING_HOME: .cache/test-keys}
       - go run ./cmd/image test -usb -needles "{{.NEEDLES}}" {{.CLI_ARGS}}
 
   dev:up:
@@ -284,7 +306,7 @@ tasks:
       - defer: rm -rf _output/lifecycle/*.raw _output/lifecycle/*.stick _output/lifecycle/*.release
       - for: [v1, v2, v3]
         cmd: >-
-          task usb SIGNING_HOME=.cache/test-gnupg -- -test {{if eq .ITEM "v3"}}-broken{{end}} > .cache/logs/usb-{{.ITEM}}.log 2>&1
+          task usb SIGNING_HOME=.cache/test-keys -- -test {{if eq .ITEM "v3"}}-broken{{end}} > .cache/logs/usb-{{.ITEM}}.log 2>&1
           && cp --sparse=always _output/usb/disk.raw _output/lifecycle/{{.ITEM}}.raw
           && rel=$(ls -d _output/release/*/ | sort | tail -1)
           && basename $rel > _output/lifecycle/{{.ITEM}}.version

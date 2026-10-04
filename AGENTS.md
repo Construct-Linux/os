@@ -55,13 +55,18 @@ falling back from a release that does not come up.
   Ed25519 and systemd verifies PCR policies as RSA. It signs kernel images' PCR 11 policies and
   nothing else (`image sign-pcr` refuses any other kind of key). Secure Boot's keys are RSA-2048
   for the same reason: UEFI verifies nothing else.
-- **The release, PCR and Secure Boot keys never enter the repository or a container.** They live in
-  `SIGNING_HOME` (`task keygen:release`, outside the repo). `task usb` signs `SHA256SUMS` on the
-  host, and the PCR policy too (ukify computes its digests in the container, `image sign-pcr`
-  signs them on the host, `image usb-join` joins the signature), and Secure Boot's db key
-  (`SIGNING_HOME/secureboot`, `task keygen:secureboot`) signs systemd-boot and the kernel image
-  there too (`image usb-sign`). Tests use throwaway keys in
-  `.cache/test-gnupg`.
+- **The release, PCR and Secure Boot keys never enter the repository or a container.** A
+  release's are AWS KMS keys (infra `kms.tf`) that never leave KMS: the release builder asks KMS to
+  sign. A person's own builds use files in `SIGNING_HOME`, outside the repo (`task
+  keygen:release`, `keygen:pcr`, `keygen:secureboot`). Either way every key is a `crypto.Signer`
+  named by a reference, `kms:<key>` or a PEM file (internal/sign), and `task usb` signs on the
+  host: the PCR policy (ukify computes its digests in the container, `image sign-pcr` signs them,
+  `image usb-join` joins the signature), Secure Boot's db over systemd-boot and the kernel image
+  (`image usb-sign`), and `SHA256SUMS` (`image sign-release`, OpenPGP written in internal/sign over
+  the signer, checked with go-crypto before it is written). The keys' public halves - the
+  release's `release.pgp`, db's certificate and the signed Secure Boot variables - are in `keys/`
+  for KMS (`task keys:kms`, once) and beside the files otherwise. Tests use throwaway keys in
+  `.cache/test-keys`.
 - **An installed machine's `/var` is LUKS2** (cmd/construct `makeVar`). The person's password opens
   it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
   the passphrase when it has none. A recovery key is shown once at
