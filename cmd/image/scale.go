@@ -72,9 +72,10 @@ func gdctlScale(show string) (float64, bool) {
 	return 0, false
 }
 
-// liveActive makes the live user's session on seat0 the active one, and fails when it is not.
+// liveActive fails, saying which sessions the seat has, unless the live user's session on seat0
+// is the active one: a greeter in front of it is a boot that went wrong, not one to work around.
 const liveActive = `s=$(loginctl list-sessions --no-legend | awk '$3 == "live" && $4 == "seat0" {print $1; exit}') && ` +
-	`loginctl activate "$s" && sleep 1 && [ "$(loginctl show-session "$s" -p Active --value)" = yes ] && `
+	`{ [ "$(loginctl show-session "$s" -p Active --value)" = yes ] || { echo "the live session is not the seat's active one:"; loginctl list-sessions --no-legend; false; }; } && `
 
 // gdctlMonitor is the shell command that puts the first monitor's connector in $c.
 const gdctlMonitor = `c=$(` + asLive + `gdctl show | grep -o 'Monitor [^ ]*' | head -1 | cut -d' ' -f2) && `
@@ -90,8 +91,8 @@ const gdctlMonitor = `c=$(` + asLive + `gdctl show | grep -o 'Monitor [^ ]*' | h
 // monitor of every machine. gdctl asks mutter for the scale on the monitor there is, and answers
 // whether mutter took it.
 //
-// The live session is made the seat's active one before and after: at 2880x1800 GDM's greeter
-// (tty1) was left in front of the autologin session, and every view after shot the login screen.
+// The live session must be the seat's active one before and after, or every view after shoots
+// another session's screen.
 func (g *guest) setSessionScale(scale float64, wantW, wantH int) (string, error) {
 	out, err := g.run(liveActive+gdctlMonitor+asLive+fmt.Sprintf(`gdctl set --logical-monitor --primary --monitor "$c" --scale %g 2>&1 && `, scale)+asLive+`gdctl show 2>&1 && `+liveActive+`echo active`, "")
 	if err != nil {
