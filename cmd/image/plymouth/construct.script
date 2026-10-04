@@ -1,8 +1,11 @@
-# CONSTRUCT's boot screen (cmd/image plymouth.go writes it): the brand's animation - the intro
-# once, the loop while the machine boots - and when the disk asks for its password, the outro, its
-# last frame the logo, with a field of our own under it - the words GNOME's, in {{.Lang}}. The
-# logo then stays until the desktop takes the screen. With a security key, the prompt is for the
-# key's PIN, and then a note to touch it - systemd's words, recognised by their English text.
+# CONSTRUCT's boot screen (cmd/image plymouth.go writes it), black from the firmware on: the
+# brand's animation - the intro once, the loop while the machine boots - with the mark where the
+# dark wallpaper draws it, so it does not move when GDM takes the screen. When the disk asks for
+# its password the outro plays, the grid going out until the logo is left, with the shell's unlock
+# entry under it - the words GNOME's, in {{.Lang}}, the colors the palette's. Once the disk is
+# open the outro plays backwards into the loop, so GDM always takes over on the grid. With a
+# security key, the prompt is for the key's PIN, and then a note to touch it - systemd's words,
+# recognised by their English text.
 password_text = "{{.Password}}";
 key_pin_text = "{{.KeyPIN}}";
 touch_text = "{{.Touch}}";
@@ -10,8 +13,8 @@ caps_text = "{{.Caps}}";
 retry_text = "{{.Retry}}";
 font = "Adwaita Sans 14";
 
-Window.SetBackgroundTopColor(0, 0, 0);
-Window.SetBackgroundBottomColor(0, 0, 0);
+Window.SetBackgroundTopColor({{.Boot}});
+Window.SetBackgroundBottomColor({{.Boot}});
 Plymouth.SetRefreshRate(30);
 
 center_x = Window.GetX() + Window.GetWidth() / 2;
@@ -19,7 +22,9 @@ center_x = Window.GetX() + Window.GetWidth() / 2;
 # The frames are drawn at 1080 px, square: 60% of the screen's shorter side, never above that.
 size = Math.Int(Math.Min(Math.Min(Window.GetWidth(), Window.GetHeight()) * 0.6, 1080));
 frame_x = center_x - size / 2;
-frame_y = Window.GetY() + Window.GetHeight() * 0.4 - size / 2;
+# The mark's centre at {{.MarkCenter}} of the screen's height, where the wallpaper has it; it is
+# {{.FrameMarkCenter}} of the way down a frame.
+frame_y = Window.GetY() + Window.GetHeight() * {{.MarkCenter}} - size * {{.FrameMarkCenter}};
 # Where the outro's last frame - the logo - ends, from the top of the frame.
 logo_bottom = frame_y + size * {{.LogoBottom}};
 
@@ -48,8 +53,8 @@ shown = 1;
 tick = 0;
 
 # The prompt, hidden until asked for: a title, the field, a dot per character, and two notes.
-title.password = Image.Text(password_text, 1, 1, 1, 1, font);
-title.key = Image.Text(key_pin_text, 1, 1, 1, 1, font);
+title.password = Image.Text(password_text, {{.Text}}, 1, font);
+title.key = Image.Text(key_pin_text, {{.Text}}, 1, font);
 title.sprite = Sprite(title.password);
 title.y = logo_bottom + 32;
 
@@ -66,25 +71,27 @@ entry.x = center_x - entry.image.GetWidth() / 2;
 entry.y = title.y + title.password.GetHeight() + 12;
 entry.sprite.SetPosition(entry.x, entry.y, 2);
 
+# The dots start past the pill's round end, and as many as fit before the other one.
 bullet.image = Image("bullet.png");
-bullet.max = 24;
+bullet.step = bullet.image.GetWidth() + 6;
+bullet.max = Math.Int((entry.image.GetWidth() - entry.image.GetHeight() + 6) / bullet.step);
 for (i = 0; i < bullet.max; i++)
 {
   bullets[i] = Sprite(bullet.image);
-  bullets[i].SetPosition(entry.x + 14 + i * (bullet.image.GetWidth() + 6), entry.y + (entry.image.GetHeight() - bullet.image.GetHeight()) / 2, 3);
+  bullets[i].SetPosition(entry.x + entry.image.GetHeight() / 2 + i * bullet.step, entry.y + (entry.image.GetHeight() - bullet.image.GetHeight()) / 2, 3);
 }
 
 note_y = entry.y + entry.image.GetHeight() + 14;
-caps.image = Image.Text(caps_text, 0.95, 0.75, 0.3, 1, font);
+caps.image = Image.Text(caps_text, {{.Warning}}, 1, font);
 caps.sprite = Sprite(caps.image);
 caps.sprite.SetPosition(center_x - caps.image.GetWidth() / 2, note_y, 2);
 
-retry.image = Image.Text(retry_text, 0.95, 0.45, 0.45, 1, font);
+retry.image = Image.Text(retry_text, {{.Error}}, 1, font);
 retry.sprite = Sprite(retry.image);
 retry.sprite.SetPosition(center_x - retry.image.GetWidth() / 2, note_y + caps.image.GetHeight() + 6, 2);
 
 # Touching the key comes after its PIN: the note takes the field's place.
-touch.image = Image.Text(touch_text, 0, 0.9, 1, 1, font);
+touch.image = Image.Text(touch_text, {{.Accent}}, 1, font);
 touch.sprite = Sprite(touch.image);
 touch.sprite.SetPosition(center_x - touch.image.GetWidth() / 2, title.y, 2);
 touch.sprite.SetOpacity(0);
@@ -132,6 +139,16 @@ fun refresh()
       shown++;
     }
   }
+  if (part == "back")
+  {
+    if (back_at < 0)
+      play("loop");
+    else
+    {
+      anim.SetImage(frame_image(outro[back_at]));
+      back_at--;
+    }
+  }
   if (part == "loop")
   {
     frame = loop[shown % loop_frames];
@@ -153,7 +170,13 @@ fun display_password(prompt, count)
 {
   if (asking && count == 0 && typed > 0)
     wrong = 1;
-  if (!asking)
+  # A second disk's prompt while the outro goes back turns it round where it is.
+  if (!asking && part == "back")
+  {
+    part = "outro";
+    shown = back_at + 1;
+  }
+  else if (!asking)
     play("outro");
   if (prompt == "{{.KeyPINPrompt}}")
     set_title(title.key);
@@ -168,10 +191,16 @@ fun display_password(prompt, count)
     bullets[i].SetOpacity(i < count);
 }
 
-# Once the disk is open the logo stays: GDM's handover pauses Plymouth on the frame it shows
-# (plymouth deactivate, which a script theme cannot animate), and the desktop replaces the logo.
+# Once the disk is open the outro goes back from the frame it reached into the loop: GDM's
+# handover pauses Plymouth on the frame it shows (plymouth deactivate, which a script theme cannot
+# animate), and that frame should be the grid the wallpaper draws, not the bare logo.
 fun display_normal()
 {
+  if (asking)
+  {
+    part = "back";
+    back_at = Math.Min(shown, outro_frames) - 1;
+  }
   asking = 0;
   show_prompt(0);
 }
