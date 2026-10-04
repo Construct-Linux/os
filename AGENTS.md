@@ -115,6 +115,9 @@ falling back from a release that does not come up.
 
 - Built with `task build -- <name>`, for **x86-64-v3** (`build/x86-64-v3.env`); a recipe that sets
   `CFLAGS` appends to `$CFLAGS`, never replaces it.
+- **A changed recipe takes a new version or epoch**: the builder's cache knows a package by its
+  apk's name, so the same name is the old build. `go test ./cmd/image` fails a recipe (or its
+  directory) changed since origin/main that still makes the same apk.
 - An **override of a Wolfi package** (mesa, pipewire, at-spi2-core, duktape) keeps Wolfi's package
   and subpackage names and takes an epoch above Wolfi's current one; read Wolfi's recipe first.
 - melange's gaps, each found by booting: it derives **no dependency from an unversioned soname**
