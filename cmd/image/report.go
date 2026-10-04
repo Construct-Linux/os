@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"time"
 )
 
 type result struct {
@@ -51,17 +50,9 @@ func (r *report) skip(name, why string) {
 // shot saves the screen as name.png; one it cannot take is a failure of its own, since the report
 // names the file for a person to look at.
 func (r *report) shot(v *vm, name string) {
-	ppm := filepath.Join(r.dir, name+".ppm")
-	err := v.screenshot(ppm)
-	if err == nil {
-		time.Sleep(500 * time.Millisecond)
-		err = ppmToPNG(ppm, strings.TrimSuffix(ppm, ".ppm")+".png")
-	}
-	if err != nil {
+	if err := v.png(filepath.Join(r.dir, name+".png")); err != nil {
 		r.add("screenshot "+name, false, err.Error())
-		return
 	}
-	_ = os.Remove(ppm)
 }
 
 // write adds what the system says about itself - failed units, core dumps, the journal's errors

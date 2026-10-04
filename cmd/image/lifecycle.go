@@ -83,11 +83,7 @@ func lifecycle(args []string) error {
 	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
 	if err != nil {
 		// The live session's screen when the install did not end: a password asked, a dialog.
-		shot := filepath.Join(*dir, "install.ppm")
-		if v.screenshot(shot) == nil {
-			time.Sleep(500 * time.Millisecond)
-			_ = ppmToPNG(shot, filepath.Join(*dir, "install.png"))
-		}
+		_ = v.png(filepath.Join(*dir, "install.png"))
 	}
 	if err == nil && (!strings.Contains(outs, `"percent":100`) || !strings.Contains(outs, `"msg":"done"`)) {
 		err = fmt.Errorf("no 100%% or done record")
@@ -116,20 +112,14 @@ func lifecycle(args []string) error {
 	}
 	g = &guest{cid: v.cid}
 	asked := g.wait(45*time.Second) != nil
-	_ = v.screenshot(filepath.Join(*dir, "password.ppm"))
-	time.Sleep(500 * time.Millisecond)
-	_ = ppmToPNG(filepath.Join(*dir, "password.ppm"), filepath.Join(*dir, "password.png"))
+	_ = v.png(filepath.Join(*dir, "password.png"))
 	r.add("the disk asks for the password", asked, "screen: password.png")
 	err = v.typeText(lifecyclePassword)
 	// The outro goes back into the loop once the password is in, so the grid is there before GDM:
-	// a screen every 300 ms for 2.4 s, since when it starts depends on the TPM's unlock.
+	// eight screens, one as soon as the one before is saved (~0.5 s each), since when it starts
+	// depends on the TPM's unlock.
 	for i := range 8 {
-		time.Sleep(300 * time.Millisecond)
-		ppm := filepath.Join(*dir, fmt.Sprintf("password-after-%d.ppm", i))
-		if v.screenshot(ppm) == nil {
-			_ = ppmToPNG(ppm, strings.TrimSuffix(ppm, ".ppm")+".png")
-			_ = os.Remove(ppm)
-		}
+		_ = v.png(filepath.Join(*dir, fmt.Sprintf("password-after-%d.png", i)))
 	}
 	if err == nil {
 		err = g.wait(5 * time.Minute)
@@ -228,11 +218,7 @@ func lifecycle(args []string) error {
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
 		// What the screen shows where the boot stopped: a prompt, an emergency shell.
-		shot := filepath.Join(*dir, "reboot-v2.ppm")
-		if v.screenshot(shot) == nil {
-			time.Sleep(500 * time.Millisecond)
-			_ = ppmToPNG(shot, filepath.Join(*dir, "reboot-v2.png"))
-		}
+		_ = v.png(filepath.Join(*dir, "reboot-v2.png"))
 		r.add("reboot into v2", false, err.Error()+"; screen: reboot-v2.png")
 		v.stop()
 		return r.write(nil)
@@ -341,9 +327,7 @@ func (r *report) securityKey(m, first machine, installed, dir string) bool {
 	}
 	g = &guest{cid: v.cid}
 	asked := g.wait(45*time.Second) != nil
-	_ = v.screenshot(filepath.Join(dir, "key-pin.ppm"))
-	time.Sleep(500 * time.Millisecond)
-	_ = ppmToPNG(filepath.Join(dir, "key-pin.ppm"), filepath.Join(dir, "key-pin.png"))
+	_ = v.png(filepath.Join(dir, "key-pin.png"))
 	r.add("the disk asks for the key's PIN", asked, "screen: key-pin.png")
 	// The key's PIN is no password: had the boot asked for the password, this would not open it.
 	err = v.typeText(lifecycleKeyPIN)

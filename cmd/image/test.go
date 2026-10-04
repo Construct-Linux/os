@@ -115,7 +115,7 @@ func test(args []string) error {
 	}
 	if shellErr != nil {
 		r.add("shell", false, shellErr.Error())
-		_ = v.screenshot(filepath.Join(dir, "shell.ppm"))
+		_ = v.png(filepath.Join(dir, "shell.png"))
 		r.write(g)
 		return errors.New("GNOME Shell never answered Eval")
 	}

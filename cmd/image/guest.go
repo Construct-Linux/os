@@ -75,13 +75,10 @@ func (m machine) bootGuest(d time.Duration) (*vm, *guest, error) {
 	}
 	g := &guest{cid: v.cid}
 	if err := g.wait(d); err != nil {
-		shot := filepath.Join(out, "no-answer.ppm")
-		if v.screenshot(shot) == nil {
-			time.Sleep(500 * time.Millisecond)
-			_ = ppmToPNG(shot, strings.TrimSuffix(shot, ".ppm")+".png")
-		}
+		shot := filepath.Join(out, "no-answer.png")
+		_ = v.png(shot)
 		v.stop()
-		return nil, nil, fmt.Errorf("the guest never answered over vsock (its screen: %s.png): %w", strings.TrimSuffix(shot, ".ppm"), err)
+		return nil, nil, fmt.Errorf("the guest never answered over vsock (its screen: %s): %w", shot, err)
 	}
 	return v, g, nil
 }

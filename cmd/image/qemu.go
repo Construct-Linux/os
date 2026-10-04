@@ -45,13 +45,7 @@ func boot(args []string) error {
 		_ = os.MkdirAll(dir, 0o755)
 		for i := range *shots {
 			time.Sleep(time.Second)
-			p := filepath.Join(dir, fmt.Sprintf("%02d.ppm", i+1))
-			if v.screenshot(p) == nil {
-				time.Sleep(300 * time.Millisecond)
-				if ppmToPNG(p, strings.TrimSuffix(p, ".ppm")+".png") == nil {
-					_ = os.Remove(p)
-				}
-			}
+			_ = v.png(filepath.Join(dir, fmt.Sprintf("%02d.png", i+1)))
 		}
 		v.stop()
 		return nil
@@ -286,6 +280,20 @@ func copyCmd(name string, args ...string) error {
 func (v *vm) screenshot(file string) error {
 	abs, _ := filepath.Abs(file)
 	return qmpRun(v.qmp, map[string]any{"execute": "screendump", "arguments": map[string]any{"filename": abs}})
+}
+
+// png saves the screen as a PNG at path, through a screendump beside it that it removes. Every
+// screen the harness keeps for a person goes through here, so it waits in one place.
+func (v *vm) png(path string) error {
+	ppm := strings.TrimSuffix(path, ".png") + ".ppm"
+	if err := v.screenshot(ppm); err != nil {
+		return err
+	}
+	defer os.Remove(ppm)
+	// QMP's answer is not taken as the file being whole: a screen read short would fail to
+	// decode, or be measured as something it is not.
+	time.Sleep(500 * time.Millisecond)
+	return ppmToPNG(ppm, path)
 }
 
 // pointTo moves the USB tablet's pointer to (x, y) on QEMU's absolute scale, 0-32767 each way:
