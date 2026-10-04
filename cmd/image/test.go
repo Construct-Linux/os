@@ -77,27 +77,51 @@ func test(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, g, err := m.bootGuest(4 * time.Minute)
-	if err != nil {
+	var v *vm
+	var g *guest
+	// A stick boots as a machine does, firmware, systemd-boot and Plymouth: it is filmed from the
+	// start until the shell has started, for what the person sees on the way (lf.go, filmReport).
+	var reel *film
+	if *stick {
+		if v, err = m.start(); err != nil {
+			return err
+		}
+		reel = startFilm(v, filepath.Join(dir, "film"))
+		g = &guest{cid: v.cid}
+		if err := g.wait(4 * time.Minute); err != nil {
+			reel.stop()
+			v.stop()
+			return fmt.Errorf("the guest never answered over vsock (its boot, filmed: %s): %w", filepath.Join(dir, "film"), err)
+		}
+	} else if v, g, err = m.bootGuest(4 * time.Minute); err != nil {
 		return err
 	}
 	defer v.stop()
 
 	r := &report{dir: dir, user: "live"}
 	r.add("boot", true, "sshd over vsock answered")
-	if _, err := g.waitShell(3 * time.Minute); err != nil {
-		r.add("shell", false, err.Error())
+	_, shellErr := g.waitShell(3 * time.Minute)
+	var bootMark *[2]float64
+	if reel != nil {
+		bootMark = r.filmReport(reel.stop(), reel.failed)
+	} else {
+		r.skip("boot film", "the ext4 test disk boots its kernel without Plymouth: task test:usb films the boot")
+	}
+	if shellErr != nil {
+		r.add("shell", false, shellErr.Error())
 		_ = v.screenshot(filepath.Join(dir, "shell.ppm"))
 		r.write(g)
 		return errors.New("GNOME Shell never answered Eval")
 	}
 	r.add("shell", true, "org.gnome.Shell.Eval answers in unsafe mode")
+	l := newLF(r, v, g)
+	l.bootMark = bootMark
 	// The run takes longer than GNOME's idle delay: with the display blanked, every screenshot
 	// after it is a black "Display output is not active".
 	_, _ = g.run(`sudo -u live DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus gsettings set org.gnome.desktop.session idle-delay 0`, "")
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
-	r.installer(v, g, *stick)
+	r.installer(v, g, l, *stick)
 	// The live user's login keyring has no password (construct live): a secret is kept and read back
 	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
 	// does what an app does; a prompt would hang it until the timeout.
@@ -106,7 +130,8 @@ func test(args []string) error {
 	if *stick {
 		r.secureBoot(g)
 	}
-	r.shot(v, "desktop")
+	r.shotLook(v, g, "desktop")
+	l.view("desktop")
 	sinks, err := g.run(`sudo -u live XDG_RUNTIME_DIR=/run/user/1000 wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
@@ -249,7 +274,8 @@ func test(args []string) error {
 		// A window exists before it is drawn: Software loads its catalogue, Calendar its sources,
 		// Maps its tiles. The screenshot is what a person sees a few seconds in.
 		time.Sleep(5 * time.Second)
-		r.shot(v, strings.TrimSuffix(a.id, ".desktop"))
+		r.shotLook(v, g, strings.TrimSuffix(a.id, ".desktop"))
+		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
 		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, a.id))
 		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
 		// app and would cover every screenshot after it.
@@ -262,12 +288,15 @@ func test(args []string) error {
 		}
 		ok, detail := g.runPanel(p)
 		r.add("panel:"+p, ok, detail)
-		r.shot(v, "panel-"+p)
+		r.shotLook(v, g, "panel-"+p)
 	}
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
 	if len(want) == 0 || want["views"] {
-		r.shellViews(v, g)
+		r.gtkViews(v, g)
+		r.shellViews(v, g, l)
+		l.guestLook()
 	}
+	l.finish()
 	if len(want) == 0 || want["bench"] {
 		r.bench(g)
 	}
@@ -413,6 +442,15 @@ var shellViews = []shellView{
 	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, ""},
 	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, ""},
 	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, ""},
+	// The first quick toggle with the key focus, once the menu is open: its focus ring, against
+	// the view above.
+	{"quick-settings-focus",
+		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { find(m.box, 'quick-toggle')?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
+		`Main.panel.statusArea.quickSettings.menu.close()`, ""},
+	// A toggle's menu expanded (the network's): a well in the menu, not a light slab.
+	{"quick-settings-submenu",
+		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle-has-menu')).find(t => t.is_mapped() && t.menuEnabled)?.menu.open(true); return GLib.SOURCE_REMOVE; })`,
+		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, ""},
 	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, ""},
 	// libadwaita apps must follow the light/dark switch: Settings, opened in the light scheme.
 	{"settings-light",
@@ -422,9 +460,11 @@ var shellViews = []shellView{
 	{"lock-prompt", `Main.screenShield.showDialog()`, `Main.screenShield.deactivate(false)`, "key"},
 }
 
-func (r *report) shellViews(v *vm, g *guest) {
+// Each view opens and closes with lf.go's helpers at hand (find, lfAll), and its lf checks measure
+// it while it is open.
+func (r *report) shellViews(v *vm, g *guest, l *lf) {
 	for _, s := range shellViews {
-		_, err := g.eval(s.open + "; true")
+		_, err := g.eval(lfPrelude + s.open + "; true")
 		r.add("view:"+s.name, err == nil, "screenshot shell-"+s.name+".png")
 		// Menus open in under a second; a window (Settings) needs a few to draw.
 		time.Sleep(4 * time.Second)
@@ -441,12 +481,13 @@ func (r *report) shellViews(v *vm, g *guest) {
 			_ = v.key("spc")
 			time.Sleep(2 * time.Second)
 		}
-		r.shot(v, "shell-"+s.name)
+		r.shotLook(v, g, "shell-"+s.name)
+		l.view("shell-" + s.name)
 		if s.name == "lock-screen" {
 			r.locked(g)
 		}
 		if s.close != "" {
-			_, _ = g.eval(s.close + "; true")
+			_, _ = g.eval(lfPrelude + s.close + "; true")
 			time.Sleep(time.Second)
 		}
 	}
@@ -488,8 +529,8 @@ func (r *report) secureBoot(g *guest) {
 const installerWindows = `global.get_window_actors().map(a => a.meta_window).filter(w => w.get_wm_class() === "io.github.construct_linux.Installer")`
 
 // installer checks the live session offers the graphical installer at login on a stick, and
-// nowhere else; its window is shot and closed, so it covers nothing after.
-func (r *report) installer(v *vm, g *guest, stick bool) {
+// nowhere else; its window is shot, measured (lf), and closed, so it covers nothing after.
+func (r *report) installer(v *vm, g *guest, l *lf, stick bool) {
 	n := "0"
 	deadline := time.Now().Add(time.Minute)
 	for stick && time.Now().Before(deadline) {
@@ -509,7 +550,8 @@ func (r *report) installer(v *vm, g *guest, stick bool) {
 	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), oneLine(walked)+errText(err))
 	if stick && strings.Trim(n, `"`) == "1" {
 		time.Sleep(2 * time.Second)
-		r.shot(v, "installer")
+		r.shotLook(v, g, "installer")
+		l.view("installer")
 		_, _ = g.eval(installerWindows + `.forEach(w => w.delete(global.get_current_time())); true`)
 		time.Sleep(time.Second)
 	}
@@ -551,7 +593,10 @@ func (r *report) suspend(v *vm, g *guest) {
 	slept := err == nil && strings.TrimSpace(after) != strings.TrimSpace(before)
 	if !slept {
 		// What logind and the kernel said, for the failure to carry its own reason.
-		why, _ := g.run(`cat /sys/power/mem_sleep; journalctl -b -q -o cat -u systemd-logind -u systemd-suspend -g 'suspend|sleep|inhibit' | tail -5`, "")
+		// The kernel's own account first: a suspend it tried and aborted counts as a failure, with
+		// the device and the error that stopped it.
+		why, _ := g.run(`cat /sys/power/mem_sleep; cd /sys/power/suspend_stats && echo "fail=$(cat fail) failed_suspend=$(cat failed_suspend) last_failed_dev=$(cat last_failed_dev) last_failed_errno=$(cat last_failed_errno)"; `+
+			`journalctl -b -q -o short-monotonic -u systemd-logind -u systemd-suspend.service --since -3min | tail -8; systemd-inhibit --list --no-legend --no-pager | head -5`, "")
 		r.add("suspend and resume", false, "suspends: "+oneLine(before)+" -> "+oneLine(after)+errText(err)+"; "+oneLine(why))
 		return
 	}

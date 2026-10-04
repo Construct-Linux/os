@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -34,18 +35,119 @@ const (
 
 // needleRect is a region of a view left out of the comparison, and why.
 type needleRect struct {
-	X, Y, W, H int
-	Why        string
+	X   int    `json:"x"`
+	Y   int    `json:"y"`
+	W   int    `json:"w"`
+	H   int    `json:"h"`
+	Why string `json:"why"`
 }
 
-// needleTopBar is left out of every view: the top bar's clock and Vitals' readings change from
-// one run to the next. At the harness's 1280x800.
-var needleTopBar = needleRect{X: 640, Y: 0, W: 400, H: 44, Why: "the clock and Vitals' readings"}
-
-// needleSpec is a view's <name>.json beside its <name>.png: regions its own content changes in
-// (a clock face, today's date).
+// needleSpec is a view's <name>.json beside its <name>.png. Ignore is written by hand: regions a
+// view's own content changes in. Actors is measured when the view is shot (a run writes it beside
+// its screenshot, needles-propose copies it to the needle): where the clock, Vitals' readings,
+// today's date and the lock clock were, which move with their text's width, so no fixed rectangle
+// holds them. A comparison leaves out the needle's and the run's both, so text that grew or
+// shrank between them is left out where it was in either.
 type needleSpec struct {
-	Ignore []needleRect `json:"ignore"`
+	Ignore []needleRect `json:"ignore,omitempty"`
+	Actors []needleRect `json:"actors,omitempty"`
+}
+
+// needleBarFallback is what is left out of a view whose actors could not be measured: the top
+// bar's inside from the middle on, its ring still compared. At the harness's 1280x800, the bar
+// from y 6 to 41.
+var needleBarFallback = needleRect{X: 640, Y: 8, W: 634, H: 32, Why: "the top bar's readings, not measured"}
+
+// needleActors is the JavaScript that measures, in the running shell, what changes from one run to
+// the next: inside the top bar, its clock and Vitals' readings, kept inside the bar's ring so the
+// ring and the bar's surface around them are compared; with the calendar open, today's date and
+// the month's days; on the lock screen, its clock. Each grows by 2 px for antialiasing. No
+// apostrophe in what it answers: gdbus would quote it otherwise, and guest.eval reads single quotes.
+const needleActors = `
+const out = [];
+const box = a => {
+    const [x, y] = a.get_transformed_position();
+    const [w, h] = a.get_transformed_size();
+    return {x: Math.floor(x) - 2, y: Math.floor(y) - 2, w: Math.ceil(w) + 4, h: Math.ceil(h) + 4};
+};
+const add = (a, why, clip) => {
+    if (!a || !a.is_mapped())
+        return;
+    let r = box(a);
+    if (clip) {
+        const x0 = Math.max(r.x, clip.x), y0 = Math.max(r.y, clip.y);
+        const x1 = Math.min(r.x + r.w, clip.x + clip.w), y1 = Math.min(r.y + r.h, clip.y + clip.h);
+        if (x1 <= x0 || y1 <= y0)
+            return;
+        r = {x: x0, y: y0, w: x1 - x0, h: y1 - y0};
+    }
+    out.push({...r, why});
+};
+let bar = null;
+if (Main.panel.is_mapped()) {
+    const b = box(Main.panel);
+    bar = {x: b.x + 4, y: b.y + 4, w: b.w - 8, h: b.h - 8};
+}
+const dm = Main.panel.statusArea.dateMenu;
+add(dm?._clockDisplay, 'the clock', bar);
+const vitals = Main.panel.statusArea.vitalsMenu;
+add(vitals?.container ?? vitals, 'the readings of Vitals', bar);
+if (dm?.menu.isOpen) {
+    add(dm._date, 'the date of today');
+    add(dm._calendar, 'the days of the month');
+}
+add(Main.screenShield?._dialog?._clock, 'the lock clock');
+JSON.stringify(out)`
+
+// measureActors is what needleActors finds on the screen now.
+func measureActors(g *guest) ([]needleRect, error) {
+	raw, err := g.eval(needleActors)
+	if err != nil {
+		return nil, err
+	}
+	var inner string
+	var rects []needleRect
+	if err := json.Unmarshal([]byte(raw), &inner); err != nil {
+		return nil, fmt.Errorf("eval answered %.80q: %w", raw, err)
+	}
+	if err := json.Unmarshal([]byte(inner), &rects); err != nil {
+		return nil, err
+	}
+	return rects, nil
+}
+
+// shotLook saves the screen as name.png, as shot does, and beside it name.json with where the
+// actors whose content changes from run to run were, measured before and after the screenshot: the
+// clock may tick between them. A view whose actors cannot be measured leaves out the top bar's
+// inside instead, and fails a check that says so.
+func (r *report) shotLook(v *vm, g *guest, name string) {
+	before, errBefore := measureActors(g)
+	r.shot(v, name)
+	after, errAfter := measureActors(g)
+	spec := needleSpec{Actors: append(before, after...)}
+	if err := errors.Join(errBefore, errAfter); err != nil {
+		spec.Actors = append(spec.Actors, needleBarFallback)
+		r.add("look: "+name+" actors", false, "the clock and Vitals could not be measured: "+oneLine(err.Error()))
+	}
+	if b, err := json.MarshalIndent(spec, "", "  "); err == nil {
+		_ = os.WriteFile(filepath.Join(r.dir, name+".json"), b, 0o644)
+	}
+}
+
+// readSpec reads a needleSpec; a view without one has nothing left out.
+func readSpec(p string) (needleSpec, error) {
+	var spec needleSpec
+	raw, err := os.ReadFile(p)
+	if errors.Is(err, fs.ErrNotExist) {
+		return spec, nil
+	}
+	if err != nil {
+		return spec, err
+	}
+	if err := json.Unmarshal(raw, &spec); err != nil {
+		return spec, fmt.Errorf("%s: %w", p, err)
+	}
+	return spec, nil
 }
 
 // lookResult is one view against its needle.
@@ -147,7 +249,8 @@ func gitHead(dir string) string {
 }
 
 // compareNeedle is the share of ref's pixels, outside the ignored regions, that differ in shot;
-// it draws them red over ref dimmed into diff.
+// it draws them red over ref dimmed into diff. What is ignored is the needle's spec (specPath) and
+// the actors measured with the shot (its own .json beside it).
 func compareNeedle(ref, shot, specPath, diff string) (float64, error) {
 	a, err := readPNG(ref)
 	if err != nil {
@@ -160,16 +263,15 @@ func compareNeedle(ref, shot, specPath, diff string) (float64, error) {
 	if a.Bounds() != b.Bounds() {
 		return 1, fmt.Errorf("%v, the needle %v: the screen size changed", b.Bounds().Size(), a.Bounds().Size())
 	}
-	ignore := []needleRect{needleTopBar}
-	if raw, err := os.ReadFile(specPath); err == nil {
-		var spec needleSpec
-		if err := json.Unmarshal(raw, &spec); err != nil {
-			return 0, fmt.Errorf("%s: %w", specPath, err)
-		}
-		ignore = append(ignore, spec.Ignore...)
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	spec, err := readSpec(specPath)
+	if err != nil {
 		return 0, err
 	}
+	run, err := readSpec(strings.TrimSuffix(shot, ".png") + ".json")
+	if err != nil {
+		return 0, err
+	}
+	ignore := slices.Concat(spec.Ignore, spec.Actors, run.Actors)
 	rb := a.Bounds()
 	out := image.NewNRGBA(rb)
 	compared, differ := 0, 0
@@ -319,6 +421,28 @@ func needlesPropose(args []string) error {
 		}
 		if err := git("add", v.Name+".png"); err != nil {
 			return err
+		}
+		// The needle keeps its hand-written regions and takes where this run's actors were.
+		spec, err := readSpec(filepath.Join(*needles, v.Name+".json"))
+		if err != nil {
+			return err
+		}
+		run, err := readSpec(filepath.Join(*from, v.Name+".json"))
+		if err != nil {
+			return err
+		}
+		spec.Actors = run.Actors
+		if len(spec.Ignore)+len(spec.Actors) > 0 {
+			b, err := json.MarshalIndent(spec, "", "  ")
+			if err != nil {
+				return err
+			}
+			if err := os.WriteFile(filepath.Join(*needles, v.Name+".json"), b, 0o644); err != nil {
+				return err
+			}
+			if err := git("add", v.Name+".json"); err != nil {
+				return err
+			}
 		}
 		state := fmt.Sprintf("%.3f%%", v.Share*100)
 		switch {

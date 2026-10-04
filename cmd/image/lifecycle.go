@@ -111,6 +111,16 @@ func lifecycle(args []string) error {
 	_ = ppmToPNG(filepath.Join(*dir, "password.ppm"), filepath.Join(*dir, "password.png"))
 	r.add("the disk asks for the password", asked, "screen: password.png")
 	err = v.typeText(lifecyclePassword)
+	// The outro goes back into the loop once the password is in, so the grid is there before GDM:
+	// a screen every 300 ms for 2.4 s, since when it starts depends on the TPM's unlock.
+	for i := range 8 {
+		time.Sleep(300 * time.Millisecond)
+		ppm := filepath.Join(*dir, fmt.Sprintf("password-after-%d.ppm", i))
+		if v.screenshot(ppm) == nil {
+			_ = ppmToPNG(ppm, strings.TrimSuffix(ppm, ".ppm")+".png")
+			_ = os.Remove(ppm)
+		}
+	}
 	if err == nil {
 		err = g.wait(5 * time.Minute)
 	}
@@ -120,6 +130,7 @@ func lifecycle(args []string) error {
 		return r.write(nil)
 	}
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
+	r.plymouthPrompt(g, *dir)
 	r.secureBoot(g)
 	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts; cryptsetup status var | grep -E 'type|device'`, "")
 	r.add("/var on the disk, encrypted", strings.Contains(src, "/dev/mapper/var") && strings.Contains(src, "LUKS2") && strings.Contains(src, "nvme0n1p6"), oneLine(src))

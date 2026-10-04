@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"crypto/ed25519"
 	"crypto/rand"
+	"encoding/base64"
 	"encoding/pem"
 	"errors"
 	"flag"
@@ -102,10 +103,16 @@ func (g *guest) wait(d time.Duration) error {
 const evalScript = `js=$(cat); exec sudo -u live env DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus ` +
 	`gdbus call --session --dest org.gnome.Shell --object-path /org/gnome/Shell --method org.gnome.Shell.Eval "$js"`
 
-// eval runs JavaScript in GNOME Shell and returns its JSON-encoded result.
+// eval runs JavaScript in GNOME Shell and returns its JSON-encoded result. The script travels
+// base64-encoded and is decoded in the shell: gdbus reads its argument as GVariant text, which
+// takes one level of backslashes off ('\\u' arrived as a malformed '\u', '\\n' as a line
+// break inside a string).
 func (g *guest) eval(js string) (string, error) {
 	prelude := `const Shell = imports.gi.Shell; const GLib = imports.gi.GLib; `
-	outs, err := g.run(evalScript, prelude+js)
+	script := prelude + js
+	wrapped := `const GLib = imports.gi.GLib; eval(new TextDecoder().decode(GLib.base64_decode('` +
+		base64.StdEncoding.EncodeToString([]byte(script)) + `')))`
+	outs, err := g.run(evalScript, wrapped)
 	if err != nil {
 		return "", err
 	}

@@ -19,7 +19,7 @@ func solid(w, h int, c color.NRGBA) *image.NRGBA {
 }
 
 // A view differs by the share of its compared pixels a theme change moved, not by noise, and
-// leaves out the top bar and what its .json ignores.
+// leaves out what its .json ignores.
 func TestCompareNeedle(t *testing.T) {
 	dir := t.TempDir()
 	ink := color.NRGBA{0x0B, 0x11, 0x16, 255}
@@ -42,7 +42,7 @@ func TestCompareNeedle(t *testing.T) {
 		t.Errorf("noise: %v, %v", share, err)
 	}
 
-	// A 10x10 square of another colour, below the top bar: 100 of the compared pixels.
+	// A 10x10 square of another colour: 100 of the compared pixels.
 	changed := solid(100, 100, ink)
 	for y := 50; y < 60; y++ {
 		for x := 10; x < 20; x++ {
@@ -53,7 +53,6 @@ func TestCompareNeedle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The top bar's region (x 640.., not in a 100px image) leaves all 10000 compared.
 	if want := 100.0 / 10000; share != want {
 		t.Errorf("share = %v, want %v", share, want)
 	}
@@ -65,6 +64,31 @@ func TestCompareNeedle(t *testing.T) {
 	}
 	if share, err := compareNeedle(ref, shot("changed", changed), spec, diff); err != nil || share != 0 {
 		t.Errorf("ignored: %v, %v", share, err)
+	}
+
+	// A clock whose text changed width: the needle drew it at x 10-20, this run at x 30-45. Each
+	// side's measured actors leave out where it was there, so neither place differs.
+	clockRef := solid(100, 100, ink)
+	fill(clockRef, lfRect{10, 80, 10, 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
+	clockRefPath := filepath.Join(dir, "clock-ref.png")
+	if err := writePNG(clockRefPath, clockRef); err != nil {
+		t.Fatal(err)
+	}
+	clockSpec := filepath.Join(dir, "clock-ref.json")
+	if err := os.WriteFile(clockSpec, []byte(`{"actors":[{"x":8,"y":78,"w":14,"h":12,"why":"the clock"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	moved := solid(100, 100, ink)
+	fill(moved, lfRect{30, 80, 15, 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
+	movedPath := shot("moved", moved)
+	if share, err := compareNeedle(clockRefPath, movedPath, clockSpec, diff); err != nil || share == 0 {
+		t.Errorf("the run's clock, unmeasured: %v, %v", share, err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "moved.json"), []byte(`{"actors":[{"x":28,"y":78,"w":19,"h":12,"why":"the clock"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if share, err := compareNeedle(clockRefPath, movedPath, clockSpec, diff); err != nil || share != 0 {
+		t.Errorf("the clock, measured in both: %v, %v", share, err)
 	}
 
 	// Another size is a failure of its own.

@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"image"
-	"image/color"
 	"image/png"
 	"io"
 	"os"
@@ -177,42 +176,11 @@ func errText(err error) string {
 	return " (" + err.Error() + ")"
 }
 
-// ppmToPNG converts QEMU's screendump (binary P6, 8-bit) to PNG.
+// ppmToPNG converts QEMU's screendump to PNG.
 func ppmToPNG(src, dst string) error {
-	f, err := os.Open(src)
+	img, err := decodePPM(src)
 	if err != nil {
 		return err
-	}
-	defer f.Close()
-	br := bufio.NewReader(f)
-	var fields []int
-	var magic string
-	for len(fields) < 3 {
-		tok, err := ppmToken(br)
-		if err != nil {
-			return err
-		}
-		if magic == "" {
-			magic = tok
-			continue
-		}
-		n, err := strconv.Atoi(tok)
-		if err != nil {
-			return err
-		}
-		fields = append(fields, n)
-	}
-	if magic != "P6" || fields[2] != 255 {
-		return fmt.Errorf("%s: not an 8-bit P6", src)
-	}
-	w, h := fields[0], fields[1]
-	pix := make([]byte, w*h*3)
-	if _, err := io.ReadFull(br, pix); err != nil {
-		return err
-	}
-	img := image.NewRGBA(image.Rect(0, 0, w, h))
-	for i := 0; i < w*h; i++ {
-		img.Set(i%w, i/w, color.RGBA{pix[3*i], pix[3*i+1], pix[3*i+2], 255})
 	}
 	o, err := os.Create(dst)
 	if err != nil {
@@ -223,6 +191,47 @@ func ppmToPNG(src, dst string) error {
 		return err
 	}
 	return o.Close()
+}
+
+// decodePPM reads QEMU's screendump (binary P6, 8-bit).
+func decodePPM(p string) (*image.RGBA, error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	br := bufio.NewReader(f)
+	var fields []int
+	magic := ""
+	for len(fields) < 3 {
+		tok, err := ppmToken(br)
+		if err != nil {
+			return nil, err
+		}
+		if magic == "" {
+			magic = tok
+			continue
+		}
+		n, err := strconv.Atoi(tok)
+		if err != nil {
+			return nil, err
+		}
+		fields = append(fields, n)
+	}
+	if magic != "P6" || fields[2] != 255 {
+		return nil, fmt.Errorf("%s: not an 8-bit P6", p)
+	}
+	w, h := fields[0], fields[1]
+	pix := make([]byte, w*h*3)
+	if _, err := io.ReadFull(br, pix); err != nil {
+		return nil, err
+	}
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for i := range w * h {
+		copy(img.Pix[4*i:4*i+3], pix[3*i:3*i+3])
+		img.Pix[4*i+3] = 255
+	}
+	return img, nil
 }
 
 // ppmToken reads one whitespace-separated header token, and the single whitespace after it.
