@@ -430,7 +430,7 @@ func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string
 			if err != nil {
 				return nil, err
 			}
-			rel, err := parseIndex(string(b))
+			rel, err := parseIndex(string(b), releaseFile)
 			if err != nil {
 				return nil, err
 			}

@@ -391,7 +391,7 @@ tasks:
       - go run ./cmd/image cache -push
 
   release:publish:
-    desc: "Publish the release task usb just built (VERSION): its files, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>; the USB stick at dl.<domain> with the sticks' signed SHA256SUMS; the public keys at keys.<domain>; and the release in the testing channel's index at updates.<domain>. On the builder."
+    desc: "Publish the release task usb just built (VERSION): its files, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>; the USB stick at dl.<domain> with the sticks' signed SHA256SUMS; the public keys at keys.<domain>; and the release in the testing channel's index at updates.<domain>. On the builder; NEW=true for the first release, when dl and testing have no index yet."
     requires: {vars: [VERSION]}
     vars:
       REL: _output/release/{{.VERSION}}
@@ -417,21 +417,20 @@ tasks:
         $(find {{.PUB}} -maxdepth 1 -type f ! -name notes.md | sort)
       # The stick, compressed, for a new machine at dl.<domain>: larger than a GitHub asset may
       # be. The three newest are kept, and dl's SHA256SUMS - signed with the release key, as a
-      # release's - lists them.
+      # release's, and kept by channel-index as a channel's index - lists them. NEW=true, on the
+      # first release, starts it as it starts the testing channel.
       - xz -T0 -6 -c _output/usb/disk.raw > _output/construct_{{.VERSION}}.raw.xz
       - aws s3 cp --only-show-errors _output/construct_{{.VERSION}}.raw.xz {{.DIST}}/dl/
-      - >-
-        for old in $(aws s3 ls {{.DIST}}/dl/ | awk '/\.raw\.xz$/ {print $4}' | sort -t_ -k2 -V | head -n -3); do
-        aws s3 rm --only-show-errors {{.DIST}}/dl/$old; done
       - rm -rf _output/dl && mkdir -p _output/dl
-      - aws s3 cp --only-show-errors {{.DIST}}/dl/SHA256SUMS _output/dl/current || true
-      - >-
-        (cd _output && sha256sum construct_{{.VERSION}}.raw.xz) | cat - _output/dl/current 2>/dev/null
-        | awk -v keep="$(aws s3 ls {{.DIST}}/dl/ | awk '/\.raw\.xz$/ {print $4}' | tr '\n' ' ')" 'index(keep, $2) && !seen[$2]++'
-        > _output/dl/SHA256SUMS
+      - cmd: aws s3 cp --only-show-errors {{.DIST}}/dl/SHA256SUMS _output/dl/current
+        if: '[ "{{.NEW}}" != true ]'
+      - (cd _output && sha256sum construct_{{.VERSION}}.raw.xz) > _output/dl/stick.sums
+      - go run ./cmd/image channel-index -kind dl {{if eq .NEW "true"}}-new{{else}}-current _output/dl/current{{end}} -add _output/dl/stick.sums -version {{.VERSION}} -o _output/dl
       - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE}} -pubring keys/release.pgp -dir _output/dl
       - aws s3 cp --only-show-errors _output/dl/SHA256SUMS {{.DIST}}/dl/SHA256SUMS
       - aws s3 cp --only-show-errors _output/dl/SHA256SUMS.gpg {{.DIST}}/dl/SHA256SUMS.gpg
+      # Only once the signed index no longer names them: before, a download of one would fail.
+      - for old in $(cat _output/dl/dropped); do aws s3 rm --only-show-errors {{.DIST}}/dl/$old || exit 1; done
       # The public keys at keys.<domain>, whose addresses do not move: the same files every release.
       - aws s3 sync --only-show-errors keys/ {{.DIST}}/keys/
       - aws s3 cp --only-show-errors _output/release-key/pcr-public.pem {{.DIST}}/keys/pcr-public.pem

@@ -56,7 +56,7 @@ func TestChannelIndex(t *testing.T) {
 		}
 	}
 	b, _ := os.ReadFile(filepath.Join(ch, "SHA256SUMS"))
-	idx, err := parseIndex(string(b))
+	idx, err := parseIndex(string(b), releaseFile)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -70,7 +70,7 @@ func TestChannelIndex(t *testing.T) {
 		t.Fatal(err)
 	}
 	b, _ = os.ReadFile(filepath.Join(ch, "SHA256SUMS"))
-	if idx, _ := parseIndex(string(b)); idx["20261005.1"] != nil || len(idx) != 2 {
+	if idx, _ := parseIndex(string(b), releaseFile); idx["20261005.1"] != nil || len(idx) != 2 {
 		t.Errorf("after the withdrawal: %v", idx.versions())
 	}
 	short := write("short", strings.Join(strings.Split(releaseSums("20261006.1"), "\n")[:2], "\n"))
@@ -84,7 +84,42 @@ func TestChannelIndex(t *testing.T) {
 			t.Errorf("%v: no error", from)
 		}
 	}
-	if _, err := parseIndex(strings.Repeat("a", 64) + "  evil.sh\n"); err == nil {
+	if _, err := parseIndex(strings.Repeat("a", 64)+"  evil.sh\n", releaseFile); err == nil {
 		t.Error("an index naming another file: no error")
+	}
+}
+
+// dl's index keeps the newest sticks by version, as a channel's keeps releases, and names the
+// sticks it dropped so they are deleted only once the index no longer lists them.
+func TestDLIndex(t *testing.T) {
+	dir := t.TempDir()
+	out := filepath.Join(dir, "dl")
+	h := strings.Repeat("b", 64)
+	for i, v := range []string{"20261004.9", "20261004.10", "20261005.1", "20261005.2"} {
+		add := filepath.Join(dir, "stick-"+v)
+		if err := os.WriteFile(add, []byte(h+"  construct_"+v+".raw.xz\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		from := []string{"-current", filepath.Join(out, "SHA256SUMS")}
+		if i == 0 {
+			from = []string{"-new"}
+		}
+		if err := channelIndex(append(from, "-kind", "dl", "-add", add, "-version", v, "-keep", "3", "-o", out)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	b, _ := os.ReadFile(filepath.Join(out, "SHA256SUMS"))
+	idx, err := parseIndex(string(b), stickFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(idx.versions(), " "); got != "20261005.2 20261005.1 20261004.10" {
+		t.Errorf("kept %s", got)
+	}
+	if d, _ := os.ReadFile(filepath.Join(out, "dropped")); string(d) != "construct_20261004.9.raw.xz\n" {
+		t.Errorf("dropped %q", d)
+	}
+	if _, err := parseIndex(string(b), releaseFile); err == nil {
+		t.Error("a stick read as a channel's release: no error")
 	}
 }
