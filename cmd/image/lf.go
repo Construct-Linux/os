@@ -516,8 +516,6 @@ func (l *lf) view(name string) {
 		l.gtkFocus(name, img)
 	case "shell-states":
 		l.states(img)
-	case "shell-lock-error":
-		l.lockError()
 	default:
 		// E2: both bars' edge over every wallpaper. At another scale St's extents are not the
 		// screenshot's pixels.
@@ -1316,6 +1314,10 @@ func (l *lf) states(img image.Image) {
 
 // lockError is the unlock prompt after a wrong password: it says so, readable on its surface.
 func (l *lf) lockError() {
+	if l == nil || !l.ok {
+		return
+	}
+	l.cur = "shell-lock-error"
 	var s struct {
 		Message *lfLook
 		Labels  []*lfLook

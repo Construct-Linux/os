@@ -582,9 +582,11 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 			_ = v.key("spc")
 			time.Sleep(2 * time.Second)
 		case "password":
-			// PAM takes its time to refuse: the message comes after its delay.
+			// PAM takes its time to refuse: the message comes after its delay. GDM shows it for a
+			// while and then clears it, so the prompt is measured first, before the screenshot.
 			_ = v.typeText("wrong")
 			time.Sleep(4 * time.Second)
+			l.lockError()
 		}
 		r.shotLook(v, g, viewMeta{"shell-" + s.name, groupShell, s.about, s.rules})
 		l.view("shell-" + s.name)
@@ -942,12 +944,11 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	shot("gtk-tooltip")
 	_ = v.pointTo(16000, 30000)
 	time.Sleep(time.Second)
-	// A libadwaita dialog, opened by the window's own action over the app's bus: preferences, a
-	// window action (win.show-preferences) at the first window's path.
-	out, err := g.run(asLive+`gdbus call --session --dest org.gnome.TextEditor --object-path /org/gnome/TextEditor/window/1 `+
-		`--method org.gtk.Actions.Activate show-preferences '[]' '{}'`, "")
+	// A libadwaita dialog: Text Editor's preferences, by its shortcut. win.show-preferences is a
+	// widget action, which GTK does not export on the bus.
+	err = v.key("ctrl", "comma")
 	time.Sleep(2 * time.Second)
-	r.add("view:gtk-dialog"+suffix, err == nil, "win.show-preferences: "+oneLine(out)+errText(err))
+	r.add("view:gtk-dialog"+suffix, err == nil, "Ctrl+, in Text Editor"+errText(err))
 	shot("gtk-dialog")
 	// Tab moves the key focus in the dialog, and GTK draws its focus outline only once the
 	// keyboard has moved it: the outline is what changed against gtk-dialog.
@@ -992,14 +993,19 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 		_, err = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).request_quit(); true`, id))
 	}
 	time.Sleep(2 * time.Second)
+	open := "0"
 	if err == nil {
-		_, err = g.run(`pgrep -x gnome-text-editor`, "")
+		open, err = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_n_windows()`, id))
 	}
-	r.add("view:gtk-destructive"+suffix, err == nil, "Text Editor asked to quit with a change unsaved, still running"+errText(err))
+	r.add("view:gtk-destructive"+suffix, err == nil && open != "0", "Text Editor asked to quit with a change unsaved: "+open+" windows still open"+errText(err))
 	shot("gtk-destructive")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
-	_, _ = g.run(`pkill -x gnome-text-editor`, "")
+	pids, _ := g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_pids().join(" ")`, id))
+	// A string comes back JSON-quoted.
+	if pids = strings.Trim(pids, `" `); pids != "" {
+		_, _ = g.run(`kill `+pids, "")
+	}
 	time.Sleep(2 * time.Second)
 }
 

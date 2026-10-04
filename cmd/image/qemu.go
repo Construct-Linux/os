@@ -314,11 +314,14 @@ func (v *vm) button(down bool) error {
 	}}})
 }
 
-// key presses and releases one key, by QEMU qcode ("shift", "esc").
-func (v *vm) key(qcode string) error {
-	return qmpRun(v.qmp, map[string]any{"execute": "send-key", "arguments": map[string]any{
-		"keys": []any{map[string]any{"type": "qcode", "data": qcode}},
-	}})
+// key presses and releases a key, or a chord of them held together, by QEMU qcode ("shift",
+// "esc"; "ctrl", "comma").
+func (v *vm) key(qcodes ...string) error {
+	keys := make([]any, len(qcodes))
+	for i, q := range qcodes {
+		keys[i] = map[string]any{"type": "qcode", "data": q}
+	}
+	return qmpRun(v.qmp, map[string]any{"execute": "send-key", "arguments": map[string]any{"keys": keys}})
 }
 
 // typeText types text on the machine's keyboard, then Enter: lowercase letters, digits and spaces.
