@@ -58,6 +58,12 @@ func main() {
 		err = usbDisk(os.Args[2:])
 	case "lifecycle":
 		err = lifecycle(os.Args[2:])
+	case "dev-up":
+		err = devUp(os.Args[2:])
+	case "dev-down":
+		err = devDown(os.Args[2:])
+	case "theme-dev":
+		err = themeDev(os.Args[2:])
 	case "needles-propose":
 		err = needlesPropose(os.Args[2:])
 	case "scan-report":

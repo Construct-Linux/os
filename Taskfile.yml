@@ -249,6 +249,21 @@ tasks:
         vars: {CLI_ARGS: -test, SIGNING_HOME: .cache/test-gnupg}
       - go run ./cmd/image test -usb -needles "{{.NEEDLES}}" {{.CLI_ARGS}}
 
+  dev:up:
+    desc: "Boot the test stick (task usb -- -test) and leave it running for task theme:dev; it stays up until task dev:down or Ctrl-C."
+    cmds:
+      - go run ./cmd/image dev-up {{.CLI_ARGS}}
+
+  dev:down:
+    desc: Stop the machine task dev:up left running.
+    cmds:
+      - go run ./cmd/image dev-down
+
+  theme:dev:
+    desc: "Build the local Orchis checkout (ORCHIS, in .env) into the machine task dev:up runs - GNOME Shell loads it, construct theme copies GTK's - and take the shell's views against the needles: _output/test/look.html. About a minute; the image is still the source of truth (pin, rootfs, stick)."
+    cmds:
+      - go run ./cmd/image theme-dev -orchis "{{.ORCHIS}}" -needles "{{.NEEDLES}}"
+
   needles:propose:
     desc: "Open a pull request in github.com/Construct-Linux/needles with the views the last test:usb drew differently from their needles, or that have none (_output/test/look.json): merging it approves the new look. Needs NEEDLES, a checkout of it."
     cmds:
