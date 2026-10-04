@@ -251,14 +251,14 @@ func TestFilmReport(t *testing.T) {
 		{at: ms(100), black: 0.99, menu: true},
 		{at: ms(1500), black: 0.99, menu: true},
 		{at: ms(1600), cover: 0.9, coverHex: "#282828"},
-		{at: ms(2000), black: 0.95, cyan: 500, mark: lfRect{100, 200, 200, 100}},
-		{at: ms(2100), black: 0.95, cyan: 900, mark: whole},
-		{at: ms(2200), black: 0.95, cyan: 900, mark: whole},
+		{at: ms(2000), black: 0.95, cyan: 500, w: 400, h: 400, mark: lfRect{100, 200, 200, 100}},
+		{at: ms(2100), black: 0.95, cyan: 900, w: 400, h: 400, mark: whole},
+		{at: ms(2200), black: 0.95, cyan: 900, w: 400, h: 400, mark: whole},
 		{at: ms(3000), cover: 0.3, coverHex: "#11181E"},
 	}
 	r := &report{dir: t.TempDir()}
 	mark := r.filmReport(frames, 0)
-	if mark == nil || mark[0] != 200 || mark[1] != 200 {
+	if mark == nil || mark[0] != 0.5 || mark[1] != 0.5 {
 		t.Errorf("mark %v", mark)
 	}
 	got := map[string]result{}
@@ -594,7 +594,7 @@ func TestPromptLookScaled(t *testing.T) {
 }
 
 // Plymouth draws on the firmware's framebuffer first: the mark is read only from the frames of
-// the panel's size the session gets.
+// the last screen it drew on, as shares of it.
 func TestFilmReportSizes(t *testing.T) {
 	ms := func(n int) time.Duration { return time.Duration(n) * time.Millisecond }
 	frames := []filmFrame{
@@ -603,7 +603,7 @@ func TestFilmReportSizes(t *testing.T) {
 		{at: ms(2000), black: 0.95, cyan: 3600, w: 2880, h: 1800, mark: lfRect{1240, 600, 400, 400}},
 	}
 	r := &report{dir: t.TempDir()}
-	if mark := r.filmReport(frames, 0); mark == nil || mark[0] != 1440 || mark[1] != 800 {
+	if mark := r.filmReport(frames, 0); mark == nil || mark[0] != 0.5 || mark[1] != 800.0/1800 {
 		t.Errorf("mark %v", mark)
 	}
 }

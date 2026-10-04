@@ -2,8 +2,8 @@
 // text every run, drawn by GTK 4 at the UI's sizes, regular and bold, in Adwaita Sans and Adwaita
 // Mono, light on dark and dark on light, fullscreen so it is where it was at every scale. It
 // writes where each line landed, and the settings GTK resolved, to the file named by its first
-// argument; with "on" as its second it turns GtkSettings' gtk-hint-font-metrics on, which no
-// GSettings key reaches.
+// argument; its second, "on" or "off", sets GtkSettings' gtk-hint-font-metrics, which no GSettings
+// key reaches.
 //
 // Plain GTK, no libadwaita: the text is drawn as every GTK 4 app draws it, with no widget's style
 // between the label and the screen. Its CSS outranks the user's gtk.css (the theme), which would
@@ -60,8 +60,8 @@ function quadrant(theme, fam, items) {
 const app = new Gtk.Application({application_id: 'io.github.construct_linux.TypeSpecimen', flags: Gio.ApplicationFlags.NON_UNIQUE});
 app.connect('activate', () => {
     const settings = Gtk.Settings.get_default();
-    if (metrics === 'on')
-        settings.gtk_hint_font_metrics = true;
+    // Both ways: GTK's own default is on, and off is a setting of the matrix too.
+    settings.gtk_hint_font_metrics = metrics === 'on';
     Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), css, PRIORITY);
     const win = new Gtk.Window({application: app, title: 'type-specimen'});
     const items = [];

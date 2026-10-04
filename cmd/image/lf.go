@@ -909,8 +909,9 @@ type lf struct {
 	ok  bool
 	// The menus' tops, by menu: quick settings and the calendar hang at the same height.
 	menuY map[string]int
-	// The overview card's mark centre, and the boot's Plymouth mark centre, which must agree, in
-	// physical pixels.
+	// The overview card's mark centre in physical pixels, and Plymouth's as shares of the screen it
+	// drew on, which must agree. A VM's kernel picks another mode than the session's (2560x1600
+	// under 2880x1800); a laptop's panel has one.
 	cardMark, bootMark *[2]float64
 	// The stage's size, and k, the physical pixels a stage pixel is in the screenshot last read.
 	stageW, stageH, k int
@@ -1853,11 +1854,12 @@ func (l *lf) finish() {
 	if l == nil || !l.ok || l.bootMark == nil || l.cardMark == nil {
 		return
 	}
-	dx, dy := math.Abs(l.bootMark[0]-l.cardMark[0]), math.Abs(l.bootMark[1]-l.cardMark[1])
+	bx, by := l.bootMark[0]*float64(l.stageW*l.k), l.bootMark[1]*float64(l.stageH*l.k)
+	dx, dy := math.Abs(bx-l.cardMark[0]), math.Abs(by-l.cardMark[1])
 	across, down := float64(6*l.k), float64(12*l.k)
 	l.check("mark", "boot to overview", dx <= across && dy <= down,
-		fmt.Sprintf("Plymouth's mark at (%.0f, %.0f), the overview card's at (%.0f, %.0f): want within %.0f px across, %.0f down",
-			l.bootMark[0], l.bootMark[1], l.cardMark[0], l.cardMark[1], across, down))
+		fmt.Sprintf("Plymouth's mark at (%.0f, %.0f) on the session's screen, the overview card's at (%.0f, %.0f): want within %.0f px across, %.0f down",
+			bx, by, l.cardMark[0], l.cardMark[1], across, down))
 }
 
 // gtkViews are libadwaita's own surfaces the shell views do not reach: a popover, a tooltip, a
@@ -2719,8 +2721,8 @@ func (f *film) stop() []filmFrame {
 }
 
 // filmReport checks the boot's film: once Plymouth has drawn, no wrong ground covers the screen;
-// how long systemd-boot's menu showed; and where Plymouth put the mark, for lf.finish to hold
-// against the overview's card.
+// how long systemd-boot's menu showed; and where Plymouth put the mark, as shares of its screen,
+// for lf.finish to hold against the overview's card.
 func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 	first := -1
 	for i, f := range frames {
@@ -2756,8 +2758,8 @@ func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 	} else {
 		r.add("boot film: systemd-boot menu", true, "never on screen")
 	}
-	// The mark once it is whole - the intro draws it piece by piece - on the screen the session
-	// gets: Plymouth starts on the firmware's framebuffer, and its frames there are another size.
+	// The mark once it is whole - the intro draws it piece by piece - on the last screen Plymouth
+	// drew on: it starts on the firmware's framebuffer, and its frames there are another size.
 	last := frames[first]
 	for _, f := range frames[first:] {
 		if f.plymouth() {
@@ -2780,7 +2782,7 @@ func (r *report) filmReport(frames []filmFrame, failed int) *[2]float64 {
 	}
 	sort.Float64s(xs)
 	sort.Float64s(ys)
-	return &[2]float64{xs[len(xs)/2], ys[len(ys)/2]}
+	return &[2]float64{xs[len(xs)/2] / float64(last.w), ys[len(ys)/2] / float64(last.h)}
 }
 
 // The rows Plymouth's prompt is looked for in, as shares of the screen's height: below the mark and
