@@ -321,3 +321,8 @@ tasks:
     desc: How far Wolfi is from each desktop profile.
     cmds:
       - go run ./cmd/gap
+
+  labels:
+    desc: "Create or update the repository's issue labels from .github/labels.json, never deleting one it does not list: GITHUB_REPOSITORY and GITHUB_TOKEN; task labels -- -dry-run prints what would change."
+    cmds:
+      - go run ./cmd/watch labels {{.CLI_ARGS}}

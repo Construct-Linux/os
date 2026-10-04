@@ -1,0 +1,44 @@
+[
+  {
+    "group": "type",
+    "labels": [
+      {"name": "bug", "color": "d73a4a", "description": "Something does not work as it should"},
+      {"name": "regression", "color": "b60205", "description": "Worked in an earlier release, broken in a later one"},
+      {"name": "security", "color": "ee0701", "description": "A vulnerability, or the fix for one"},
+      {"name": "update", "color": "0e8a16", "description": "A newer upstream version to move to"},
+      {"name": "look", "color": "d876e3", "description": "A visual defect: spacing, color, type, icons, light or dark"},
+      {"name": "enhancement", "color": "a2eeef", "description": "Something new, or something better"}
+    ]
+  },
+  {
+    "group": "area",
+    "labels": [
+      {"name": "area:boot", "color": "c5def5", "description": "Firmware to session: systemd-boot, the kernel image, the initrd, Plymouth, GDM"},
+      {"name": "area:install", "color": "c5def5", "description": "The installer, the live stick, the first boot"},
+      {"name": "area:update", "color": "c5def5", "description": "systemd-sysupdate, the A/B slots, boot counting and rollback"},
+      {"name": "area:kernel", "color": "c5def5", "description": "The kernel, its configuration, drivers and firmware loading"},
+      {"name": "area:desktop", "color": "c5def5", "description": "GNOME Shell, its apps, the theme"},
+      {"name": "area:hardware", "color": "c5def5", "description": "A machine or a device: firmware, microcode, sensors, power"},
+      {"name": "area:packages", "color": "c5def5", "description": "recipes/ and the Wolfi packages in the image"},
+      {"name": "area:build", "color": "c5def5", "description": "The harness, the release, CI"}
+    ]
+  },
+  {
+    "group": "state",
+    "labels": [
+      {"name": "needs-repro", "color": "fbca04", "description": "Not reproduced yet: steps or a construct report would help"},
+      {"name": "upstream", "color": "5319e7", "description": "The fix belongs to an upstream project"},
+      {"name": "agent-ready", "color": "1d76db", "description": "Specific enough for an agent to fix: cause, place and check known"},
+      {"name": "duplicate", "color": "cfd3d7", "description": "Another issue says the same"},
+      {"name": "wontfix", "color": "ffffff", "description": "Not going to be changed"}
+    ]
+  },
+  {
+    "group": "severity",
+    "labels": [
+      {"name": "severity:critical", "color": "b60205", "description": "Security: Critical, fix now"},
+      {"name": "severity:high", "color": "d93f0b", "description": "Security: High, fix in the next release"},
+      {"name": "severity:medium", "color": "fbca04", "description": "Security: Medium"}
+    ]
+  }
+]
