@@ -17,16 +17,13 @@ Window.SetBackgroundTopColor({{.Boot}});
 Window.SetBackgroundBottomColor({{.Boot}});
 Plymouth.SetRefreshRate(30);
 
-center_x = Window.GetX() + Window.GetWidth() / 2;
-
-# The frames are drawn at 1080 px, square: 60% of the screen's shorter side, never above that.
-size = Math.Int(Math.Min(Math.Min(Window.GetWidth(), Window.GetHeight()) * 0.6, 1080));
-frame_x = center_x - size / 2;
-# The mark's centre at {{.MarkCenter}} of the screen's height, where the wallpaper has it; it is
-# {{.FrameMarkCenter}} of the way down a frame.
-frame_y = Window.GetY() + Window.GetHeight() * {{.MarkCenter}} - size * {{.FrameMarkCenter}};
-# Where the outro's last frame - the logo - ends, from the top of the frame.
-logo_bottom = frame_y + size * {{.LogoBottom}};
+# The screen the layout is for: Plymouth starts on the firmware's framebuffer (simpledrm) and
+# moves to the GPU's driver when it loads, whose mode can be another size - in the harness's VM
+# 2560x1600 under 2880x1800, on a laptop whose firmware screen is not the panel's native mode the
+# same. The layout follows the screen (refresh), or the mark is off centre and jumps at GDM.
+screen_w = 0;
+screen_h = 0;
+size = 0;
 
 # Plymouth reads an image from the theme's directory, so the brand's are reached from there.
 fun frame_image(n)
@@ -40,66 +37,108 @@ fun frame_image(n)
   return Image("{{.Frames}}frame-" + name + ".png").Scale(size, size);
 }
 
-# Each part's frames by number, in the order they play (the brand's sequence.json), and how many.
 # The intro and the outro are shown once each, so they are read as they play; the loop's frames,
-# shown again and again, are kept by number.
+# shown again and again, are kept, each for the size it was scaled to - a screen of another size
+# scales anew.
+fun show_frame(n)
+{
+  current = n;
+  if (part != "loop")
+  {
+    anim.SetImage(frame_image(n));
+    return;
+  }
+  key = n + "@" + size;
+  if (!kept[key])
+    kept[key] = frame_image(n);
+  anim.SetImage(kept[key]);
+}
+
+# Each part's frames by number, in the order they play (the brand's sequence.json), and how many.
 {{.Intro}}
 {{.Loop}}
 {{.Outro}}
-anim = Sprite(frame_image(intro[0]));
-anim.SetPosition(frame_x, frame_y, 1);
+# Every variable the functions share is made here: a script function's first assignment to a name
+# nobody made yet makes it local to that call, and back_at made in display_normal was never the
+# one refresh read - the outro never went back. The kept frames and the layout's likewise.
+back_at = -1;
+kept["none"] = 0;
+current = intro[0];
+center_x = 0;
+frame_x = 0;
+frame_y = 0;
+logo_bottom = 0;
+note_y = 0;
+anim = Sprite();
 part = "intro";
 shown = 1;
 tick = 0;
-# Every variable the functions share is made here: a script function's first assignment to a name
-# nobody made yet makes it local to that call, and back_at made in display_normal was never the
-# one refresh read - the outro never went back. The loop's kept frames likewise.
-back_at = -1;
-kept["none"] = 0;
 
 # The prompt, hidden until asked for: a title, the field, a dot per character, and two notes.
 title.password = Image.Text(password_text, {{.Text}}, 1, font);
 title.key = Image.Text(key_pin_text, {{.Text}}, 1, font);
 title.sprite = Sprite(title.password);
-title.y = logo_bottom + 32;
+title.shown = title.password;
+title.y = 0;
 
 fun set_title(image)
 {
+  title.shown = image;
   title.sprite.SetImage(image);
   title.sprite.SetPosition(center_x - image.GetWidth() / 2, title.y, 2);
 }
-set_title(title.password);
 
 entry.image = Image("entry.png");
 entry.sprite = Sprite(entry.image);
-entry.x = center_x - entry.image.GetWidth() / 2;
-entry.y = title.y + title.password.GetHeight() + 12;
-entry.sprite.SetPosition(entry.x, entry.y, 2);
+entry.x = 0;
+entry.y = 0;
 
 # The dots start past the pill's round end, and as many as fit before the other one.
 bullet.image = Image("bullet.png");
 bullet.step = bullet.image.GetWidth() + 6;
 bullet.max = Math.Int((entry.image.GetWidth() - entry.image.GetHeight() + 6) / bullet.step);
 for (i = 0; i < bullet.max; i++)
-{
   bullets[i] = Sprite(bullet.image);
-  bullets[i].SetPosition(entry.x + entry.image.GetHeight() / 2 + i * bullet.step, entry.y + (entry.image.GetHeight() - bullet.image.GetHeight()) / 2, 3);
-}
 
-note_y = entry.y + entry.image.GetHeight() + 14;
 caps.image = Image.Text(caps_text, {{.Warning}}, 1, font);
 caps.sprite = Sprite(caps.image);
-caps.sprite.SetPosition(center_x - caps.image.GetWidth() / 2, note_y, 2);
-
 retry.image = Image.Text(retry_text, {{.Error}}, 1, font);
 retry.sprite = Sprite(retry.image);
-retry.sprite.SetPosition(center_x - retry.image.GetWidth() / 2, note_y + caps.image.GetHeight() + 6, 2);
-
 # Touching the key comes after its PIN: the note takes the field's place.
 touch.image = Image.Text(touch_text, {{.Accent}}, 1, font);
 touch.sprite = Sprite(touch.image);
-touch.sprite.SetPosition(center_x - touch.image.GetWidth() / 2, title.y, 2);
 touch.sprite.SetOpacity(0);
+
+# Everything placed for the screen there is now.
+fun layout()
+{
+  screen_w = Window.GetWidth();
+  screen_h = Window.GetHeight();
+  center_x = Window.GetX() + screen_w / 2;
+  # The frames are drawn at 1080 px, square: 60% of the screen's shorter side, never above that.
+  size = Math.Int(Math.Min(Math.Min(screen_w, screen_h) * 0.6, 1080));
+  frame_x = center_x - size / 2;
+  # The mark's centre at {{.MarkCenter}} of the screen's height, where the wallpaper has it; it is
+  # {{.FrameMarkCenter}} of the way down a frame.
+  frame_y = Window.GetY() + screen_h * {{.MarkCenter}} - size * {{.FrameMarkCenter}};
+  # Where the outro's last frame - the logo - ends, from the top of the frame.
+  logo_bottom = frame_y + size * {{.LogoBottom}};
+  anim.SetPosition(frame_x, frame_y, 1);
+  show_frame(current);
+
+  title.y = logo_bottom + 32;
+  set_title(title.shown);
+  entry.x = center_x - entry.image.GetWidth() / 2;
+  entry.y = title.y + title.password.GetHeight() + 12;
+  entry.sprite.SetPosition(entry.x, entry.y, 2);
+  for (i = 0; i < bullet.max; i++)
+    bullets[i].SetPosition(entry.x + entry.image.GetHeight() / 2 + i * bullet.step, entry.y + (entry.image.GetHeight() - bullet.image.GetHeight()) / 2, 3);
+  note_y = entry.y + entry.image.GetHeight() + 14;
+  caps.sprite.SetPosition(center_x - caps.image.GetWidth() / 2, note_y, 2);
+  retry.sprite.SetPosition(center_x - retry.image.GetWidth() / 2, note_y + caps.image.GetHeight() + 6, 2);
+  touch.sprite.SetPosition(center_x - touch.image.GetWidth() / 2, title.y, 2);
+}
+layout();
 
 asking = 0;
 typed = 0;
@@ -127,6 +166,8 @@ fun play(next)
 # The brand's 9.6 frames a second, out of 30 refreshes: the frame is the tick's share of them.
 fun refresh()
 {
+  if (Window.GetWidth() != screen_w || Window.GetHeight() != screen_h)
+    layout();
   if (asking)
     caps.sprite.SetOpacity(Plymouth.GetCapslockState());
   tick++;
@@ -140,7 +181,7 @@ fun refresh()
       play("loop");
     else
     {
-      anim.SetImage(frame_image(intro[shown]));
+      show_frame(intro[shown]);
       shown++;
     }
   }
@@ -150,21 +191,18 @@ fun refresh()
       play("loop");
     else
     {
-      anim.SetImage(frame_image(outro[back_at]));
+      show_frame(outro[back_at]);
       back_at--;
     }
   }
   if (part == "loop")
   {
-    frame = loop[shown % loop_frames];
-    if (!kept[frame])
-      kept[frame] = frame_image(frame);
-    anim.SetImage(kept[frame]);
+    show_frame(loop[shown % loop_frames]);
     shown++;
   }
   if (part == "outro" && shown < outro_frames)
   {
-    anim.SetImage(frame_image(outro[shown]));
+    show_frame(outro[shown]);
     shown++;
   }
 }
