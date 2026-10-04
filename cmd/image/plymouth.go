@@ -258,12 +258,13 @@ func brandAnimation(files map[string][]byte) (brandSequence, map[string][]byte, 
 	return seq, frames, nil
 }
 
-// scriptArray is a Plymouth script's statements filling the array name with v, the language
-// having no array literal: name[0] = 1; name[1] = 2; ...
+// scriptArray is a Plymouth script's statements filling the array name with the files of frames
+// v, the language having no array literal: name[0] = "frame-0001.png"; ... The names are
+// frameName's, the one place a frame's number becomes its file.
 func scriptArray(name string, v []int) string {
 	var b strings.Builder
 	for i, n := range v {
-		fmt.Fprintf(&b, "%s[%d] = %d; ", name, i, n)
+		fmt.Fprintf(&b, "%s[%d] = \"%s\"; ", name, i, frameName(n))
 	}
 	fmt.Fprintf(&b, "%s_frames = %d;", name, len(v))
 	return b.String()

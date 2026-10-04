@@ -25,16 +25,11 @@ screen_w = 0;
 screen_h = 0;
 size = 0;
 
-# Plymouth reads an image from the theme's directory, so the brand's are reached from there.
-fun frame_image(n)
+# Plymouth reads an image from the theme's directory, so the brand's are reached from there. A
+# frame is its file's name, which the image tool writes into the parts' arrays.
+fun frame_image(name)
 {
-  if (n < 10)
-    name = "000" + n;
-  else if (n < 100)
-    name = "00" + n;
-  else
-    name = "0" + n;
-  return Image("{{.Frames}}frame-" + name + ".png").Scale(size, size);
+  return Image("{{.Frames}}" + name).Scale(size, size);
 }
 
 # The intro and the outro are shown once each, so they are read as they play; the loop's frames,
@@ -54,7 +49,7 @@ fun show_frame(n)
   anim.SetImage(kept[key]);
 }
 
-# Each part's frames by number, in the order they play (the brand's sequence.json), and how many.
+# Each part's frames by file name, in the order they play (the brand's sequence.json), and how many.
 {{.Intro}}
 {{.Loop}}
 {{.Outro}}

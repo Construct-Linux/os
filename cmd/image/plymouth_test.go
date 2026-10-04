@@ -53,7 +53,7 @@ func TestBrandAnimation(t *testing.T) {
 	if len(frames) != 3 || frames["frame-0004.png"] != nil {
 		t.Errorf("frames = %v, want the three played", frames)
 	}
-	if got := scriptArray("loop", seq.Loop); got != "loop[0] = 3; loop[1] = 2; loop[2] = 3; loop_frames = 3;" {
+	if got := scriptArray("loop", seq.Loop); got != `loop[0] = "frame-0003.png"; loop[1] = "frame-0002.png"; loop[2] = "frame-0003.png"; loop_frames = 3;` {
 		t.Errorf("scriptArray = %q", got)
 	}
 	for name, sequence := range map[string]string{
