@@ -1,14 +1,10 @@
 package:
   name: scx
   version: "1.1.3"
-  epoch: 1
+  epoch: 2
   description: sched_ext BPF CPU schedulers (scx_lavd, scx_bpfland, scx_cosmos)
   copyright:
     - license: GPL-2.0-only
-  dependencies:
-    runtime:
-      # scx.service starts the scheduler through /bin/bash.
-      - bash
 
 environment:
   contents:
@@ -37,16 +33,14 @@ pipeline:
     with:
       patches: scx/6d31ddd8-lavd-reenq-cpus-ptr.patch
 
-  # scx_cosmos is the scheduler services/scx selects by default; the other schedulers and
-  # tools (scxtop, scx_layered ...) are not needed on the desktop. scx_loader moved out of
-  # this repository and is not part of the release.
+  # The schedulers scx_loader may switch to (etc/scx_loader.toml starts lavd); the other
+  # schedulers and tools (scxtop, scx_layered ...) are not needed on the desktop. scx_loader
+  # (recipes/scx-loader) starts the scheduler, so scx's own scx.service and its /etc/default/scx
+  # are not installed.
   - runs: |
       cargo build --release --locked -p scx_lavd -p scx_bpfland -p scx_cosmos
       for b in scx_lavd scx_bpfland scx_cosmos; do
         install -Dm755 target/release/$b ${{targets.destdir}}/usr/bin/$b
       done
-      install -Dm644 services/scx.service ${{targets.destdir}}/usr/lib/systemd/system/scx.service
-      install -Dm644 services/scx ${{targets.destdir}}/etc/default/scx
-      sed -i 's/^# List of scx_schedulers:.*/# List of scx_schedulers: scx_bpfland scx_cosmos scx_lavd/' ${{targets.destdir}}/etc/default/scx
 
   - uses: strip
