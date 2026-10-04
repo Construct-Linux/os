@@ -89,6 +89,14 @@ focus-highlight-color='#00E5FF'
 focus-highlight-opacity=18
 highlight-appicon-hover-background-color='rgba(230,237,242,0.08)'
 highlight-appicon-pressed-background-color='rgba(230,237,242,0.14)'
+# An icon's tint is a tile inside the dock's ring and 15 px corners, and a running app a dot under
+# it: a square tint and a full-width line ran past the dock's rounded end at the last icon, over
+# its ring. The 1 px padding keeps the ring outside every tile.
+panel-top-bottom-padding=1
+panel-side-padding=1
+highlight-appicon-hover-border-radius=14
+dot-style-focused='DOTS'
+dot-style-unfocused='DOTS'
 trans-use-border=false
 dot-color-override=false
 
