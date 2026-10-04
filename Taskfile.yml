@@ -194,7 +194,7 @@ tasks:
     desc: "Once: the public half of a release's KMS keys into keys/ - release.pgp and the Secure Boot key set (PK, KEK and db sign their variables here, the only time PK and KEK sign) - to commit. Needs AWS credentials that may sign with all five keys (infra kms.tf)."
     status: ['test -f keys/release.pgp && test -f keys/secureboot/db.crt']
     cmds:
-      - go run ./cmd/image release-key -key kms:alias/construct-release -o keys/release.pgp
+      - go run ./cmd/image release-key -key kms:alias/construct-release -uid "CONSTRUCT release <release@constructlinux.org>" -o keys/release.pgp
       - >-
         go run ./cmd/image secureboot-keys -dir keys/secureboot -pk kms:alias/construct-secureboot-pk
         -kek kms:alias/construct-secureboot-kek -db kms:alias/construct-secureboot-db
@@ -391,7 +391,7 @@ tasks:
       - go run ./cmd/image cache -push
 
   release:publish:
-    desc: "Publish the release task usb just built (VERSION): its files, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>, the USB stick in the dist bucket, and the release in the testing channel's index. On the builder."
+    desc: "Publish the release task usb just built (VERSION): its files, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>; the USB stick at dl.<domain> with the sticks' signed SHA256SUMS; the public keys at keys.<domain>; and the release in the testing channel's index at updates.<domain>. On the builder."
     requires: {vars: [VERSION]}
     vars:
       REL: _output/release/{{.VERSION}}
@@ -410,20 +410,31 @@ tasks:
         prev=$(GH_TOKEN=$(construct-github-token) gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""');
         prevpkgs="";
         if [ -n "$prev" ]; then GH_TOKEN=$(construct-github-token) gh release download "$prev" -p packages.txt -D _output/prev --clobber && prevpkgs=_output/prev/packages.txt; fi;
-        go run ./cmd/image release-notes -version {{.VERSION}} -prev "$prev" -packages {{.PUB}}/packages.txt -prev-packages "$prevpkgs" -o {{.PUB}}/notes.md
+        go run ./cmd/image release-notes -version {{.VERSION}} -prev "$prev" -packages {{.PUB}}/packages.txt -prev-packages "$prevpkgs" -dl-url "$CONSTRUCT_DL_URL" -o {{.PUB}}/notes.md
       - >-
         GH_TOKEN=$(construct-github-token) gh release create v{{.VERSION}} --target $(git rev-parse HEAD)
         --title "CONSTRUCT {{.VERSION}}" --notes-file {{.PUB}}/notes.md
         $(find {{.PUB}} -maxdepth 1 -type f ! -name notes.md | sort)
-      # The stick, compressed, for a new machine: larger than a GitHub asset may be. The three
-      # newest are kept.
+      # The stick, compressed, for a new machine at dl.<domain>: larger than a GitHub asset may
+      # be. The three newest are kept, and dl's SHA256SUMS - signed with the release key, as a
+      # release's - lists them.
       - xz -T0 -6 -c _output/usb/disk.raw > _output/construct_{{.VERSION}}.raw.xz
-      - (cd _output && sha256sum construct_{{.VERSION}}.raw.xz > construct_{{.VERSION}}.raw.xz.sha256)
-      - aws s3 cp --only-show-errors _output/construct_{{.VERSION}}.raw.xz {{.DIST}}/usb/
-      - aws s3 cp --only-show-errors _output/construct_{{.VERSION}}.raw.xz.sha256 {{.DIST}}/usb/
+      - aws s3 cp --only-show-errors _output/construct_{{.VERSION}}.raw.xz {{.DIST}}/dl/
       - >-
-        for old in $(aws s3 ls {{.DIST}}/usb/ | awk '/\.raw\.xz$/ {print $4}' | sort -t_ -k2 -V | head -n -3); do
-        aws s3 rm --only-show-errors {{.DIST}}/usb/$old && aws s3 rm --only-show-errors {{.DIST}}/usb/$old.sha256; done
+        for old in $(aws s3 ls {{.DIST}}/dl/ | awk '/\.raw\.xz$/ {print $4}' | sort -t_ -k2 -V | head -n -3); do
+        aws s3 rm --only-show-errors {{.DIST}}/dl/$old; done
+      - rm -rf _output/dl && mkdir -p _output/dl
+      - aws s3 cp --only-show-errors {{.DIST}}/dl/SHA256SUMS _output/dl/current || true
+      - >-
+        (cd _output && sha256sum construct_{{.VERSION}}.raw.xz) | cat - _output/dl/current 2>/dev/null
+        | awk -v keep="$(aws s3 ls {{.DIST}}/dl/ | awk '/\.raw\.xz$/ {print $4}' | tr '\n' ' ')" 'index(keep, $2) && !seen[$2]++'
+        > _output/dl/SHA256SUMS
+      - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE}} -pubring keys/release.pgp -dir _output/dl
+      - aws s3 cp --only-show-errors _output/dl/SHA256SUMS {{.DIST}}/dl/SHA256SUMS
+      - aws s3 cp --only-show-errors _output/dl/SHA256SUMS.gpg {{.DIST}}/dl/SHA256SUMS.gpg
+      # The public keys at keys.<domain>, whose addresses do not move: the same files every release.
+      - aws s3 sync --only-show-errors keys/ {{.DIST}}/keys/
+      - aws s3 cp --only-show-errors _output/release-key/pcr-public.pem {{.DIST}}/keys/pcr-public.pem
       - task: release:offer
         vars: {VERSION: '{{.VERSION}}', CHANNEL: testing, FROM: '{{.REL}}/SHA256SUMS'}
 
@@ -436,11 +447,11 @@ tasks:
       DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
     cmds:
       - rm -rf {{.OUT}} && mkdir -p {{.OUT}}
-      - aws s3 cp --only-show-errors {{.DIST}}/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current || true
+      - aws s3 cp --only-show-errors {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current || true
       - go run ./cmd/image channel-index -current {{.OUT}}/current -add {{.FROM}} -version {{.VERSION}} -o {{.OUT}}
       - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE | default "alias/construct-release"}} -pubring keys/release.pgp -dir {{.OUT}}
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/{{.CHANNEL}}/SHA256SUMS
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/{{.CHANNEL}}/SHA256SUMS.gpg
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS.gpg
 
   release:promote:
     desc: "Offer a release testing proved to the next channel: task release:promote VERSION=20261004.1 [FROM=testing] [TO=stable]. Signs with the KMS release key: AWS credentials that may, and CONSTRUCT_DIST_BUCKET (infra output buckets.dist)."
@@ -450,7 +461,7 @@ tasks:
       TO: '{{.TO | default "stable"}}'
     cmds:
       - mkdir -p _output/channel
-      - aws s3 cp --only-show-errors s3://{{.CONSTRUCT_DIST_BUCKET}}/{{.FROM}}/SHA256SUMS _output/channel/{{.FROM}}.from
+      - aws s3 cp --only-show-errors s3://{{.CONSTRUCT_DIST_BUCKET}}/updates/{{.FROM}}/SHA256SUMS _output/channel/{{.FROM}}.from
       - task: release:offer
         vars: {VERSION: '{{.VERSION}}', CHANNEL: '{{.TO}}', FROM: '_output/channel/{{.FROM}}.from'}
 
@@ -462,11 +473,11 @@ tasks:
       DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
     cmds:
       - rm -rf {{.OUT}} && mkdir -p {{.OUT}}
-      - aws s3 cp --only-show-errors {{.DIST}}/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current
+      - aws s3 cp --only-show-errors {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current
       - go run ./cmd/image channel-index -current {{.OUT}}/current -withdraw -version {{.VERSION}} -o {{.OUT}}
       - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE | default "alias/construct-release"}} -pubring keys/release.pgp -dir {{.OUT}}
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/{{.CHANNEL}}/SHA256SUMS
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/{{.CHANNEL}}/SHA256SUMS.gpg
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS.gpg
 
   cache:seed:
     desc: "Once, from a machine that has built everything: put its packages/, kernel, firmware and QEMU in the builder's cache (CONSTRUCT_PACKAGES_BUCKET, infra output buckets.packages), so the first release does not build them all."

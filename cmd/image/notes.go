@@ -33,7 +33,8 @@ type notesInput struct {
 	Grype                  *grype.Report
 	Ours                   map[string]bool
 	Tests                  []testRun
-	UpdatesURL             string
+	// DLURL is where the USB sticks are (dl.<domain>).
+	DLURL string
 }
 
 // testRun is one harness report: how many checks passed, and the failures by name.
@@ -51,13 +52,13 @@ func releaseNotes(args []string) error {
 	prevPackages := fl.String("prev-packages", "", "the previous release's packages.txt")
 	grypeFile := fl.String("grype", filepath.Join(out, "scan", "grype.json"), "Grype's JSON report of the release's root")
 	tests := fl.String("tests", filepath.Join(out, "test", "report.txt")+","+filepath.Join(out, "lifecycle", "report.txt"), "the harness's reports, comma-separated")
-	updates := fl.String("updates-url", os.Getenv("CONSTRUCT_UPDATES_URL"), "where machines and people get it")
+	dl := fl.String("dl-url", os.Getenv("CONSTRUCT_DL_URL"), "where the USB sticks are (dl.<domain>)")
 	to := fl.String("o", filepath.Join(out, "release-notes", "notes.md"), "the notes to write")
 	_ = fl.Parse(args)
 	if *version == "" || *packages == "" {
 		return fmt.Errorf("release-notes: -version and -packages are required")
 	}
-	in := notesInput{Version: *version, Prev: *prev, Date: time.Now().UTC(), UpdatesURL: *updates}
+	in := notesInput{Version: *version, Prev: *prev, Date: time.Now().UTC(), DLURL: *dl}
 	var err error
 	if in.Commits, err = commitsSince(*prev); err != nil {
 		return err
@@ -323,8 +324,8 @@ func writeNotes(w io.Writer, in notesInput) {
 	fmt.Fprintln(w, "## Get it")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "An installed machine takes it by itself from its channel, and starts it at its next reboot.")
-	if in.UpdatesURL != "" {
-		fmt.Fprintf(w, "A new machine: the USB stick, `%s/usb/construct_%s.raw.xz`.\n", in.UpdatesURL, in.Version)
+	if in.DLURL != "" {
+		fmt.Fprintf(w, "A new machine: the USB stick, %s/construct_%s.raw.xz, in the signed %s/SHA256SUMS.\n", in.DLURL, in.Version, in.DLURL)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Every file is in `SHA256SUMS`, signed with the release key (`release.pgp`):")

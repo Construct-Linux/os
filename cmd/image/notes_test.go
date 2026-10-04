@@ -57,15 +57,15 @@ func TestWriteNotes(t *testing.T) {
 		Commits:  []string{"gdm: x"},
 		Packages: map[string]string{"linux": "7.2.8-r0", "gnome-shell": "51.0-r1"},
 		Grype:    &g, Ours: map[string]bool{},
-		Tests:      []testRun{{Name: "test", Passed: 450, Total: 454, Failed: []string{"suspend and resume"}}},
-		UpdatesURL: "https://updates.example",
+		Tests: []testRun{{Name: "test", Passed: 450, Total: 454, Failed: []string{"suspend and resume"}}},
+		DLURL: "https://dl.example",
 	}
 	var b strings.Builder
 	writeNotes(&b, in)
 	s := b.String()
 	for _, want := range []string{"# CONSTRUCT 20261004.1", "kernel 7.2.8-r0", "The first release", "**gdm**",
 		"| CVE-2026-1 | High | openssl | 3.5.0-r0 | 3.5.1-r0 |", "450 of 454", "suspend and resume",
-		"https://updates.example/usb/construct_20261004.1.raw.xz", "gpg --verify SHA256SUMS.gpg"} {
+		"https://dl.example/construct_20261004.1.raw.xz", "gpg --verify SHA256SUMS.gpg"} {
 		if !strings.Contains(s, want) {
 			t.Errorf("no %q in:\n%s", want, s)
 		}
