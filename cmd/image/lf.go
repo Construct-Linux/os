@@ -500,6 +500,8 @@ func (l *lf) view(name string) {
 		l.dayFocus(img)
 	case "shell-overview":
 		l.overview(img)
+	case "shell-overview-light":
+		l.overviewLight(img)
 	case "shell-overview-search":
 		l.search(img)
 	case "shell-app-grid":
@@ -1036,10 +1038,10 @@ func (l *lf) ground(view string, img image.Image) {
 	l.check("ground", view, near(c, l.c("brand-boot"), lfSurfaceTol), fmt.Sprintf("(%d,%d) is %s, want %s", x, y, hexOf(c), hexOf(l.c("brand-boot"))))
 }
 
-func (l *lf) overview(img image.Image) {
-	l.ground("shell-overview", img)
+// overviewCard is the overview's group and the active workspace's card, as St has them.
+func (l *lf) overviewCard() (group, card *lfLook, err error) {
 	var s struct{ Group, Card *lfLook }
-	if err := l.g.evalJSON(`
+	err = l.g.evalJSON(`
 		// The active workspace's card is the one most on the screen: the next one is as wide, mostly
 		// past the right edge.
 		const shown = a => {
@@ -1050,18 +1052,25 @@ func (l *lf) overview(img image.Image) {
 		};
 		const cards = lfAll(Main.layoutManager.overviewGroup, lfClass('workspace-background')).filter(a => a.is_mapped());
 		cards.sort((a, b) => shown(b) - shown(a));
-		return {group: look(Main.layoutManager.overviewGroup), card: look(cards[0])};`, &s); err != nil {
+		return {group: look(Main.layoutManager.overviewGroup), card: look(cards[0])};`, &s)
+	return s.Group, s.Card, err
+}
+
+func (l *lf) overview(img image.Image) {
+	l.ground("shell-overview", img)
+	group, c, err := l.overviewCard()
+	if err != nil {
 		l.check("ground", "overview", false, err.Error())
 		return
 	}
-	if s.Group != nil {
-		l.check("ground", "overviewGroup", s.Group.BG == hexaOf(l.c("brand-boot")), "St "+s.Group.BG)
+	if group != nil {
+		l.check("ground", "overviewGroup", group.BG == hexaOf(l.c("brand-boot")), "St "+group.BG)
 	}
-	if s.Card == nil || s.Card.W == 0 {
+	if c == nil || c.W == 0 {
 		l.check("mark", "overview card", false, "no workspace card on the screen")
 		return
 	}
-	card := l.px(s.Card.rect())
+	card := l.px(c.rect())
 	box, ok := markBox(img, card.inset(8*l.k, 8*l.k))
 	if !ok {
 		l.check("mark", "overview card", false, "no mark in the card "+card.String())
@@ -1072,6 +1081,31 @@ func (l *lf) overview(img image.Image) {
 	want, tol := float64(card.Y)+lfCardMarkShare*float64(card.H), float64(lfCardMarkTol*l.k)
 	l.check("mark", "overview card", math.Abs(cy-want) <= tol,
 		fmt.Sprintf("centred at (%.0f, %.0f), want y %.0f±%.0f", cx, cy, want, tol))
+}
+
+// lfCardLight is the least lightness of the light wallpaper's ground, drawn small in the card: the
+// light desk is 0.9, the dark wallpapers' ink under 0.1, so half way tells them apart.
+const lfCardLight = 0.5
+
+// overviewLight is the overview in the light scheme: the shell's ground stays the boot's black
+// (S4: the shell is dark in both), and the workspace card is the light wallpaper.
+func (l *lf) overviewLight(img image.Image) {
+	l.ground("shell-overview-light", img)
+	group, c, err := l.overviewCard()
+	if err != nil {
+		l.check("ground", "overview-light", false, err.Error())
+		return
+	}
+	if group != nil {
+		l.check("ground", "overviewGroup light", group.BG == hexaOf(l.c("brand-boot")), "St "+group.BG)
+	}
+	if c == nil || c.W == 0 {
+		l.check("card", "overview-light", false, "no workspace card on the screen")
+		return
+	}
+	mode, share := modeColor(img, l.px(c.rect()).inset(8*l.k, 8*l.k))
+	l.check("card", "overview-light", lightness(mode) >= lfCardLight,
+		fmt.Sprintf("the card is %s over %.0f%% of it, lightness %.2f; want the light wallpaper, >= %.2f", hexOf(mode), share*100, lightness(mode), lfCardLight))
 }
 
 func (l *lf) search(img image.Image) {

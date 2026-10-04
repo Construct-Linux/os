@@ -490,6 +490,13 @@ var shellViews = []shellView{
 	{"overview", `Main.overview.show()`, `Main.overview.hide()`, "", 0,
 		"The overview on the boot's black, the workspace card the wallpaper drawn small, its mark where the wallpaper puts it",
 		[]string{"S4", "W1"}},
+	// The one shell view in the light scheme: the shell is dark in both, and what light changes in
+	// the overview is the wallpaper its workspace card draws small.
+	{"overview-light",
+		`new Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => { Main.overview.show(); return GLib.SOURCE_REMOVE; })`,
+		`Main.overview.hide(); new Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, "", 6 * time.Second,
+		"The overview in the light scheme: the shell's ground still the boot's black, the workspace card the light wallpaper drawn small",
+		[]string{"S4", "W3"}},
 	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, "", 0,
 		"The overview's search: the entry and the results' section on h with the ring, the section's radius concentric with its controls'",
 		[]string{"S2", "R1"}},
