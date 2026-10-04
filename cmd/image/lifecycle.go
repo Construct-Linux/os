@@ -211,8 +211,10 @@ func lifecycle(args []string) error {
 	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
 	// Told once: the mark stays until the reboot, and a path unit whose service went inactive
 	// fires again while it does - a new notice each time, until the trigger limit fails the path.
+	// The user manager's lines are matched by USER_UNIT: --user-unit, run as root, also asks for
+	// root's UID, and found none.
 	told, _ := g.run(fmt.Sprintf(`sleep 10; sudo -u %s XDG_RUNTIME_DIR=/run/user/1000 systemctl --user is-failed construct-reboot-notice.path; `+
-		`journalctl -b -o cat --user-unit construct-reboot-notice.service | grep -c '^Starting '`, lifecycleUser), "")
+		`journalctl -b -o cat USER_UNIT=construct-reboot-notice.service | grep -c '^Starting '`, lifecycleUser), "")
 	once := strings.Join(strings.Fields(told), " ") == "active 1"
 	r.add("the reboot notice is shown once", once, "path, notices: "+oneLine(told))
 	if !once {
