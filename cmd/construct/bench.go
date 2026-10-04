@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -20,7 +21,7 @@ import (
 // benchCmd measures CONSTRUCT's memory, writeback, scheduler and THP settings against the kernel's
 // own defaults on this machine (internal/bench): rounds of the same three workloads under each,
 // in A B B A order, then puts the machine's settings back. Numbers from a VM are not a laptop's.
-func benchCmd(args []string, stdout io.Writer) error {
+func benchCmd(ctx context.Context, args []string, stdout io.Writer) error {
 	fl := flag.NewFlagSet("bench", flag.ContinueOnError)
 	rounds := fl.Int("rounds", 3, "rounds of every workload under each profile")
 	seconds := fl.Int("seconds", 20, "how long each workload runs")
@@ -58,11 +59,15 @@ func benchCmd(args []string, stdout io.Writer) error {
 			if r%2 == 1 {
 				p = order[len(order)-1-i]
 			}
+			// A signal ends the run between rounds too, so the deferred restore runs at once.
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if err := useProfile(p); err != nil {
 				return err
 			}
 			fmt.Fprintf(stdout, "round %d, %s settings...\n", r+1, p.Name)
-			m, err := runWorkloads(*dir, *seconds)
+			m, err := runWorkloads(ctx, *dir, *seconds)
 			if err != nil {
 				return err
 			}
@@ -110,16 +115,16 @@ func benchTable(results map[string]map[string][]float64) string {
 }
 
 // runWorkloads runs the three workloads under the settings in place.
-func runWorkloads(dir string, seconds int) (map[string]float64, error) {
+func runWorkloads(ctx context.Context, dir string, seconds int) (map[string]float64, error) {
 	m := map[string]float64{}
 	// Every CPU busy, then how long a woken thread waits for one.
-	load := exec.Command("stress-ng", "--cpu", "0", "--timeout", strconv.Itoa(seconds+5)+"s", "--quiet")
+	load := exec.CommandContext(ctx, "stress-ng", "--cpu", "0", "--timeout", strconv.Itoa(seconds+5)+"s", "--quiet")
 	if err := load.Start(); err != nil {
 		return nil, fmt.Errorf("stress-ng: %w", err)
 	}
 	out := filepath.Join(dir, "schbench.json")
 	threads := strconv.Itoa(max(1, runtime.NumCPU()/2))
-	err := exec.Command("schbench", "-m", "2", "-t", threads, "-r", strconv.Itoa(seconds), "-j", out).Run()
+	err := exec.CommandContext(ctx, "schbench", "-m", "2", "-t", threads, "-r", strconv.Itoa(seconds), "-j", out).Run()
 	_ = load.Wait()
 	if err != nil {
 		return nil, fmt.Errorf("schbench: %w", err)
@@ -135,7 +140,7 @@ func runWorkloads(dir string, seconds int) (map[string]float64, error) {
 	// A large buffered write, and small direct reads beside it: what writeback limits and the I/O
 	// scheduler decide is how long those reads wait.
 	_ = exec.Command("sync").Run()
-	fio, err := exec.Command("fio", "--output-format=json", "--directory="+dir, "--runtime="+strconv.Itoa(seconds),
+	fio, err := exec.CommandContext(ctx, "fio", "--output-format=json", "--directory="+dir, "--runtime="+strconv.Itoa(seconds),
 		"--time_based", "--name=writer", "--rw=write", "--bs=1M", "--size=2G",
 		"--name=reader", "--rw=randread", "--bs=4k", "--direct=1", "--size=256M").Output()
 	if err != nil {
@@ -154,7 +159,7 @@ func runWorkloads(dir string, seconds int) (map[string]float64, error) {
 	yaml := filepath.Join(dir, "stress.yaml")
 	// In a scope of its own that outlives a kill: systemd stops a unit the kernel's OOM killer
 	// reached, and stress-ng's in the caller's took the terminal, or the SSH session, with it.
-	if err := exec.Command("systemd-run", "--scope", "--quiet", "-p", "OOMPolicy=continue", "--",
+	if err := exec.CommandContext(ctx, "systemd-run", "--scope", "--quiet", "-p", "OOMPolicy=continue", "--",
 		"stress-ng", "--vm", "2", "--vm-bytes", strconv.FormatUint(total*6/10, 10), "--vm-keep",
 		"--timeout", strconv.Itoa(seconds)+"s", "--metrics-brief", "--yaml", yaml, "--quiet").Run(); err != nil {
 		return nil, fmt.Errorf("stress-ng --vm: %w", err)

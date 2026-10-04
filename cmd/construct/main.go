@@ -59,7 +59,9 @@ const usage = `usage:
   construct channel    [CHANNEL]`
 
 func main() {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	// SIGHUP too: a dropped SSH session must still let a command undo what it changed (bench
+	// puts the machine's own settings back), which a process killed by the signal never does.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 	defer stop()
 	// systemd-sleep runs its hooks by name: usr/lib/systemd/system-sleep/construct-power is this.
 	if filepath.Base(os.Args[0]) == "construct-power" {
@@ -92,7 +94,7 @@ func main() {
 	case "power":
 		err = powerCmd(os.Args[2:], os.Stdout)
 	case "bench":
-		err = benchCmd(os.Args[2:], os.Stdout)
+		err = benchCmd(ctx, os.Args[2:], os.Stdout)
 	case "report":
 		err = reportCmd(ctx, os.Args[2:], os.Stdout)
 	case "channel":
