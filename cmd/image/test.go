@@ -722,7 +722,9 @@ func (r *report) suspend(v *vm, g *guest) {
 // settings back - its numbers are a VM's, not a finding.
 func (r *report) bench(g *guest) {
 	before, _ := g.run(`sysctl -n vm.swappiness; swapon --show=NAME --noheadings`, "")
+	r.benchWindow[0] = g.uptime()
 	out, err := g.run(`construct bench --rounds 1 --seconds 5 2>&1 | tail -6`, "")
+	r.benchWindow[1] = g.uptime()
 	after, _ := g.run(`sysctl -n vm.swappiness; swapon --show=NAME --noheadings`, "")
 	r.add("construct bench", err == nil && strings.Contains(out, "wakeup latency p99") && before == after, oneLine(out)+errText(err))
 }

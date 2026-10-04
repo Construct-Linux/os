@@ -255,3 +255,15 @@ func runIn(args []string) error {
 	fmt.Print(outs)
 	return err
 }
+
+// uptime is the guest's seconds since boot, the clock journalctl -o short-monotonic stamps lines
+// with; 0 when it cannot be read.
+func (g *guest) uptime() float64 {
+	out, err := g.run(`cut -d' ' -f1 /proc/uptime`, "")
+	if err != nil {
+		return 0
+	}
+	var s float64
+	_, _ = fmt.Sscanf(strings.TrimSpace(out), "%f", &s)
+	return s
+}

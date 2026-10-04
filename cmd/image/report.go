@@ -28,6 +28,9 @@ type report struct {
 	results []result
 	// scale is how many physical pixels a stage pixel is in its screenshots: 0 is 1.
 	scale int
+	// benchWindow is when construct bench ran, in seconds since the guest's boot: the kernel's
+	// out-of-memory report it provokes on purpose is not an error of the image's.
+	benchWindow [2]float64
 }
 
 func (r *report) add(name string, ok bool, detail string) {
@@ -133,6 +136,7 @@ func (r *report) system(g *guest) {
 	// and says so only in the journal.
 	pam, pamErr := g.run(`journalctl -b --no-pager -o cat | grep -E 'unable to open config for' | sort -u || true`, "")
 	r.add("pam", pamErr == nil && strings.TrimSpace(pam) == "", oneLine(pam)+errText(pamErr))
+	errs = withoutBenchOOM(errs, r.benchWindow)
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
 	// An error in the journal is a fault of the image's, whoever logged it: none is expected. -q, or
 	// an empty journal reads "-- No entries --".
@@ -256,4 +260,24 @@ func ppmToken(br *bufio.Reader) (string, error) {
 		}
 		tok = append(tok, c)
 	}
+}
+
+// withoutBenchOOM is the journal's errors (short-monotonic) without the kernel's lines while
+// construct bench ran: its memory test asks for more than there is, and the kernel's report of
+// the stress-ng worker it kills for that is the measurement, not a fault. Any other error then -
+// a unit's, a service's - stays.
+func withoutBenchOOM(errs string, window [2]float64) string {
+	if window[1] == 0 {
+		return errs
+	}
+	var kept []string
+	for _, line := range strings.Split(errs, "\n") {
+		var at float64
+		if _, err := fmt.Sscanf(strings.TrimLeft(line, "[ "), "%f]", &at); err == nil &&
+			at >= window[0] && at <= window[1] && strings.Contains(line, " kernel: ") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
