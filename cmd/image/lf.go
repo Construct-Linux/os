@@ -588,16 +588,11 @@ func cornerRadius(img image.Image, x, y, maxR int) (float64, error) {
 	if channelDelta(inside, outside) < lfCornerContrast {
 		return 0, fmt.Errorf("the window (%s) and what is outside its corner (%s) are too alike to see the corner", hexOf(inside), hexOf(outside))
 	}
-	dr, dg, db := float64(inside.R)-float64(outside.R), float64(inside.G)-float64(outside.G), float64(inside.B)-float64(outside.B)
-	den := dr*dr + dg*dg + db*db
-	coverage := func(c color.NRGBA) float64 {
-		return ((float64(c.R)-float64(outside.R))*dr + (float64(c.G)-float64(outside.G))*dg + (float64(c.B)-float64(outside.B))*db) / den
-	}
 	edge := make([]int, maxR)
 	for dy := range maxR {
 		edge[dy] = maxR
 		for dx := range maxR {
-			if coverage(at(img, x+dx, y+dy)) >= 0.5 {
+			if a, _ := coverOf(at(img, x+dx, y+dy), inside, outside); a >= 0.5 {
 				edge[dy] = dx
 				break
 			}
@@ -1350,14 +1345,7 @@ func (l *lf) focus(img image.Image) {
 		return
 	}
 	accent := l.c("dark-accent")
-	sh := s.Toggle.Shadow
-	shOK := false
-	detail := "no box-shadow"
-	if sh != nil {
-		c, _ := parseHex(sh.Color)
-		shOK = sh.Inset && sh.Spread >= 2 && near(c, accent, 0) && c.A == 255
-		detail = fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
-	}
+	shOK, detail := focusRing(s.Toggle.Shadow, accent)
 	l.check("focus", "quick toggle style", shOK, detail+"; want inset, spread >= 2, "+hexOf(accent))
 	before, ok := l.img("shell-quick-settings")
 	if !ok {
@@ -1501,6 +1489,17 @@ func (l *lf) today(img image.Image, days []calendarDay, selected, focus bool) {
 			hexOf(mode), hexOf(centre), selected, t.FG, t.Weight, hexOf(accent), shadow, share*100, lfTodayNoRing*100, focus))
 }
 
+// focusRing is whether St's box-shadow is the key focus's ring - inset, 2 px or more, the accent
+// opaque - and what it is.
+func focusRing(sh *lfShadow, accent color.NRGBA) (bool, string) {
+	if sh == nil {
+		return false, "no box-shadow"
+	}
+	c, _ := parseHex(sh.Color)
+	return sh.Inset && sh.Spread >= 2 && c == color.NRGBA{accent.R, accent.G, accent.B, 255},
+		fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
+}
+
 // dayFocus is F1 on a calendar day that is not today: with the key focus it draws the inset 2px
 // accent ring, in St and on the screen.
 func (l *lf) dayFocus(img image.Image) {
@@ -1521,12 +1520,7 @@ func (l *lf) dayFocus(img image.Image) {
 		return
 	}
 	accent := l.c("dark-accent")
-	ok, detail := false, "no box-shadow"
-	if sh := s.Day.Shadow; sh != nil {
-		c, _ := parseHex(sh.Color)
-		ok = sh.Inset && sh.Spread >= 2 && c == color.NRGBA{accent.R, accent.G, accent.B, 255}
-		detail = fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
-	}
+	ok, detail := focusRing(s.Day.Shadow, accent)
 	share := ringShare(img, l.px(s.Day.rect()), float64(l.k), accent)
 	l.check("focus", "calendar day", ok && share >= lfDayFocusRing,
 		fmt.Sprintf("%q: %s; %.0f%% of its outline the accent, want inset, spread >= 2, %s and >= %.0f%%", s.Label, detail, share*100, hexOf(accent), lfDayFocusRing*100))
