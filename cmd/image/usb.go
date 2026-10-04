@@ -17,6 +17,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/sign"
 	"github.com/Construct-Linux/os/internal/update"
 )
 
@@ -72,7 +73,7 @@ func usb(args []string) error {
 	if err := espTree(root, esp, label, v, strings.Join(extra, " "), filepath.Join(stage, pcrPublic), *sbKeys); err != nil {
 		return err
 	}
-	b, err := json.Marshal(built{Version: version, RootHash: v.rootHash})
+	b, err := json.Marshal(built{Version: version, RootHash: v.rootHash, Test: *test || *broken})
 	if err != nil {
 		return err
 	}
@@ -87,6 +88,9 @@ func usb(args []string) error {
 type built struct {
 	Version  string `json:"version"`
 	RootHash string `json:"root_hash"`
+	// Test is whether the root carries the test layer (an unsafe shell, the harness's hooks) or
+	// the broken release's: such a build is never signed with a release's keys (refuseKMS).
+	Test bool `json:"test"`
 }
 
 const builtFile = "built.json"
@@ -117,17 +121,16 @@ func usbSign(args []string) error {
 	ref := fl.String("key", "", "Secure Boot db's key: a PEM file, or kms:<key>")
 	cert := fl.String("cert", "", "db's certificate (image secureboot-keys)")
 	_ = fl.Parse(args)
-	key, dbCertificate, err := dbSigner(*ref, *cert)
+	stage := filepath.Join(out, "usb")
+	b, err := readBuilt(stage)
 	if err != nil {
 		return err
 	}
-	stage := filepath.Join(out, "usb")
-	raw, err := os.ReadFile(filepath.Join(stage, builtFile))
-	if err != nil {
-		return fmt.Errorf("run image usb first: %w", err)
+	if err := refuseKMS(b, *ref); err != nil {
+		return err
 	}
-	var b built
-	if err := json.Unmarshal(raw, &b); err != nil {
+	key, dbCertificate, err := dbSigner(*ref, *cert)
+	if err != nil {
 		return err
 	}
 	esp := filepath.Join(stage, "esp")
@@ -147,6 +150,25 @@ func usbSign(args []string) error {
 		return err
 	}
 	fmt.Printf("%s: %s; sign SHA256SUMS, then image usb-disk\n", rel, label)
+	return nil
+}
+
+// readBuilt is what the last image usb built in stage.
+func readBuilt(stage string) (built, error) {
+	var b built
+	raw, err := os.ReadFile(filepath.Join(stage, builtFile))
+	if err != nil {
+		return b, fmt.Errorf("run image usb first: %w", err)
+	}
+	return b, json.Unmarshal(raw, &b)
+}
+
+// refuseKMS refuses a release's key (KMS) for a build with the test layer: signed with it, a test
+// build would be a release to every machine.
+func refuseKMS(b built, ref string) error {
+	if b.Test && sign.IsKMS(ref) {
+		return fmt.Errorf("%s is a test build: it is never signed with a release's key (%s)", b.Version, ref)
+	}
 	return nil
 }
 

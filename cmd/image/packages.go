@@ -1,0 +1,241 @@
+package main
+
+import (
+	"bufio"
+	"flag"
+	"fmt"
+	"os"
+	"path/filepath"
+	"regexp"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+// packages/ between builds. The release builder starts from the cache (infra's packages bucket)
+// and builds only the recipes whose package the cache lacks, in the order their build environments
+// need each other; before the cache goes back, every package but its newest build goes, so the
+// cache holds what the recipes make and no history.
+
+// recipe is what packages/ needs to know of a recipe: the package it makes, and the packages its
+// build and its package need, some of which other recipes make.
+type recipe struct {
+	// File is the recipe's name, as task build takes it; Name its package's, which may differ.
+	File, Name, Version string
+	Epoch               int
+	Needs               []string
+}
+
+// apk is the file a recipe's own package is: name-version-r<epoch>.apk.
+func (r recipe) apk() string { return fmt.Sprintf("%s-%s-r%d.apk", r.Name, r.Version, r.Epoch) }
+
+// readRecipe reads a melange recipe's package block (name, version, epoch, runtime dependencies)
+// and its build environment's packages, line by line: no YAML library, and the recipes' layout is
+// melange's own, two spaces a level.
+func readRecipe(file string) (recipe, error) {
+	f, err := os.Open(file)
+	if err != nil {
+		return recipe{}, err
+	}
+	defer f.Close()
+	var r recipe
+	var top, list string
+	s := bufio.NewScanner(f)
+	for s.Scan() {
+		line := s.Text()
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if indent == 0 {
+			top, list = strings.TrimSuffix(trimmed, ":"), ""
+			continue
+		}
+		key, value, isKey := strings.Cut(trimmed, ":")
+		value = strings.Trim(strings.TrimSpace(value), `"'`)
+		switch {
+		case top == "package" && indent == 2 && isKey && key == "name" && r.Name == "":
+			r.Name = value
+		case top == "package" && indent == 2 && isKey && key == "version" && r.Version == "":
+			r.Version = value
+		case top == "package" && indent == 2 && isKey && key == "epoch":
+			r.Epoch, err = strconv.Atoi(value)
+			if err != nil {
+				return recipe{}, fmt.Errorf("%s: epoch %q", file, value)
+			}
+		case (top == "package" && indent == 4 && trimmed == "runtime:") || (top == "environment" && indent == 4 && trimmed == "packages:"):
+			list = top
+		case list != "" && indent == 6 && strings.HasPrefix(trimmed, "- "):
+			// A constraint (name=version, name>=version) names the same package.
+			name := strings.TrimSpace(strings.TrimPrefix(trimmed, "- "))
+			if i := strings.IndexAny(name, "=<>~"); i > 0 {
+				name = name[:i]
+			}
+			r.Needs = append(r.Needs, strings.Trim(name, `"'`))
+		case indent <= 4:
+			list = ""
+		}
+	}
+	if err := s.Err(); err != nil {
+		return recipe{}, err
+	}
+	if r.Name == "" || r.Version == "" {
+		return recipe{}, fmt.Errorf("%s: no package name or version", file)
+	}
+	return r, nil
+}
+
+// missingInOrder are the recipes whose package is not in have, each after the missing recipes
+// its build or package needs: a need is another recipe's when it is that recipe's package or one
+// of its subpackages (its name, then a dash).
+func missingInOrder(recipes []recipe, have map[string]bool) []string {
+	missing := map[string]recipe{}
+	for _, r := range recipes {
+		if !have[r.apk()] {
+			missing[r.File] = r
+		}
+	}
+	// The missing recipe that makes need: the longest package name need is, or starts a
+	// subpackage of.
+	makes := func(need string) string {
+		best, bestLen := "", 0
+		for file, r := range missing {
+			if (need == r.Name || strings.HasPrefix(need, r.Name+"-")) && len(r.Name) > bestLen {
+				best, bestLen = file, len(r.Name)
+			}
+		}
+		return best
+	}
+	names := make([]string, 0, len(missing))
+	for n := range missing {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	var order []string
+	state := map[string]int{} // 1 visiting, 2 done
+	var visit func(string)
+	visit = func(n string) {
+		if state[n] != 0 {
+			// A cycle is left to the order the names sort in: melange takes the package from Wolfi
+			// or the cache meanwhile.
+			return
+		}
+		state[n] = 1
+		for _, need := range missing[n].Needs {
+			if m := makes(need); m != "" && m != n {
+				visit(m)
+			}
+		}
+		state[n] = 2
+		order = append(order, n)
+	}
+	for _, n := range names {
+		visit(n)
+	}
+	return order
+}
+
+var apkName = regexp.MustCompile(`^(.+)-([^-]+)-r([0-9]+)\.apk$`)
+
+// superseded are the APKs in files that a newer build of the same package replaces: a package's
+// every version but its newest, by version and then epoch.
+func superseded(files []string) []string {
+	type build struct {
+		file, version string
+		epoch         int
+	}
+	newest := map[string]build{}
+	var old []string
+	for _, f := range files {
+		m := apkName.FindStringSubmatch(f)
+		if m == nil {
+			continue
+		}
+		e, _ := strconv.Atoi(m[3])
+		b := build{f, m[2], e}
+		cur, ok := newest[m[1]]
+		switch {
+		case !ok:
+			newest[m[1]] = b
+		case versionLess(cur.version, cur.epoch, b.version, b.epoch):
+			old = append(old, cur.file)
+			newest[m[1]] = b
+		default:
+			old = append(old, b.file)
+		}
+	}
+	sort.Strings(old)
+	return old
+}
+
+// versionLess compares two builds' versions segment by segment, numbers as numbers, then epochs.
+func versionLess(a string, ea int, b string, eb int) bool {
+	split := func(s string) []string {
+		return strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune("._+~", r) })
+	}
+	as, bs := split(a), split(b)
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		x, xerr := strconv.Atoi(as[i])
+		y, yerr := strconv.Atoi(bs[i])
+		switch {
+		case xerr == nil && yerr == nil && x != y:
+			return x < y
+		case (xerr != nil || yerr != nil) && as[i] != bs[i]:
+			return as[i] < bs[i]
+		}
+	}
+	if len(as) != len(bs) {
+		return len(as) < len(bs)
+	}
+	return ea < eb
+}
+
+// packagesCmd answers what packages/ lacks (-missing: recipe names, in build order) or takes out
+// what newer builds replaced (-prune: the files it removed, for the index to be made again).
+func packagesCmd(args []string) error {
+	fl := flag.NewFlagSet("packages", flag.ExitOnError)
+	missing := fl.Bool("missing", false, "print the recipes whose package packages/ lacks, in build order")
+	prune := fl.Bool("prune", false, "remove every package's builds but its newest")
+	dir := fl.String("dir", filepath.Join("packages", "x86_64"), "the packages")
+	_ = fl.Parse(args)
+	entries, err := os.ReadDir(*dir)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	var files []string
+	have := map[string]bool{}
+	for _, e := range entries {
+		files = append(files, e.Name())
+		have[e.Name()] = true
+	}
+	switch {
+	case *missing:
+		paths, err := filepath.Glob(filepath.Join("recipes", "*.yaml"))
+		if err != nil {
+			return err
+		}
+		var recipes []recipe
+		for _, p := range paths {
+			r, err := readRecipe(p)
+			if err != nil {
+				return err
+			}
+			r.File = strings.TrimSuffix(filepath.Base(p), ".yaml")
+			recipes = append(recipes, r)
+		}
+		for _, n := range missingInOrder(recipes, have) {
+			fmt.Println(n)
+		}
+	case *prune:
+		for _, f := range superseded(files) {
+			if err := os.Remove(filepath.Join(*dir, f)); err != nil {
+				return err
+			}
+			fmt.Println(f)
+		}
+	default:
+		return fmt.Errorf("packages: -missing or -prune")
+	}
+	return nil
+}

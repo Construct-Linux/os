@@ -203,13 +203,16 @@ tasks:
     desc: "The USB stick, _output/usb/disk.raw: live, installer and update source - a signed release on its construct-update partition. Signed by the keys in SIGNING_HOME, or in KMS on the builder (task usb -- -test for the harness's, -version for a release's)."
     deps: [tools]
     vars:
-      # Each key a reference (internal/sign): KMS when the builder names the keys, files otherwise.
-      # Their public halves are in the repository for KMS (keys/, task keys:kms), beside the files
-      # otherwise.
-      RELEASE_KEY: '{{if .CONSTRUCT_KMS_RELEASE}}kms:{{.CONSTRUCT_KMS_RELEASE}}{{else}}{{.SIGNING_HOME}}/release.pem{{end}}'
-      PCR_KEY: '{{if .CONSTRUCT_KMS_PCR}}kms:{{.CONSTRUCT_KMS_PCR}}{{else}}{{.SIGNING_HOME}}/pcr.pem{{end}}'
-      DB_KEY: '{{if .CONSTRUCT_KMS_SECUREBOOT_DB}}kms:{{.CONSTRUCT_KMS_SECUREBOOT_DB}}{{else}}{{.SIGNING_HOME}}/secureboot/db.pem{{end}}'
-      PUBLIC: '{{if .CONSTRUCT_KMS_RELEASE}}keys{{else}}{{.SIGNING_HOME}}{{end}}'
+      # Each key a reference (internal/sign): KMS for a release (KMS=true, release:build alone sets
+      # it, with the keys the builder names), files in SIGNING_HOME otherwise. Their public halves
+      # are in the repository for KMS (keys/, task keys:kms), beside the files otherwise.
+      RELEASE_KEY: '{{if .KMS}}kms:{{.CONSTRUCT_KMS_RELEASE}}{{else}}{{.SIGNING_HOME}}/release.pem{{end}}'
+      PCR_KEY: '{{if .KMS}}kms:{{.CONSTRUCT_KMS_PCR}}{{else}}{{.SIGNING_HOME}}/pcr.pem{{end}}'
+      DB_KEY: '{{if .KMS}}kms:{{.CONSTRUCT_KMS_SECUREBOOT_DB}}{{else}}{{.SIGNING_HOME}}/secureboot/db.pem{{end}}'
+      PUBLIC: '{{if .KMS}}keys{{else}}{{.SIGNING_HOME}}{{end}}'
+    preconditions:
+      - sh: '{{if .KMS}}test -n "{{.CONSTRUCT_KMS_RELEASE}}" -a -n "{{.CONSTRUCT_KMS_PCR}}" -a -n "{{.CONSTRUCT_KMS_SECUREBOOT_DB}}"{{else}}true{{end}}'
+        msg: KMS=true needs CONSTRUCT_KMS_RELEASE, CONSTRUCT_KMS_PCR and CONSTRUCT_KMS_SECUREBOOT_DB (the builder sets them)
     cmds:
       - mkdir -p _output/release-key/usr/share/construct
       - cp {{.PUBLIC}}/release.pgp _output/release-key/usr/share/construct/release.pgp
@@ -331,3 +334,142 @@ tasks:
     desc: "Open, update or close the issues of what needs a person: a Critical or High a version fixes in the latest release (-grype FILE, Grype's report of its SBOM), a new kernel series, a new GNOME major, Intel's microcode. GITHUB_REPOSITORY and GITHUB_TOKEN; task watch -- -dry-run changes nothing."
     cmds:
       - go run ./cmd/watch run {{.CLI_ARGS}}
+
+  # A release. It is built on an EC2 machine that exists for this one job (infra builder.tf): the
+  # keys are KMS's and never leave it, and nothing is left running after. task release launches
+  # it; the builder runs release:build; a person promotes what testing proved (release:promote).
+
+  release:
+    desc: "Build and publish a release of this commit on an EC2 builder (infra): it runs task release:build and terminates, at 2 hours at the latest. The commit must be pushed; needs AWS credentials. Its log: s3://<logs bucket>/<date>-<instance>/builder.log."
+    vars:
+      COMMIT:
+        sh: git rev-parse HEAD
+    preconditions:
+      - sh: git diff --quiet HEAD
+        msg: commit first - the builder builds the commit, not this checkout
+      - sh: test -n "$(git branch -r --contains {{.COMMIT}})"
+        msg: push first - the builder clones the commit from GitHub
+    cmds:
+      - >-
+        aws ec2 run-instances --launch-template LaunchTemplateName=construct-builder
+        --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=construct-builder},{Key=construct:role,Value=builder},{Key=construct:commit,Value={{.COMMIT}}},{Key=construct:job,Value=release:build}]'
+        --query 'Instances[0].InstanceId' --output text
+
+  release:build:
+    desc: "On the builder (CONSTRUCT_BUILDER): the cache, the recipes it lacks, the kernel, firmware and QEMU it lacks, the harness on a test build, then the release - built with the next vYYYYMMDD.N, signed with KMS - scanned, published, offered to testing, and the cache back."
+    preconditions:
+      - sh: test -n "$CONSTRUCT_BUILDER"
+        msg: release:build runs on the builder (task release launches one)
+    vars:
+      VERSION:
+        sh: go run ./cmd/image release-version
+    cmds:
+      - echo "release {{.VERSION}} of $(git rev-parse --short HEAD)"
+      - aws secretsmanager get-secret-value --secret-id construct/melange-key --query SecretString --output text > melange.rsa
+      - chmod 600 melange.rsa
+      - go run ./cmd/image cache -pull
+      - for r in $(go run ./cmd/image packages -missing); do task build -- $r || exit 1; done
+      - test -f _output/kernel/bzImage || task kernel NPROC=$(nproc)
+      - test -f _output/firmware/firmware.tar || task firmware
+      - docker image inspect construct-qemu >/dev/null 2>&1 || task harness-qemu
+      - task: rootfs
+      - task: initrd
+      # The harness on a test build of the same commit: a release whose checks fail is not built.
+      - task: test:usb
+      - task: test:lifecycle
+      - task: usb
+        vars: {CLI_ARGS: '-version {{.VERSION}}', KMS: 'true'}
+      - task: scan
+      - task: release:publish
+        vars: {VERSION: '{{.VERSION}}'}
+      # Every package's builds but its newest go, and the index is made again before the cache
+      # takes packages/ back.
+      - go run ./cmd/image packages -prune
+      - >-
+        docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}}
+        index --signing-key melange.rsa -o packages/x86_64/APKINDEX.tar.gz packages/x86_64/*.apk
+      - go run ./cmd/image cache -push
+
+  release:publish:
+    desc: "Publish the release task usb just built (VERSION): its files, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>, the USB stick in the dist bucket, and the release in the testing channel's index. On the builder."
+    requires: {vars: [VERSION]}
+    vars:
+      REL: _output/release/{{.VERSION}}
+      PUB: _output/publish
+      DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
+    cmds:
+      - rm -rf {{.PUB}} && mkdir -p {{.PUB}}
+      - cp {{.REL}}/* keys/release.pgp {{.PUB}}/
+      - go run ./cmd/image packages-list -o {{.PUB}}/packages.txt
+      - >-
+        docker run --rm -u {{.UID}} -v {{.ROOT_DIR}}/_output/usb/root:/root:ro -v {{.ROOT_DIR}}/{{.PUB}}:/out
+        {{.SYFT_IMAGE}} -q dir:/root -o spdx-json=/out/sbom.spdx.json
+      - cp _output/scan/grype.json {{.PUB}}/grype.json
+      - cp _output/scan/report.md {{.PUB}}/grype.md
+      - >-
+        prev=$(GH_TOKEN=$(construct-github-token) gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""');
+        prevpkgs="";
+        if [ -n "$prev" ]; then GH_TOKEN=$(construct-github-token) gh release download "$prev" -p packages.txt -D _output/prev --clobber && prevpkgs=_output/prev/packages.txt; fi;
+        go run ./cmd/image release-notes -version {{.VERSION}} -prev "$prev" -packages {{.PUB}}/packages.txt -prev-packages "$prevpkgs" -o {{.PUB}}/notes.md
+      - >-
+        GH_TOKEN=$(construct-github-token) gh release create v{{.VERSION}} --target $(git rev-parse HEAD)
+        --title "CONSTRUCT {{.VERSION}}" --notes-file {{.PUB}}/notes.md
+        $(find {{.PUB}} -maxdepth 1 -type f ! -name notes.md | sort)
+      # The stick, compressed, for a new machine: larger than a GitHub asset may be. The three
+      # newest are kept.
+      - xz -T0 -6 -c _output/usb/disk.raw > _output/construct_{{.VERSION}}.raw.xz
+      - (cd _output && sha256sum construct_{{.VERSION}}.raw.xz > construct_{{.VERSION}}.raw.xz.sha256)
+      - aws s3 cp --only-show-errors _output/construct_{{.VERSION}}.raw.xz {{.DIST}}/usb/
+      - aws s3 cp --only-show-errors _output/construct_{{.VERSION}}.raw.xz.sha256 {{.DIST}}/usb/
+      - >-
+        for old in $(aws s3 ls {{.DIST}}/usb/ | awk '/\.raw\.xz$/ {print $4}' | sort -t_ -k2 -V | head -n -3); do
+        aws s3 rm --only-show-errors {{.DIST}}/usb/$old && aws s3 rm --only-show-errors {{.DIST}}/usb/$old.sha256; done
+      - task: release:offer
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: testing, FROM: '{{.REL}}/SHA256SUMS'}
+
+  release:offer:
+    internal: true
+    desc: Add VERSION, from the SHA256SUMS FROM, to CHANNEL's index, sign the index with the release key and upload it.
+    requires: {vars: [VERSION, CHANNEL, FROM]}
+    vars:
+      OUT: _output/channel/{{.CHANNEL}}
+      DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
+    cmds:
+      - rm -rf {{.OUT}} && mkdir -p {{.OUT}}
+      - aws s3 cp --only-show-errors {{.DIST}}/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current || true
+      - go run ./cmd/image channel-index -current {{.OUT}}/current -add {{.FROM}} -version {{.VERSION}} -o {{.OUT}}
+      - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE | default "alias/construct-release"}} -pubring keys/release.pgp -dir {{.OUT}}
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/{{.CHANNEL}}/SHA256SUMS
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/{{.CHANNEL}}/SHA256SUMS.gpg
+
+  release:promote:
+    desc: "Offer a release testing proved to the next channel: task release:promote VERSION=20261004.1 [FROM=testing] [TO=stable]. Signs with the KMS release key: AWS credentials that may, and CONSTRUCT_DIST_BUCKET (infra output buckets.dist)."
+    requires: {vars: [VERSION, CONSTRUCT_DIST_BUCKET]}
+    vars:
+      FROM: '{{.FROM | default "testing"}}'
+      TO: '{{.TO | default "stable"}}'
+    cmds:
+      - mkdir -p _output/channel
+      - aws s3 cp --only-show-errors s3://{{.CONSTRUCT_DIST_BUCKET}}/{{.FROM}}/SHA256SUMS _output/channel/{{.FROM}}.from
+      - task: release:offer
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: '{{.TO}}', FROM: '_output/channel/{{.FROM}}.from'}
+
+  release:withdraw:
+    desc: "Take a release out of a channel, so machines that have not taken it never will: task release:withdraw VERSION=20261004.1 CHANNEL=stable. Signs with the KMS release key; CONSTRUCT_DIST_BUCKET."
+    requires: {vars: [VERSION, CHANNEL, CONSTRUCT_DIST_BUCKET]}
+    vars:
+      OUT: _output/channel/{{.CHANNEL}}
+      DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
+    cmds:
+      - rm -rf {{.OUT}} && mkdir -p {{.OUT}}
+      - aws s3 cp --only-show-errors {{.DIST}}/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current
+      - go run ./cmd/image channel-index -current {{.OUT}}/current -withdraw -version {{.VERSION}} -o {{.OUT}}
+      - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE | default "alias/construct-release"}} -pubring keys/release.pgp -dir {{.OUT}}
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/{{.CHANNEL}}/SHA256SUMS
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/{{.CHANNEL}}/SHA256SUMS.gpg
+
+  cache:seed:
+    desc: "Once, from a machine that has built everything: put its packages/, kernel, firmware and QEMU in the builder's cache (CONSTRUCT_PACKAGES_BUCKET, infra output buckets.packages), so the first release does not build them all."
+    requires: {vars: [CONSTRUCT_PACKAGES_BUCKET]}
+    cmds:
+      - go run ./cmd/image cache -push

@@ -166,6 +166,24 @@ runs a command as root in a booted VM; the harness saves failed units' logs in `
 -- -append <option> [-append <option>...]` adds kernel options for one build; a disk's journal can be read
 with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shell` gets a shell there.
 
+## Releases
+
+- **A release is built on the release builder, never on a person's machine**: `task release`
+  launches an EC2 instance for the pushed commit (infra repository, Construct-Linux/infra), which
+  runs `task release:build` - the cache, the harness on a test build of the same commit
+  (`test:usb`, `test:lifecycle`), the release signed with KMS, `task scan` - and terminates, at
+  two hours at the latest. A check that fails stops the release.
+- **A test build is never signed with a release's keys**: `image usb` records the test layer in
+  `built.json` and `sign-pcr`/`usb-sign` refuse a KMS key for it.
+- **Versions are CalVer**, `vYYYYMMDD.N` (`image release-version`); files carry them without the v.
+- **Machines follow channels** (`construct channel`): a channel is a signed SHA256SUMS of its
+  newest releases at the update CDN, each file a redirect to its GitHub Release asset. A release
+  goes to `testing`; `task release:promote` offers it to `stable`; `task release:withdraw` takes a
+  bad one out before machines take it.
+- **Issues are where problems go**: `.github/labels.json` (`task labels`), the issue forms ask for
+  `construct report`, and the weekly `watch` workflow files security fixes and big dependency
+  changes, nothing routine (cmd/watch).
+
 ## Traps already fallen into
 
 - **A scripted edit that matches nothing changes nothing, silently** (Python `str.replace`, `sed`

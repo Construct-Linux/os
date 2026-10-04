@@ -50,6 +50,13 @@ func signPCR(args []string) error {
 	ref := fl.String("key", "", "the PCR key, RSA-2048: a PEM file, or kms:<key>")
 	_ = fl.Parse(args)
 	stage := filepath.Join(out, "usb")
+	b, err := readBuilt(stage)
+	if err != nil {
+		return err
+	}
+	if err := refuseKMS(b, *ref); err != nil {
+		return err
+	}
 	key, err := rsaSigner(*ref)
 	if err != nil {
 		return err
