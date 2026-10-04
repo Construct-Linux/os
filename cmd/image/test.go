@@ -306,6 +306,9 @@ func test(args []string) error {
 	}
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
 	if len(want) == 0 || want["views"] {
+		if err := g.fixClock(); err != nil {
+			r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
+		}
 		r.gtkViews(v, g, l)
 		r.shellViews(v, g, l)
 		r.desktopViews(v, g, l, sc)
@@ -818,4 +821,16 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf) {
 	time.Sleep(time.Second)
 	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Nautilus.desktop")?.request_quit(); true`)
 	time.Sleep(2 * time.Second)
+}
+
+// viewsTime is the moment the views are shot at: the calendar's month and its today, the date
+// heading and the clock's width - which the date menu hangs centred under - are each the same in
+// every run, so a view differs from its needle by what changed in the image and not by the day.
+// Within the hour the clock keeps its width: the top bar's figures are tabular.
+const viewsTime = "2026-10-05 10:10:00"
+
+// fixClock sets the guest's clock to viewsTime, NTP off so nothing sets it back.
+func (g *guest) fixClock() error {
+	_, err := g.run(`timedatectl set-ntp false && timedatectl set-time "`+viewsTime+`"`, "")
+	return err
 }

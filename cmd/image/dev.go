@@ -204,6 +204,9 @@ func themeDev(args []string) error {
 	r := &report{dir: dir, user: "live", scale: d.Scale}
 	time.Sleep(time.Second)
 	l := newLF(r, v, g)
+	if err := g.fixClock(); err != nil {
+		r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
+	}
 	r.shellViews(v, g, l)
 	if *withType {
 		r.typeMatrix(v, g, l)

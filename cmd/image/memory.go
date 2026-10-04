@@ -26,7 +26,7 @@ func (g *guest) startMemWatch() {
 
 // memSample is one of the guest's samples.
 type memSample struct {
-	at                 float64
+	at                float64
 	used, swap, total int
 }
 
