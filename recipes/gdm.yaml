@@ -1,7 +1,7 @@
 package:
   name: gdm
   version: "51.0"
-  epoch: 2
+  epoch: 3
   description: GNOME display manager
   copyright:
     - license: GPL-2.0-or-later
@@ -50,6 +50,15 @@ pipeline:
   - uses: patch
     with:
       patches: gdm/pam-base.patch
+
+  # A session whose display has not registered 10 s after the session did - a live stick's first
+  # boot, every file read cold - makes GDM quit Plymouth without the transition. Hiding the splash
+  # activates Plymouth's VT, the login VT, and GDM's VT watch puts a greeter there, in front of the
+  # live session (measured: the shell took 11 s, the greeter came at 33 s). The registered session
+  # holds its VT, so the timeout quits with the transition, as the display's own registration does.
+  - uses: patch
+    with:
+      patches: gdm/plymouth-timeout-retain-splash.patch
 
   # x11-support off: gnome-shell 51 runs only as a Wayland compositor. selinux off: it is not in
   # the image. Plymouth on: GDM takes the screen over from the boot splash without a flash.

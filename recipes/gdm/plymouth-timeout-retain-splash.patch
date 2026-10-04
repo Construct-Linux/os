@@ -1,0 +1,16 @@
+--- a/daemon/gdm-manager.c
++++ b/daemon/gdm-manager.c
+@@ -215,8 +215,12 @@
+ 
+         manager->plymouth_quit_timeout_id = 0;
+ 
++        /* The session registered: its compositor holds the seat's VT and draws over the splash.
++         * Quitting without the transition hides the splash, and Plymouth's renderer activates its
++         * own VT to do it - the login VT, where GDM then starts a greeter in front of the session.
++         */
+         if (manager->plymouth_is_running) {
+-                plymouth_quit_without_transition ();
++                plymouth_quit_with_transition ();
+                 manager->plymouth_is_running = FALSE;
+         }
+ }
