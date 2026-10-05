@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/ProtonMail/go-crypto/openpgp"
-	"github.com/ProtonMail/go-crypto/openpgp/packet"
 )
 
 // The OpenPGP a release needs, written here because a KMS key is a crypto.Signer and OpenPGP
@@ -97,9 +96,6 @@ func ReadKey(s crypto.Signer, pubring []byte) (*Key, error) {
 	return nil, fmt.Errorf("sign: the release keyring has no key %x", []byte(pub))
 }
 
-// Fingerprint is the key's v4 fingerprint.
-func (k *Key) Fingerprint() [20]byte { return k.fpr }
-
 // Export is the transferable public key: the key, the user ID, and its positive self-signature,
 // flagged to certify and sign, which is what import-pubring.pgp holds.
 func (k *Key) Export(uid string) ([]byte, error) {
@@ -160,17 +156,6 @@ func (k *Key) signature(kind byte, sub []byte, data io.Reader) ([]byte, error) {
 	b.Write(mpi(raw[:32]))
 	b.Write(mpi(raw[32:]))
 	return packetOf(tagSignature, b.Bytes()), nil
-}
-
-// Verify checks sig over data against pubring with an OpenPGP implementation other than this
-// one: what was signed is checked before it is published.
-func Verify(pubring []byte, data io.Reader, sig []byte) error {
-	keys, err := openpgp.ReadKeyRing(bytes.NewReader(pubring))
-	if err != nil {
-		return err
-	}
-	_, err = openpgp.CheckDetachedSignature(keys, data, bytes.NewReader(sig), &packet.Config{})
-	return err
 }
 
 // hashedKey is a public key body as fingerprints and certifications hash it.

@@ -104,8 +104,8 @@ func TestReadKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.Fingerprint() != k.Fingerprint() {
-		t.Errorf("fingerprint %x, exported %x", again.Fingerprint(), k.Fingerprint())
+	if again.fpr != k.fpr {
+		t.Errorf("fingerprint %x, exported %x", again.fpr, k.fpr)
 	}
 	_, other, _ := testKey(t)
 	if _, err := ReadKey(priv, other); err == nil {

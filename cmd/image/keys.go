@@ -130,7 +130,12 @@ func signSums(ref, pubringFile, sums string) error {
 	if err != nil {
 		return err
 	}
-	if err := sign.Verify(pubring, bytes.NewReader(data), sig); err != nil {
+	// Checked as a machine checks it (internal/update): the keyring it carries, Ed25519 alone.
+	keys, err := update.ParseKeyring(pubring)
+	if err != nil {
+		return fmt.Errorf("%s: %w", pubringFile, err)
+	}
+	if err := update.Verify(keys, data, sig); err != nil {
 		return fmt.Errorf("the signature over %s does not verify: %w", sums, err)
 	}
 	return os.WriteFile(sums+".gpg", sig, 0o644)

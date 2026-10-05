@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Construct-Linux/os/internal/sign"
+	"github.com/Construct-Linux/os/internal/update"
 )
 
 // The test CDN serves each channel's signed index, and a release file as a redirect to the file,
@@ -65,7 +66,11 @@ func TestUpdateCDN(t *testing.T) {
 		t.Errorf("stable's index:\n%s", stable)
 	}
 	sig := get("/testing/SHA256SUMS.gpg")
-	if err := sign.Verify(pubring, strings.NewReader(get("/testing/SHA256SUMS")), []byte(sig)); err != nil {
+	keys, err := update.ParseKeyring(pubring)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := update.Verify(keys, []byte(get("/testing/SHA256SUMS")), []byte(sig)); err != nil {
 		t.Errorf("testing's index does not verify: %v", err)
 	}
 	if got := get("/testing/construct_20261004.2.efi"); got != "kernel 20261004.2" || c.redirects.Load() != 1 {
