@@ -29,6 +29,8 @@ enable fwupd-refresh.timer
 enable docker.socket
 # Smart cards and NFC readers: pcscd starts when a program first asks for a card.
 enable pcscd.socket
+# 1Password, where it was installed (construct 1password), kept current.
+enable construct-1password-update.timer
 # The firewall, before any network.
 enable nftables.service
 # Tailscale's agent: idle until someone logs in, then the machine is on their tailnet from boot.
