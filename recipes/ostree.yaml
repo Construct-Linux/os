@@ -1,7 +1,7 @@
 package:
   name: ostree
   version: "2026.4"
-  epoch: 0
+  epoch: 1
   description: Operating system and container binary deployment and upgrades
   copyright:
     - license: LGPL-2.0-or-later
@@ -21,7 +21,9 @@ environment:
       - libarchive-dev
       - libassuan-dev
       - libgpg-error-dev
-      - openssl-dev
+      # 4.0: Wolfi's curl-dev and libarchive-dev need it, and openssl-dev (3.x) installs the same
+      # headers - the two cannot share a build environment.
+      - openssl-4.0-dev
       - systemd-dev
       - util-linux-dev
       - xz-dev
