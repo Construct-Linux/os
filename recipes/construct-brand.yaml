@@ -9,7 +9,7 @@
 # palette's outputs are the ones brand commits and holds to its sources (its task check).
 package:
   name: construct-brand
-  version: 0_git20261004
+  version: 0_git20261005
   epoch: 0
   description: CONSTRUCT's logo, boot animation, wallpaper and palette
   copyright:
@@ -27,7 +27,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/brand
       branch: main
-      expected-commit: 19b8696c038c4736bf2ecffc52f40c565b062d50
+      expected-commit: 27298ee8d39a2ca6678033fbcccb6a9cbaa1cdbe
 
   - runs: |
       d=${{targets.destdir}}/usr/share
