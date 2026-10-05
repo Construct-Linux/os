@@ -28,17 +28,63 @@ not come up.
 
 Developer tools ship with it: Docker and containerd, gcc and make, git.
 
-## Use it
+## Install
+
+A release is a USB stick image at <https://dl.constructlinux.org>, listed in its `SHA256SUMS`,
+signed with the release key at <https://keys.constructlinux.org/release.pgp> (Ed25519,
+`FCDF AC7C 34B3 3EAC E30E FDC1 FB37 0710 D987 11C3`). The image is 6.7 GB written; a stick of
+16 GB or more, whose rest the live system takes for its `/var` - 32 GB is comfortable.
+
+**Download and check it.** On a Mac, `brew install gnupg xz` first.
+
+```sh
+v=20261005.1
+curl -fLO https://dl.constructlinux.org/construct_$v.raw.xz
+curl -fLO https://dl.constructlinux.org/SHA256SUMS
+curl -fLO https://dl.constructlinux.org/SHA256SUMS.gpg
+curl -fL https://keys.constructlinux.org/release.pgp | gpg --import
+gpg --verify SHA256SUMS.gpg SHA256SUMS                     # Good signature, the fingerprint above
+grep " construct_$v.raw.xz\$" SHA256SUMS | shasum -a 256 -c  # construct_$v.raw.xz: OK
+```
+
+**Write it to the stick**, which loses everything on it. Find the stick's device, and be sure of
+it - the wrong one is another disk erased.
+
+On Linux (`lsblk` names it, `/dev/sdX`; unmount its partitions if the desktop mounted them):
+
+```sh
+xz -dc construct_$v.raw.xz | sudo dd of=/dev/sdX bs=4M oflag=direct conv=fsync status=progress
+```
+
+On a Mac (`diskutil list` names it, `/dev/diskN`; the raw device `rdiskN` writes faster):
+
+```sh
+diskutil unmountDisk /dev/diskN
+xz -dc construct_$v.raw.xz | sudo dd of=/dev/rdiskN bs=4m
+diskutil eject /dev/diskN
+```
+
+Or with a window: GNOME Disks (*Restore Disk Image*) and balenaEtcher take the `.raw.xz` as it
+is.
+
+**Boot it.** Put the machine's Secure Boot in setup mode first (below), choose the stick in its
+boot menu (F12 on a ThinkPad), and install from the live session.
+
+## Build it
 
 Everything is a task (`task --list`); the build needs Docker, Go, QEMU and swtpm. What it fetches
-from outside is pinned in `build/versions.env`.
+from outside is pinned in `build/versions.env`; the host tools a release is built with, in
+`build/host.env`.
 
 ```sh
 task keygen:release                      # once: the release key, outside this repository
 task usb                                  # -> _output/usb/disk.raw
 ```
 
-Write `_output/usb/disk.raw` to a USB stick and boot it. The stick is three things:
+## The stick
+
+Write a release's stick, or `_output/usb/disk.raw`, to a USB stick and boot it. The stick is three
+things:
 
 - **live**: the desktop runs from it, as the user `live`; its first boot makes `/var` in the rest
   of the stick.

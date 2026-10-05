@@ -320,7 +320,7 @@ func writeNotes(w io.Writer, in notesInput) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "An installed machine takes it by itself from its channel, and starts it at its next reboot.")
 	if in.DLURL != "" {
-		fmt.Fprintf(w, "A new machine: the USB stick, %s/construct_%s.raw.xz, in the signed %s/SHA256SUMS.\n", in.DLURL, in.Version, in.DLURL)
+		fmt.Fprintf(w, "A new machine: the USB stick, %s/construct_%s.raw.xz, in the signed %s/SHA256SUMS; how to check it and write it to a stick is the README's Install.\n", in.DLURL, in.Version, in.DLURL)
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "Every file is in `SHA256SUMS`, signed with the release key (`release.pgp`):")
