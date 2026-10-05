@@ -32,7 +32,8 @@ falling back from a release that does not come up.
   /`apko` by hand for something a task does; add or fix the task instead.
 - **Decisions are Go, not shell.** `cmd/image` (disks, the initrd, the harness, releases),
   `cmd/construct` (install, boot-check, the live user, the GTK 4 theme and Ghostty's seed),
-  `internal/` (gpt, update, account).
+  `internal/` (one package per concern, its implementation behind the API the commands call; a
+  command keeps its flags, its files and the order of its steps).
   The Taskfile runs steps and containers, in short blocks; a unit's `ExecStart=` stays a command,
   not a program.
 - **Keep looking for performance and for security**, and measure both. Every change is a chance

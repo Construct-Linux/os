@@ -9,6 +9,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Construct-Linux/os/internal/pixels"
 )
 
 func solid(w, h int, c color.NRGBA) *image.NRGBA {
@@ -106,7 +108,7 @@ func TestCompareNeedle(t *testing.T) {
 	// A clock whose text changed width: the needle drew it at x 10-20, this run at x 30-45. Each
 	// side's measured actors leave out where it was there, so neither place differs.
 	clockRef := solid(100, 100, ink)
-	fill(clockRef, lfRect{10, 80, 10, 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
+	fill(clockRef, pixels.Rect{X: 10, Y: 80, W: 10, H: 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
 	clockRefPath := filepath.Join(dir, "clock-ref.png")
 	if err := writePNG(clockRefPath, clockRef); err != nil {
 		t.Fatal(err)
@@ -114,7 +116,7 @@ func TestCompareNeedle(t *testing.T) {
 	clockSpec := filepath.Join(dir, "clock-ref.json")
 	writeSpec(t, clockSpec, tSpec(true, nil, []needleRect{{X: 8, Y: 78, W: 14, H: 12, Why: "the clock"}}))
 	moved := solid(100, 100, ink)
-	fill(moved, lfRect{30, 80, 15, 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
+	fill(moved, pixels.Rect{X: 30, Y: 80, W: 15, H: 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
 	movedPath := shot("moved", moved)
 	if share, err := compareNeedle(clockRefPath, movedPath, clockSpec, diff); err != nil || share == 0 {
 		t.Errorf("the run's clock, unmeasured: %v, %v", share, err)
@@ -282,7 +284,7 @@ func TestNoiseOf(t *testing.T) {
 		t.Fatal(err)
 	}
 	img := solid(100, 100, tG)
-	fill(img, lfRect{50, 0, 50, 100}, tAccent)
+	fill(img, pixels.Rect{X: 50, Y: 0, W: 50, H: 100}, tAccent)
 	img.SetNRGBA(10, 10, tRing)
 	n := noiseOf(img, &pal)
 	// The boundary's column, and the speck's left, top and own pixel.

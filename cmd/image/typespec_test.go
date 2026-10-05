@@ -2,10 +2,14 @@ package main
 
 import (
 	"image"
+	"image/color"
+	"math"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Construct-Linux/os/internal/pixels"
 )
 
 // What GTK's Wayland backend makes of the keys, and that a setting GTK did not hear fails.
@@ -54,21 +58,15 @@ func TestTypeSettings(t *testing.T) {
 // to whole pixels.
 func TestItemRect(t *testing.T) {
 	it := specimenItem{X: 16, Y: 10.5, W: 100.25, H: 14}
-	if r := itemRect(lfRect{0, 0, 1440, 900}, it, 2); r != image.Rect(32, 21, 233, 49) {
+	if r := itemRect(pixels.Rect{X: 0, Y: 0, W: 1440, H: 900}, it, 2); r != image.Rect(32, 21, 233, 49) {
 		t.Errorf("%v", r)
 	}
-	if r := itemRect(lfRect{5, 7, 100, 100}, it, 1); r != image.Rect(21, 17, 122, 32) {
+	if r := itemRect(pixels.Rect{X: 5, Y: 7, W: 100, H: 100}, it, 1); r != image.Rect(21, 17, 122, 32) {
 		t.Errorf("framed %v", r)
 	}
 }
 
-func TestHconcatAndDiffer(t *testing.T) {
-	a := inkMap{w: 2, h: 1, a: []float64{1, 0.5}}
-	b := inkMap{w: 1, h: 2, a: []float64{0.25, 0.75}}
-	c := hconcat([]inkMap{a, b}, 1)
-	if c.w != 5 || c.h != 2 || c.at(0, 0) != 1 || c.at(1, 0) != 0.5 || c.at(3, 0) != 0.25 || c.at(3, 1) != 0.75 || c.at(0, 1) != 0 {
-		t.Errorf("%+v", c)
-	}
+func TestPixelsDiffer(t *testing.T) {
 	x, y := solid(20, 20, tInk), solid(20, 20, tInk)
 	y.SetNRGBA(3, 3, tAccent)
 	y.SetNRGBA(15, 15, tAccent)
@@ -80,7 +78,7 @@ func TestHconcatAndDiffer(t *testing.T) {
 // The page: its tables, a crop for each line, and one image pixel to one device pixel.
 func TestTypePage(t *testing.T) {
 	row := typeRow{Setting: "default", Theme: "dark", Family: "sans", Weight: 400, Size: 9,
-		Stems: stemStats{Edge: 0.8, Peak: 1}, Crop: "type/crops/default/dark-sans-400-9.png"}
+		Stems: pixels.StemStats{Edge: 0.8, Peak: 1}, Crop: "type/crops/default/dark-sans-400-9.png"}
 	rep := typeReport{Screen: "2880x1800", Scale: 2, Settings: typeSettings[:1], Rows: []typeRow{row},
 		Shell: []typeShell{{Setting: "default", Item: "top bar clock", Crop: "type/crops/default/shell-top bar clock.png"}},
 		Same:  []typeSame{{Setting: "auto-none", Same: "default", Differ: 3}}}
@@ -98,6 +96,24 @@ func TestTypePage(t *testing.T) {
 	}
 }
 
+var (
+	tTypeFG = color.NRGBA{0xE6, 0xED, 0xF2, 255}
+	tTypeBG = color.NRGBA{0x17, 0x20, 0x28, 255}
+)
+
+// ink draws the rectangle [x0,x1) x [y0,y1), in fractional pixels, with each pixel covered by
+// exactly the area inside it: a renderer's antialiasing without its rounding.
+func ink(img *image.NRGBA, x0, y0, x1, y1 float64) {
+	for y := int(math.Floor(y0)); y < int(math.Ceil(y1)); y++ {
+		for x := int(math.Floor(x0)); x < int(math.Ceil(x1)); x++ {
+			a := (math.Min(x1, float64(x+1)) - math.Max(x0, float64(x))) * (math.Min(y1, float64(y+1)) - math.Max(y0, float64(y)))
+			blendAt(img, x, y, tTypeFG, a)
+		}
+	}
+}
+
+func near64(a, b, tol float64) bool { return math.Abs(a-b) <= tol }
+
 // measureSpecimen measures and crops each row it was told of, and leaves the pangram alone.
 func TestMeasureSpecimen(t *testing.T) {
 	img := solid(400, 100, tTypeBG)
@@ -107,13 +123,13 @@ func TestMeasureSpecimen(t *testing.T) {
 	ink(img, 50, 20, 53, 40)   // I
 	ink(img, 250, 26, 256, 40) // x
 	ink(img, 265, 26, 271, 40) // z
-	fg, bg := hexOf(tTypeFG), hexOf(tTypeBG)
+	fg, bg := pixels.Hex(tTypeFG), pixels.Hex(tTypeBG)
 	item := func(kind string, x float64) specimenItem {
 		return specimenItem{Theme: "dark", FG: fg, BG: bg, Family: "sans", Weight: 400, Size: 9, Kind: kind, X: x, Y: 8, W: 90, H: 20}
 	}
 	run := specimenRun{Items: []specimenItem{item("stems", 5), item("align", 120), item("word", 150), item("pangram", 0)}}
 	dir := t.TempDir()
-	rows, err := measureSpecimen(img, run, lfRect{}, 2, "default", dir)
+	rows, err := measureSpecimen(img, run, pixels.Rect{}, 2, "default", dir)
 	if err != nil || len(rows) != 1 {
 		t.Fatalf("%v %v", rows, err)
 	}

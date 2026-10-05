@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
 
@@ -28,14 +29,8 @@ const (
 	// lfBlankShare is the share of one colour past which a screenshot drew nothing: the most
 	// uniform view drawn, Text Editor maximized, is 92% its surface (test:usb, 2026-10-05).
 	lfBlankShare = 0.98
-	// A 1 px ring, against its token: antialiasing on a fractional allocation blends a little of
-	// either neighbour into it.
-	lfRingTol = 3
 	// How far either side of an extent's edge the ring is looked for.
 	lfRingReach = 2
-	// A 1 px ring on a curve's apex is antialiased against what is outside it: it still covers at
-	// least this much of its pixel (the top bar's end over the light desk: 0.975). Less is no ring.
-	lfRingCover = 0.85
 	// Text and tinted fills, against their tokens: glyph hinting and alpha rounding.
 	lfTextTol = 4
 	// The accent, counted: what is within this of it on every channel reads as the accent, the
@@ -58,9 +53,6 @@ const (
 	// overview's search section a control's radius plus its 12 of padding.
 	lfQuickSettingsRadius  = 40
 	lfSearchSectionPadding = 12
-	// A window's corner is fitted from the blend between it and what is outside it: closer than
-	// this on every channel, the half-way crossing it looks for is noise.
-	lfCornerContrast = 8
 	// Cyan pixels a view may show: filled toggles and today put 12,982 and 862 there, measured;
 	// tinted, only the text and the marks are the accent.
 	lfAccentQuickSettings = 2500
@@ -88,8 +80,6 @@ const (
 	// The top bar's buttons: the spacing scale's step either side (Orchis eb033362); Activities, half
 	// of it, is exempt (bars).
 	lfPanelHPadding = 6
-	// A line across a pane covers this much of its row (or column); text and icons never do.
-	lfRuleShare = 0.9
 	// The focus ring's A/B: of the pixels focus changed, at least this share are the accent, and
 	// at least this many changed at all (a 2 px ring around a toggle is ~800).
 	lfFocusAccentShare = 0.5
@@ -153,7 +143,7 @@ func parseLFPalette(b []byte) (lfPalette, error) {
 		var n float64
 		switch {
 		case json.Unmarshal(v, &s) == nil:
-			if c, ok := parseHex(s); ok && strings.HasPrefix(s, "#") {
+			if c, ok := pixels.ParseHex(s); ok && strings.HasPrefix(s, "#") {
 				p.colors[k] = c
 			} else {
 				p.strs[k] = s
@@ -219,41 +209,13 @@ func (p lfPalette) composite(c color.NRGBA) bool {
 			if grey(ink) && grey(ground) {
 				continue
 			}
-			if a, res := coverOf(c, ink, ground); a > 0 && res <= 1 {
+			if a, res := pixels.CoverOf(c, ink, ground); a > 0 && res <= 1 {
 				return true
 			}
 		}
 	}
 	return false
 }
-
-// parseHex reads #RGB, #RGBA, #RRGGBB or #RRGGBBAA.
-func parseHex(s string) (color.NRGBA, bool) {
-	h := strings.TrimPrefix(strings.TrimSpace(s), "#")
-	if len(h) == 3 || len(h) == 4 {
-		var b strings.Builder
-		for _, r := range h {
-			b.WriteRune(r)
-			b.WriteRune(r)
-		}
-		h = b.String()
-	}
-	if len(h) == 6 {
-		h += "ff"
-	}
-	if len(h) != 8 {
-		return color.NRGBA{}, false
-	}
-	v, err := strconv.ParseUint(h, 16, 32)
-	if err != nil {
-		return color.NRGBA{}, false
-	}
-	return color.NRGBA{uint8(v >> 24), uint8(v >> 16), uint8(v >> 8), uint8(v)}, true
-}
-
-func hexOf(c color.NRGBA) string { return fmt.Sprintf("#%02X%02X%02X", c.R, c.G, c.B) }
-
-func hexaOf(c color.NRGBA) string { return fmt.Sprintf("#%02X%02X%02X%02X", c.R, c.G, c.B, c.A) }
 
 // lfPrelude is the JavaScript every lf Eval starts with: look(actor) is what St resolved for an
 // actor - its extents on the screen, background, foreground, borders, radii, box-shadow, font,
@@ -381,15 +343,15 @@ type lfShadow struct {
 	Inset  bool    `json:"inset"`
 }
 
-func (l *lfLook) rect() lfRect { return lfRect{l.X, l.Y, l.W, l.H} }
+func (l *lfLook) rect() pixels.Rect { return pixels.Rect{X: l.X, Y: l.Y, W: l.W, H: l.H} }
 
 // surface is what the actor's own background composites to over its ancestors', from the bottom
 // of the stage up: the colour its text is read against.
 func (l *lfLook) surface(ground color.NRGBA) color.NRGBA {
 	s := ground
 	for _, h := range l.Chain {
-		if c, ok := parseHex(h); ok {
-			s = over(c, s)
+		if c, ok := pixels.ParseHex(h); ok {
+			s = pixels.Over(c, s)
 		}
 	}
 	return s
@@ -398,9 +360,9 @@ func (l *lfLook) surface(ground color.NRGBA) color.NRGBA {
 // ink is the actor's foreground as drawn: its colour, at its alpha and its ancestors' opacity,
 // over its surface.
 func (l *lfLook) ink(ground color.NRGBA) color.NRGBA {
-	fg, _ := parseHex(l.FG)
+	fg, _ := pixels.ParseHex(l.FG)
 	fg.A = uint8(math.Round(float64(fg.A) * l.Opacity))
-	return over(fg, l.surface(ground))
+	return pixels.Over(fg, l.surface(ground))
 }
 
 // lf carries a run's look-and-feel checks: the palette they measure against, and what one view
@@ -474,7 +436,9 @@ func (l *lf) img(name string) (image.Image, bool) {
 }
 
 // px is a stage rectangle in the screenshot's pixels.
-func (l *lf) px(r lfRect) lfRect { return lfRect{r.X * l.k, r.Y * l.k, r.W * l.k, r.H * l.k} }
+func (l *lf) px(r pixels.Rect) pixels.Rect {
+	return pixels.Rect{X: r.X * l.k, Y: r.Y * l.k, W: r.W * l.k, H: r.H * l.k}
+}
 
 // view runs the checks that measure the view just shot.
 func (l *lf) view(name string) {
@@ -489,15 +453,15 @@ func (l *lf) view(name string) {
 	// A screen of one colour drew nothing - a display blanked, a window not yet painted - and
 	// every check below that asks for what is not there (no accent, not Chrome's grey, the boot's
 	// black) would pass on it.
-	if c, share := modeColor(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}); share > lfBlankShare {
-		l.check("drawn", name, false, fmt.Sprintf("%.1f%% of the screen is %s: nothing drawn to measure", share*100, hexOf(c)))
+	if c, share := pixels.ModeColor(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}); share > lfBlankShare {
+		l.check("drawn", name, false, fmt.Sprintf("%.1f%% of the screen is %s: nothing drawn to measure", share*100, pixels.Hex(c)))
 		return
 	}
 	l.sweep(name, img)
 	switch name {
 	case "desktop":
 		l.bars(name, img, true)
-		n := countNear(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
+		n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
 		l.check("accent", "desktop", n == 0, fmt.Sprintf("%d px of the accent, want none", n))
 	case "shell-settings-light":
 		l.bars(name, img, false)
@@ -551,15 +515,15 @@ const lfScaledDesktop = "desktop-scale-150"
 // action), and the full accent - dark's and light's - no more than lfAccentShareMax of it.
 func (l *lf) sweep(name string, img image.Image) {
 	cols := []color.NRGBA{l.c("dark-accent"), l.c("light-accent")}
-	all := lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}
-	areas := solidAreas(img, all, cols, l.k)
+	all := pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}
+	areas := pixels.SolidAreas(img, all, cols, lfSweepTol, lfMarkStroke*l.k, lfMarkDisc*l.k)
 	var where []string
 	for _, a := range areas {
 		where = append(where, a.String())
 	}
 	l.check("accent areas", name, len(areas) <= lfAccentAreasMax,
 		fmt.Sprintf("%d solid accent areas larger than a mark, want <= %d: %v", len(areas), lfAccentAreasMax, where))
-	share := accentShare(img, all, cols, lfSweepTol)
+	share := pixels.Share(img, all, cols, lfSweepTol)
 	l.check("accent share", name, share <= lfAccentShareMax,
 		fmt.Sprintf("%.2f%% of the view the full accent, want <= %.1f%%", share*100, lfAccentShareMax*100))
 	l.r.viewSweep(name, areas, share)
@@ -577,22 +541,22 @@ func (l *lf) surfaceCheck(name string, a *lfLook, img image.Image, want color.NR
 		l.check("surface", name, false, "not on the screen")
 		return
 	}
-	bg, _ := parseHex(a.BG)
+	bg, _ := pixels.ParseHex(a.BG)
 	r := l.px(a.rect())
 	k := l.k
 	// Inside the ring and clear of the corners' curve.
 	rad := max(min(a.H/2, maxRadius(a)), 3) * k
-	inner := lfRect{r.X + rad, r.Y + 3*k, r.W - 2*rad, r.H - 6*k}
-	mode, share := modeColor(img, inner)
-	l.check("surface", name, bg == color.NRGBA{want.R, want.G, want.B, 255} && near(mode, want, lfSurfaceTol),
-		fmt.Sprintf("St %s, drawn %s over %.0f%% of %v; want %s opaque", a.BG, hexOf(mode), share*100, inner, hexOf(want)))
+	inner := pixels.Rect{X: r.X + rad, Y: r.Y + 3*k, W: r.W - 2*rad, H: r.H - 6*k}
+	mode, share := pixels.ModeColor(img, inner)
+	l.check("surface", name, bg == color.NRGBA{want.R, want.G, want.B, 255} && pixels.Near(mode, want, lfSurfaceTol),
+		fmt.Sprintf("St %s, drawn %s over %.0f%% of %v; want %s opaque", a.BG, pixels.Hex(mode), share*100, inner, pixels.Hex(want)))
 	ring := l.c("dark-border")
 	stRing := len(a.BW) == 4 && len(a.BC) == 4
 	for i := range 4 {
 		if !stRing {
 			break
 		}
-		c, _ := parseHex(a.BC[i])
+		c, _ := pixels.ParseHex(a.BC[i])
 		stRing = a.BW[i] == 1 && c == color.NRGBA{ring.R, ring.G, ring.B, 255}
 	}
 	// Each edge's midpoint and its outward normal.
@@ -607,21 +571,21 @@ func (l *lf) surfaceCheck(name string, a *lfLook, img image.Image, want color.NR
 	}
 	var missed, weak []string
 	for _, e := range edges {
-		p, hit := ringHit(img, e.x, e.y, e.nx, e.ny, lfRingReach*k, ring)
+		p, hit := pixels.RingHit(img, e.x, e.y, e.nx, e.ny, lfRingReach*k, ring)
 		if !hit {
-			missed = append(missed, fmt.Sprintf("%s %s", e.name, hexOf(at(img, e.x, e.y))))
+			missed = append(missed, fmt.Sprintf("%s %s", e.name, pixels.Hex(pixels.At(img, e.x, e.y))))
 			continue
 		}
 		o := image.Pt(p.X+e.nx*lfEdgeGap*k, p.Y+e.ny*lfEdgeGap*k)
 		if !o.In(img.Bounds()) {
 			continue
 		}
-		if c := contrast(at(img, p.X, p.Y), at(img, o.X, o.Y)); c < lfEdgeContrast {
-			weak = append(weak, fmt.Sprintf("%s %.2f against %s", e.name, c, hexOf(at(img, o.X, o.Y))))
+		if c := pixels.Contrast(pixels.At(img, p.X, p.Y), pixels.At(img, o.X, o.Y)); c < lfEdgeContrast {
+			weak = append(weak, fmt.Sprintf("%s %.2f against %s", e.name, c, pixels.Hex(pixels.At(img, o.X, o.Y))))
 		}
 	}
 	l.check("ring", name, stRing && len(missed) == 0,
-		fmt.Sprintf("St %v px of %v; edges without %s: %v", a.BW, a.BC, hexOf(ring), missed))
+		fmt.Sprintf("St %v px of %v; edges without %s: %v", a.BW, a.BC, pixels.Hex(ring), missed))
 	l.check("edge", name, len(weak) == 0,
 		fmt.Sprintf("ring against %d px outside, want >= %.1f: %v", lfEdgeGap, lfEdgeContrast, weak))
 }
@@ -738,8 +702,8 @@ func (l *lf) labelsCheck(name string, labels []*lfLook) {
 			continue
 		}
 		n++
-		if c := contrast(t.ink(ground), t.surface(ground)); c < lfTextContrast {
-			low = append(low, fmt.Sprintf("%q %s on %s %.2f", t.Text, hexOf(t.ink(ground)), hexOf(t.surface(ground)), c))
+		if c := pixels.Contrast(t.ink(ground), t.surface(ground)); c < lfTextContrast {
+			low = append(low, fmt.Sprintf("%q %s on %s %.2f", t.Text, pixels.Hex(t.ink(ground)), pixels.Hex(t.surface(ground)), c))
 		}
 	}
 	l.check("text", name, n > 0 && len(low) == 0, fmt.Sprintf("%d labels; under %.1f: %v", n, lfTextContrast, low))
@@ -776,10 +740,10 @@ func (l *lf) quickSettings(img image.Image) {
 	if s.Box != nil {
 		l.menuY["quick settings"] = s.Box.Y
 	}
-	n := countNear(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
+	n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
 	most := lfAccentQuickSettings * l.k * l.k
 	l.check("accent", "quick settings", n < most, fmt.Sprintf("%d px of the accent, want under %d", n, most))
-	fill := tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
+	fill := pixels.Tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
 	ground := l.c("neutral-e")
 	var on, off int
 	var bad, discs []string
@@ -792,24 +756,24 @@ func (l *lf) quickSettings(img image.Image) {
 		discs = append(discs, l.disc(img, t)...)
 		if t.Checked {
 			on++
-			mode, _ := modeColor(img, l.px(t.Look.rect()).inset(4*l.k, 4*l.k))
-			if !near(mode, fill, lfTextTol) {
-				bad = append(bad, fmt.Sprintf("%q on is %s, not the tint %s", t.Title.Text, hexOf(mode), hexOf(fill)))
+			mode, _ := pixels.ModeColor(img, l.px(t.Look.rect()).Inset(4*l.k, 4*l.k))
+			if !pixels.Near(mode, fill, lfTextTol) {
+				bad = append(bad, fmt.Sprintf("%q on is %s, not the tint %s", t.Title.Text, pixels.Hex(mode), pixels.Hex(fill)))
 			}
-			if c := t.Title.ink(ground); !near(c, l.c("dark-accent-text"), lfTextTol) || countNear(img, l.px(t.Title.rect()), l.c("dark-accent-text"), lfAccentTitleTol) == 0 {
-				bad = append(bad, fmt.Sprintf("%q on titled %s, not the accent", t.Title.Text, hexOf(c)))
+			if c := t.Title.ink(ground); !pixels.Near(c, l.c("dark-accent-text"), lfTextTol) || pixels.CountNear(img, l.px(t.Title.rect()), l.c("dark-accent-text"), lfAccentTitleTol) == 0 {
+				bad = append(bad, fmt.Sprintf("%q on titled %s, not the accent", t.Title.Text, pixels.Hex(c)))
 			}
-			if t.Subtitle != nil && !near(t.Subtitle.ink(ground), l.c("dark-text"), lfTextTol) {
-				bad = append(bad, fmt.Sprintf("%q on subtitled %s, not text: muted never goes on a tint", t.Title.Text, hexOf(t.Subtitle.ink(ground))))
+			if t.Subtitle != nil && !pixels.Near(t.Subtitle.ink(ground), l.c("dark-text"), lfTextTol) {
+				bad = append(bad, fmt.Sprintf("%q on subtitled %s, not text: muted never goes on a tint", t.Title.Text, pixels.Hex(t.Subtitle.ink(ground))))
 			}
 			continue
 		}
 		off++
-		if c := t.Title.ink(ground); !near(c, l.c("dark-text"), lfTextTol) {
-			bad = append(bad, fmt.Sprintf("%q off titled %s, not text", t.Title.Text, hexOf(c)))
+		if c := t.Title.ink(ground); !pixels.Near(c, l.c("dark-text"), lfTextTol) {
+			bad = append(bad, fmt.Sprintf("%q off titled %s, not text", t.Title.Text, pixels.Hex(c)))
 		}
-		if t.Subtitle != nil && !near(t.Subtitle.ink(ground), l.c("dark-muted"), lfTextTol) {
-			bad = append(bad, fmt.Sprintf("%q off subtitled %s, not muted", t.Title.Text, hexOf(t.Subtitle.ink(ground))))
+		if t.Subtitle != nil && !pixels.Near(t.Subtitle.ink(ground), l.c("dark-muted"), lfTextTol) {
+			bad = append(bad, fmt.Sprintf("%q off subtitled %s, not muted", t.Title.Text, pixels.Hex(t.Subtitle.ink(ground))))
 		}
 	}
 	l.check("toggles", "quick settings", on > 0 && off > 0 && len(bad) == 0, fmt.Sprintf("%d on, %d off: %v", on, off, bad))
@@ -825,7 +789,7 @@ func (l *lf) disc(img image.Image, t quickToggle) []string {
 	if t.Icon == nil || t.Icon.W == 0 {
 		return []string{fmt.Sprintf("%q has no icon", t.Title.Text)}
 	}
-	bg, _ := parseHex(t.Icon.BG)
+	bg, _ := pixels.ParseHex(t.Icon.BG)
 	accent := l.c("dark-accent")
 	if !t.Checked {
 		if bg.A != 0 {
@@ -835,13 +799,13 @@ func (l *lf) disc(img image.Image, t quickToggle) []string {
 	}
 	var bad []string
 	if bg != (color.NRGBA{accent.R, accent.G, accent.B, 255}) {
-		bad = append(bad, fmt.Sprintf("%q on: icon ground %s, not %s", t.Title.Text, t.Icon.BG, hexOf(accent)))
+		bad = append(bad, fmt.Sprintf("%q on: icon ground %s, not %s", t.Title.Text, t.Icon.BG, pixels.Hex(accent)))
 	}
 	if abs(t.Icon.W-lfDiscSize) > 1 || abs(t.Icon.H-lfDiscSize) > 1 || maxRadius(t.Icon)*2 < t.Icon.H {
 		bad = append(bad, fmt.Sprintf("%q on: icon %dx%d radius %v, not a %d px disc", t.Title.Text, t.Icon.W, t.Icon.H, t.Icon.Radius, lfDiscSize))
 	}
 	r := l.px(t.Icon.rect())
-	if share := float64(countNear(img, r, accent, lfAccentTol)) / float64(max(1, r.W*r.H)); share < lfDiscShare {
+	if share := float64(pixels.CountNear(img, r, accent, lfAccentTol)) / float64(max(1, r.W*r.H)); share < lfDiscShare {
 		bad = append(bad, fmt.Sprintf("%q on: %.0f%% of its icon drawn the accent, want >= %.0f%%", t.Title.Text, share*100, lfDiscShare*100))
 	}
 	return bad
@@ -866,13 +830,13 @@ func (l *lf) focus(img image.Image) {
 	}
 	accent := l.c("dark-accent")
 	shOK, detail := focusRing(s.Toggle.Shadow, accent)
-	l.check("focus", "quick toggle style", shOK, detail+"; want inset, spread >= 2, "+hexOf(accent))
+	l.check("focus", "quick toggle style", shOK, detail+"; want inset, spread >= 2, "+pixels.Hex(accent))
 	before, ok := l.img("shell-quick-settings")
 	if !ok {
 		return
 	}
-	r := l.px(s.Toggle.rect()).inset(-2*l.k, -2*l.k)
-	drawn, share := focusDiff(before, img, r, accent, lfFocusRingTol)
+	r := l.px(s.Toggle.rect()).Inset(-2*l.k, -2*l.k)
+	drawn, share := pixels.FocusDiff(before, img, r, needleChannelDelta, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
 	l.check("focus", "quick toggle drawn", drawn >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px of the accent drawn in %v against shell-quick-settings, %.0f%% of the change the accent; want >= %d and >= %.0f%%",
@@ -894,14 +858,14 @@ func (l *lf) submenu(img image.Image) {
 		return
 	}
 	g := l.c("neutral-g")
-	bg, _ := parseHex(s.Well.BG)
+	bg, _ := pixels.ParseHex(s.Well.BG)
 	rad := maxRadius(s.Well)
-	mode, share := modeColor(img, l.px(s.Well.rect()).inset(max(rad, 3)*l.k, max(rad/2, 3)*l.k))
-	area := lightSlab(img, l.px(s.Box.rect()), lfSlabLightness)
+	mode, share := pixels.ModeColor(img, l.px(s.Well.rect()).Inset(max(rad, 3)*l.k, max(rad/2, 3)*l.k))
+	area := pixels.LightSlab(img, l.px(s.Box.rect()), lfSlabLightness)
 	most := lfSlabMaxArea * l.k * l.k
-	l.check("submenu", "quick settings", bg == color.NRGBA{g.R, g.G, g.B, 255} && near(mode, g, lfSurfaceTol) && area <= most,
+	l.check("submenu", "quick settings", bg == color.NRGBA{g.R, g.G, g.B, 255} && pixels.Near(mode, g, lfSurfaceTol) && area <= most,
 		fmt.Sprintf("well St %s, drawn %s over %.0f%% (want %s); largest area lighter than %.0f%%: %d px, want <= %d",
-			s.Well.BG, hexOf(mode), share*100, hexOf(g), lfSlabLightness*100, area, most))
+			s.Well.BG, pixels.Hex(mode), share*100, pixels.Hex(g), lfSlabLightness*100, area, most))
 }
 
 // calendarDay is a day of the month's grid as the checks see it.
@@ -940,7 +904,7 @@ func (l *lf) calendar(img image.Image) {
 	if s.Box != nil {
 		l.menuY["calendar"] = s.Box.Y
 	}
-	n := countNear(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
+	n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
 	most := lfAccentCalendar * l.k * l.k
 	l.check("accent", "calendar", n < most, fmt.Sprintf("%d px of the accent, want under %d", n, most))
 	l.today(img, s.Days, s.Selected, s.Focus)
@@ -959,8 +923,8 @@ func (l *lf) calendar(img image.Image) {
 		} else {
 			month++
 		}
-		if c := d.Look.ink(ground); !near(c, want, lfTextTol) {
-			off = append(off, fmt.Sprintf("%q (other month %v, weekend %v) %s, want %s", d.Label, d.Other, d.Weekend, hexOf(c), hexOf(want)))
+		if c := d.Look.ink(ground); !pixels.Near(c, want, lfTextTol) {
+			off = append(off, fmt.Sprintf("%q (other month %v, weekend %v) %s, want %s", d.Label, d.Other, d.Weekend, pixels.Hex(c), pixels.Hex(want)))
 		}
 	}
 	l.check("text", "calendar days", month > 0 && len(off) == 0, fmt.Sprintf("%d days of the month; off: %v", month, off))
@@ -969,7 +933,7 @@ func (l *lf) calendar(img image.Image) {
 		l.check("text", "calendar heading", false, "no day label")
 	} else {
 		c := s.Heading.ink(ground)
-		l.check("text", "calendar heading", near(c, l.c("dark-text"), lfTextTol), fmt.Sprintf("%q %s, want %s", s.Heading.Text, hexOf(c), hexOf(l.c("dark-text"))))
+		l.check("text", "calendar heading", pixels.Near(c, l.c("dark-text"), lfTextTol), fmt.Sprintf("%q %s, want %s", s.Heading.Text, pixels.Hex(c), pixels.Hex(l.c("dark-text"))))
 	}
 	l.labelsCheck("calendar", s.Labels)
 	if q, ok := l.menuY["quick settings"]; ok && s.Box != nil {
@@ -993,20 +957,20 @@ func (l *lf) today(img image.Image, days []calendarDay, selected, focus bool) {
 	h := l.c("neutral-h")
 	centre := h
 	if selected {
-		centre = tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
+		centre = pixels.Tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
 	}
-	mode, _ := modeColor(img, l.px(t.rect()).inset(4*l.k, 4*l.k))
-	share := ringShare(img, l.px(t.rect()), float64(l.k), l.c("dark-accent"))
-	fg, _ := parseHex(t.FG)
+	mode, _ := pixels.ModeColor(img, l.px(t.rect()).Inset(4*l.k, 4*l.k))
+	share := pixels.RingShare(img, l.px(t.rect()), float64(l.k), l.c("dark-accent"), lfRingAccentTol)
+	fg, _ := pixels.ParseHex(t.FG)
 	accent := l.c("dark-accent-text")
 	shadow := t.Shadow != nil && !strings.HasSuffix(t.Shadow.Color, "00")
-	ok := near(mode, centre, lfTextTol) && t.Weight == 700 && fg == color.NRGBA{accent.R, accent.G, accent.B, 255}
+	ok := pixels.Near(mode, centre, lfTextTol) && t.Weight == 700 && fg == color.NRGBA{accent.R, accent.G, accent.B, 255}
 	if !focus {
 		ok = ok && !shadow && share < lfTodayNoRing
 	}
 	l.check("today", "calendar", ok,
 		fmt.Sprintf("centre %s, want %s (selected %v); %s %d, want %s 700; box-shadow %v, %.0f%% of its outline the accent, want none and under %.0f%% (focused %v)",
-			hexOf(mode), hexOf(centre), selected, t.FG, t.Weight, hexOf(accent), shadow, share*100, lfTodayNoRing*100, focus))
+			pixels.Hex(mode), pixels.Hex(centre), selected, t.FG, t.Weight, pixels.Hex(accent), shadow, share*100, lfTodayNoRing*100, focus))
 }
 
 // focusRing is whether St's box-shadow is the key focus's ring - inset, 2 px or more, the accent
@@ -1015,7 +979,7 @@ func focusRing(sh *lfShadow, accent color.NRGBA) (bool, string) {
 	if sh == nil {
 		return false, "no box-shadow"
 	}
-	c, _ := parseHex(sh.Color)
+	c, _ := pixels.ParseHex(sh.Color)
 	return sh.Inset && sh.Spread >= 2 && c == color.NRGBA{accent.R, accent.G, accent.B, 255},
 		fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
 }
@@ -1041,17 +1005,17 @@ func (l *lf) dayFocus(img image.Image) {
 	}
 	accent := l.c("dark-accent")
 	ok, detail := focusRing(s.Day.Shadow, accent)
-	share := ringShare(img, l.px(s.Day.rect()), float64(l.k), accent)
+	share := pixels.RingShare(img, l.px(s.Day.rect()), float64(l.k), accent, lfRingAccentTol)
 	l.check("focus", "calendar day", ok && share >= lfDayFocusRing,
-		fmt.Sprintf("%q: %s; %.0f%% of its outline the accent, want inset, spread >= 2, %s and >= %.0f%%", s.Label, detail, share*100, hexOf(accent), lfDayFocusRing*100))
+		fmt.Sprintf("%q: %s; %.0f%% of its outline the accent, want inset, spread >= 2, %s and >= %.0f%%", s.Label, detail, share*100, pixels.Hex(accent), lfDayFocusRing*100))
 }
 
 // ground is the overview's and the app grid's: the boot's black.
 func (l *lf) ground(view string, img image.Image) {
 	// Left of the overview's content and under the top bar, at any scale.
 	x, y := 5*l.k, 100*l.k
-	c := at(img, x, y)
-	l.check("ground", view, near(c, l.c("brand-boot"), lfSurfaceTol), fmt.Sprintf("(%d,%d) is %s, want %s", x, y, hexOf(c), hexOf(l.c("brand-boot"))))
+	c := pixels.At(img, x, y)
+	l.check("ground", view, pixels.Near(c, l.c("brand-boot"), lfSurfaceTol), fmt.Sprintf("(%d,%d) is %s, want %s", x, y, pixels.Hex(c), pixels.Hex(l.c("brand-boot"))))
 }
 
 // overviewCard is the overview's group and the active workspace's card, as St has them.
@@ -1080,14 +1044,14 @@ func (l *lf) overview(img image.Image) {
 		return
 	}
 	if group != nil {
-		l.check("ground", "overviewGroup", group.BG == hexaOf(l.c("brand-boot")), "St "+group.BG)
+		l.check("ground", "overviewGroup", group.BG == pixels.Hexa(l.c("brand-boot")), "St "+group.BG)
 	}
 	if c == nil || c.W == 0 {
 		l.check("mark", "overview card", false, "no workspace card on the screen")
 		return
 	}
 	card := l.px(c.rect())
-	box, ok := markBox(img, card.inset(8*l.k, 8*l.k))
+	box, ok := pixels.MarkBox(img, card.Inset(8*l.k, 8*l.k), markLevel)
 	if !ok {
 		l.check("mark", "overview card", false, "no mark in the card "+card.String())
 		return
@@ -1113,15 +1077,15 @@ func (l *lf) overviewLight(img image.Image) {
 		return
 	}
 	if group != nil {
-		l.check("ground", "overviewGroup light", group.BG == hexaOf(l.c("brand-boot")), "St "+group.BG)
+		l.check("ground", "overviewGroup light", group.BG == pixels.Hexa(l.c("brand-boot")), "St "+group.BG)
 	}
 	if c == nil || c.W == 0 {
 		l.check("card", "overview-light", false, "no workspace card on the screen")
 		return
 	}
-	mode, share := modeColor(img, l.px(c.rect()).inset(8*l.k, 8*l.k))
-	l.check("card", "overview-light", lightness(mode) >= lfCardLight,
-		fmt.Sprintf("the card is %s over %.0f%% of it, lightness %.2f; want the light wallpaper, >= %.2f", hexOf(mode), share*100, lightness(mode), lfCardLight))
+	mode, share := pixels.ModeColor(img, l.px(c.rect()).Inset(8*l.k, 8*l.k))
+	l.check("card", "overview-light", pixels.Lightness(mode) >= lfCardLight,
+		fmt.Sprintf("the card is %s over %.0f%% of it, lightness %.2f; want the light wallpaper, >= %.2f", pixels.Hex(mode), share*100, pixels.Lightness(mode), lfCardLight))
 }
 
 func (l *lf) search(img image.Image) {
@@ -1152,7 +1116,7 @@ func (l *lf) lock(img image.Image) {
 	if s.Group == nil {
 		l.check("ground", "lock", false, "no lockDialogGroup")
 	} else {
-		l.check("ground", "lock", s.Group.BG == hexaOf(l.c("brand-boot")), "St "+s.Group.BG)
+		l.check("ground", "lock", s.Group.BG == pixels.Hexa(l.c("brand-boot")), "St "+s.Group.BG)
 	}
 	const want = "resource:///org/gnome/shell/theme/gnome-shell-dark.css"
 	l.check("theme", "lock", s.URI == want, fmt.Sprintf("the shell's default stylesheet is %q, want %s (orchis-theme-shell's gnome-shell-theme.gresource)", s.URI, want))
@@ -1160,27 +1124,27 @@ func (l *lf) lock(img image.Image) {
 		l.check("type", "lock clock", false, "no clock on the lock screen")
 		return
 	}
-	fg, _ := parseHex(s.Time.FG)
+	fg, _ := pixels.ParseHex(s.Time.FG)
 	// The label's top rows are its padding, clear of the digits.
-	bg, _ := modeColor(img, l.px(lfRect{s.Time.X, s.Time.Y, s.Time.W, 3}))
-	ratio, err := strokeRatio(img, l.px(s.Time.rect()), fg, bg)
+	bg, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: s.Time.X, Y: s.Time.Y, W: s.Time.W, H: 3}))
+	ratio, err := pixels.StrokeRatio(img, l.px(s.Time.rect()), fg, bg)
 	l.check("type", "lock clock", err == nil && ratio < lfClockStemRatio,
 		fmt.Sprintf("stem/cap %.3f, want under %.2f (regular, not bold)%s", ratio, lfClockStemRatio, errText(err)))
 }
 
 // focusWindow is the window with the focus: its frame on the screen and its class.
-func (l *lf) focusWindow() (lfRect, string, error) {
+func (l *lf) focusWindow() (pixels.Rect, string, error) {
 	var s struct {
 		Win *struct{ X, Y, W, H int }
 		Cls string
 	}
 	if err := l.g.evalJSON(`const w = global.display.focus_window; return {win: lfWindow(w), cls: w?.get_wm_class() ?? ''};`, &s); err != nil {
-		return lfRect{}, "", err
+		return pixels.Rect{}, "", err
 	}
 	if s.Win == nil {
-		return lfRect{}, "", errors.New("no window has the focus")
+		return pixels.Rect{}, "", errors.New("no window has the focus")
 	}
-	return lfRect{s.Win.X, s.Win.Y, s.Win.W, s.Win.H}, s.Cls, nil
+	return pixels.Rect{X: s.Win.X, Y: s.Win.Y, W: s.Win.W, H: s.Win.H}, s.Cls, nil
 }
 
 // installer is S3 on the installer's window: its body is f, its outer ring the border on the left
@@ -1194,20 +1158,20 @@ func (l *lf) installer(img image.Image) {
 	k := l.k
 	// The body: 21 px around the screen's middle, three quarters down, where the window's body is
 	// whatever the screen's size (measured at (640, 600) of 1280x800).
-	body, _ := modeColor(img, l.px(lfRect{l.stageW/2 - 10, l.stageH*3/4 - 10, 21, 21}))
+	body, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: l.stageW/2 - 10, Y: l.stageH*3/4 - 10, W: 21, H: 21}))
 	ring := l.c("dark-border")
 	p := l.px(r)
-	_, left := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, lfRingReach*k, ring)
-	_, bottom := ringHit(img, p.X+p.W/2, p.Y+p.H, 0, 1, lfRingReach*k, ring)
-	head, _ := modeColor(img, l.px(lfRect{r.X + 8, r.Y + 3, r.W - 16, 8}))
-	l.check("window", "installer", near(body, l.c("neutral-f"), lfSurfaceTol) && left && bottom && near(head, l.c("neutral-g"), lfSurfaceTol),
+	_, left := pixels.RingHit(img, p.X-1, p.Y+p.H/2, -1, 0, lfRingReach*k, ring)
+	_, bottom := pixels.RingHit(img, p.X+p.W/2, p.Y+p.H, 0, 1, lfRingReach*k, ring)
+	head, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: r.X + 8, Y: r.Y + 3, W: r.W - 16, H: 8}))
+	l.check("window", "installer", pixels.Near(body, l.c("neutral-f"), lfSurfaceTol) && left && bottom && pixels.Near(head, l.c("neutral-g"), lfSurfaceTol),
 		fmt.Sprintf("frame %v: body %s (want %s), ring left %v (%s) bottom %v (%s), want %s; headerbar %s (want %s)",
-			r, hexOf(body), hexOf(l.c("neutral-f")), left, hexOf(at(img, p.X-1, p.Y+p.H/2)), bottom, hexOf(at(img, p.X+p.W/2, p.Y+p.H)),
-			hexOf(ring), hexOf(head), hexOf(l.c("neutral-g"))))
+			r, pixels.Hex(body), pixels.Hex(l.c("neutral-f")), left, pixels.Hex(pixels.At(img, p.X-1, p.Y+p.H/2)), bottom, pixels.Hex(pixels.At(img, p.X+p.W/2, p.Y+p.H)),
+			pixels.Hex(ring), pixels.Hex(head), pixels.Hex(l.c("neutral-g"))))
 	// E3: where g meets f, dark draws one solid line, the border (THEMING, Lines).
-	y, c, ok := hRule(img, p.X+24*k, p.X+p.W-24*k, p.Y+12*k, p.Y+p.H/3)
-	l.check("rule", "installer headerbar", ok && near(c, ring, lfRingTol),
-		fmt.Sprintf("the line under the headerbar at y %d (found %v) is %s, want %s", y, ok, hexOf(c), hexOf(ring)))
+	y, c, ok := pixels.HRule(img, p.X+24*k, p.X+p.W-24*k, p.Y+12*k, p.Y+p.H/3, lfSurfaceTol)
+	l.check("rule", "installer headerbar", ok && pixels.Near(c, ring, pixels.RingTol),
+		fmt.Sprintf("the line under the headerbar at y %d (found %v) is %s, want %s", y, ok, pixels.Hex(c), pixels.Hex(ring)))
 }
 
 // settingsLight is S5, S6 and C11 on Settings in the light scheme, from the pixels: the window on
@@ -1219,10 +1183,10 @@ func (l *lf) settingsLight(img image.Image) {
 		l.check("radius", "settings-light window", false, "no Settings window"+errText(err))
 		return
 	}
-	r := lfRect{s.Win.X, s.Win.Y, s.Win.W, s.Win.H}
+	r := pixels.Rect{X: s.Win.X, Y: s.Win.Y, W: s.Win.W, H: s.Win.H}
 	want := int(l.pal.nums["shape-radius-surface"])
 	p := l.px(r)
-	rad, err := cornerRadius(img, p.X, p.Y, 2*want*l.k)
+	rad, err := pixels.CornerRadius(img, p.X, p.Y, 2*want*l.k)
 	rad /= float64(l.k)
 	l.check("radius", "settings-light window", err == nil && math.Abs(rad-float64(want)) <= lfRadiusTol,
 		fmt.Sprintf("its top-left corner fits a %.2f px radius, want %d%s", rad, want, errText(err)))
@@ -1232,18 +1196,18 @@ func (l *lf) settingsLight(img image.Image) {
 
 // lightFrame is a light window's pixel probes at r, a stage rectangle, named for surface: the desk
 // beside it, no bright accent inside it, and the ring line outside it (S5, C2).
-func (l *lf) lightFrame(surface string, img image.Image, r lfRect) {
+func (l *lf) lightFrame(surface string, img image.Image, r pixels.Rect) {
 	desk, muted := l.c("light-desk"), l.c("light-muted")
 	k := l.k
 	// The desk: the widest stretch of desktop beside the window, clear of its shadow and the bars.
-	side := lfRect{8, 60, r.X - 40, l.stageH - 120}
+	side := pixels.Rect{X: 8, Y: 60, W: r.X - 40, H: l.stageH - 120}
 	if right := l.stageW - (r.X + r.W) - 48; right > side.W {
-		side = lfRect{r.X + r.W + 40, 60, right, l.stageH - 120}
+		side = pixels.Rect{X: r.X + r.W + 40, Y: 60, W: right, H: l.stageH - 120}
 	}
 	side = l.px(side)
-	ground, share := modeColor(img, side)
-	l.check("desk", surface, near(ground, desk, lfSurfaceTol),
-		fmt.Sprintf("the desktop %s over %.0f%% of %v, want %s", hexOf(ground), share*100, side, hexOf(desk)))
+	ground, share := pixels.ModeColor(img, side)
+	l.check("desk", surface, pixels.Near(ground, desk, lfSurfaceTol),
+		fmt.Sprintf("the desktop %s over %.0f%% of %v, want %s", pixels.Hex(ground), share*100, side, pixels.Hex(desk)))
 	l.lightAccent(surface+" window", img, r)
 	// The ring line, light.muted at its alpha over what is outside the window there - the shadow
 	// darkens the desk under it, so the nominal value holds only on a bare desk.
@@ -1255,41 +1219,41 @@ func (l *lf) lightFrame(surface string, img image.Image, r lfRect) {
 		name         string
 		x, y, nx, ny int
 	}{{"top", p.X + p.W/2, p.Y - 1, 0, -1}, {"left", p.X - 1, p.Y + p.H/2, -1, 0}} {
-		got, out := at(img, e.x, e.y), at(img, e.x+e.nx*k, e.y+e.ny*k)
-		if w := tint(muted, out, ringA); !near(got, w, lfRingTol) {
-			edges = append(edges, fmt.Sprintf("%s %s, want %s over %s", e.name, hexOf(got), hexOf(w), hexOf(out)))
+		got, out := pixels.At(img, e.x, e.y), pixels.At(img, e.x+e.nx*k, e.y+e.ny*k)
+		if w := pixels.Tint(muted, out, ringA); !pixels.Near(got, w, pixels.RingTol) {
+			edges = append(edges, fmt.Sprintf("%s %s, want %s over %s", e.name, pixels.Hex(got), pixels.Hex(w), pixels.Hex(out)))
 		}
 	}
 	l.check("ring", surface+" window", len(edges) == 0,
-		fmt.Sprintf("the line outside the window, light.muted at %.0f%% (%s on a bare desk): %v", ringA*100, hexOf(tint(muted, desk, ringA)), edges))
+		fmt.Sprintf("the line outside the window, light.muted at %.0f%% (%s on a bare desk): %v", ringA*100, pixels.Hex(pixels.Tint(muted, desk, ringA)), edges))
 }
 
 // lightPanes is Settings' light window with a sidebar at r: the shelf, the selected row the sheet,
 // and the headerbar's rule one line across both panes (S5, S6, C11).
-func (l *lf) lightPanes(img image.Image, r lfRect) {
+func (l *lf) lightPanes(img image.Image, r pixels.Rect) {
 	muted := l.c("light-muted")
 	k := l.k
 	p := l.px(r)
 	// The panes: the separator is the first line down the window's left half.
 	midY := p.Y + p.H/3
-	sep, _, ok := vRule(img, p.X+60*k, p.X+p.W/2, midY, midY+p.H/6, k)
+	sep, _, ok := pixels.VRule(img, p.X+60*k, p.X+p.W/2, midY, midY+p.H/6, k, lfSurfaceTol)
 	if !ok {
 		l.check("panes", "settings-light", false, "no pane separator in the window's left half")
 		return
 	}
-	shelf, _ := modeColor(img, lfRect{p.X + 4*k, p.Y + 64*k, sep - p.X - 8*k, p.H - 128*k})
-	l.check("shelf", "settings-light", near(shelf, l.c("light-shelf"), lfSurfaceTol),
-		fmt.Sprintf("the sidebar (%d px) is %s, want %s", (sep-p.X)/k, hexOf(shelf), hexOf(l.c("light-shelf"))))
-	l.selectedRow(img, lfRect{p.X + 4*k, p.Y + 64*k, sep - p.X - 8*k, p.H - 72*k})
+	shelf, _ := pixels.ModeColor(img, pixels.Rect{X: p.X + 4*k, Y: p.Y + 64*k, W: sep - p.X - 8*k, H: p.H - 128*k})
+	l.check("shelf", "settings-light", pixels.Near(shelf, l.c("light-shelf"), lfSurfaceTol),
+		fmt.Sprintf("the sidebar (%d px) is %s, want %s", (sep-p.X)/k, pixels.Hex(shelf), pixels.Hex(l.c("light-shelf"))))
+	l.selectedRow(img, pixels.Rect{X: p.X + 4*k, Y: p.Y + 64*k, W: sep - p.X - 8*k, H: p.H - 72*k})
 	// S6: the headerbar's rule at one height in both panes, the border line over each.
 	borderA := l.pal.nums["line-light-border"]
-	ys, yc, sideOK := hRule(img, p.X+24*k, sep-24*k, p.Y+8*k, p.Y+80*k)
-	yb, yc2, mainOK := hRule(img, sep+24*k, p.X+p.W-24*k, p.Y+8*k, p.Y+80*k)
-	above, _ := modeColor(img, lfRect{sep + 24*k, yb - 3*k, p.W - (sep - p.X) - 48*k, 1})
-	wantRule := tint(muted, above, borderA)
-	l.check("rule", "settings-light headerbar", sideOK && mainOK && ys == yb && near(yc2, wantRule, lfRingTol),
+	ys, yc, sideOK := pixels.HRule(img, p.X+24*k, sep-24*k, p.Y+8*k, p.Y+80*k, lfSurfaceTol)
+	yb, yc2, mainOK := pixels.HRule(img, sep+24*k, p.X+p.W-24*k, p.Y+8*k, p.Y+80*k, lfSurfaceTol)
+	above, _ := pixels.ModeColor(img, pixels.Rect{X: sep + 24*k, Y: yb - 3*k, W: p.W - (sep - p.X) - 48*k, H: 1})
+	wantRule := pixels.Tint(muted, above, borderA)
+	l.check("rule", "settings-light headerbar", sideOK && mainOK && ys == yb && pixels.Near(yc2, wantRule, pixels.RingTol),
 		fmt.Sprintf("sidebar's at y %d (%v, %s), content's at y %d (%v, %s); want one y, and light.muted at %.0f%% over %s, %s",
-			ys, sideOK, hexOf(yc), yb, mainOK, hexOf(yc2), borderA*100, hexOf(above), hexOf(wantRule)))
+			ys, sideOK, pixels.Hex(yc), yb, mainOK, pixels.Hex(yc2), borderA*100, pixels.Hex(above), pixels.Hex(wantRule)))
 }
 
 // states is S2 on the quick toggles shell-states forced into each step - on at rest, under the
@@ -1316,14 +1280,14 @@ func (l *lf) states(img image.Image) {
 			continue
 		}
 		seen[t.State] = true
-		want := tint(accent, h, l.pal.nums[tok])
+		want := pixels.Tint(accent, h, l.pal.nums[tok])
 		st := t.Look.surface(ground)
-		drawn, _ := modeColor(img, l.px(t.Look.rect()).inset(4*l.k, 4*l.k))
-		if !near(st, want, lfTextTol) || !near(drawn, want, lfTextTol) {
-			bad = append(bad, fmt.Sprintf("%s: St %s, drawn %s, want %s (%s)", t.State, hexOf(st), hexOf(drawn), hexOf(want), tok))
+		drawn, _ := pixels.ModeColor(img, l.px(t.Look.rect()).Inset(4*l.k, 4*l.k))
+		if !pixels.Near(st, want, lfTextTol) || !pixels.Near(drawn, want, lfTextTol) {
+			bad = append(bad, fmt.Sprintf("%s: St %s, drawn %s, want %s (%s)", t.State, pixels.Hex(st), pixels.Hex(drawn), pixels.Hex(want), tok))
 		}
-		if t.Title != nil && !near(t.Title.ink(ground), l.c("dark-accent-text"), lfTextTol) {
-			bad = append(bad, fmt.Sprintf("%s: %q titled %s, not accent_text", t.State, t.Title.Text, hexOf(t.Title.ink(ground))))
+		if t.Title != nil && !pixels.Near(t.Title.ink(ground), l.c("dark-accent-text"), lfTextTol) {
+			bad = append(bad, fmt.Sprintf("%s: %q titled %s, not accent_text", t.State, t.Title.Text, pixels.Hex(t.Title.ink(ground))))
 		}
 	}
 	l.check("states", "quick toggles", len(seen) == len(steps) && len(bad) == 0,
@@ -1378,18 +1342,18 @@ func (l *lf) gtkFocus(name string, img image.Image) {
 	if strings.HasSuffix(name, "-light") {
 		accent = l.c("light-accent")
 	}
-	all := lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}
-	drawn, share := focusDiff(before, img, all, accent, lfFocusRingTol)
+	all := pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}
+	drawn, share := pixels.FocusDiff(before, img, all, needleChannelDelta, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
 	l.check("focus", name, drawn >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px of %s drawn against %s, %.0f%% of the change the ring, drawn or left; want >= %d and >= %.0f%%",
-			drawn, hexOf(accent), ref, share*100, least, lfFocusAccentShare*100))
+			drawn, pixels.Hex(accent), ref, share*100, least, lfFocusAccentShare*100))
 }
 
 // buttonState is S2 on a GTK button at btn, a stage rectangle, in view name against ref, the same
 // button a step before: the step reads - another colour - and is a colour C1 allows, the
 // palette's or an ink over one.
-func (l *lf) buttonState(name, ref string, btn lfRect) {
+func (l *lf) buttonState(name, ref string, btn pixels.Rect) {
 	if l == nil || !l.ok {
 		return
 	}
@@ -1402,10 +1366,10 @@ func (l *lf) buttonState(name, ref string, btn lfRect) {
 		return
 	}
 	r := l.px(btn)
-	now, _ := modeColor(img, r)
-	was, _ := modeColor(before, r)
-	l.check("state", name+" button", !near(now, was, lfSurfaceTol) && (l.pal.has(now) || l.pal.composite(now)),
-		fmt.Sprintf("the button %s, %s in %s; want another colour, the palette's or an ink over it", hexOf(now), hexOf(was), ref))
+	now, _ := pixels.ModeColor(img, r)
+	was, _ := pixels.ModeColor(before, r)
+	l.check("state", name+" button", !pixels.Near(now, was, lfSurfaceTol) && (l.pal.has(now) || l.pal.composite(now)),
+		fmt.Sprintf("the button %s, %s in %s; want another colour, the palette's or an ink over it", pixels.Hex(now), pixels.Hex(was), ref))
 }
 
 // gtkLight is a GTK view in the light scheme: Settings' window probes on the window it is about,
@@ -1428,20 +1392,20 @@ func (l *lf) gtkLight(name string, img image.Image) {
 // lightAccent is C2 for the accent on light, from the pixels: dark's accent reads 1.5:1 on white,
 // so inside a light window, a stage rectangle, every mark, ring and fill is the light accent and
 // none of it dark's. The dock's running dot is the shell's, outside the window, and stays cyan.
-func (l *lf) lightAccent(surface string, img image.Image, r lfRect) {
+func (l *lf) lightAccent(surface string, img image.Image, r pixels.Rect) {
 	bright, light := l.c("dark-accent"), l.c("light-accent")
-	n := countNear(img, l.px(r), bright, lfAccentTol)
-	l.check("accent", surface, n == 0, fmt.Sprintf("%d px of %s inside %v, want none: light draws %s", n, hexOf(bright), r, hexOf(light)))
+	n := pixels.CountNear(img, l.px(r), bright, lfAccentTol)
+	l.check("accent", surface, n == 0, fmt.Sprintf("%d px of %s inside %v, want none: light draws %s", n, pixels.Hex(bright), r, pixels.Hex(light)))
 }
 
 // selectedRow is C11's navigation sidebar on light: the selected row is the white sheet, its label
 // in text. The row is the band of the sidebar whose right part is white.
-func (l *lf) selectedRow(img image.Image, side lfRect) {
+func (l *lf) selectedRow(img image.Image, side pixels.Rect) {
 	sheet := l.c("neutral-a")
 	x := side.X + side.W*3/4
 	top, bottom := -1, -1
 	for y := side.Y; y < side.Y+side.H; y++ {
-		if near(at(img, x, y), sheet, lfSurfaceTol) {
+		if pixels.Near(pixels.At(img, x, y), sheet, lfSurfaceTol) {
 			if top < 0 {
 				top = y
 			}
@@ -1451,36 +1415,36 @@ func (l *lf) selectedRow(img image.Image, side lfRect) {
 		}
 	}
 	if top < 0 {
-		c, _ := modeColor(img, side)
-		l.check("selected row", "settings-light", false, fmt.Sprintf("no band of %s in the sidebar at x %d (its ground %s)", hexOf(sheet), x, hexOf(c)))
+		c, _ := pixels.ModeColor(img, side)
+		l.check("selected row", "settings-light", false, fmt.Sprintf("no band of %s in the sidebar at x %d (its ground %s)", pixels.Hex(sheet), x, pixels.Hex(c)))
 		return
 	}
-	band := lfRect{side.X, top, side.W, bottom - top + 1}
-	darkest, dl := sheet, luminance(sheet)
-	b := band.image().Intersect(img.Bounds())
+	band := pixels.Rect{X: side.X, Y: top, W: side.W, H: bottom - top + 1}
+	darkest, dl := sheet, pixels.Luminance(sheet)
+	b := band.Image().Intersect(img.Bounds())
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			if c := at(img, x, y); luminance(c) < dl {
-				darkest, dl = c, luminance(c)
+			if c := pixels.At(img, x, y); pixels.Luminance(c) < dl {
+				darkest, dl = c, pixels.Luminance(c)
 			}
 		}
 	}
 	text := l.c("light-text")
-	l.check("selected row", "settings-light", near(darkest, text, lfTextTol),
-		fmt.Sprintf("the %s sheet %v; its darkest ink %s, want %s", hexOf(sheet), band, hexOf(darkest), hexOf(text)))
+	l.check("selected row", "settings-light", pixels.Near(darkest, text, lfTextTol),
+		fmt.Sprintf("the %s sheet %v; its darkest ink %s, want %s", pixels.Hex(sheet), band, pixels.Hex(darkest), pixels.Hex(text)))
 }
 
 // appWindow is the frame of an app's first normal window: a popover open over it is a window of
 // its own, the app's newest.
-func (l *lf) appWindow(id string) (lfRect, error) {
+func (l *lf) appWindow(id string) (pixels.Rect, error) {
 	var s struct{ Win *struct{ X, Y, W, H int } }
 	if err := l.g.evalJSON(fmt.Sprintf(`return {win: lfWindow(Shell.AppSystem.get_default().lookup_app(%q)?.get_windows().find(w => w.get_window_type() === imports.gi.Meta.WindowType.NORMAL))};`, id), &s); err != nil {
-		return lfRect{}, err
+		return pixels.Rect{}, err
 	}
 	if s.Win == nil {
-		return lfRect{}, errors.New("no window")
+		return pixels.Rect{}, errors.New("no window")
 	}
-	return lfRect{s.Win.X, s.Win.Y, s.Win.W, s.Win.H}, nil
+	return pixels.Rect{X: s.Win.X, Y: s.Win.Y, W: s.Win.W, H: s.Win.H}, nil
 }
 
 // app checks the apps outside GTK that take the desktop's surfaces: Ghostty and VS Code on g and
@@ -1518,7 +1482,7 @@ func (l *lf) app(id, shot string) {
 	}
 	g, f := l.c("neutral-g"), l.c("neutral-f")
 	region := func(x, y, w, h int) color.NRGBA {
-		c, _ := modeColor(img, l.px(lfRect{r.X + x, r.Y + y, w, h}))
+		c, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: r.X + x, Y: r.Y + y, W: w, H: h}))
 		return c
 	}
 	switch id {
@@ -1527,22 +1491,22 @@ func (l *lf) app(id, shot string) {
 		term := region(r.W/4, r.H*2/3, r.W/2, r.H/4)
 		// Ghostty's own default background, which a missing theme leaves, as a surface: text
 		// antialiased on g passes through it a pixel at a time.
-		stock := flatCount(img, l.px(r), color.NRGBA{0x28, 0x2C, 0x34, 255}, lfSurfaceTol)
-		l.check("app", "ghostty", near(head, g, lfSurfaceTol) && near(term, g, lfSurfaceTol) && stock == 0,
-			fmt.Sprintf("headerbar %s, terminal %s, want %s; %d px of a #282C34 surface", hexOf(head), hexOf(term), hexOf(g), stock))
+		stock := pixels.FlatCount(img, l.px(r), color.NRGBA{0x28, 0x2C, 0x34, 255}, lfSurfaceTol)
+		l.check("app", "ghostty", pixels.Near(head, g, lfSurfaceTol) && pixels.Near(term, g, lfSurfaceTol) && stock == 0,
+			fmt.Sprintf("headerbar %s, terminal %s, want %s; %d px of a #282C34 surface", pixels.Hex(head), pixels.Hex(term), pixels.Hex(g), stock))
 	case "code.desktop":
 		title := region(8, 4, r.W-16, 16)
 		editor := region(r.W/2, r.H/3, r.W/3, r.H/3)
 		side := region(4, r.H/3, 36, r.H/3)
 		status := region(8, r.H-18, r.W-16, 12)
-		l.check("app", "vscode", near(title, g, lfSurfaceTol) && near(editor, g, lfSurfaceTol) && near(side, f, lfSurfaceTol) && near(status, f, lfSurfaceTol),
+		l.check("app", "vscode", pixels.Near(title, g, lfSurfaceTol) && pixels.Near(editor, g, lfSurfaceTol) && pixels.Near(side, f, lfSurfaceTol) && pixels.Near(status, f, lfSurfaceTol),
 			fmt.Sprintf("title bar %s and editor %s want %s; side %s and status bar %s want %s",
-				hexOf(title), hexOf(editor), hexOf(g), hexOf(side), hexOf(status), hexOf(f)))
+				pixels.Hex(title), pixels.Hex(editor), pixels.Hex(g), pixels.Hex(side), pixels.Hex(status), pixels.Hex(f)))
 	case "com.google.Chrome.desktop":
 		// Its title bar in GTK mode is the theme's headerbar, g - on its first window, the terms it
 		// asks to be accepted - never Chrome's own #202124, nor a window not yet drawn.
 		strip := region(8, 3, r.W-16, 10)
-		l.check("app", "chrome", near(strip, g, lfSurfaceTol), fmt.Sprintf("title bar %s, want the theme's %s (Chrome's own is #202124)", hexOf(strip), hexOf(g)))
+		l.check("app", "chrome", pixels.Near(strip, g, lfSurfaceTol), fmt.Sprintf("title bar %s, want the theme's %s (Chrome's own is #202124)", pixels.Hex(strip), pixels.Hex(g)))
 	case "firefox.desktop":
 		l.firefoxControls(id)
 	}
@@ -1584,12 +1548,12 @@ func (l *lf) firefoxControls(id string) {
 		return
 	}
 	blue := color.NRGBA{0x35, 0x84, 0xE4, 255}
-	n := countNear(img, l.px(win), blue, lfFirefoxColorTol)
-	accent := countNear(img, l.px(win), l.c("light-accent"), lfFirefoxAccentTol)
+	n := pixels.CountNear(img, l.px(win), blue, lfFirefoxColorTol)
+	accent := pixels.CountNear(img, l.px(win), l.c("light-accent"), lfFirefoxAccentTol)
 	// No Adwaita blue proves nothing alone: a page that never drew has none either.
 	l.check("app", "firefox controls", n == 0 && accent >= lfFirefoxAccentMin*l.k*l.k,
 		fmt.Sprintf("%d px of Adwaita's #3584E4 on a light page, want none; %d px of %s, want at least %d",
-			n, accent, hexOf(l.c("light-accent")), lfFirefoxAccentMin*l.k*l.k))
+			n, accent, pixels.Hex(l.c("light-accent")), lfFirefoxAccentMin*l.k*l.k))
 }
 
 // finish checks what spans views: the boot's mark where the overview's card puts it.
@@ -1622,12 +1586,12 @@ func (l *lf) maximized(id, shot string) {
 		l.check("window", shot, false, err.Error())
 		return
 	}
-	head, _ := modeColor(img, l.px(lfRect{r.X + 8, r.Y + 3, r.W - 16, 8}))
+	head, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: r.X + 8, Y: r.Y + 3, W: r.W - 16, H: 8}))
 	p := l.px(r)
-	corner := at(img, p.X, p.Y)
-	_, ring := ringHit(img, p.X-1, p.Y+p.H/2, -1, 0, l.k, l.c("dark-border"))
-	l.check("window", "maximized", near(corner, head, lfSurfaceTol) && !ring,
-		fmt.Sprintf("frame %v: corner %s, headerbar %s (square: the same); the border outside its left edge: %v, want none", r, hexOf(corner), hexOf(head), ring))
+	corner := pixels.At(img, p.X, p.Y)
+	_, ring := pixels.RingHit(img, p.X-1, p.Y+p.H/2, -1, 0, l.k, l.c("dark-border"))
+	l.check("window", "maximized", pixels.Near(corner, head, lfSurfaceTol) && !ring,
+		fmt.Sprintf("frame %v: corner %s, headerbar %s (square: the same); the border outside its left edge: %v, want none", r, pixels.Hex(corner), pixels.Hex(head), ring))
 }
 
 // guestLook is the checks on the guest itself: the shell's CSS as the running shell loaded it,
@@ -1709,7 +1673,7 @@ func (l *lf) guestLook() {
 	l.check("fonts", "G4", err == nil && fonts == want, fmt.Sprintf("font-name, monospace-font-name, fc-match monospace/sans-serif/system-ui: %s; want %s", oneLine(fonts), oneLine(want))+errText(err))
 
 	dconf, err := l.g.run(`for k in dash-to-panel/focus-highlight-color dash-to-panel/focus-highlight-opacity dash-to-panel/trans-use-border tilingshell/window-border-color; do `+asLive+`dconf read /org/gnome/shell/extensions/$k; done`, "")
-	accent := hexOf(l.c("dark-accent"))
+	accent := pixels.Hex(l.c("dark-accent"))
 	// The dock's focus highlight is the rest tint, in dash-to-panel's percent.
 	wantDconf := fmt.Sprintf("'%s'\n%.0f\nfalse\n'%s'\n", accent, l.pal.nums["tint-dark-rest"]*100, accent)
 	l.check("extensions", "G5 settings", err == nil && strings.EqualFold(dconf, wantDconf), fmt.Sprintf("%s; want %s", oneLine(dconf), oneLine(wantDconf))+errText(err))
@@ -1725,8 +1689,8 @@ func (l *lf) guestLook() {
 
 	gtk4, err := l.g.run(`grep -oiE -- '--accent-color: *#[0-9a-f]+' /usr/share/themes/Orchis-Construct-Light/gtk-4.0/gtk.css | head -1`, "")
 	got := strings.TrimSpace(gtk4[strings.LastIndex(gtk4, "#")+1:])
-	l.check("gtk4", "light accent", err == nil && strings.EqualFold("#"+got, hexOf(l.c("light-accent-text"))),
-		fmt.Sprintf("Orchis-Construct-Light's gtk-4.0 %s, want --accent-color: %s", oneLine(gtk4), hexOf(l.c("light-accent-text")))+errText(err))
+	l.check("gtk4", "light accent", err == nil && strings.EqualFold("#"+got, pixels.Hex(l.c("light-accent-text"))),
+		fmt.Sprintf("Orchis-Construct-Light's gtk-4.0 %s, want --accent-color: %s", oneLine(gtk4), pixels.Hex(l.c("light-accent-text")))+errText(err))
 	// T2 in GTK: the CSS libadwaita and GTK 3 apps load from the theme, @media blocks included.
 	// libadwaita's own stylesheet under it is not the theme's to change.
 	gtkCSS, err := l.g.run(`cat /var/home/live/.config/gtk-4.0/gtk.css /usr/share/themes/Orchis-Construct-Dark/gtk-3.0/gtk.css /usr/share/themes/Orchis-Construct-Light/gtk-3.0/gtk.css`, "")

@@ -1,4 +1,4 @@
-package main
+package pixels
 
 import (
 	"image"
@@ -23,7 +23,7 @@ func ink(img *image.NRGBA, x0, y0, x1, y1 float64) {
 	}
 }
 
-func inkOf(img *image.NRGBA) inkMap { return coverageOf(img, img.Bounds(), tTypeFG, tTypeBG) }
+func inkOf(img *image.NRGBA) InkMap { return CoverageOf(img, img.Bounds(), tTypeFG, tTypeBG) }
 
 func near64(a, b, tol float64) bool { return math.Abs(a-b) <= tol }
 
@@ -32,20 +32,20 @@ func near64(a, b, tol float64) bool { return math.Abs(a-b) <= tol }
 func TestMeasureStems(t *testing.T) {
 	hard := solid(40, 60, tTypeBG)
 	ink(hard, 10, 10, 13, 50)
-	s := measureStems(inkOf(hard), map[int]bool{0: true})
+	s := MeasureStems(inkOf(hard), map[int]bool{0: true})
 	if !near64(s.Edge, 0.8, 1e-6) || !near64(s.Peak, 1, 0.01) || !near64(s.StemMean, 3, 0.02) || s.StemVar > 1e-6 || s.Stems != 1 {
 		t.Errorf("hard: %+v", s)
 	}
 	soft := solid(40, 60, tTypeBG)
 	ink(soft, 10.5, 10, 13.5, 50)
-	s = measureStems(inkOf(soft), nil)
+	s = MeasureStems(inkOf(soft), nil)
 	if !near64(s.Edge, 1.6, 0.02) || !near64(s.StemMean, 3, 0.02) {
 		t.Errorf("half a pixel off: %+v", s)
 	}
 	// A stem thinner than a pixel never reaches the text's colour.
 	thin := solid(40, 60, tTypeBG)
 	ink(thin, 10.25, 10, 11, 50)
-	if s := measureStems(inkOf(thin), map[int]bool{0: true}); !near64(s.Peak, 0.75, 0.02) {
+	if s := MeasureStems(inkOf(thin), map[int]bool{0: true}); !near64(s.Peak, 0.75, 0.02) {
 		t.Errorf("thin: %+v", s)
 	}
 	// Two glyphs, 3 and 4 px: their widths' variance; only the one-stem glyph's peak counts.
@@ -53,7 +53,7 @@ func TestMeasureStems(t *testing.T) {
 	ink(two, 10, 10, 13, 50)
 	ink(two, 30.5, 10, 31, 50)
 	ink(two, 40, 10, 44, 50)
-	s = measureStems(inkOf(two), map[int]bool{1: true})
+	s = MeasureStems(inkOf(two), map[int]bool{1: true})
 	if s.Stems != 3 || !near64(s.Peak, 0.5, 0.02) {
 		t.Errorf("peak of glyph 1 only: %+v", s)
 	}
@@ -62,10 +62,10 @@ func TestMeasureStems(t *testing.T) {
 	ink(h, 10, 10, 13, 50)
 	ink(h, 20, 10, 23, 50)
 	ink(h, 10, 28, 23, 32)
-	if s := measureStems(inkOf(h), nil); s.Stems != 1 || !near64(s.StemMean, 3, 0.02) {
+	if s := MeasureStems(inkOf(h), nil); s.Stems != 1 || !near64(s.StemMean, 3, 0.02) {
 		t.Errorf("H: %+v", s)
 	}
-	if s := measureStems(inkOf(solid(20, 20, tTypeBG)), nil); s.Stems != 0 || s.Edge != 0 {
+	if s := MeasureStems(inkOf(solid(20, 20, tTypeBG)), nil); s.Stems != 0 || s.Edge != 0 {
 		t.Errorf("no ink: %+v", s)
 	}
 }
@@ -80,15 +80,15 @@ func TestMeasureAlign(t *testing.T) {
 		}
 		return img
 	}
-	a := measureAlign(inkOf(line(20, 20, 20, 20)))
+	a := MeasureAlign(inkOf(line(20, 20, 20, 20)))
 	if a.Glyphs != 4 || a.BaseJitter > 1e-6 || a.XJitter > 1e-6 || !near64(a.HEdge, 0.8, 1e-6) || a.Phase > 1e-6 {
 		t.Errorf("aligned: %+v", a)
 	}
-	a = measureAlign(inkOf(line(20, 20, 20.5, 20)))
+	a = MeasureAlign(inkOf(line(20, 20, 20.5, 20)))
 	if !near64(a.BaseJitter, math.Sqrt(3)/8, 0.01) || !near64(a.XJitter, math.Sqrt(3)/8, 0.01) {
 		t.Errorf("one half a pixel low: %+v", a)
 	}
-	a = measureAlign(inkOf(line(20.5, 20.5, 20.5, 20.5)))
+	a = MeasureAlign(inkOf(line(20.5, 20.5, 20.5, 20.5)))
 	if a.BaseJitter > 1e-6 || !near64(a.HEdge, 1.6, 0.02) || !near64(a.Phase, 0.5, 0.01) {
 		t.Errorf("off the grid: %+v", a)
 	}
@@ -120,8 +120,17 @@ func TestCoverageOfLight(t *testing.T) {
 	img := solid(10, 10, bg)
 	blendAt(img, 3, 3, fg, 0.5)
 	img.SetNRGBA(4, 3, fg)
-	c := coverageOf(img, img.Bounds(), fg, bg)
+	c := CoverageOf(img, img.Bounds(), fg, bg)
 	if !near64(c.at(3, 3), 0.5, 0.01) || c.at(4, 3) != 1 || c.at(0, 0) != 0 {
 		t.Errorf("%v %v %v", c.at(3, 3), c.at(4, 3), c.at(0, 0))
+	}
+}
+
+func TestHConcat(t *testing.T) {
+	a := InkMap{w: 2, h: 1, a: []float64{1, 0.5}}
+	b := InkMap{w: 1, h: 2, a: []float64{0.25, 0.75}}
+	c := HConcat([]InkMap{a, b}, 1)
+	if c.w != 5 || c.h != 2 || c.at(0, 0) != 1 || c.at(1, 0) != 0.5 || c.at(3, 0) != 0.25 || c.at(3, 1) != 0.75 || c.at(0, 1) != 0 {
+		t.Errorf("%+v", c)
 	}
 }

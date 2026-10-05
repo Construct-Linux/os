@@ -1,4 +1,5 @@
-package main
+// The coverage of text's ink.
+package pixels
 
 import (
 	"image"
@@ -10,37 +11,38 @@ import (
 // What makes text look sharp, measured on a screenshot's crop of it: how wide its edges are, how
 // close a thin stem gets to the text's colour, how even its stems are, and whether its glyphs sit
 // on one baseline and one x-height. Pixels are read as coverage: how much of the text's colour
-// over its ground each one is, 0 to 1 (coverOf).
+// over its ground each one is, 0 to 1 (CoverOf).
 
 // inkMin is the coverage where ink starts: under it, a pixel is the ground and its rounding.
 const inkMin = 0.08
 
-// inkMap is a crop's pixels as coverage of fg over bg.
-type inkMap struct {
+// InkMap is a crop's pixels as coverage of fg over bg.
+type InkMap struct {
 	w, h int
 	a    []float64
 }
 
-func coverageOf(img image.Image, r image.Rectangle, fg, bg color.NRGBA) inkMap {
+// CoverageOf is r's pixels as coverage of fg over bg.
+func CoverageOf(img image.Image, r image.Rectangle, fg, bg color.NRGBA) InkMap {
 	r = r.Intersect(img.Bounds())
-	c := inkMap{w: r.Dx(), h: r.Dy(), a: make([]float64, r.Dx()*r.Dy())}
+	c := InkMap{w: r.Dx(), h: r.Dy(), a: make([]float64, r.Dx()*r.Dy())}
 	for y := range c.h {
 		for x := range c.w {
-			a, _ := coverOf(at(img, r.Min.X+x, r.Min.Y+y), fg, bg)
+			a, _ := CoverOf(At(img, r.Min.X+x, r.Min.Y+y), fg, bg)
 			c.a[y*c.w+x] = a
 		}
 	}
 	return c
 }
 
-func (c inkMap) at(x, y int) float64 { return c.a[y*c.w+x] }
+func (c InkMap) at(x, y int) float64 { return c.a[y*c.w+x] }
 
 // span is a glyph's columns, x0 to x1 inclusive, and the rows its ink covers.
 type span struct{ x0, x1, y0, y1 int }
 
 // glyphs are the crop's runs of columns with ink, left to right, each with the rows of its ink:
 // spaced glyphs, one each.
-func (c inkMap) glyphs() []span {
+func (c InkMap) glyphs() []span {
 	var out []span
 	in := false
 	var s span
@@ -110,11 +112,11 @@ func edgeWidth(p []float64, i0, step int, peak float64) (float64, bool) {
 	return math.Abs(hi - lo), true
 }
 
-// stemStats are a glyph line's vertical stems, measured in the bands of every glyph above and
+// StemStats are a glyph line's vertical stems, measured in the bands of every glyph above and
 // below its middle (an 'H”s bar is in the middle): each row's run of ink is a stem's cross
 // section. ones are the glyphs, by index, that are a single stem ('l', 'I'); their peak is the
 // stroke's. Without ones, every stem's peak counts: text whose glyphs nobody chose.
-type stemStats struct {
+type StemStats struct {
 	// Edge is the mean 10-90% width of the stems' edges, in px.
 	Edge float64 `json:"edge"`
 	// Peak is the median coverage a single-stem glyph's stem reaches: 1 is the text's colour.
@@ -125,7 +127,8 @@ type stemStats struct {
 	Stems    int     `json:"stems"`
 }
 
-func measureStems(c inkMap, ones map[int]bool) stemStats {
+// MeasureStems measures the stems of c's glyphs.
+func MeasureStems(c InkMap, ones map[int]bool) StemStats {
 	var edges, peaks, widths []float64
 	for gi, g := range c.glyphs() {
 		hgt := g.y1 - g.y0 + 1
@@ -167,7 +170,7 @@ func measureStems(c inkMap, ones map[int]bool) stemStats {
 		}
 	}
 	m, v := meanVar(widths)
-	return stemStats{Edge: mean(edges), Peak: median(peaks), StemMean: m, StemVar: v, Stems: len(widths)}
+	return StemStats{Edge: mean(edges), Peak: median(peaks), StemMean: m, StemVar: v, Stems: len(widths)}
 }
 
 // runs are p's runs of ink, first and last index each.
@@ -187,9 +190,9 @@ func runs(p []float64) [][2]int {
 	return out
 }
 
-// alignStats are a line of flat-topped, flat-bottomed glyphs ('x', 'z'): where each one's top and
+// AlignStats are a line of flat-topped, flat-bottomed glyphs ('x', 'z'): where each one's top and
 // bottom edge is, to a fraction of a pixel, and how sharp those horizontal edges are.
-type alignStats struct {
+type AlignStats struct {
 	// BaseJitter and XJitter are the standard deviations of the glyphs' bottom and top edges, in px.
 	BaseJitter float64 `json:"base_jitter"`
 	XJitter    float64 `json:"x_jitter"`
@@ -201,7 +204,8 @@ type alignStats struct {
 	Glyphs int     `json:"glyphs"`
 }
 
-func measureAlign(c inkMap) alignStats {
+// MeasureAlign measures where c's glyphs' tops and bottoms are.
+func MeasureAlign(c InkMap) AlignStats {
 	var tops, bottoms, hedges, phases []float64
 	for _, g := range c.glyphs() {
 		// The glyph's vertical profile: the most of it any of its columns covers in a row.
@@ -234,7 +238,7 @@ func measureAlign(c inkMap) alignStats {
 	}
 	_, tv := meanVar(tops)
 	_, bv := meanVar(bottoms)
-	return alignStats{BaseJitter: math.Sqrt(bv), XJitter: math.Sqrt(tv), HEdge: mean(hedges), Phase: mean(phases), Glyphs: len(tops)}
+	return AlignStats{BaseJitter: math.Sqrt(bv), XJitter: math.Sqrt(tv), HEdge: mean(hedges), Phase: mean(phases), Glyphs: len(tops)}
 }
 
 func mean(v []float64) float64 {
@@ -265,4 +269,23 @@ func median(v []float64) float64 {
 	s := append([]float64(nil), v...)
 	sort.Float64s(s)
 	return s[len(s)/2]
+}
+
+// HConcat lays coverages side by side, gap empty columns apart, on the tallest one's height: lines
+// of one height measured as one line.
+func HConcat(cs []InkMap, gap int) InkMap {
+	h, w := 0, 0
+	for _, c := range cs {
+		h = max(h, c.h)
+		w += c.w + gap
+	}
+	out := InkMap{w: w, h: h, a: make([]float64, w*h)}
+	x0 := 0
+	for _, c := range cs {
+		for y := range c.h {
+			copy(out.a[y*w+x0:y*w+x0+c.w], c.a[y*c.w:(y+1)*c.w])
+		}
+		x0 += c.w + gap
+	}
+	return out
 }

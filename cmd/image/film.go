@@ -10,6 +10,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
 
@@ -37,7 +38,7 @@ type filmFrame struct {
 	// screen at the panel's.
 	w, h     int
 	cyan     int
-	mark     lfRect
+	mark     pixels.Rect
 	black    float64
 	menu     bool
 	cover    float64
@@ -83,7 +84,7 @@ func filmStats(img *image.RGBA) filmFrame {
 				}
 			}
 			for k, c := range filmGrounds {
-				if channelDelta(color.NRGBA{r, g, bl, 255}, c) <= lfSurfaceTol {
+				if pixels.ChannelDelta(color.NRGBA{r, g, bl, 255}, c) <= lfSurfaceTol {
 					cover[k]++
 				}
 			}
@@ -103,10 +104,10 @@ func filmStats(img *image.RGBA) filmFrame {
 	n := float64(b.Dx() * b.Dy())
 	f.w, f.h = b.Dx(), b.Dy()
 	f.black = float64(black) / n
-	f.mark = lfRect{box.Min.X, box.Min.Y, box.Dx(), box.Dy()}
+	f.mark = pixels.Rect{X: box.Min.X, Y: box.Min.Y, W: box.Dx(), H: box.Dy()}
 	for k, c := range cover {
 		if s := float64(c) / n; s > f.cover {
-			f.cover, f.coverHex = s, hexOf(filmGrounds[k])
+			f.cover, f.coverHex = s, pixels.Hex(filmGrounds[k])
 		}
 	}
 	return f
@@ -288,18 +289,18 @@ func promptLook(img image.Image, accent, fill, ground color.NRGBA) (bool, string
 	promptFrom, promptTo := promptRows(img.Bounds().Dy())
 	top := -1
 	for y := promptFrom; y < min(promptTo, img.Bounds().Dy()); y++ {
-		if near(at(img, cx, y), accent, promptRingTol) {
+		if pixels.Near(pixels.At(img, cx, y), accent, promptRingTol) {
 			top = y
 			break
 		}
 	}
 	if top < 0 {
-		return false, fmt.Sprintf("no %s ring at x %d from y %d to %d", hexOf(accent), cx, promptFrom, promptTo)
+		return false, fmt.Sprintf("no %s ring at x %d from y %d to %d", pixels.Hex(accent), cx, promptFrom, promptTo)
 	}
-	inside, _ := modeColor(img, lfRect{cx - promptInsideHalfW*k, top + promptInsideTop*k, 2 * promptInsideHalfW * k, promptInsideH * k})
-	corner := at(img, cx-promptPillHalfW*k, top)
-	ok := near(inside, fill, lfTextTol) && near(corner, ground, lfTextTol)
-	return ok, fmt.Sprintf("ring at y %d; inside %s (want %s), the pill's corner %s (want %s)", top, hexOf(inside), hexOf(fill), hexOf(corner), hexOf(ground))
+	inside, _ := pixels.ModeColor(img, pixels.Rect{X: cx - promptInsideHalfW*k, Y: top + promptInsideTop*k, W: 2 * promptInsideHalfW * k, H: promptInsideH * k})
+	corner := pixels.At(img, cx-promptPillHalfW*k, top)
+	ok := pixels.Near(inside, fill, lfTextTol) && pixels.Near(corner, ground, lfTextTol)
+	return ok, fmt.Sprintf("ring at y %d; inside %s (want %s), the pill's corner %s (want %s)", top, pixels.Hex(inside), pixels.Hex(fill), pixels.Hex(corner), pixels.Hex(ground))
 }
 
 // plymouthPrompt checks test:lifecycle's password prompt (password.png) and the screen 1.5 s after
@@ -356,7 +357,7 @@ func gridBack(prompt, after image.Image, promptTop int) (bool, string) {
 		n := 0
 		for y := 0; y < promptTop-promptGridMargin; y++ {
 			for x := 0; x < img.Bounds().Dx(); x++ {
-				c := at(img, x, y)
+				c := pixels.At(img, x, y)
 				if markHue(c.R, c.G, c.B) {
 					n++
 				}

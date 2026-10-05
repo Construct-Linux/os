@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
 
@@ -946,7 +947,7 @@ func (r *report) gtkViews(v *qemu.VM, g *guest, l *lf, light bool) {
 	// released on the button, which maximizes the window, undone after: released anywhere else, it
 	// is a drag of the headerbar, and moved the window off its frame. Two moves, as for the tooltip
 	// below: GTK takes hover from motion inside the widget.
-	maxBtn := lfRect{frame.X + frame.W - 71, frame.Y + 13, 20, 20}
+	maxBtn := pixels.Rect{X: frame.X + frame.W - 71, Y: frame.Y + 13, W: 20, H: 20}
 	cx, cy := maxBtn.X+maxBtn.W/2, maxBtn.Y+maxBtn.H/2
 	_ = v.PointTo(absPoint(cx-6, cy, sw, sh))
 	time.Sleep(300 * time.Millisecond)

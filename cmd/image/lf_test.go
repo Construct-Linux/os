@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/pixels"
 )
 
 var (
@@ -22,7 +24,7 @@ var (
 	tBlack  = color.NRGBA{0, 0, 0, 255}
 )
 
-func fill(img *image.NRGBA, r lfRect, c color.NRGBA) {
+func fill(img *image.NRGBA, r pixels.Rect, c color.NRGBA) {
 	for y := r.Y; y < r.Y+r.H; y++ {
 		for x := r.X; x < r.X+r.W; x++ {
 			img.SetNRGBA(x, y, c)
@@ -48,7 +50,7 @@ func blendAt(img *image.NRGBA, x, y int, c color.NRGBA, a float64) {
 	if a <= 0 {
 		return
 	}
-	img.SetNRGBA(x, y, tint(c, at(img, x, y), a))
+	img.SetNRGBA(x, y, pixels.Tint(c, pixels.At(img, x, y), a))
 }
 
 const tPalette = `{"brand-boot":"#000000","neutral-e":"#0B1116","neutral-f":"#11181E","neutral-g":"#172028",
@@ -78,137 +80,6 @@ func TestParseLFPalette(t *testing.T) {
 	}
 }
 
-// Contrast is WCAG 2.2's, and a tint is the accent at its alpha over the surface: the figures the
-// brand's palette.py computes.
-func TestContrastAndTint(t *testing.T) {
-	if c := contrast(tBlack, color.NRGBA{255, 255, 255, 255}); math.Abs(c-21) > 0.01 {
-		t.Errorf("black on white %.2f", c)
-	}
-	if c := contrast(tRing, tInk); math.Abs(c-1.58) > 0.01 {
-		t.Errorf("the ring on e %.2f, the plan says 1.58", c)
-	}
-	if c := tint(tAccent, tH, 0.16); c != (color.NRGBA{0x1A, 0x48, 0x54, 255}) {
-		t.Errorf("16%% accent over h is %s, the plan says #1A4854", hexOf(c))
-	}
-	if c := over(color.NRGBA{255, 255, 255, 0}, tG); c != tG {
-		t.Errorf("transparent over g is %s", hexOf(c))
-	}
-}
-
-// A bar: g inside a 1 px ring, with text on it. Its colour is the fill, not the text's; the ring is
-// found at an edge that is a pixel off the extent, and not where there is none.
-func TestSurfacePixels(t *testing.T) {
-	img := solid(200, 60, tInk)
-	bar := lfRect{20, 10, 160, 36}
-	fill(img, bar, tRing)
-	fill(img, bar.inset(1, 1), tG)
-	fill(img, lfRect{60, 20, 40, 12}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
-	if c, share := modeColor(img, bar.inset(3, 3)); c != tG || share < 0.5 {
-		t.Errorf("mode %s over %.2f", hexOf(c), share)
-	}
-	// The extent says y 9, the ring is at 10.
-	if p, ok := ringHit(img, 100, 9, 0, -1, lfRingReach, tRing); !ok || p.Y != 10 {
-		t.Errorf("top ring: %v %v", p, ok)
-	}
-	if _, ok := ringHit(img, 100, 5, 0, -1, lfRingReach, tRing); ok {
-		t.Error("a ring 5 px away was taken for this edge's")
-	}
-	if n := countNear(img, lfRect{0, 0, 200, 60}, tRing, 0); n != 2*160+2*34 {
-		t.Errorf("%d ring pixels", n)
-	}
-}
-
-// Today's ring: a 2 px accent ring inside a circle is most of its outline; the same day filled
-// with the surface is none of it.
-func TestRingShare(t *testing.T) {
-	img := solid(60, 60, tH)
-	day := lfRect{12, 12, 36, 36}
-	for y := range 60 {
-		for x := range 60 {
-			ring := coverage(x, y, func(fx, fy float64) bool {
-				d := math.Hypot(fx-30, fy-30)
-				return d <= 18 && d >= 16
-			})
-			blendAt(img, x, y, tAccent, ring)
-		}
-	}
-	if s := ringShare(img, day, 1, tAccent); s < 0.9 {
-		t.Errorf("a full ring: %.2f", s)
-	}
-	if s := ringShare(solid(60, 60, tH), day, 1, tAccent); s != 0 {
-		t.Errorf("no ring: %.2f", s)
-	}
-	// A pill: its top side is a quarter of its outline (60 px of sides, 2 ends of radius 19).
-	wide := solid(100, 40, tH)
-	fill(wide, lfRect{20, 0, 60, 2}, tAccent)
-	if s := ringShare(wide, lfRect{0, 0, 100, 40}, 1, tAccent); s < 0.22 || s > 0.28 {
-		t.Errorf("one straight side of a pill: %.2f", s)
-	}
-}
-
-// A window's corner, antialiased as a renderer draws it, fits its radius within the check's
-// pixel: libadwaita's 15 and a control's 9.
-func TestCornerRadius(t *testing.T) {
-	for _, r := range []float64{9, 15, 18} {
-		img := solid(120, 80, color.NRGBA{0xD0, 0xD2, 0xD4, 255})
-		win := color.NRGBA{0xF4, 0xF6, 0xF8, 255}
-		for y := 10; y < 80; y++ {
-			for x := 10; x < 120; x++ {
-				a := coverage(x, y, func(fx, fy float64) bool {
-					cx, cy := 10+r, 10+r
-					if fx < cx && fy < cy {
-						return math.Hypot(fx-cx, fy-cy) <= r
-					}
-					return true
-				})
-				blendAt(img, x, y, win, a)
-			}
-		}
-		got, err := cornerRadius(img, 10, 10, 30)
-		if err != nil || math.Abs(got-r) > lfRadiusTol {
-			t.Errorf("radius %v fits %.2f (%v)", r, got, err)
-		}
-	}
-	if _, err := cornerRadius(solid(80, 80, tG), 10, 10, 30); err == nil {
-		t.Error("a window the colour of what is around it: no error")
-	}
-}
-
-// A light slab is one big light area; glyphs are many small ones.
-func TestLightSlab(t *testing.T) {
-	img := solid(200, 100, tH)
-	for i := range 10 {
-		fill(img, lfRect{10 + 15*i, 10, 8, 12}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
-	}
-	if n := lightSlab(img, lfRect{0, 0, 200, 100}, lfSlabLightness); n != 96 {
-		t.Errorf("glyphs: largest %d", n)
-	}
-	fill(img, lfRect{20, 40, 30, 30}, color.NRGBA{0xF4, 0xF6, 0xF8, 255})
-	if n := lightSlab(img, lfRect{0, 0, 200, 100}, lfSlabLightness); n != 900 {
-		t.Errorf("a slab: largest %d", n)
-	}
-}
-
-// Stem over cap height: vertical strokes measure it, a crossbar does not.
-func TestStrokeRatio(t *testing.T) {
-	for _, stem := range []int{8, 14} {
-		img := solid(200, 120, tBlack)
-		fg := color.NRGBA{0xE6, 0xED, 0xF2, 255}
-		// An H and an I, 70 px tall.
-		fill(img, lfRect{20, 20, stem, 70}, fg)
-		fill(img, lfRect{60, 20, stem, 70}, fg)
-		fill(img, lfRect{20, 50, 40 + stem, stem}, fg)
-		fill(img, lfRect{100, 20, stem, 70}, fg)
-		got, err := strokeRatio(img, lfRect{0, 0, 200, 120}, fg, tBlack)
-		if want := float64(stem) / 70; err != nil || math.Abs(got-want) > 0.001 {
-			t.Errorf("stem %d: %.3f, want %.3f (%v)", stem, got, want, err)
-		}
-	}
-	if _, err := strokeRatio(solid(50, 50, tBlack), lfRect{0, 0, 50, 50}, tAccent, tBlack); err == nil {
-		t.Error("no ink: no error")
-	}
-}
-
 // The film: systemd-boot's menu by its grey bar, Plymouth by the mark's cyan on black (not the
 // firmware's blue logo, not the wordmark's white), and the share a wrong ground covers.
 func TestFilmStats(t *testing.T) {
@@ -220,26 +91,26 @@ func TestFilmStats(t *testing.T) {
 		return out
 	}
 	menu := solid(400, 200, tBlack)
-	fill(menu, lfRect{100, 90, 200, 16}, color.NRGBA{0x98, 0x98, 0x98, 255})
+	fill(menu, pixels.Rect{X: 100, Y: 90, W: 200, H: 16}, color.NRGBA{0x98, 0x98, 0x98, 255})
 	if f := filmStats(rgba(menu)); !f.menu || f.plymouth() {
 		t.Errorf("menu: %+v", f)
 	}
 	logo := solid(400, 200, tBlack)
-	fill(logo, lfRect{100, 90, 40, 40}, color.NRGBA{0x30, 0x60, 0xC0, 255})
-	fill(logo, lfRect{150, 90, 60, 10}, color.NRGBA{0xF0, 0xF8, 0xFF, 255})
+	fill(logo, pixels.Rect{X: 100, Y: 90, W: 40, H: 40}, color.NRGBA{0x30, 0x60, 0xC0, 255})
+	fill(logo, pixels.Rect{X: 150, Y: 90, W: 60, H: 10}, color.NRGBA{0xF0, 0xF8, 0xFF, 255})
 	if f := filmStats(rgba(logo)); f.cyan != 0 || f.menu {
 		t.Errorf("the firmware's logo: %+v", f)
 	}
 	ply := solid(400, 200, tBlack)
-	fill(ply, lfRect{150, 40, 100, 2}, color.NRGBA{0x40, 0xF0, 0xFF, 255})
-	fill(ply, lfRect{150, 140, 100, 2}, color.NRGBA{0x40, 0xF0, 0xFF, 255})
-	fill(ply, lfRect{150, 40, 2, 100}, color.NRGBA{0x40, 0xF0, 0xFF, 255})
+	fill(ply, pixels.Rect{X: 150, Y: 40, W: 100, H: 2}, color.NRGBA{0x40, 0xF0, 0xFF, 255})
+	fill(ply, pixels.Rect{X: 150, Y: 140, W: 100, H: 2}, color.NRGBA{0x40, 0xF0, 0xFF, 255})
+	fill(ply, pixels.Rect{X: 150, Y: 40, W: 2, H: 100}, color.NRGBA{0x40, 0xF0, 0xFF, 255})
 	f := filmStats(rgba(ply))
-	if !f.plymouth() || f.mark != (lfRect{150, 40, 100, 102}) {
+	if !f.plymouth() || f.mark != (pixels.Rect{X: 150, Y: 40, W: 100, H: 102}) {
 		t.Errorf("Plymouth: %+v", f)
 	}
 	ground := solid(400, 200, tBlack)
-	fill(ground, lfRect{0, 0, 400, 120}, color.NRGBA{0x28, 0x28, 0x28, 255})
+	fill(ground, pixels.Rect{X: 0, Y: 0, W: 400, H: 120}, color.NRGBA{0x28, 0x28, 0x28, 255})
 	if f := filmStats(rgba(ground)); math.Abs(f.cover-0.6) > 1e-9 || f.coverHex != "#282828" {
 		t.Errorf("SystemBackground: %+v", f)
 	}
@@ -249,13 +120,13 @@ func TestFilmStats(t *testing.T) {
 // on screen is reported; the mark is where Plymouth drew it whole.
 func TestFilmReport(t *testing.T) {
 	ms := func(n int) time.Duration { return time.Duration(n) * time.Millisecond }
-	whole := lfRect{100, 100, 200, 200}
+	whole := pixels.Rect{X: 100, Y: 100, W: 200, H: 200}
 	frames := []filmFrame{
 		{at: ms(0), black: 1},
 		{at: ms(100), black: 0.99, menu: true},
 		{at: ms(1500), black: 0.99, menu: true},
 		{at: ms(1600), cover: 0.9, coverHex: "#282828"},
-		{at: ms(2000), black: 0.95, cyan: 500, w: 400, h: 400, mark: lfRect{100, 200, 200, 100}},
+		{at: ms(2000), black: 0.95, cyan: 500, w: 400, h: 400, mark: pixels.Rect{X: 100, Y: 200, W: 200, H: 100}},
 		{at: ms(2100), black: 0.95, cyan: 900, w: 400, h: 400, mark: whole},
 		{at: ms(2200), black: 0.95, cyan: 900, w: 400, h: 400, mark: whole},
 		{at: ms(3000), cover: 0.3, coverHex: "#11181E"},
@@ -291,7 +162,7 @@ func TestFilmReport(t *testing.T) {
 // ring is not it. After the password the grid's lines are back.
 func TestPromptLook(t *testing.T) {
 	prompt := solid(1280, 800, tBlack)
-	pill := lfRect{480, 594, 320, 36}
+	pill := pixels.Rect{X: 480, Y: 594, W: 320, H: 36}
 	for y := pill.Y; y < pill.Y+pill.H; y++ {
 		for x := pill.X; x < pill.X+pill.W; x++ {
 			in := func(r float64) func(fx, fy float64) bool {
@@ -313,9 +184,9 @@ func TestPromptLook(t *testing.T) {
 		t.Error("a box without a ring passed")
 	}
 	after := solid(1280, 800, tBlack)
-	fill(prompt, lfRect{500, 140, 280, 3}, tAccent)
-	fill(after, lfRect{500, 140, 280, 3}, tAccent)
-	fill(after, lfRect{500, 240, 280, 3}, tAccent)
+	fill(prompt, pixels.Rect{X: 500, Y: 140, W: 280, H: 3}, tAccent)
+	fill(after, pixels.Rect{X: 500, Y: 140, W: 280, H: 3}, tAccent)
+	fill(after, pixels.Rect{X: 500, Y: 240, W: 280, H: 3}, tAccent)
 	if ok, detail := gridBack(prompt, after, 594); !ok {
 		t.Error(detail)
 	}
@@ -329,10 +200,10 @@ func TestPromptLook(t *testing.T) {
 func TestGridPlymouth(t *testing.T) {
 	dir := t.TempDir()
 	prompt := solid(1280, 800, tBlack)
-	fill(prompt, lfRect{500, 140, 280, 3}, tAccent)
+	fill(prompt, pixels.Rect{X: 500, Y: 140, W: 280, H: 3}, tAccent)
 	back := solid(1280, 800, tBlack)
-	fill(back, lfRect{500, 140, 280, 3}, tAccent)
-	fill(back, lfRect{500, 240, 280, 3}, tAccent)
+	fill(back, pixels.Rect{X: 500, Y: 140, W: 280, H: 3}, tAccent)
+	fill(back, pixels.Rect{X: 500, Y: 240, W: 280, H: 3}, tAccent)
 	same, grid, broken := filepath.Join(dir, "same.png"), filepath.Join(dir, "grid.png"), filepath.Join(dir, "broken.png")
 	if writePNG(same, prompt) != nil || writePNG(grid, back) != nil || os.WriteFile(broken, []byte("\x89PNG partial"), 0o644) != nil {
 		t.Fatal("writing the screens")
@@ -420,97 +291,6 @@ func TestCSSChecks(t *testing.T) {
 	}
 }
 
-// A pill's end over the light desk: its apex pixel is the ring antialiased against the desk, a
-// blend the plain tolerance refuses; ringHit takes it, and not the desk alone.
-func TestRingHitBlend(t *testing.T) {
-	desk := color.NRGBA{0xF4, 0xF6, 0xF8, 255}
-	img := solid(20, 10, desk)
-	fill(img, lfRect{6, 0, 14, 10}, tG)
-	img.SetNRGBA(6, 5, tint(tRing, desk, 0.975))
-	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing); !ok {
-		t.Errorf("the apex %s was not taken for the ring", hexOf(at(img, 6, 5)))
-	}
-	img.SetNRGBA(6, 5, tint(tRing, desk, 0.5))
-	if _, ok := ringHit(img, 6, 5, -1, 0, lfRingReach, tRing); ok {
-		t.Error("half a ring was taken for one")
-	}
-	if a, res := coverOf(tint(tAccent, tH, 0.18), tAccent, tH); math.Abs(a-0.18) > 0.01 || res > 1 {
-		t.Errorf("the rest tint read as %.3f, %d off", a, res)
-	}
-}
-
-// Ghostty's stock background as a surface counts; the same colour on single antialiased pixels
-// does not.
-func TestFlatCount(t *testing.T) {
-	stock := color.NRGBA{0x28, 0x2C, 0x34, 255}
-	img := solid(40, 40, tG)
-	for i := range 10 {
-		img.SetNRGBA(3+3*i, 5, stock)
-	}
-	if n := flatCount(img, lfRect{0, 0, 40, 40}, stock, lfSurfaceTol); n != 0 {
-		t.Errorf("antialiasing counted: %d", n)
-	}
-	fill(img, lfRect{10, 20, 10, 10}, stock)
-	if n := flatCount(img, lfRect{0, 0, 40, 40}, stock, lfSurfaceTol); n != 64 {
-		t.Errorf("a 10x10 surface has 64 inner pixels, counted %d", n)
-	}
-}
-
-// Marks are not areas: text-thin strokes, a 2 px ring and a 24 px disc stay marks; a solid button
-// and a 6 px bar are areas larger than a mark.
-func TestSolidAreas(t *testing.T) {
-	img := solid(400, 200, tH)
-	acc := []color.NRGBA{tAccent}
-	all := lfRect{0, 0, 400, 200}
-	fill(img, lfRect{10, 10, 200, 3}, tAccent) // a slider's fill
-	fill(img, lfRect{10, 30, 4, 60}, tAccent)  // a 4 px stroke
-	fill(img, lfRect{50, 50, 24, 24}, tAccent) // the disc's box
-	fill(img, lfRect{100, 40, 40, 2}, tAccent) // a ring's side
-	if a := solidAreas(img, all, acc, 1); len(a) != 0 {
-		t.Errorf("marks taken for areas: %v", a)
-	}
-	fill(img, lfRect{200, 100, 120, 36}, tAccent)
-	fill(img, lfRect{20, 150, 300, 6}, tAccent)
-	a := solidAreas(img, all, acc, 1)
-	if len(a) != 2 || a[0] != (lfRect{20, 150, 300, 6}) && a[1] != (lfRect{20, 150, 300, 6}) {
-		t.Errorf("a button and a bar: %v", a)
-	}
-	if s := accentShare(img, all, acc, lfSweepTol); s < 0.05 || s > 0.1 {
-		t.Errorf("share %.3f", s)
-	}
-	// Tela's teal in the dock is not light's accent.
-	if s := accentShare(solid(10, 10, color.NRGBA{0x00, 0x82, 0x92, 255}), lfRect{0, 0, 10, 10}, []color.NRGBA{{0x00, 0x7A, 0x85, 255}}, lfSweepTol); s != 0 {
-		t.Errorf("Tela's teal counted: %.2f", s)
-	}
-}
-
-// A line across a pane is found where it is, past text on the rows above it; a column of icons
-// is no separator, the line between two panes is.
-func TestRules(t *testing.T) {
-	shelf, c := color.NRGBA{0xE9, 0xED, 0xF0, 255}, color.NRGBA{0xF4, 0xF6, 0xF8, 255}
-	line := color.NRGBA{0xCF, 0xD5, 0xD9, 255}
-	img := solid(300, 200, c)
-	fill(img, lfRect{0, 0, 100, 200}, shelf)
-	fill(img, lfRect{100, 0, 1, 200}, line)
-	fill(img, lfRect{0, 47, 300, 1}, line)
-	fill(img, lfRect{140, 20, 60, 10}, tInk) // a title
-	for y := 60; y < 200; y += 20 {
-		fill(img, lfRect{20, y, 16, 16}, tInk) // the sidebar's icons
-	}
-	if y, col, ok := hRule(img, 110, 290, 8, 80); !ok || y != 47 || col != line {
-		t.Errorf("content's rule: %d %s %v", y, hexOf(col), ok)
-	}
-	if y, _, ok := hRule(img, 10, 90, 8, 80); !ok || y != 47 {
-		t.Errorf("sidebar's rule: %d %v", y, ok)
-	}
-	if x, _, ok := vRule(img, 10, 150, 60, 190, 1); !ok || x != 100 {
-		t.Errorf("separator: %d %v", x, ok)
-	}
-	if _, _, ok := hRule(solid(100, 100, c), 0, 100, 8, 80); ok {
-		t.Error("a rule found on a bare pane")
-	}
-}
-
 // C1 as G3 reads it: the accent and white at an alpha over a surface, written opaque, are the
 // palette's; a mix of the accent and the error colour, or a grey, are not.
 func TestComposite(t *testing.T) {
@@ -518,14 +298,14 @@ func TestComposite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []color.NRGBA{tint(tAccent, tH, 0.5), tint(color.NRGBA{255, 255, 255, 255}, tH, 0.06), tint(tInk, tAccent, 0.08)} {
+	for _, c := range []color.NRGBA{pixels.Tint(tAccent, tH, 0.5), pixels.Tint(color.NRGBA{255, 255, 255, 255}, tH, 0.06), pixels.Tint(tInk, tAccent, 0.08)} {
 		if !p.composite(c) {
-			t.Errorf("%s is a composite", hexOf(c))
+			t.Errorf("%s is a composite", pixels.Hex(c))
 		}
 	}
 	for _, c := range []color.NRGBA{{0x28, 0x28, 0x28, 255}, {0xE3, 0x59, 0x84, 255}, {0x2D, 0x46, 0x5A, 255}} {
 		if p.composite(c) {
-			t.Errorf("%s taken for a composite", hexOf(c))
+			t.Errorf("%s taken for a composite", pixels.Hex(c))
 		}
 	}
 }
@@ -567,40 +347,6 @@ label.title { font-weight: 800; }
 	}
 }
 
-// At 2x a mark is twice the pixels and still a mark; an area is an area at any scale.
-func TestSolidAreasScaled(t *testing.T) {
-	img := solid(800, 400, tH)
-	acc := []color.NRGBA{tAccent}
-	all := lfRect{0, 0, 800, 400}
-	fill(img, lfRect{20, 60, 8, 120}, tAccent)   // a 4 px stroke, at 2x
-	fill(img, lfRect{100, 100, 48, 48}, tAccent) // the 24 px disc's box, at 2x
-	if a := solidAreas(img, all, acc, 2); len(a) != 0 {
-		t.Errorf("marks at 2x taken for areas: %v", a)
-	}
-	if a := solidAreas(img, all, acc, 1); len(a) != 2 {
-		t.Errorf("the same pixels at 1x are areas: %v", a)
-	}
-	fill(img, lfRect{400, 200, 240, 72}, tAccent)
-	if a := solidAreas(img, all, acc, 2); len(a) != 1 {
-		t.Errorf("a button at 2x: %v", a)
-	}
-}
-
-// A separator a stage pixel wide is two physical ones at 2x: found with its width, missed without.
-func TestVRuleScaled(t *testing.T) {
-	shelf, c := color.NRGBA{0xE9, 0xED, 0xF0, 255}, color.NRGBA{0xF4, 0xF6, 0xF8, 255}
-	line := color.NRGBA{0xCF, 0xD5, 0xD9, 255}
-	img := solid(600, 400, c)
-	fill(img, lfRect{0, 0, 200, 400}, shelf)
-	fill(img, lfRect{200, 0, 2, 400}, line)
-	if x, col, ok := vRule(img, 20, 300, 120, 380, 2); !ok || x != 200 || col != line {
-		t.Errorf("2x separator: %d %v", x, ok)
-	}
-	if _, _, ok := vRule(img, 20, 300, 120, 380, 1); ok {
-		t.Error("a 2 px line read as 1 px wide")
-	}
-}
-
 // Plymouth's prompt at 2880x1800, drawn at Plymouth's scale 2 where the 1440x900 layout puts it.
 func TestPromptLookScaled(t *testing.T) {
 	if from, to := promptRows(800); from != 560 || to != 680 {
@@ -631,9 +377,9 @@ func TestPromptLookScaled(t *testing.T) {
 func TestFilmReportSizes(t *testing.T) {
 	ms := func(n int) time.Duration { return time.Duration(n) * time.Millisecond }
 	frames := []filmFrame{
-		{at: ms(1000), black: 0.95, cyan: 900, w: 1280, h: 800, mark: lfRect{540, 240, 200, 200}},
-		{at: ms(1100), black: 0.95, cyan: 900, w: 1280, h: 800, mark: lfRect{540, 240, 200, 200}},
-		{at: ms(2000), black: 0.95, cyan: 3600, w: 2880, h: 1800, mark: lfRect{1240, 600, 400, 400}},
+		{at: ms(1000), black: 0.95, cyan: 900, w: 1280, h: 800, mark: pixels.Rect{X: 540, Y: 240, W: 200, H: 200}},
+		{at: ms(1100), black: 0.95, cyan: 900, w: 1280, h: 800, mark: pixels.Rect{X: 540, Y: 240, W: 200, H: 200}},
+		{at: ms(2000), black: 0.95, cyan: 3600, w: 2880, h: 1800, mark: pixels.Rect{X: 1240, Y: 600, W: 400, H: 400}},
 	}
 	r := &report{dir: t.TempDir()}
 	if mark := r.filmReport(frames, 0); mark == nil || mark[0] != 0.5 || mark[1] != 800.0/1800 {
@@ -674,7 +420,7 @@ func TestCheckCountsOnView(t *testing.T) {
 	if got.Pass != 1 || got.Fail != 1 || !slices.Equal(got.Checks, []string{"focus calendar day"}) {
 		t.Errorf("counted %+v", got)
 	}
-	l.r.viewSweep("shell-calendar", []lfRect{{1, 2, 30, 40}}, 0.004)
+	l.r.viewSweep("shell-calendar", []pixels.Rect{{X: 1, Y: 2, W: 30, H: 40}}, 0.004)
 	if v := l.r.lookViewOf("shell-calendar"); len(v.Sweep.Areas) != 1 || v.Sweep.Areas[0].W != 30 || v.LF.Fail != 1 {
 		t.Errorf("look.json's view %+v", v)
 	}
@@ -684,7 +430,7 @@ func TestCheckCountsOnView(t *testing.T) {
 // an alpha over g is; a grey of its own, or the same colour, is not.
 func TestButtonState(t *testing.T) {
 	l := testLF(t, 2)
-	btn := lfRect{600, 10, 20, 20}
+	btn := pixels.Rect{X: 600, Y: 10, W: 20, H: 20}
 	shoot := func(name string, c color.NRGBA) {
 		img := solid(1280, 800, tG)
 		fill(img, l.px(btn), c)
@@ -693,7 +439,7 @@ func TestButtonState(t *testing.T) {
 		}
 	}
 	shoot("rest", tG)
-	shoot("hover", tint(color.NRGBA{255, 255, 255, 255}, tG, 0.08))
+	shoot("hover", pixels.Tint(color.NRGBA{255, 255, 255, 255}, tG, 0.08))
 	shoot("grey", color.NRGBA{0x50, 0x50, 0x50, 255})
 	shoot("same", tG)
 	for _, c := range []struct {
@@ -718,10 +464,10 @@ func TestGTKFocus(t *testing.T) {
 	}
 	ring := func(c color.NRGBA) *image.NRGBA {
 		img := solid(1280, 800, tG)
-		fill(img, lfRect{400, 300, 200, 4}, c)
-		fill(img, lfRect{400, 380, 200, 4}, c)
-		fill(img, lfRect{400, 300, 4, 84}, c)
-		fill(img, lfRect{596, 300, 4, 84}, c)
+		fill(img, pixels.Rect{X: 400, Y: 300, W: 200, H: 4}, c)
+		fill(img, pixels.Rect{X: 400, Y: 380, W: 200, H: 4}, c)
+		fill(img, pixels.Rect{X: 400, Y: 300, W: 4, H: 84}, c)
+		fill(img, pixels.Rect{X: 596, Y: 300, W: 4, H: 84}, c)
 		return img
 	}
 	write("gtk-dialog", solid(1280, 800, tG))
@@ -740,15 +486,15 @@ func TestGTKFocus(t *testing.T) {
 	}
 	// The focus moves: the outline leaves one control as it reaches another.
 	moved := ring(tAccent)
-	fill(moved, lfRect{400, 500, 200, 4}, tAccent)
+	fill(moved, pixels.Rect{X: 400, Y: 500, W: 200, H: 4}, tAccent)
 	write("gtk-dialog", moved)
 	l.gtkFocus("gtk-focus", func() *image.NRGBA {
 		img := solid(1280, 800, tG)
-		fill(img, lfRect{400, 500, 200, 4}, tAccent)
-		fill(img, lfRect{700, 300, 200, 4}, tAccent)
-		fill(img, lfRect{700, 380, 200, 4}, tAccent)
-		fill(img, lfRect{700, 300, 4, 84}, tAccent)
-		fill(img, lfRect{896, 300, 4, 84}, tAccent)
+		fill(img, pixels.Rect{X: 400, Y: 500, W: 200, H: 4}, tAccent)
+		fill(img, pixels.Rect{X: 700, Y: 300, W: 200, H: 4}, tAccent)
+		fill(img, pixels.Rect{X: 700, Y: 380, W: 200, H: 4}, tAccent)
+		fill(img, pixels.Rect{X: 700, Y: 300, W: 4, H: 84}, tAccent)
+		fill(img, pixels.Rect{X: 896, Y: 300, W: 4, H: 84}, tAccent)
 		return img
 	}())
 	if res := lastResult(t, l.r); !res.ok {
@@ -757,7 +503,7 @@ func TestGTKFocus(t *testing.T) {
 	// The outline only leaves: Tab drew none.
 	l.gtkFocus("gtk-focus", func() *image.NRGBA {
 		img := solid(1280, 800, tG)
-		fill(img, lfRect{400, 500, 200, 4}, tAccent)
+		fill(img, pixels.Rect{X: 400, Y: 500, W: 200, H: 4}, tAccent)
 		return img
 	}())
 	if res := lastResult(t, l.r); res.ok {
@@ -770,15 +516,15 @@ func TestGTKFocus(t *testing.T) {
 func TestLightAccent(t *testing.T) {
 	l := testLF(t, 2)
 	img := solid(1280, 800, color.NRGBA{0xDE, 0xE4, 0xE8, 255})
-	win := lfRect{100, 50, 400, 300}
+	win := pixels.Rect{X: 100, Y: 50, W: 400, H: 300}
 	fill(img, l.px(win), color.NRGBA{0xF4, 0xF6, 0xF8, 255})
-	fill(img, lfRect{300, 200, 40, 40}, color.NRGBA{0x00, 0x7A, 0x85, 255}) // a light switch's track
-	fill(img, lfRect{620, 780, 10, 10}, tAccent)                            // the dock's running dot
+	fill(img, pixels.Rect{X: 300, Y: 200, W: 40, H: 40}, color.NRGBA{0x00, 0x7A, 0x85, 255}) // a light switch's track
+	fill(img, pixels.Rect{X: 620, Y: 780, W: 10, H: 10}, tAccent)                            // the dock's running dot
 	l.lightAccent("w", img, win)
 	if res := lastResult(t, l.r); res.name != "lf: accent w" || !res.ok {
 		t.Errorf("light accent only: %+v", res)
 	}
-	fill(img, lfRect{400, 300, 6, 6}, tAccent)
+	fill(img, pixels.Rect{X: 400, Y: 300, W: 6, H: 6}, tAccent)
 	l.lightAccent("w", img, win)
 	if res := lastResult(t, l.r); res.ok {
 		t.Errorf("dark's accent in the window passed: %+v", res)

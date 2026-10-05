@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/Construct-Linux/os/internal/pixels"
 )
 
 // cssRule is one rule of a stylesheet: its selectors, and its declarations in order, each
@@ -170,7 +172,7 @@ func cssColors(v string) []color.NRGBA {
 	for _, w := range strings.FieldsFunc(cssRGB.ReplaceAllString(v, " "), func(r rune) bool { return r == ' ' || r == ',' || r == '(' || r == ')' }) {
 		switch {
 		case strings.HasPrefix(w, "#"):
-			if c, ok := parseHex(w); ok {
+			if c, ok := pixels.ParseHex(w); ok {
 				out = append(out, c)
 			}
 		case w == "transparent":
@@ -250,11 +252,11 @@ func cssContract(rules []cssRule, text string, p lfPalette) (bool, string) {
 		}
 		if bg != nil {
 			if c, ok := cssBackground(m); !ok || c != (color.NRGBA{bg.R, bg.G, bg.B, 255}) {
-				bad = append(bad, fmt.Sprintf("%s: background %q, want %s", subject, m["background-color"]+m["background"], hexOf(*bg)))
+				bad = append(bad, fmt.Sprintf("%s: background %q, want %s", subject, m["background-color"]+m["background"], pixels.Hex(*bg)))
 			}
 		}
 		if w, c, ok := cssRing(m); !ok || w != 1 || c != (color.NRGBA{ring.R, ring.G, ring.B, 255}) {
-			bad = append(bad, fmt.Sprintf("%s: border %q, want 1px %s", subject, m["border"]+m["border-width"]+m["border-color"], hexOf(ring)))
+			bad = append(bad, fmt.Sprintf("%s: border %q, want 1px %s", subject, m["border"]+m["border-width"]+m["border-color"], pixels.Hex(ring)))
 		}
 	}
 	g, h := p.colors["neutral-g"], p.colors["neutral-h"]
@@ -331,7 +333,7 @@ func cssFocus(rules []cssRule, accent color.NRGBA) (bool, string) {
 			left = append(left, s)
 		}
 	}
-	return len(left) == 0 && rings > 0, fmt.Sprintf("%d rules draw the inset 2px %s ring; box-shadow none on focus: %v", rings, hexOf(accent), left)
+	return len(left) == 0 && rings > 0, fmt.Sprintf("%d rules draw the inset 2px %s ring; box-shadow none on focus: %v", rings, pixels.Hex(accent), left)
 }
 
 // cssPalette is G3, C1 as the stylesheet writes it: every colour is the palette's, or white or
@@ -347,7 +349,7 @@ func cssPalette(rules []cssRule, p lfPalette) (bool, string) {
 				if c.A == 0 || p.has(c) || (c.R == c.G && c.G == c.B && (c.R == 0 || c.R == 255)) || (c.A == 255 && p.composite(c)) {
 					continue
 				}
-				k := hexOf(c)
+				k := pixels.Hex(c)
 				if c.R == c.G && c.G == c.B {
 					k += " (grey)"
 					greys++

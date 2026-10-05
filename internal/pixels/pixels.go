@@ -1,4 +1,6 @@
-package main
+// Package pixels measures screenshots: colours, areas, rules, rings and corners in a rectangle,
+// and the coverage of text's ink, for the harness's look checks to judge.
+package pixels
 
 import (
 	"errors"
@@ -7,27 +9,46 @@ import (
 	"image/color"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 )
 
-// lfRect is an actor's or a window's extents on the screen, in its pixels.
-type lfRect struct{ X, Y, W, H int }
+const (
+	// RingTol is a 1 px ring, against its token: antialiasing on a fractional allocation blends a
+	// little of either neighbour into it.
+	RingTol = 3
+	// A 1 px ring on a curve's apex is antialiased against what is outside it: it still covers at
+	// least this much of its pixel (the top bar's end over the light desk: 0.975). Less is no ring.
+	ringCover = 0.85
+	// A window's corner is fitted from the blend between it and what is outside it: closer than
+	// this on every channel, the half-way crossing it looks for is noise.
+	cornerContrast = 8
+	// A line across a pane covers this much of its row (or column); text and icons never do.
+	ruleShare = 0.9
+)
 
-func (r lfRect) inset(dx, dy int) lfRect { return lfRect{r.X + dx, r.Y + dy, r.W - 2*dx, r.H - 2*dy} }
+// Rect is an actor's or a window's extents on the screen, in its pixels.
+type Rect struct{ X, Y, W, H int }
 
-func (r lfRect) image() image.Rectangle { return image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H) }
+// Inset is r shrunk by dx on the left and right and dy on the top and bottom.
+func (r Rect) Inset(dx, dy int) Rect { return Rect{r.X + dx, r.Y + dy, r.W - 2*dx, r.H - 2*dy} }
 
-func (r lfRect) String() string { return fmt.Sprintf("%dx%d+%d+%d", r.W, r.H, r.X, r.Y) }
+func (r Rect) Image() image.Rectangle { return image.Rect(r.X, r.Y, r.X+r.W, r.Y+r.H) }
 
-func at(img image.Image, x, y int) color.NRGBA {
+func (r Rect) String() string { return fmt.Sprintf("%dx%d+%d+%d", r.W, r.H, r.X, r.Y) }
+
+// At is img's pixel at (x, y), as 8-bit NRGBA.
+func At(img image.Image, x, y int) color.NRGBA {
 	return color.NRGBAModel.Convert(img.At(x, y)).(color.NRGBA)
 }
 
-func near(a, b color.NRGBA, tol int) bool { return channelDelta(a, b) <= tol }
+// Near is whether a and b are within tol on every channel.
+func Near(a, b color.NRGBA, tol int) bool { return ChannelDelta(a, b) <= tol }
 
-// modeColor is r's most common colour and the share of r it covers: a surface's own colour, which
+// ModeColor is r's most common colour and the share of r it covers: a surface's own colour, which
 // its text and icons do not outnumber.
-func modeColor(img image.Image, r lfRect) (color.NRGBA, float64) {
-	b := r.image().Intersect(img.Bounds())
+func ModeColor(img image.Image, r Rect) (color.NRGBA, float64) {
+	b := r.Image().Intersect(img.Bounds())
 	if b.Empty() {
 		return color.NRGBA{}, 0
 	}
@@ -36,7 +57,7 @@ func modeColor(img image.Image, r lfRect) (color.NRGBA, float64) {
 	bestN := 0
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			c := at(img, x, y)
+			c := At(img, x, y)
 			n[c]++
 			if n[c] > bestN {
 				best, bestN = c, n[c]
@@ -46,13 +67,13 @@ func modeColor(img image.Image, r lfRect) (color.NRGBA, float64) {
 	return best, float64(bestN) / float64(b.Dx()*b.Dy())
 }
 
-// countNear is how many of r's pixels are within tol of want.
-func countNear(img image.Image, r lfRect, want color.NRGBA, tol int) int {
-	b := r.image().Intersect(img.Bounds())
+// CountNear is how many of r's pixels are within tol of want.
+func CountNear(img image.Image, r Rect, want color.NRGBA, tol int) int {
+	b := r.Image().Intersect(img.Bounds())
 	n := 0
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			if near(at(img, x, y), want, tol) {
+			if Near(At(img, x, y), want, tol) {
 				n++
 			}
 		}
@@ -60,24 +81,24 @@ func countNear(img image.Image, r lfRect, want color.NRGBA, tol int) int {
 	return n
 }
 
-// coverOf reads c as fg drawn over bg: the alpha that blend would have (0 to 1), and how far c
+// CoverOf reads c as fg drawn over bg: the alpha that blend would have (0 to 1), and how far c
 // is from it, in a channel. An antialiased ring's pixel is the ring over what is outside it.
-func coverOf(c, fg, bg color.NRGBA) (float64, int) {
+func CoverOf(c, fg, bg color.NRGBA) (float64, int) {
 	dr, dg, db := float64(fg.R)-float64(bg.R), float64(fg.G)-float64(bg.G), float64(fg.B)-float64(bg.B)
 	den := dr*dr + dg*dg + db*db
 	if den == 0 {
-		return 1, channelDelta(c, fg)
+		return 1, ChannelDelta(c, fg)
 	}
 	a := ((float64(c.R)-float64(bg.R))*dr + (float64(c.G)-float64(bg.G))*dg + (float64(c.B)-float64(bg.B))*db) / den
 	a = min(max(a, 0), 1)
-	return a, channelDelta(c, tint(fg, bg, a))
+	return a, ChannelDelta(c, Tint(fg, bg, a))
 }
 
-// ringHit looks for a 1 px ring at (x, y) and up to reach px either way along the normal (nx, ny):
+// RingHit looks for a 1 px ring at (x, y) and up to reach px either way along the normal (nx, ny):
 // a ring lands a pixel to either side of an extent rounded from a fractional allocation. A pixel is
-// the ring when it is within lfRingTol of it, or the ring antialiased over the pixel just outside it,
-// covering at least lfRingCover of it.
-func ringHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA) (image.Point, bool) {
+// the ring when it is within RingTol of it, or the ring antialiased over the pixel just outside it,
+// covering at least ringCover of it.
+func RingHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA) (image.Point, bool) {
 	for k := 0; k <= reach; k++ {
 		for _, s := range []int{k, -k} {
 			p := image.Pt(x+s*nx, y+s*ny)
@@ -85,12 +106,12 @@ func ringHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA) (image.
 			if !p.In(img.Bounds()) {
 				continue
 			}
-			c := at(img, p.X, p.Y)
-			if near(c, ring, lfRingTol) {
+			c := At(img, p.X, p.Y)
+			if Near(c, ring, RingTol) {
 				return p, true
 			}
 			if o.In(img.Bounds()) {
-				if a, res := coverOf(c, ring, at(img, o.X, o.Y)); a >= lfRingCover && res <= lfRingTol {
+				if a, res := CoverOf(c, ring, At(img, o.X, o.Y)); a >= ringCover && res <= RingTol {
 					return p, true
 				}
 			}
@@ -102,15 +123,15 @@ func ringHit(img image.Image, x, y, nx, ny, reach int, ring color.NRGBA) (image.
 	return image.Point{}, false
 }
 
-// flatCount is how many of r's pixels are within tol of want with their four neighbours too: a
+// FlatCount is how many of r's pixels are within tol of want with their four neighbours too: a
 // surface of that colour, not the antialiasing of an edge that passes through it.
-func flatCount(img image.Image, r lfRect, want color.NRGBA, tol int) int {
-	b := r.image().Intersect(img.Bounds())
+func FlatCount(img image.Image, r Rect, want color.NRGBA, tol int) int {
+	b := r.Image().Intersect(img.Bounds())
 	n := 0
 	for y := b.Min.Y + 1; y < b.Max.Y-1; y++ {
 		for x := b.Min.X + 1; x < b.Max.X-1; x++ {
-			if near(at(img, x, y), want, tol) && near(at(img, x-1, y), want, tol) && near(at(img, x+1, y), want, tol) &&
-				near(at(img, x, y-1), want, tol) && near(at(img, x, y+1), want, tol) {
+			if Near(At(img, x, y), want, tol) && Near(At(img, x-1, y), want, tol) && Near(At(img, x+1, y), want, tol) &&
+				Near(At(img, x, y-1), want, tol) && Near(At(img, x, y+1), want, tol) {
 				n++
 			}
 		}
@@ -119,14 +140,14 @@ func flatCount(img image.Image, r lfRect, want color.NRGBA, tol int) int {
 }
 
 // accentMask is which of r's pixels are within tol of any of cols, row by row.
-func accentMask(img image.Image, r lfRect, cols []color.NRGBA, tol int) ([]bool, image.Rectangle) {
-	b := r.image().Intersect(img.Bounds())
+func accentMask(img image.Image, r Rect, cols []color.NRGBA, tol int) ([]bool, image.Rectangle) {
+	b := r.Image().Intersect(img.Bounds())
 	m := make([]bool, b.Dx()*b.Dy())
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			c := at(img, x, y)
+			c := At(img, x, y)
 			for _, w := range cols {
-				if near(c, w, tol) {
+				if Near(c, w, tol) {
 					m[(y-b.Min.Y)*b.Dx()+x-b.Min.X] = true
 					break
 				}
@@ -136,8 +157,8 @@ func accentMask(img image.Image, r lfRect, cols []color.NRGBA, tol int) ([]bool,
 	return m, b
 }
 
-// accentShare is the share of r's pixels within tol of any of cols.
-func accentShare(img image.Image, r lfRect, cols []color.NRGBA, tol int) float64 {
+// Share is the share of r's pixels within tol of any of cols.
+func Share(img image.Image, r Rect, cols []color.NRGBA, tol int) float64 {
 	m, b := accentMask(img, r, cols, tol)
 	if len(m) == 0 {
 		return 0
@@ -151,15 +172,14 @@ func accentShare(img image.Image, r lfRect, cols []color.NRGBA, tol int) float64
 	return float64(n) / float64(b.Dx()*b.Dy())
 }
 
-// solidAreas are r's areas of cols larger than a mark: what is left of them once every stroke up
-// to lfMarkStroke px is eroded away (a square of side lfMarkStroke+1 must fit), grown back, and
-// wider or taller than lfMarkDisc - both scale physical pixels a stage pixel. Text, rings, a
-// slider's fill and the quick toggle's disc are marks; a solid button or a filled toggle is an
-// area.
-func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, scale int) []lfRect {
-	m, b := accentMask(img, r, cols, lfSweepTol)
+// SolidAreas are r's areas of cols (within tol) larger than a mark: what is left of them once
+// every stroke up to stroke px is eroded away (a square of side stroke+1 must fit), grown back, and
+// wider or taller than disc px. Text, rings, a slider's fill and the quick toggle's disc are
+// marks; a solid button or a filled toggle is an area.
+func SolidAreas(img image.Image, r Rect, cols []color.NRGBA, tol, stroke, disc int) []Rect {
+	m, b := accentMask(img, r, cols, tol)
 	w, h := b.Dx(), b.Dy()
-	k := lfMarkStroke*scale/2 + 1
+	k := stroke/2 + 1
 	// Erosion by a square, as a horizontal run and then a vertical one.
 	erode := func(src []bool, dx, dy int) []bool {
 		out := make([]bool, len(src))
@@ -177,7 +197,7 @@ func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, scale int) []lfRe
 	}
 	core := erode(erode(m, 1, 0), 0, 1)
 	seen := make([]bool, len(core))
-	var out []lfRect
+	var out []Rect
 	var stack []int
 	for i, v := range core {
 		if !v || seen[i] {
@@ -204,22 +224,22 @@ func solidAreas(img image.Image, r lfRect, cols []color.NRGBA, scale int) []lfRe
 		}
 		// Grown back by what erosion took from each side.
 		box = box.Inset(-(k - 1))
-		if box.Dx() > lfMarkDisc*scale || box.Dy() > lfMarkDisc*scale {
-			out = append(out, lfRect{b.Min.X + box.Min.X, b.Min.Y + box.Min.Y, box.Dx(), box.Dy()})
+		if box.Dx() > disc || box.Dy() > disc {
+			out = append(out, Rect{b.Min.X + box.Min.X, b.Min.Y + box.Min.Y, box.Dx(), box.Dy()})
 		}
 	}
 	return out
 }
 
-// hRule finds a horizontal 1 px line in the columns x0 to x1, from y0 down to y1: the first row
-// whose most common colour covers at least lfRuleShare of it and differs, beyond lfSurfaceTol, from
-// the most common colour of the row above. A line of text never covers a row; a gradient's step
+// HRule finds a horizontal 1 px line in the columns x0 to x1, from y0 down to y1: the first row
+// whose most common colour covers at least ruleShare of it and differs, beyond tol, from the most
+// common colour of the row above. A line of text never covers a row; a gradient's step
 // is within the tolerance.
-func hRule(img image.Image, x0, x1, y0, y1 int) (int, color.NRGBA, bool) {
-	prev, _ := modeColor(img, lfRect{x0, y0 - 1, x1 - x0, 1})
+func HRule(img image.Image, x0, x1, y0, y1, tol int) (int, color.NRGBA, bool) {
+	prev, _ := ModeColor(img, Rect{x0, y0 - 1, x1 - x0, 1})
 	for y := y0; y < y1; y++ {
-		c, share := modeColor(img, lfRect{x0, y, x1 - x0, 1})
-		if share >= lfRuleShare && channelDelta(c, prev) > lfSurfaceTol {
+		c, share := ModeColor(img, Rect{x0, y, x1 - x0, 1})
+		if share >= ruleShare && ChannelDelta(c, prev) > tol {
 			return y, c, true
 		}
 		prev = c
@@ -227,23 +247,23 @@ func hRule(img image.Image, x0, x1, y0, y1 int) (int, color.NRGBA, bool) {
 	return 0, color.NRGBA{}, false
 }
 
-// vRule is hRule across: the first column from x0 to x1, in the rows y0 to y1, that is a line
+// VRule is HRule across: the first column from x0 to x1, in the rows y0 to y1, that is a line
 // width px wide (a stage pixel's physical ones) different from the columns on both sides of it.
-func vRule(img image.Image, x0, x1, y0, y1, width int) (int, color.NRGBA, bool) {
-	col := func(x int) (color.NRGBA, float64) { return modeColor(img, lfRect{x, y0, 1, y1 - y0}) }
+func VRule(img image.Image, x0, x1, y0, y1, width, tol int) (int, color.NRGBA, bool) {
+	col := func(x int) (color.NRGBA, float64) { return ModeColor(img, Rect{x, y0, 1, y1 - y0}) }
 	for x := x0; x < x1; x++ {
 		c, share := col(x)
 		l, _ := col(x - 1)
 		r, _ := col(x + width)
-		if share >= lfRuleShare && channelDelta(c, l) > lfSurfaceTol && channelDelta(c, r) > lfSurfaceTol {
+		if share >= ruleShare && ChannelDelta(c, l) > tol && ChannelDelta(c, r) > tol {
 			return x, c, true
 		}
 	}
 	return 0, color.NRGBA{}, false
 }
 
-// luminance is WCAG 2.2's relative luminance.
-func luminance(c color.NRGBA) float64 {
+// Luminance is WCAG 2.2's relative luminance.
+func Luminance(c color.NRGBA) float64 {
 	ch := func(v uint8) float64 {
 		s := float64(v) / 255
 		if s <= 0.04045 {
@@ -254,30 +274,30 @@ func luminance(c color.NRGBA) float64 {
 	return 0.2126*ch(c.R) + 0.7152*ch(c.G) + 0.0722*ch(c.B)
 }
 
-// contrast is WCAG 2.2's contrast ratio, 1 to 21.
-func contrast(a, b color.NRGBA) float64 {
-	la, lb := luminance(a), luminance(b)
+// Contrast is WCAG 2.2's contrast ratio, 1 to 21.
+func Contrast(a, b color.NRGBA) float64 {
+	la, lb := Luminance(a), Luminance(b)
 	if la < lb {
 		la, lb = lb, la
 	}
 	return (la + 0.05) / (lb + 0.05)
 }
 
-// over is fg, at its alpha, over an opaque bg.
-func over(fg, bg color.NRGBA) color.NRGBA {
-	return tint(color.NRGBA{fg.R, fg.G, fg.B, 255}, bg, float64(fg.A)/255)
+// Over is fg, at its alpha, over an opaque bg.
+func Over(fg, bg color.NRGBA) color.NRGBA {
+	return Tint(color.NRGBA{fg.R, fg.G, fg.B, 255}, bg, float64(fg.A)/255)
 }
 
-// tint is c at alpha t over an opaque surface: how the shell draws its state layers and tints.
-func tint(c, surface color.NRGBA, t float64) color.NRGBA {
+// Tint is c at alpha t over an opaque surface: how the shell draws its state layers and tints.
+func Tint(c, surface color.NRGBA, t float64) color.NRGBA {
 	m := func(a, b uint8) uint8 { return uint8(math.Round(float64(a)*t + float64(b)*(1-t))) }
 	return color.NRGBA{m(c.R, surface.R), m(c.G, surface.G), m(c.B, surface.B), 255}
 }
 
-// ringShare is the share of points on a pill's outline, inset px inside its extents, within
-// lfRingAccentTol of want: a 2 px ring drawn inside the edge is sampled down its middle with inset 1. A circle is a
-// pill as long as it is wide.
-func ringShare(img image.Image, r lfRect, inset float64, want color.NRGBA) float64 {
+// RingShare is the share of points on a pill's outline, inset px inside its extents, within
+// tol of want: a 2 px ring drawn inside the edge is sampled down its middle with inset 1. A circle
+// is a pill as long as it is wide.
+func RingShare(img image.Image, r Rect, inset float64, want color.NRGBA, tol int) float64 {
 	d := float64(min(r.W, r.H))
 	rad := d/2 - inset
 	x0, y0 := float64(r.X), float64(r.Y)
@@ -298,7 +318,7 @@ func ringShare(img image.Image, r lfRect, inset float64, want color.NRGBA) float
 			return
 		}
 		n++
-		if near(at(img, p.X, p.Y), want, lfRingAccentTol) {
+		if Near(At(img, p.X, p.Y), want, tol) {
 			hits++
 		}
 	}
@@ -332,22 +352,22 @@ func ringShare(img image.Image, r lfRect, inset float64, want color.NRGBA) float
 	return float64(hits) / float64(n)
 }
 
-// cornerRadius fits the radius of a window's rounded top-left corner, whose frame starts at (x, y):
+// CornerRadius fits the radius of a window's rounded top-left corner, whose frame starts at (x, y):
 // row by row, the first pixel at least half the window's own colour (sampled past the curve) against
 // what is outside it (the frame's corner pixel, which a rounded corner leaves outside), and the
 // circle that best gives those columns. Rows that fit no circle (a ring drawn inside the frame) are
 // capped, so one does not move the fit.
-func cornerRadius(img image.Image, x, y, maxR int) (float64, error) {
-	inside, _ := modeColor(img, lfRect{x + maxR + 2, y + 1, 32, 4})
-	outside := at(img, x, y)
-	if channelDelta(inside, outside) < lfCornerContrast {
-		return 0, fmt.Errorf("the window (%s) and what is outside its corner (%s) are too alike to see the corner", hexOf(inside), hexOf(outside))
+func CornerRadius(img image.Image, x, y, maxR int) (float64, error) {
+	inside, _ := ModeColor(img, Rect{x + maxR + 2, y + 1, 32, 4})
+	outside := At(img, x, y)
+	if ChannelDelta(inside, outside) < cornerContrast {
+		return 0, fmt.Errorf("the window (%s) and what is outside its corner (%s) are too alike to see the corner", Hex(inside), Hex(outside))
 	}
 	edge := make([]int, maxR)
 	for dy := range maxR {
 		edge[dy] = maxR
 		for dx := range maxR {
-			if a, _ := coverOf(at(img, x+dx, y+dy), inside, outside); a >= 0.5 {
+			if a, _ := CoverOf(At(img, x+dx, y+dy), inside, outside); a >= 0.5 {
 				edge[dy] = dx
 				break
 			}
@@ -378,15 +398,15 @@ func predictedEdge(r float64, dy int) int {
 	return max(0, int(math.Ceil(dx-0.5)))
 }
 
-// lightness is HSL's, 0 to 1.
-func lightness(c color.NRGBA) float64 {
+// Lightness is HSL's, 0 to 1.
+func Lightness(c color.NRGBA) float64 {
 	return (float64(max(c.R, c.G, c.B)) + float64(min(c.R, c.G, c.B))) / 2 / 255
 }
 
-// lightSlab is the size of the largest 4-connected area in r lighter than l: glyphs and icons are
+// LightSlab is the size of the largest 4-connected area in r lighter than l: glyphs and icons are
 // small areas, a light slab is one big one.
-func lightSlab(img image.Image, r lfRect, l float64) int {
-	b := r.image().Intersect(img.Bounds())
+func LightSlab(img image.Image, r Rect, l float64) int {
+	b := r.Image().Intersect(img.Bounds())
 	w, h := b.Dx(), b.Dy()
 	if w <= 0 || h <= 0 {
 		return 0
@@ -394,7 +414,7 @@ func lightSlab(img image.Image, r lfRect, l float64) int {
 	light := make([]bool, w*h)
 	for y := range h {
 		for x := range w {
-			light[y*w+x] = lightness(at(img, b.Min.X+x, b.Min.Y+y)) > l
+			light[y*w+x] = Lightness(At(img, b.Min.X+x, b.Min.Y+y)) > l
 		}
 	}
 	seen := make([]bool, w*h)
@@ -428,11 +448,11 @@ func lightSlab(img image.Image, r lfRect, l float64) int {
 	return largest
 }
 
-// strokeRatio is a line of text's stem width over its cap height, in r: pixels nearer fg than bg
+// StrokeRatio is a line of text's stem width over its cap height, in r: pixels nearer fg than bg
 // are ink, the cap height is the ink's height, and the stem the median horizontal run of ink no
 // longer than a third of it (longer runs are bars and bowls' tops).
-func strokeRatio(img image.Image, r lfRect, fg, bg color.NRGBA) (float64, error) {
-	b := r.image().Intersect(img.Bounds())
+func StrokeRatio(img image.Image, r Rect, fg, bg color.NRGBA) (float64, error) {
+	b := r.Image().Intersect(img.Bounds())
 	dist := func(a, c color.NRGBA) int {
 		dr, dg, db := int(a.R)-int(c.R), int(a.G)-int(c.G), int(a.B)-int(c.B)
 		return dr*dr + dg*dg + db*db
@@ -444,7 +464,7 @@ func strokeRatio(img image.Image, r lfRect, fg, bg color.NRGBA) (float64, error)
 		run := 0
 		for x := b.Min.X; x <= b.Max.X; x++ {
 			if x < b.Max.X {
-				if c := at(img, x, y); dist(c, fg) < dist(c, bg) {
+				if c := At(img, x, y); dist(c, fg) < dist(c, bg) {
 					run++
 					continue
 				}
@@ -478,15 +498,15 @@ func strokeRatio(img image.Image, r lfRect, fg, bg color.NRGBA) (float64, error)
 	return float64(stems[len(stems)/2]) / float64(capH), nil
 }
 
-// markBox is the extents of r's pixels brighter than markLevel in any channel: the wallpaper's mark,
-// as plymouth.go measures it for MarkCenter.
-func markBox(img image.Image, r lfRect) (lfRect, bool) {
-	b := r.image().Intersect(img.Bounds())
+// MarkBox is the extents of r's pixels brighter than level, out of 255, in any channel: an image's
+// mark on a dark ground.
+func MarkBox(img image.Image, r Rect, level int) (Rect, bool) {
+	b := r.Image().Intersect(img.Bounds())
 	box := image.Rectangle{}
 	found := false
 	for y := b.Min.Y; y < b.Max.Y; y++ {
 		for x := b.Min.X; x < b.Max.X; x++ {
-			if c := at(img, x, y); int(max(c.R, c.G, c.B)) > markLevel {
+			if c := At(img, x, y); int(max(c.R, c.G, c.B)) > level {
 				p := image.Rect(x, y, x+1, y+1)
 				if found {
 					box = box.Union(p)
@@ -496,27 +516,27 @@ func markBox(img image.Image, r lfRect) (lfRect, bool) {
 			}
 		}
 	}
-	return lfRect{box.Min.X, box.Min.Y, box.Dx(), box.Dy()}, found
+	return Rect{box.Min.X, box.Min.Y, box.Dx(), box.Dy()}, found
 }
 
-// focusDiff compares two screenshots inside r, a before and an after the key focus moved: of the
-// pixels that differ beyond the needles' channel tolerance, how many are within tol of accent in
+// FocusDiff compares two screenshots inside r, a before and an after the key focus moved: of the
+// pixels that differ beyond delta on a channel, how many are within tol of accent in
 // b - the ring drawn - and the share that are in a or in b: the ring leaves the control the focus
 // left as it reaches the next, and both are the move.
-func focusDiff(a, b image.Image, r lfRect, accent color.NRGBA, tol int) (drawn int, share float64) {
-	rb := r.image().Intersect(a.Bounds()).Intersect(b.Bounds())
+func FocusDiff(a, b image.Image, r Rect, delta int, accent color.NRGBA, tol int) (drawn int, share float64) {
+	rb := r.Image().Intersect(a.Bounds()).Intersect(b.Bounds())
 	changed, ring := 0, 0
 	for y := rb.Min.Y; y < rb.Max.Y; y++ {
 		for x := rb.Min.X; x < rb.Max.X; x++ {
-			ca, cb := at(a, x, y), at(b, x, y)
-			if channelDelta(ca, cb) <= needleChannelDelta {
+			ca, cb := At(a, x, y), At(b, x, y)
+			if ChannelDelta(ca, cb) <= delta {
 				continue
 			}
 			changed++
-			if near(cb, accent, tol) {
+			if Near(cb, accent, tol) {
 				drawn++
 				ring++
-			} else if near(ca, accent, tol) {
+			} else if Near(ca, accent, tol) {
 				ring++
 			}
 		}
@@ -526,3 +546,46 @@ func focusDiff(a, b image.Image, r lfRect, accent color.NRGBA, tol int) (drawn i
 	}
 	return drawn, float64(ring) / float64(changed)
 }
+
+// ChannelDelta is how far a and b are apart on their furthest channel.
+func ChannelDelta(a, b color.NRGBA) int {
+	d := 0
+	for _, c := range [][2]uint8{{a.R, b.R}, {a.G, b.G}, {a.B, b.B}} {
+		v := int(c[0]) - int(c[1])
+		if v < 0 {
+			v = -v
+		}
+		d = max(d, v)
+	}
+	return d
+}
+
+// ParseHex reads #RGB, #RGBA, #RRGGBB or #RRGGBBAA.
+func ParseHex(s string) (color.NRGBA, bool) {
+	h := strings.TrimPrefix(strings.TrimSpace(s), "#")
+	if len(h) == 3 || len(h) == 4 {
+		var b strings.Builder
+		for _, r := range h {
+			b.WriteRune(r)
+			b.WriteRune(r)
+		}
+		h = b.String()
+	}
+	if len(h) == 6 {
+		h += "ff"
+	}
+	if len(h) != 8 {
+		return color.NRGBA{}, false
+	}
+	v, err := strconv.ParseUint(h, 16, 32)
+	if err != nil {
+		return color.NRGBA{}, false
+	}
+	return color.NRGBA{uint8(v >> 24), uint8(v >> 16), uint8(v >> 8), uint8(v)}, true
+}
+
+// Hex is c as #RRGGBB.
+func Hex(c color.NRGBA) string { return fmt.Sprintf("#%02X%02X%02X", c.R, c.G, c.B) }
+
+// Hexa is c as #RRGGBBAA, as St reports a colour.
+func Hexa(c color.NRGBA) string { return fmt.Sprintf("#%02X%02X%02X%02X", c.R, c.G, c.B, c.A) }

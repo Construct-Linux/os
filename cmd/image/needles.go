@@ -22,6 +22,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
 
@@ -521,7 +522,7 @@ type sweepArea struct {
 }
 
 // viewSweep keeps what the sweep found on a view, for look.json.
-func (r *report) viewSweep(view string, areas []lfRect, share float64) {
+func (r *report) viewSweep(view string, areas []pixels.Rect, share float64) {
 	if r.sweeps == nil {
 		r.sweeps = map[string]lookSweep{}
 	}
@@ -682,7 +683,7 @@ func compareNeedle(ref, shot, specPath, diff string) (float64, error) {
 			}
 			compared++
 			cb := color.NRGBAModel.Convert(b.At(x, y)).(color.NRGBA)
-			if channelDelta(ca, cb) > needleChannelDelta {
+			if pixels.ChannelDelta(ca, cb) > needleChannelDelta {
 				differ++
 				dim = color.NRGBA{255, 40, 40, 255}
 			}
@@ -696,18 +697,6 @@ func compareNeedle(ref, shot, specPath, diff string) (float64, error) {
 		return 0, errors.New("everything is ignored")
 	}
 	return float64(differ) / float64(compared), nil
-}
-
-func channelDelta(a, b color.NRGBA) int {
-	d := 0
-	for _, c := range [][2]uint8{{a.R, b.R}, {a.G, b.G}, {a.B, b.B}} {
-		v := int(c[0]) - int(c[1])
-		if v < 0 {
-			v = -v
-		}
-		d = max(d, v)
-	}
-	return d
 }
 
 func readPNG(p string) (image.Image, error) {
