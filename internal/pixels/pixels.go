@@ -30,7 +30,12 @@ const (
 )
 
 // Rect is an actor's or a window's extents on the screen, in its pixels.
-type Rect struct{ X, Y, W, H int }
+type Rect struct {
+	X int `json:"x"`
+	Y int `json:"y"`
+	W int `json:"w"`
+	H int `json:"h"`
+}
 
 // Inset is r shrunk by dx on the left and right and dy on the top and bottom.
 func (r Rect) Inset(dx, dy int) Rect { return Rect{r.X + dx, r.Y + dy, r.W - 2*dx, r.H - 2*dy} }

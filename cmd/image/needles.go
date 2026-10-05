@@ -190,15 +190,8 @@ type lookView struct {
 // lookSweep is C3's sweep of a view: its solid accent areas larger than a mark, in the
 // screenshot's pixels, and the share of it that is the full accent.
 type lookSweep struct {
-	Areas []sweepArea `json:"areas"`
-	Share float64     `json:"share"`
-}
-
-type sweepArea struct {
-	X int `json:"x"`
-	Y int `json:"y"`
-	W int `json:"w"`
-	H int `json:"h"`
+	Areas []pixels.Rect `json:"areas"`
+	Share float64       `json:"share"`
 }
 
 // viewSweep keeps what the sweep found on a view, for look.json.
@@ -206,18 +199,15 @@ func (r *report) viewSweep(view string, areas []pixels.Rect, share float64) {
 	if r.sweeps == nil {
 		r.sweeps = map[string]lookSweep{}
 	}
-	s := lookSweep{Areas: []sweepArea{}, Share: share}
-	for _, a := range areas {
-		s.Areas = append(s.Areas, sweepArea(a))
-	}
-	r.sweeps[view] = s
+	// A list even when empty: look.json's readers take it as one.
+	r.sweeps[view] = lookSweep{Areas: append([]pixels.Rect{}, areas...), Share: share}
 }
 
 // lookViewOf is the run's view name in look.json, with what the run knows of it.
 func (r *report) lookViewOf(name string) lookView {
 	v := lookView{Name: name, Sweep: r.sweeps[name], LF: needle.LF{Checks: []string{}}}
 	if v.Sweep.Areas == nil {
-		v.Sweep.Areas = []sweepArea{}
+		v.Sweep.Areas = []pixels.Rect{}
 	}
 	if s := r.views[name]; s != nil {
 		v.Group, v.LF, v.Noise = s.Group, s.LF, s.Noise
