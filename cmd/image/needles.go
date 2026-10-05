@@ -422,10 +422,29 @@ func sortedActors(rs []needleRect) []needleRect {
 	return out
 }
 
-// unionActors is where either measurement found an actor, each rectangle once: an actor that did
-// not move between them is the same rectangle twice, which was half of every view's actors.
+// unionActors is where either measurement found an actor, one region an actor: the same actor's
+// rectangles that overlap - the same place twice, or a clock that moved a few pixels between the
+// two measurements - become the one rectangle that holds them both. Two regions for one actor
+// made a needle's exclusion read as two things, and the gallery drew both.
 func unionActors(a, b []needleRect) []needleRect {
-	return slices.Compact(sortedActors(slices.Concat(a, b)))
+	var out []needleRect
+	for _, r := range sortedActors(slices.Concat(a, b)) {
+		i := slices.IndexFunc(out, func(o needleRect) bool { return o.Why == r.Why && overlaps(o, r) })
+		if i < 0 {
+			out = append(out, r)
+			continue
+		}
+		o := out[i]
+		x0, y0 := min(o.X, r.X), min(o.Y, r.Y)
+		x1, y1 := max(o.X+o.W, r.X+r.W), max(o.Y+o.H, r.Y+r.H)
+		out[i] = needleRect{X: x0, Y: y0, W: x1 - x0, H: y1 - y0, Why: o.Why}
+	}
+	return sortedActors(out)
+}
+
+// overlaps says whether two rectangles share any pixel.
+func overlaps(a, b needleRect) bool {
+	return a.X < b.X+b.W && b.X < a.X+a.W && a.Y < b.Y+b.H && b.Y < a.Y+a.H
 }
 
 // needleSpecError is a needle whose .json is missing or not as the harness writes it: nothing of

@@ -337,19 +337,6 @@ func TestProposalBatches(t *testing.T) {
 	}
 }
 
-// An actor that stayed put is left out once; one that moved, at both places.
-func TestUnionActors(t *testing.T) {
-	clock := needleRect{X: 700, Y: 8, W: 60, H: 30, Why: "the clock"}
-	vitals := needleRect{X: 900, Y: 8, W: 120, H: 30, Why: "the readings of Vitals"}
-	moved := vitals
-	moved.W = 128
-	got := unionActors([]needleRect{vitals, clock}, []needleRect{clock, moved})
-	want := []needleRect{clock, vitals, moved}
-	if !slices.Equal(got, want) {
-		t.Errorf("union %v, want %v", got, want)
-	}
-}
-
 // At 150% the stage is logical and the screenshot physical: the actors' rectangles grow outward
 // to whole pixels, and at 1 they are as measured.
 func TestStageActorsOnScreen(t *testing.T) {
@@ -361,5 +348,20 @@ func TestStageActorsOnScreen(t *testing.T) {
 	s.W = 1280
 	if got := s.onScreen(1280); got[0] != s.Actors[0] {
 		t.Errorf("unscaled: %+v", got)
+	}
+}
+
+// One region an actor: the clock measured at two places a few pixels apart is one rectangle that
+// holds both; an actor that did not move is one; two actors stay two.
+func TestUnionActors(t *testing.T) {
+	clock := func(x, w int) needleRect { return needleRect{X: x, Y: 16, W: w, H: 64, Why: "the clock"} }
+	vitals := func(x, w int) needleRect { return needleRect{X: x, Y: 16, W: w, H: 64, Why: "the readings of Vitals"} }
+	got := unionActors([]needleRect{clock(1786, 258), vitals(2036, 428)}, []needleRect{clock(1792, 258), vitals(2042, 422)})
+	want := []needleRect{clock(1786, 264), vitals(2036, 428)}
+	if !slices.Equal(got, want) {
+		t.Errorf("%+v, want %+v", got, want)
+	}
+	if got := unionActors([]needleRect{clock(1786, 258)}, []needleRect{clock(1786, 258)}); len(got) != 1 {
+		t.Errorf("the same place twice: %+v", got)
 	}
 }
