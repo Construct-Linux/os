@@ -65,10 +65,11 @@ func nextVersion(day time.Time, tags []string) string {
 // before it builds, and tags what it built with it.
 func releaseVersion(args []string) error {
 	fl := flag.NewFlagSet("release-version", flag.ExitOnError)
-	remote := fl.String("remote", "origin", "the remote whose tags count")
+	// The remote whose tags count.
+	remote := "origin"
 	_ = fl.Parse(args)
 	day := time.Now().UTC()
-	out, err := exec.Command("git", "ls-remote", "--tags", *remote, "refs/tags/v"+day.Format("20060102")+".*").Output()
+	out, err := exec.Command("git", "ls-remote", "--tags", remote, "refs/tags/v"+day.Format("20060102")+".*").Output()
 	if err != nil {
 		return fmt.Errorf("git ls-remote: %w", err)
 	}

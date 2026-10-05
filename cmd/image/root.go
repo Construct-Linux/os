@@ -132,7 +132,8 @@ func rootLayers(test bool) []layer {
 
 func disk(args []string) error {
 	fl := flag.NewFlagSet("disk", flag.ExitOnError)
-	size := fl.String("size", "12G", "the ext4 image's size")
+	// The ext4 image's size.
+	size := "12G"
 	test := fl.Bool("test", false, "add image/test/rootfs: what lets cmd/image test drive the session")
 	_ = fl.Parse(args)
 
@@ -143,7 +144,7 @@ func disk(args []string) error {
 	}
 	img := filepath.Join(out, "disk.raw")
 	_ = os.Remove(img)
-	cmd := exec.Command("mke2fs", "-q", "-t", "ext4", "-L", "root", "-d", root, img, *size)
+	cmd := exec.Command("mke2fs", "-q", "-t", "ext4", "-L", "root", "-d", root, img, size)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("mke2fs: %w", err)

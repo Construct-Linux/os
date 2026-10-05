@@ -33,7 +33,7 @@ func TestChannelIndex(t *testing.T) {
 		if i == 0 {
 			from = []string{"-new"}
 		}
-		if err := channelIndex(append(from, "-add", rel, "-version", v, "-keep", "3", "-o", ch)); err != nil {
+		if err := channelIndex(append(from, "-add", rel, "-version", v, "-o", ch)); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -49,7 +49,7 @@ func TestChannelIndex(t *testing.T) {
 		t.Errorf("the newest is not first:\n%s", b)
 	}
 	old := write("rel-20261003.1", releaseSums("20261003.1"))
-	if err := channelIndex([]string{"-current", filepath.Join(ch, "SHA256SUMS"), "-add", old, "-version", "20261003.1", "-keep", "3", "-o", ch}); err == nil {
+	if err := channelIndex([]string{"-current", filepath.Join(ch, "SHA256SUMS"), "-add", old, "-version", "20261003.1", "-o", ch}); err == nil {
 		t.Error("a release older than every version kept: no error")
 	}
 	if err := channelIndex([]string{"-current", filepath.Join(ch, "SHA256SUMS"), "-withdraw", "-version", "20261005.1", "-o", ch}); err != nil {
@@ -90,7 +90,7 @@ func TestDLIndex(t *testing.T) {
 		if i == 0 {
 			from = []string{"-new"}
 		}
-		if err := channelIndex(append(from, "-kind", "dl", "-add", add, "-version", v, "-keep", "3", "-o", out)); err != nil {
+		if err := channelIndex(append(from, "-kind", "dl", "-add", add, "-version", v, "-o", out)); err != nil {
 			t.Fatal(err)
 		}
 	}

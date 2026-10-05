@@ -48,12 +48,13 @@ func cacheCmd(args []string) error {
 	fl := flag.NewFlagSet("cache", flag.ExitOnError)
 	pull := fl.Bool("pull", false, "fetch packages/ and every cached output there is")
 	push := fl.Bool("push", false, "store packages/ and the outputs the cache lacks")
-	bucket := fl.String("bucket", os.Getenv("CONSTRUCT_PACKAGES_BUCKET"), "the cache's bucket (CONSTRUCT_PACKAGES_BUCKET)")
+	// The cache's bucket (CONSTRUCT_PACKAGES_BUCKET).
+	bucket := os.Getenv("CONSTRUCT_PACKAGES_BUCKET")
 	_ = fl.Parse(args)
-	if *bucket == "" || *pull == *push {
+	if bucket == "" || *pull == *push {
 		return errors.New("cache: -pull or -push, and -bucket (CONSTRUCT_PACKAGES_BUCKET)")
 	}
-	s3 := "s3://" + *bucket
+	s3 := "s3://" + bucket
 	if *pull {
 		if err := aws("s3", "sync", "--only-show-errors", "--delete", s3+"/packages/", "packages/"); err != nil {
 			return err
@@ -96,7 +97,7 @@ func cacheCmd(args []string) error {
 			fmt.Printf("cache: %s %s: from the cache\n", c.name, key)
 			continue
 		}
-		if aws("s3api", "head-object", "--bucket", *bucket, "--key", strings.TrimPrefix(obj, s3+"/")) == nil {
+		if aws("s3api", "head-object", "--bucket", bucket, "--key", strings.TrimPrefix(obj, s3+"/")) == nil {
 			continue
 		}
 		if err := packCached(c, local); err != nil {

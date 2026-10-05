@@ -119,7 +119,8 @@ func channelIndex(args []string) error {
 	add := fl.String("add", "", "a SHA256SUMS whose -version lines to add: a release's own, or another channel's index")
 	version := fl.String("version", "", "the version -add brings, or -withdraw takes out")
 	withdraw := fl.Bool("withdraw", false, "take -version out instead of adding it")
-	keep := fl.Int("keep", 3, "how many versions the index keeps")
+	// How many versions the index keeps.
+	keep := 3
 	to := fl.String("o", "", "where the new index goes (a directory: its SHA256SUMS)")
 	_ = fl.Parse(args)
 	if *version == "" || *to == "" || (*add == "") == !*withdraw {
@@ -165,11 +166,11 @@ func channelIndex(args []string) error {
 			return fmt.Errorf("%s lists %d files of %s, want its %d", *add, len(lines), *version, kind.files)
 		}
 		idx[*version] = lines
-		dropped = idx.keep(*keep)
+		dropped = idx.keep(keep)
 		// Older than every version kept, it was dropped at once: the index is the one already up,
 		// and signing and uploading it again would say the release was offered.
 		if _, ok := idx[*version]; !ok {
-			return fmt.Errorf("%s is older than the %d versions the index keeps", *version, *keep)
+			return fmt.Errorf("%s is older than the %d versions the index keeps", *version, keep)
 		}
 	}
 	if err := os.MkdirAll(*to, 0o755); err != nil {

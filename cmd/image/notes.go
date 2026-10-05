@@ -48,8 +48,10 @@ func releaseNotes(args []string) error {
 	prev := fl.String("prev", "", "the previous release's tag (empty: the first release)")
 	packages := fl.String("packages", "", "this release's packages.txt")
 	prevPackages := fl.String("prev-packages", "", "the previous release's packages.txt")
-	grypeFile := fl.String("grype", filepath.Join(out, "scan", "grype.json"), "Grype's JSON report of the release's root")
-	tests := fl.String("tests", filepath.Join(out, "test", "report.txt")+","+filepath.Join(out, "lifecycle", "report.txt"), "the harness's reports, comma-separated")
+	// Grype's JSON report of the release's root.
+	grypeFile := filepath.Join(out, "scan", "grype.json")
+	// The harness's reports, comma-separated.
+	tests := filepath.Join(out, "test", "report.txt") + "," + filepath.Join(out, "lifecycle", "report.txt")
 	dl := fl.String("dl-url", os.Getenv("CONSTRUCT_DL_URL"), "where the USB sticks are (dl.<domain>)")
 	to := fl.String("o", filepath.Join(out, "release-notes", "notes.md"), "the notes to write")
 	_ = fl.Parse(args)
@@ -69,14 +71,14 @@ func releaseNotes(args []string) error {
 			return err
 		}
 	}
-	if b, err := os.ReadFile(*grypeFile); err == nil {
+	if b, err := os.ReadFile(grypeFile); err == nil {
 		var g grype.Report
 		if err := json.Unmarshal(b, &g); err != nil {
-			return fmt.Errorf("%s: %w", *grypeFile, err)
+			return fmt.Errorf("%s: %w", grypeFile, err)
 		}
 		in.Grype = &g
 	}
-	for _, f := range strings.Split(*tests, ",") {
+	for _, f := range strings.Split(tests, ",") {
 		if r, err := readTestRun(f); err == nil {
 			in.Tests = append(in.Tests, r)
 		}

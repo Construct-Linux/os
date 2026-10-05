@@ -22,31 +22,34 @@ var severities = []string{"Critical", "High", "Medium", "Low", "Negligible", "Un
 // fixed by rebuilding the root, or one of recipes/, fixed by updating its recipe.
 func scanReport(args []string) error {
 	fl := flag.NewFlagSet("scan-report", flag.ExitOnError)
-	in := fl.String("json", filepath.Join(out, "scan", "grype.json"), "Grype's JSON report")
-	to := fl.String("o", filepath.Join(out, "scan", "report.md"), "the Markdown report to write")
-	recipes := fl.String("recipes", "recipes", "the recipes' directory")
+	// Grype's JSON report.
+	in := filepath.Join(out, "scan", "grype.json")
+	// The Markdown report to write.
+	to := filepath.Join(out, "scan", "report.md")
+	// The recipes' directory.
+	recipes := "recipes"
 	_ = fl.Parse(args)
-	b, err := os.ReadFile(*in)
+	b, err := os.ReadFile(in)
 	if err != nil {
 		return err
 	}
 	var g grype.Report
 	if err := json.Unmarshal(b, &g); err != nil {
-		return fmt.Errorf("%s: %w", *in, err)
+		return fmt.Errorf("%s: %w", in, err)
 	}
-	ours, err := grype.RecipePackages(*recipes)
+	ours, err := grype.RecipePackages(recipes)
 	if err != nil {
 		return err
 	}
 	var md strings.Builder
 	writeScanReport(&md, g, ours)
-	if err := os.WriteFile(*to, []byte(md.String()), 0o644); err != nil {
+	if err := os.WriteFile(to, []byte(md.String()), 0o644); err != nil {
 		return err
 	}
 	// The counts, where task scan's output shows them.
 	summary, _, _ := strings.Cut(md.String(), "\n## ")
 	fmt.Print(summary)
-	fmt.Printf("\nThe whole report: %s\n", *to)
+	fmt.Printf("\nThe whole report: %s\n", to)
 	return nil
 }
 

@@ -20,13 +20,15 @@ import (
 // test:lifecycle makes them.
 func lifecycle(args []string) error {
 	fl := flag.NewFlagSet("lifecycle", flag.ExitOnError)
-	dir := fl.String("dir", filepath.Join(out, "lifecycle"), "where v1.raw, v2.raw and v3.raw (broken) are, and the machine's disk and variables go")
-	keys := fl.String("keys", filepath.Join(".cache", "test-keys"), "the test release key the sticks were signed with, which signs the channels' indexes too")
+	// Where v1.raw, v2.raw and v3.raw (broken) are, and the machine's disk and variables go.
+	dir := filepath.Join(out, "lifecycle")
+	// The test release key the sticks were signed with, which signs the channels' indexes too.
+	keys := filepath.Join(".cache", "test-keys")
 	_ = fl.Parse(args)
 
 	versions := map[string]string{}
 	for _, v := range []string{"v1", "v2", "v3"} {
-		b, err := os.ReadFile(filepath.Join(*dir, v+".version"))
+		b, err := os.ReadFile(filepath.Join(dir, v+".version"))
 		if err != nil {
 			return err
 		}
@@ -36,7 +38,7 @@ func lifecycle(args []string) error {
 	if err != nil {
 		return err
 	}
-	nvme, vars, tpm := filepath.Join(*dir, "nvme.raw"), filepath.Join(*dir, "OVMF_VARS.fd"), filepath.Join(*dir, "tpm")
+	nvme, vars, tpm := filepath.Join(dir, "nvme.raw"), filepath.Join(dir, "OVMF_VARS.fd"), filepath.Join(dir, "tpm")
 	_ = os.Remove(nvme)
 	if err := os.RemoveAll(tpm); err != nil {
 		return err
@@ -50,10 +52,10 @@ func lifecycle(args []string) error {
 	// A stick is a 32 GB copy of a release's image, one per boot that plugs it in: removed once
 	// that boot is over, or the copies fill the host's disk.
 	stick := func(v string) (string, error) {
-		s := filepath.Join(*dir, v+".stick")
-		return s, stickCopy(filepath.Join(*dir, v+".raw"), s)
+		s := filepath.Join(dir, v+".stick")
+		return s, stickCopy(filepath.Join(dir, v+".raw"), s)
 	}
-	r := &report{dir: *dir}
+	r := &report{dir: dir}
 	// The machine has a TPM, and every boot after the first of its disk is handed the person's
 	// password as the TPM's PIN, as if typed: systemd-cryptsetup asks for it through libcryptsetup's
 	// token plugin, which reads cryptsetup.luks2-pin. No passphrase credential: a TPM that refuses
@@ -80,10 +82,10 @@ func lifecycle(args []string) error {
 	// - pkexec, which the session's polkit rule lets through, construct install --json, the password
 	// on standard input - read from the stick it runs from.
 	outs, err := g.installAsTheInstaller()
-	_ = os.WriteFile(filepath.Join(*dir, "install.txt"), []byte(outs), 0o644)
+	_ = os.WriteFile(filepath.Join(dir, "install.txt"), []byte(outs), 0o644)
 	if err != nil {
 		// The live session's screen when the install did not end: a password asked, a dialog.
-		_ = v.png(filepath.Join(*dir, "install.png"))
+		_ = v.png(filepath.Join(dir, "install.png"))
 	}
 	if err == nil && (!strings.Contains(outs, `"percent":100`) || !strings.Contains(outs, `"msg":"done"`)) {
 		err = fmt.Errorf("no 100%% or done record")
@@ -112,14 +114,14 @@ func lifecycle(args []string) error {
 	}
 	g = &guest{cid: v.cid}
 	asked := g.wait(45*time.Second) != nil
-	_ = v.png(filepath.Join(*dir, "password.png"))
+	_ = v.png(filepath.Join(dir, "password.png"))
 	r.add("the disk asks for the password", asked, "screen: password.png")
 	err = v.typeText(lifecyclePassword)
 	// The outro goes back into the loop once the password is in, so the grid is there before GDM:
 	// eight screens, one as soon as the one before is saved (~0.5 s each), since when it starts
 	// depends on the TPM's unlock.
 	for i := range 8 {
-		_ = v.png(filepath.Join(*dir, fmt.Sprintf("password-after-%d.png", i)))
+		_ = v.png(filepath.Join(dir, fmt.Sprintf("password-after-%d.png", i)))
 	}
 	if err == nil {
 		err = g.wait(5 * time.Minute)
@@ -130,7 +132,7 @@ func lifecycle(args []string) error {
 		return r.write(nil)
 	}
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
-	r.plymouthPrompt(g, *dir)
+	r.plymouthPrompt(g, dir)
 	r.secureBoot(g)
 	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts; cryptsetup status var | grep -E 'type|device'`, "")
 	r.add("/var on the disk, encrypted", strings.Contains(src, "/dev/mapper/var") && strings.Contains(src, "LUKS2") && strings.Contains(src, "nvme0n1p6"), oneLine(src))
@@ -154,7 +156,7 @@ func lifecycle(args []string) error {
 	// 2b. A security key, enrolled beside the password with its PIN and a touch, opens the disk:
 	// the boot asks for the key's PIN, not the password. Without the key the password still does,
 	// and nothing about the key is an error.
-	if !r.securityKey(m, first, *dir) {
+	if !r.securityKey(m, first, dir) {
 		return r.write(nil)
 	}
 
@@ -182,7 +184,7 @@ func lifecycle(args []string) error {
 	// the channels' transfers are pointed at - by the daily timer's service. stable lists v1 alone,
 	// so the machine finds nothing newer there; following testing, it takes v2, each file through a
 	// redirect as from the CDN to GitHub.
-	cdn, err := newUpdateCDN(*dir, versions, filepath.Join(*keys, "release.pem"), filepath.Join(*keys, "release.pgp"))
+	cdn, err := newUpdateCDN(dir, versions, filepath.Join(keys, "release.pem"), filepath.Join(keys, "release.pgp"))
 	if err != nil {
 		return err
 	}
@@ -222,12 +224,12 @@ func lifecycle(args []string) error {
 		why, _ := g.run(fmt.Sprintf(`ls -ld /run/construct /run/construct/reboot-required; `+
 			`sudo -u %s XDG_RUNTIME_DIR=/run/user/1000 systemctl --user status --no-pager construct-reboot-notice.path construct-reboot-notice.service; `+
 			`journalctl -b --no-pager -o short-monotonic --user-unit construct-reboot-notice.path --user-unit construct-reboot-notice.service | tail -30`, lifecycleUser), "")
-		_ = os.WriteFile(filepath.Join(*dir, "reboot-notice.txt"), []byte(why), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "reboot-notice.txt"), []byte(why), 0o644)
 	}
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
 		// What the screen shows where the boot stopped: a prompt, an emergency shell.
-		_ = v.png(filepath.Join(*dir, "reboot-v2.png"))
+		_ = v.png(filepath.Join(dir, "reboot-v2.png"))
 		r.add("reboot into v2", false, err.Error()+"; screen: reboot-v2.png")
 		v.stop()
 		return r.write(nil)
@@ -258,7 +260,7 @@ func lifecycle(args []string) error {
 		why, _ := g.run(`lsblk -o NAME,PARTLABEL,SIZE; systemctl list-units --all --no-pager 'construct-update*'; `+
 			`for d in $(lsblk -nro NAME,PARTLABEL | awk '$2 == "construct-update" {print $1}'); do udevadm info /dev/$d | grep -E 'SYSTEMD|PARTNAME|TAGS'; done; `+
 			`journalctl -b --no-pager -o short-monotonic -u 'construct-update@*' | tail -40`, "")
-		_ = os.WriteFile(filepath.Join(*dir, "stick-update.txt"), []byte(why), 0o644)
+		_ = os.WriteFile(filepath.Join(dir, "stick-update.txt"), []byte(why), 0o644)
 	}
 	g.reboot()
 	deadline := time.Now().Add(20 * time.Minute)

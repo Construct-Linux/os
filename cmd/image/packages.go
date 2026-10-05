@@ -250,9 +250,10 @@ func packagesCmd(args []string) error {
 	fl := flag.NewFlagSet("packages", flag.ExitOnError)
 	missing := fl.Bool("missing", false, "print the recipes whose package packages/ lacks, in build order")
 	prune := fl.Bool("prune", false, "remove every package's builds but its newest")
-	dir := fl.String("dir", filepath.Join("packages", "x86_64"), "the packages")
+	// The packages.
+	dir := filepath.Join("packages", "x86_64")
 	_ = fl.Parse(args)
-	entries, err := os.ReadDir(*dir)
+	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
 		return err
 	}
@@ -282,7 +283,7 @@ func packagesCmd(args []string) error {
 		}
 	case *prune:
 		for _, f := range superseded(files) {
-			if err := os.Remove(filepath.Join(*dir, f)); err != nil {
+			if err := os.Remove(filepath.Join(dir, f)); err != nil {
 				return err
 			}
 			fmt.Println(f)
