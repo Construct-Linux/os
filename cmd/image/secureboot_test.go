@@ -76,14 +76,10 @@ func TestABinaryIsSignedByDBsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	path := filepath.Join(t.TempDir(), "hello.efi")
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
+	signed, err := signEFI(raw, key, cert)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := signPE(path, key, cert); err != nil {
-		t.Fatal(err)
-	}
-	signed, _ := os.ReadFile(path)
 	pe, err := authenticode.Parse(bytes.NewReader(signed))
 	if err != nil {
 		t.Fatal(err)
@@ -91,7 +87,7 @@ func TestABinaryIsSignedByDBsKey(t *testing.T) {
 	if ok, err := pe.Verify(cert); !ok || err != nil {
 		t.Errorf("the signature does not verify: %v", err)
 	}
-	if err := signPE(path, key, cert); err == nil {
+	if _, err := signEFI(signed, key, cert); err == nil {
 		t.Error("signed a binary twice")
 	}
 }

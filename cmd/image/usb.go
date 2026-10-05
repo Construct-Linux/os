@@ -140,12 +140,24 @@ func usbSign(args []string) error {
 	}
 	esp := filepath.Join(stage, "esp")
 	label := update.ImageID + "_" + b.Version
-	uki := filepath.Join(esp, "EFI", "Linux", label+".efi")
-	if err := os.Rename(filepath.Join(stage, joinedUKI), uki); err != nil {
-		return fmt.Errorf("the joined kernel image (image usb-join): %w", err)
-	}
-	for _, p := range []string{uki, filepath.Join(esp, "EFI/BOOT/BOOTX64.EFI"), filepath.Join(esp, "EFI/systemd/systemd-bootx64.efi")} {
-		if err := signPE(p, key, dbCertificate); err != nil {
+	// Each is signed from its unsigned source into the ESP, the sources left as they were: a
+	// signing that failed half way - KMS refusing the third - is run again as it was, where
+	// signing in place left a binary signed already, which is refused.
+	boot := filepath.Join(stage, "root", "usr/lib/systemd/boot/efi/systemd-bootx64.efi")
+	for dst, src := range map[string]string{
+		filepath.Join(esp, "EFI", "Linux", label+".efi"):      filepath.Join(stage, joinedUKI),
+		filepath.Join(esp, "EFI/BOOT/BOOTX64.EFI"):            boot,
+		filepath.Join(esp, "EFI/systemd/systemd-bootx64.efi"): boot,
+	} {
+		raw, err := os.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("%s (image usb-join for the kernel image): %w", src, err)
+		}
+		signed, err := signEFI(raw, key, dbCertificate)
+		if err != nil {
+			return fmt.Errorf("signing %s: %w", src, err)
+		}
+		if err := os.WriteFile(dst, signed, 0o644); err != nil {
 			return err
 		}
 	}

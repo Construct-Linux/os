@@ -202,26 +202,22 @@ func dbSigner(ref, certFile string) (crypto.Signer, *x509.Certificate, error) {
 	return key, cert, nil
 }
 
-// signPE signs the EFI binary at path in place: the Authenticode signature firmware checks
-// against db before it runs it. A binary signed already is refused, not signed twice.
-func signPE(path string, key crypto.Signer, cert *x509.Certificate) error {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
+// signEFI is the EFI binary raw signed: the Authenticode signature firmware checks against
+// db before it runs it. A binary signed already is refused, not signed twice.
+func signEFI(raw []byte, key crypto.Signer, cert *x509.Certificate) ([]byte, error) {
 	pe, err := authenticode.Parse(bytes.NewReader(raw))
 	if err != nil {
-		return fmt.Errorf("%s is not a PE image: %w", path, err)
+		return nil, fmt.Errorf("not a PE image: %w", err)
 	}
 	sigs, err := pe.Signatures()
 	if err != nil {
-		return fmt.Errorf("%s's certificate table: %w", path, err)
+		return nil, fmt.Errorf("its certificate table: %w", err)
 	}
 	if len(sigs) > 0 {
-		return fmt.Errorf("%s is signed already", path)
+		return nil, errors.New("signed already")
 	}
 	if _, err := pe.Sign(key, cert); err != nil {
-		return fmt.Errorf("signing %s: %w", path, err)
+		return nil, err
 	}
-	return os.WriteFile(path, pe.Bytes(), 0o644)
+	return pe.Bytes(), nil
 }
