@@ -44,10 +44,7 @@ func checkImage(path, version, root, verity string) error {
 	if !slices.Contains(strings.Split(osrel, "\n"), "IMAGE_VERSION="+version) {
 		errs = append(errs, fmt.Errorf("its os-release is not %s's", version))
 	}
-	// systemd finds the slot by the root hash alone: its halves are the root's and the verity
-	// tree's partition UUIDs (the Discoverable Partitions Specification's convention).
-	want := strings.ReplaceAll(root, "-", "") + strings.ReplaceAll(verity, "-", "")
-	if !slices.Contains(strings.Fields(cmdline), "roothash="+want) {
+	if !slices.Contains(strings.Fields(cmdline), "roothash="+RootHash(root, verity)) {
 		errs = append(errs, fmt.Errorf("its command line's roothash= is not the one partitions %s and %s halve", root, verity))
 	}
 	if len(errs) > 0 {

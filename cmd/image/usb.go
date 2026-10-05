@@ -602,12 +602,10 @@ func verifiedRoot(root, img, tree, version string) (verity, error) {
 	return verityOf(string(m[1]), img, tree), nil
 }
 
-// verityOf is the root of hash rh in img, its tree in tree: the partitions' UUIDs halve the hash.
+// verityOf is the root of hash rh in img, its tree in tree, in the slot the hash names.
 func verityOf(rh, img, tree string) verity {
-	uuid := func(h string) string {
-		return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
-	}
-	return verity{rootHash: rh, rootUUID: uuid(rh), vUUID: uuid(rh[32:]), rootImg: img, treeImg: tree}
+	root, v := update.SlotUUIDs(rh)
+	return verity{rootHash: rh, rootUUID: root, vUUID: v, rootImg: img, treeImg: tree}
 }
 
 // cmdline is the kernel's command line, in the kernel image where nothing at boot can change it.

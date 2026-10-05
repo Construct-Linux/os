@@ -45,6 +45,21 @@ func Names(version, root, verity string) (rootFile, verityFile, uki string) {
 	return prefix + "_" + root + ".root.raw.xz", prefix + "_" + verity + ".verity.raw.xz", prefix + ".efi"
 }
 
+// SlotUUIDs are the partition UUIDs a slot's root and verity tree take from its root hash, its
+// halves (the Discoverable Partitions Specification's convention): systemd finds the slot by the
+// root hash alone.
+func SlotUUIDs(rootHash string) (root, verity string) {
+	uuid := func(h string) string {
+		return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
+	}
+	return uuid(rootHash), uuid(rootHash[32:])
+}
+
+// RootHash is the root hash whose halves are the partition UUIDs root and verity: SlotUUIDs undone.
+func RootHash(root, verity string) string {
+	return strings.ReplaceAll(root, "-", "") + strings.ReplaceAll(verity, "-", "")
+}
+
 // ParseKeyring is the public keys in raw, armored (gpg --armor --export) or binary (gpg --export).
 func ParseKeyring(raw []byte) (openpgp.EntityList, error) {
 	var keys openpgp.EntityList

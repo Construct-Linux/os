@@ -208,3 +208,15 @@ func TestAKeyringWithAKeyThatIsNotEd25519IsRefused(t *testing.T) {
 		t.Errorf("an Ed25519 key was refused: %v", err)
 	}
 }
+
+// A slot's partition UUIDs halve its root hash, and give it back.
+func TestSlotUUIDs(t *testing.T) {
+	const rh = "0123456789abcdef0123456789abcdeffedcba9876543210fedcba9876543210"
+	root, verity := SlotUUIDs(rh)
+	if root != "01234567-89ab-cdef-0123-456789abcdef" || verity != "fedcba98-7654-3210-fedc-ba9876543210" {
+		t.Errorf("%s %s", root, verity)
+	}
+	if got := RootHash(root, verity); got != rh {
+		t.Errorf("RootHash = %s", got)
+	}
+}
