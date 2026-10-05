@@ -2,7 +2,6 @@ package main
 
 import (
 	"archive/tar"
-	"bufio"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -110,14 +109,11 @@ func indexPackages(src string, names map[string]bool) error {
 	}
 }
 
-// packageNames adds the P: lines of an apk database or index to names.
+// packageNames adds the packages of an apk database or index to names.
 func packageNames(r io.Reader, names map[string]bool) error {
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
-	for sc.Scan() {
-		if n, ok := strings.CutPrefix(sc.Text(), "P:"); ok {
-			names[n] = true
-		}
+	db, err := readAPKDB(r)
+	for _, p := range db {
+		names[p.Name] = true
 	}
-	return sc.Err()
+	return err
 }

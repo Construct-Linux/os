@@ -8,6 +8,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 )
 
@@ -60,26 +61,22 @@ var initrdDrop = []string{
 
 // dropPackages removes the files the apk database under stage lists for each of names.
 func dropPackages(stage string, names []string) error {
-	db, err := os.ReadFile(filepath.Join(stage, "usr/lib/apk/db/installed"))
+	f, err := os.Open(filepath.Join(stage, "usr/lib/apk/db/installed"))
 	if err != nil {
 		return err
 	}
-	drop := map[string]bool{}
-	for _, n := range names {
-		drop[n] = true
+	defer f.Close()
+	db, err := readAPKDB(f)
+	if err != nil {
+		return err
 	}
-	for _, block := range strings.Split(string(db), "\n\n") {
-		var pkg, dir string
-		for _, line := range strings.Split(block, "\n") {
-			switch {
-			case strings.HasPrefix(line, "P:"):
-				pkg = line[2:]
-			case strings.HasPrefix(line, "F:"):
-				dir = line[2:]
-			case strings.HasPrefix(line, "R:") && drop[pkg]:
-				if err := os.Remove(filepath.Join(stage, dir, line[2:])); err != nil && !errors.Is(err, fs.ErrNotExist) {
-					return err
-				}
+	for _, p := range db {
+		if !slices.Contains(names, p.Name) {
+			continue
+		}
+		for _, file := range p.Files {
+			if err := os.Remove(filepath.Join(stage, file)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+				return err
 			}
 		}
 	}

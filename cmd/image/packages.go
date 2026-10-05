@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -298,4 +299,41 @@ func packagesCmd(args []string) error {
 		return fmt.Errorf("packages: -missing or -prune")
 	}
 	return nil
+}
+
+// apkPackage is one package of an apk database or index: its name, its version, and the files
+// it installed, relative to the root (an index lists none).
+type apkPackage struct {
+	Name, Version string
+	Files         []string
+}
+
+// readAPKDB reads apk's database format, blocks of one-letter fields: P: names a package, V: is
+// its version, F: a directory and the R: lines after it the files in it.
+func readAPKDB(r io.Reader) ([]apkPackage, error) {
+	var pkgs []apkPackage
+	dir := ""
+	sc := bufio.NewScanner(r)
+	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	for sc.Scan() {
+		line := sc.Text()
+		if v, ok := strings.CutPrefix(line, "P:"); ok {
+			pkgs = append(pkgs, apkPackage{Name: v})
+			dir = ""
+			continue
+		}
+		if len(pkgs) == 0 {
+			continue
+		}
+		p := &pkgs[len(pkgs)-1]
+		switch {
+		case strings.HasPrefix(line, "V:"):
+			p.Version = line[2:]
+		case strings.HasPrefix(line, "F:"):
+			dir = line[2:]
+		case strings.HasPrefix(line, "R:"):
+			p.Files = append(p.Files, filepath.Join(dir, line[2:]))
+		}
+	}
+	return pkgs, sc.Err()
 }

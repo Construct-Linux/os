@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -130,23 +129,14 @@ func writePackages(installed, to string) error {
 	return os.WriteFile(to, []byte(b.String()), 0o644)
 }
 
-// parseInstalled reads apk's installed database: a P: line names a package, the V: after it its
-// version.
+// parseInstalled is apk's installed database as each package's version, by name.
 func parseInstalled(r io.Reader) (map[string]string, error) {
+	db, err := readAPKDB(r)
 	pkgs := map[string]string{}
-	name := ""
-	s := bufio.NewScanner(r)
-	s.Buffer(make([]byte, 1<<20), 1<<20)
-	for s.Scan() {
-		line := s.Text()
-		switch {
-		case strings.HasPrefix(line, "P:"):
-			name = line[2:]
-		case strings.HasPrefix(line, "V:") && name != "":
-			pkgs[name] = line[2:]
-		}
+	for _, p := range db {
+		pkgs[p.Name] = p.Version
 	}
-	return pkgs, s.Err()
+	return pkgs, err
 }
 
 func readPackages(file string) (map[string]string, error) {
