@@ -218,7 +218,9 @@ compressed): the NSS and PAM modules it never uses, systemd-networkd and its kin
 `lvm` that device-mapper's udev rules pull in with it; a services audit (`systemd-analyze
 security` rates gdm, sshd and docker UNSAFE); fwupd's UEFI capsule updates, which need
 fwupd-efi built and its binary signed with db's key; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
-resolver meanwhile), to fix in `recipes/libproxy`.
+resolver meanwhile): libproxy holds its manager's mutex through a PAC or WPAD download and run, so
+one slow lookup blocks the rest (libproxy#370); take the fix into `recipes/libproxy` once
+libproxy#371 is merged.
 
 ## Pins
 
