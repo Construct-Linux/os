@@ -35,6 +35,8 @@ STEPS = {
     "preparing /var": (_("Setting up your account"), 0.97),
     "installed: the firmware boots the disk first": (_("Making the disk start first"), 0.99),
 }
+# construct install asks for each security key to be touched, twice: the step it is at stays.
+TOUCH = {"touch the security key", "touch the security key again"}
 
 
 def session_language():
@@ -150,7 +152,7 @@ class Installer(Adw.ApplicationWindow):
         for row in (self.name, self.login, self.password, self.again, self.hostname):
             group.add(row)
             row.connect("changed", self.check_person)
-        self.person_next = self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.confirm_page()))
+        self.person_next = self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.key_page()))
         self.person_next.set_sensitive(False)
         self.person_hint = Gtk.Label(css_classes=["dim-label"], wrap=True)
         return self.page(_("You"), self.form(group, self.person_hint, self.person_next), "person")
@@ -171,6 +173,64 @@ class Installer(Adw.ApplicationWindow):
             hint = _("A computer name is letters, digits and -, up to 63, not starting or ending with -.")
         self.person_hint.set_text(hint)
         self.person_next.set_sensitive(hint == "" and self.name.get_text().strip() != "")
+
+    # The security keys plugged in, as fido2-token lists them: "/dev/hidraw4: vendor=..., product=...
+    # (Yubico YubiKey OTP+FIDO+CCID)".
+    def read_keys(self):
+        try:
+            proc = Gio.Subprocess.new(["fido2-token", "-L"], Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE)
+            _ok, out, _err = proc.communicate_utf8(None, None)
+        except GLib.Error:
+            return []
+        keys = []
+        for line in (out or "").splitlines():
+            dev, sep, rest = line.partition(":")
+            if sep and dev.startswith("/dev/"):
+                name = re.search(r"\(([^)]*)\)\s*$", rest)
+                keys.append({"device": dev, "name": name.group(1) if name else dev})
+        return keys
+
+    # A security key opens the disk at start with its PIN and a touch, beside the password, and
+    # signs the person in with a touch. Optional: Next with none chosen installs without one.
+    def key_page(self):
+        self.keys = []
+        group = Adw.PreferencesGroup(
+            title=_("Security key"),
+            description=_("Optional. A security key, such as a YubiKey, opens the disk with its PIN and a touch, and "
+                          "signs you in with a touch. Your password keeps working without it. A new key gets the PIN "
+                          "you type here."))
+        refresh = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
+                             tooltip_text=_("Look again for keys"))
+        group.set_header_suffix(refresh)
+        box = self.form(group, self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.confirm_page())))
+        rows = []
+
+        def fill(*args):
+            for row in rows:
+                group.remove(row)
+            rows.clear()
+            self.keys = []
+            found = self.read_keys()
+            if not found:
+                row = Adw.ActionRow(title=_("No security key plugged in"),
+                                    subtitle=_("Plug one in and look again, or go on without one."))
+                group.add(row)
+                rows.append(row)
+            for k in found:
+                use = Adw.SwitchRow(title=k["name"], subtitle=k["device"])
+                pin = Adw.PasswordEntryRow(title=_("Its PIN, 4 or more characters"), sensitive=False)
+                use.connect("notify::active", lambda r, *a, pin=pin: pin.set_sensitive(r.get_active()))
+                group.add(use)
+                group.add(pin)
+                rows.extend([use, pin])
+                self.keys.append((k["device"], use, pin))
+
+        refresh.connect("clicked", fill)
+        fill()
+        return self.page(_("Security key"), box, "key")
+
+    def chosen_keys(self):
+        return [(dev, pin.get_text()) for dev, use, pin in getattr(self, "keys", []) if use.get_active()]
 
     def confirm_page(self):
         status = Adw.StatusPage(
@@ -193,18 +253,23 @@ class Installer(Adw.ApplicationWindow):
         self.nav.push(page)
         self.errors = []
         self.recovery_key = ""
+        keys = self.chosen_keys()
+        key_args = [a for dev, _pin in keys for a in ("--security-key", dev)]
+        if keys:
+            key_args += ["--key-pin-file", "-"]
         try:
             proc = Gio.Subprocess.new(
                 ["pkexec", CLI, "install", "--yes", "--json", "--disk", self.disk["path"],
                  "--user", self.login.get_text(), "--real-name", self.name.get_text().strip(), "--password-file", "-",
                  "--hostname", self.hostname.get_text().strip().lower()]
-                + session_language(),
+                + session_language() + key_args,
                 Gio.SubprocessFlags.STDIN_PIPE | Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE,
             )
         except GLib.Error as e:
             return self.failed(e.message)
         stdin = proc.get_stdin_pipe()
-        stdin.write_all(self.password.get_text().encode() + b"\n", None)
+        # One pipe through pkexec: the password's line, then each key's PIN.
+        stdin.write_all("".join(line + "\n" for line in [self.password.get_text()] + [pin for _d, pin in keys]).encode(), None)
         stdin.close(None)
         self.read_lines(Gio.DataInputStream.new(proc.get_stdout_pipe()), self.on_record)
         self.read_lines(Gio.DataInputStream.new(proc.get_stderr_pipe()), self.errors.append)
@@ -226,6 +291,8 @@ class Installer(Adw.ApplicationWindow):
         msg = rec.get("msg", "")
         if msg == "done":
             self.recovery_key = rec.get("recovery_key", "")
+        elif msg in TOUCH:
+            self.step.set_label(_("Touch your security key"))
         elif msg in STEPS:
             text, at = STEPS[msg]
             self.step.set_label(text)
