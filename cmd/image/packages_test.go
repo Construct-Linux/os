@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -48,9 +49,9 @@ subpackages:
 	}
 }
 
-// The recipes whose package is missing build after the missing recipes they need, a subpackage
+// The recipes whose package is missing build in waves after the missing recipes they need, a subpackage
 // counting as its recipe's.
-func TestMissingInOrder(t *testing.T) {
+func TestMissingInWaves(t *testing.T) {
 	recipes := []recipe{
 		{File: "gdm", Name: "gdm", Version: "51.0", Epoch: 3, Needs: []string{"accountsservice-dev", "gnome-shell"}},
 		{File: "accountsservice", Name: "accountsservice", Version: "26", Epoch: 1},
@@ -58,8 +59,17 @@ func TestMissingInOrder(t *testing.T) {
 		{File: "mutter", Name: "mutter", Version: "51.0", Epoch: 0},
 	}
 	have := map[string]bool{"mutter-51.0-r0.apk": true}
-	if got := strings.Join(missingInOrder(recipes, have), " "); got != "accountsservice gnome-shell gdm" {
-		t.Errorf("order %s", got)
+	if got := fmt.Sprint(missingInWaves(recipes, have)); got != "[[accountsservice gnome-shell] [gdm]]" {
+		t.Errorf("waves %s", got)
+	}
+	// mutter missing too: gnome-shell waits for it, gdm for gnome-shell.
+	if got := fmt.Sprint(missingInWaves(recipes, nil)); got != "[[accountsservice mutter] [gnome-shell] [gdm]]" {
+		t.Errorf("waves without mutter %s", got)
+	}
+	// A cycle builds, one side first.
+	cycle := []recipe{{File: "a", Name: "a", Needs: []string{"b-dev"}}, {File: "b", Name: "b", Needs: []string{"a"}}}
+	if got := fmt.Sprint(missingInWaves(cycle, nil)); got != "[[b] [a]]" {
+		t.Errorf("a cycle %s", got)
 	}
 }
 

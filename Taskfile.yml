@@ -355,6 +355,11 @@ tasks:
         --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=construct-builder},{Key=construct:role,Value=builder},{Key=construct:commit,Value={{.COMMIT}}},{Key=construct:job,Value=release:build}]'
         --query 'Instances[0].InstanceId' --output text
 
+  release:log:
+    desc: "Follow the newest builder's log from the logs bucket, as tail -f: task release:log, or -- -file recipes/<recipe>.log for one recipe's build, -id i-... for another builder. Needs AWS credentials."
+    cmds:
+      - go run ./cmd/image release-log {{.CLI_ARGS}}
+
   release:build:
     desc: "On the builder (CONSTRUCT_BUILDER): the cache, the recipes it lacks, the kernel, firmware and QEMU it lacks, the harness on a test build, then the release - built with the next vYYYYMMDD.N, signed with KMS - scanned, published, offered to testing, and the cache back."
     preconditions:
@@ -368,10 +373,9 @@ tasks:
       - aws secretsmanager get-secret-value --secret-id construct/melange-key --query SecretString --output text > melange.rsa
       - chmod 600 melange.rsa
       - go run ./cmd/image cache -pull
-      - for r in $(go run ./cmd/image packages -missing); do task build -- $r || exit 1; done
-      - test -f _output/kernel/bzImage || task kernel NPROC=$(nproc)
-      - test -f _output/firmware/firmware.tar || task firmware
-      - docker image inspect construct-qemu >/dev/null 2>&1 || task harness-qemu
+      # The cache goes back however the job ends: what a failed release built is not built again.
+      - defer: go run ./cmd/image cache -push
+      - task: release:inputs
       - task: rootfs
       - task: initrd
       # The harness on a test build of the same commit: a release whose checks fail is not built.
@@ -383,12 +387,50 @@ tasks:
       - task: release:publish
         vars: {VERSION: '{{.VERSION}}', NEW: '{{.NEW}}'}
       # Every package's builds but its newest go, and the index is made again before the cache
-      # takes packages/ back.
+      # takes packages/ back (the deferred push).
       - go run ./cmd/image packages -prune
       - >-
         docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}}
         index --signing-key melange.rsa -o packages/x86_64/APKINDEX.tar.gz packages/x86_64/*.apk
-      - go run ./cmd/image cache -push
+
+  release:inputs:
+    desc: "What the cache lacked, side by side: the packages, the kernel, the firmware and the harness's QEMU, none of which needs another. On the builder, after cache -pull."
+    internal: true
+    deps: [release:packages, release:kernel, release:firmware, release:harness-qemu]
+
+  release:packages:
+    internal: true
+    vars:
+      # Recipes built at once in a wave: each melange build compiles with every core itself, so a
+      # few at once fill the machine while the small recipes' configure steps, single-threaded,
+      # overlap.
+      JOBS: '{{.JOBS | default 4}}'
+    cmds:
+      - mkdir -p .cache
+      - go run ./cmd/image packages -missing > .cache/waves.txt
+      - >-
+        while read -r wave; do
+        echo "packages: $wave";
+        printf '%s\n' $wave | xargs -P {{.JOBS}} -I{} task build -- {} || exit 1;
+        done < .cache/waves.txt
+
+  release:kernel:
+    internal: true
+    status: [test -f _output/kernel/bzImage]
+    cmds:
+      - task kernel NPROC=$(nproc)
+
+  release:firmware:
+    internal: true
+    status: [test -f _output/firmware/firmware.tar]
+    cmds:
+      - task: firmware
+
+  release:harness-qemu:
+    internal: true
+    status: [docker image inspect construct-qemu >/dev/null 2>&1]
+    cmds:
+      - task: harness-qemu
 
   release:publish:
     desc: "Publish the release task usb just built (VERSION): its files, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>; the USB stick at dl.<domain> with the sticks' signed SHA256SUMS; the public keys at keys.<domain>; and the release in the testing channel's index at updates.<domain>. On the builder; NEW=true for the first release, when dl and testing have no index yet."

@@ -87,10 +87,11 @@ func readRecipe(file string) (recipe, error) {
 	return r, nil
 }
 
-// missingInOrder are the recipes whose package is not in have, each after the missing recipes
-// its build or package needs: a need is another recipe's when it is that recipe's package or one
-// of its subpackages (its name, then a dash).
-func missingInOrder(recipes []recipe, have map[string]bool) []string {
+// missingInWaves are the recipes whose package is not in have, in waves: each recipe in the wave
+// after the last of the missing recipes its build or package needs, so a wave's recipes build side
+// by side. A need is another recipe's when it is that recipe's package or one of its subpackages
+// (its name, then a dash).
+func missingInWaves(recipes []recipe, have map[string]bool) [][]string {
 	missing := map[string]recipe{}
 	for _, r := range recipes {
 		if !have[r.apk()] {
@@ -113,28 +114,33 @@ func missingInOrder(recipes []recipe, have map[string]bool) []string {
 		names = append(names, n)
 	}
 	sort.Strings(names)
-	var order []string
-	state := map[string]int{} // 1 visiting, 2 done
-	var visit func(string)
-	visit = func(n string) {
-		if state[n] != 0 {
-			// A cycle is left to the order the names sort in: melange takes the package from Wolfi
-			// or the cache meanwhile.
-			return
+	// wave is 0 for a recipe being visited: a cycle is cut there, and melange takes the package
+	// from Wolfi or the cache meanwhile.
+	wave := map[string]int{}
+	var visit func(string) int
+	visit = func(n string) int {
+		if w, ok := wave[n]; ok {
+			return w
 		}
-		state[n] = 1
+		wave[n] = 0
+		w := 1
 		for _, need := range missing[n].Needs {
 			if m := makes(need); m != "" && m != n {
-				visit(m)
+				w = max(w, visit(m)+1)
 			}
 		}
-		state[n] = 2
-		order = append(order, n)
+		wave[n] = w
+		return w
 	}
+	var waves [][]string
 	for _, n := range names {
-		visit(n)
+		w := visit(n)
+		for len(waves) < w {
+			waves = append(waves, nil)
+		}
+		waves[w-1] = append(waves[w-1], n)
 	}
-	return order
+	return waves
 }
 
 var apkName = regexp.MustCompile(`^(.+)-([^-]+)-r([0-9]+)\.apk$`)
@@ -244,11 +250,11 @@ func apkCompare(a, b string) int {
 	return 0
 }
 
-// packagesCmd answers what packages/ lacks (-missing: recipe names, in build order) or takes out
+// packagesCmd answers what packages/ lacks (-missing: recipe names, a wave a line) or takes out
 // what newer builds replaced (-prune: the files it removed, for the index to be made again).
 func packagesCmd(args []string) error {
 	fl := flag.NewFlagSet("packages", flag.ExitOnError)
-	missing := fl.Bool("missing", false, "print the recipes whose package packages/ lacks, in build order")
+	missing := fl.Bool("missing", false, "print the recipes whose package packages/ lacks, a line per wave that builds side by side")
 	prune := fl.Bool("prune", false, "remove every package's builds but its newest")
 	// The packages.
 	dir := filepath.Join("packages", "x86_64")
@@ -278,8 +284,8 @@ func packagesCmd(args []string) error {
 			r.File = strings.TrimSuffix(filepath.Base(p), ".yaml")
 			recipes = append(recipes, r)
 		}
-		for _, n := range missingInOrder(recipes, have) {
-			fmt.Println(n)
+		for _, w := range missingInWaves(recipes, have) {
+			fmt.Println(strings.Join(w, " "))
 		}
 	case *prune:
 		for _, f := range superseded(files) {

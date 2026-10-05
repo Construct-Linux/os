@@ -17,18 +17,30 @@ import (
 // are built from, so a change to their inputs is a miss and a rebuild, never a stale hit.
 
 // cached is a build output the cache keeps: what it is built from (paths git tracks), and what it
-// is - directories under the repository, or a Docker image.
+// is - directories under the repository, with the file its build writes when it is whole, or a
+// Docker image.
 type cached struct {
 	name   string
 	inputs []string
 	dirs   []string
+	whole  string
 	image  string
 }
 
 var cacheable = []cached{
-	{name: "kernel", inputs: []string{"kernel", "build/versions.env"}, dirs: []string{"_output/kernel", "_output/modules"}},
-	{name: "firmware", inputs: []string{"firmware", "build/versions.env"}, dirs: []string{"_output/firmware"}},
+	{name: "kernel", inputs: []string{"kernel", "build/versions.env"}, dirs: []string{"_output/kernel", "_output/modules"}, whole: "_output/kernel/bzImage"},
+	{name: "firmware", inputs: []string{"firmware", "build/versions.env"}, dirs: []string{"_output/firmware"}, whole: "_output/firmware/firmware.tar"},
 	{name: "qemu", inputs: []string{"build/qemu", "build/versions.env"}, image: "construct-qemu"},
+}
+
+// isBuilt is whether c's output is here to store: a push after a failed release stores what was
+// built before it failed, and nothing that was not.
+func isBuilt(c cached) bool {
+	if c.image != "" {
+		return exec.Command("docker", "image", "inspect", c.image).Run() == nil
+	}
+	_, err := os.Stat(c.whole)
+	return err == nil
 }
 
 // cacheKey is a hash of the blobs git has for c's inputs: the committed sources, whatever the
@@ -95,6 +107,10 @@ func cacheCmd(args []string) error {
 				return err
 			}
 			fmt.Printf("cache: %s %s: from the cache\n", c.name, key)
+			continue
+		}
+		if !isBuilt(c) {
+			fmt.Printf("cache: %s %s: not built, not stored\n", c.name, key)
 			continue
 		}
 		if aws("s3api", "head-object", "--bucket", bucket, "--key", strings.TrimPrefix(obj, s3+"/")) == nil {
