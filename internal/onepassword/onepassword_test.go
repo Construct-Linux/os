@@ -1,4 +1,4 @@
-package main
+package onepassword
 
 import (
 	"archive/tar"
@@ -124,14 +124,14 @@ func TestOnePasswordSignature(t *testing.T) {
 	if err := os.WriteFile(key, pub.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := onePasswordKeyring(key); err == nil || !strings.Contains(err.Error(), onePasswordFingerprint) {
+	if _, err := keyring(key); err == nil || !strings.Contains(err.Error(), Fingerprint) {
 		t.Errorf("a key that is not the pinned one: %v", err)
 	}
 }
 
 // The key the image carries is 1Password's own, the one pinned.
 func TestOnePasswordKeyInTheImage(t *testing.T) {
-	if _, err := onePasswordKeyring("../../image/rootfs/usr/share/construct/1password.asc"); err != nil {
+	if _, err := keyring("../../image/rootfs/usr/share/construct/1password.asc"); err != nil {
 		t.Error(err)
 	}
 }
