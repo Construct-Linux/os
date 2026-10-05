@@ -102,8 +102,11 @@ class Installer(Adw.ApplicationWindow):
         return b
 
     def welcome_page(self):
+        # The installer is the brand's place (THEMING.md, level 1): its first page shows the mark,
+        # not a generic download glyph - the mono mark, which THEMING allows on any surface (the
+        # cyan one only on ink or black).
         status = Adw.StatusPage(
-            icon_name="system-software-install-symbolic",
+            icon_name="construct-logo-symbolic",
             title=_("Install Construct"),
             description=_("Construct is running from this stick. Install it on this computer to keep it, "
                           "or close this window and keep trying it."),
@@ -246,7 +249,7 @@ class Installer(Adw.ApplicationWindow):
     def install(self, *args):
         self.progress = Gtk.ProgressBar(show_text=False)
         self.step = Gtk.Label(label=_("Starting"), css_classes=["title-4"])
-        status = Adw.StatusPage(icon_name="system-software-install-symbolic", title=_("Installing Construct"))
+        status = Adw.StatusPage(icon_name="construct-logo-symbolic", title=_("Installing Construct"))
         status.set_child(self.form(self.step, self.progress))
         page = self.page(_("Installing"), status, "installing")
         page.set_can_pop(False)
