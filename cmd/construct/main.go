@@ -12,6 +12,7 @@
 //	construct kernel-profile [--minutes N] [-o FILE]          the kernel at work, recorded for its AutoFDO profile
 //	construct report                                         what a bug report needs to know of this machine
 //	construct channel    [CHANNEL]                           the release channel this machine follows, or follow another
+//	construct key        list | add | remove                 the security keys that open the disk and sign the person in
 //
 // install's release is the construct-update partition of the stick it runs from (or --from, a
 // directory), checked against the public key the root carries (internal/update's KeyringPath)
@@ -56,7 +57,8 @@ const usage = `usage:
   construct bench      [--rounds N] [--seconds N]
   construct kernel-profile [--minutes N] [-o FILE]
   construct report
-  construct channel    [CHANNEL]`
+  construct channel    [CHANNEL]
+  construct key        list [--json] | add --name NAME [--device DEV] [--user NAME] [--pin-file FILE] | remove --name NAME`
 
 func main() {
 	// SIGHUP too: a dropped SSH session must still let a command undo what it changed (bench
@@ -99,6 +101,8 @@ func main() {
 		err = reportCmd(ctx, os.Args[2:], os.Stdout)
 	case "channel":
 		err = channelCmd(os.Args[2:], os.Stdout, "/")
+	case "key":
+		err = keyCmd(ctx, os.Args[2:], os.Stdin, os.Stdout)
 	case "kernel-profile":
 		err = kernelProfileCmd(os.Args[2:], os.Stdout)
 	default:

@@ -53,7 +53,8 @@ func makeVar(ctx context.Context, log *slog.Logger, partition string, p person, 
 			return "", err
 		}
 	}
-	if err := enrollSecurityKeys(ctx, log, partition, p.password, p.keys); err != nil {
+	registered, err := enrollSecurityKeys(ctx, log, partition, p.password, p.user.Name, p.keys)
+	if err != nil {
 		return "", err
 	}
 	var key bytes.Buffer
@@ -69,10 +70,10 @@ func makeVar(ctx context.Context, log *slog.Logger, partition string, p person, 
 		return "", err
 	}
 	dev := "/dev/mapper/" + installVar
-	err := cmd(ctx, nil, nil, "mkfs.ext4", "-q", "-L", "var", dev)
+	err = cmd(ctx, nil, nil, "mkfs.ext4", "-q", "-L", "var", dev)
 	if err == nil {
 		log.Info("preparing /var")
-		err = prepareVar(ctx, dev, p)
+		err = prepareVar(ctx, dev, p, registered)
 	}
 	if cerr := cmd(ctx, nil, nil, "cryptsetup", "close", installVar); err == nil {
 		err = cerr

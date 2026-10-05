@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // securityKey is a FIDO2 key (a YubiKey) that opens /var at boot with its PIN and a touch, beside
@@ -59,15 +60,39 @@ func securityKeysFrom(devices []string, pinFile string) ([]securityKey, error) {
 
 // enrollSecurityKeys adds a slot to /var's LUKS2 header for each key, opened by the key's PIN and
 // a touch (systemd-cryptenroll's FIDO2 token, which the initrd's var-key reads), unlocked for it
-// by the person's password. Each asks to be touched: the log says which, for the installer to show.
-func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, password string, keys []securityKey) error {
+// by the person's password, and makes each key's pam_u2f credential for owner: what construct key
+// records. Each asks to be touched twice: the log says which, for the installer to show.
+func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, password, owner string, keys []securityKey) ([]registeredKey, error) {
+	var done []registeredKey
 	for i, k := range keys {
 		log.Info("touch the security key", "key", i+1, "of", len(keys), "device", k.device)
-		if err := enrollSecurityKey(ctx, partition, password, k); err != nil {
-			return fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
+		before, err := fido2Slots(ctx, partition)
+		if err != nil {
+			return nil, err
 		}
+		if err := enrollSecurityKey(ctx, partition, password, k); err != nil {
+			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
+		}
+		after, err := fido2Slots(ctx, partition)
+		if err != nil {
+			return nil, err
+		}
+		slot, err := newSlot(before, after)
+		if err != nil {
+			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
+		}
+		log.Info("touch the security key again", "key", i+1, "of", len(keys), "device", k.device)
+		u2f, err := u2fCredential(ctx, k.device, owner, k.pin)
+		if err != nil {
+			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
+		}
+		name := "Security key"
+		if i > 0 {
+			name = fmt.Sprintf("Backup key %d", i)
+		}
+		done = append(done, registeredKey{Name: name, User: owner, Slot: slot, U2F: u2f, Added: time.Now().UTC().Format(time.DateOnly)})
 	}
-	return nil
+	return done, nil
 }
 
 // enrollSecurityKey enrolls one key. systemd-cryptenroll takes the password from $PASSWORD but a

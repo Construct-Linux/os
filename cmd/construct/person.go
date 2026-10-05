@@ -191,7 +191,7 @@ func crypt64(b []byte) string {
 
 // prepareVar lays p on the new /var at dev: their record, GNOME logging them in, their home.
 // What goes in /etc is written into the overlay's upper layer the initrd mounts /etc with.
-func prepareVar(ctx context.Context, dev string, p person) error {
+func prepareVar(ctx context.Context, dev string, p person, keys []registeredKey) error {
 	hash, err := hashPassword(p.password)
 	if err != nil {
 		return err
@@ -214,6 +214,10 @@ func prepareVar(ctx context.Context, dev string, p person) error {
 	// which opened /var.
 	if err == nil {
 		err = account.Autologin(upper, u.Name)
+	}
+	// The security keys enrolled with the disk sign them in too.
+	if err == nil && len(keys) > 0 {
+		err = writeKeys(upper, keys)
 	}
 	// Their language and keyboard, which GDM, GNOME and the console start from, and the machine's
 	// name.
