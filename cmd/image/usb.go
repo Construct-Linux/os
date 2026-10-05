@@ -153,7 +153,7 @@ func usbSign(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s (image usb-join for the kernel image): %w", src, err)
 		}
-		signed, err := signEFI(raw, key, dbCertificate)
+		signed, err := sign.EFI(raw, key, dbCertificate)
 		if err != nil {
 			return fmt.Errorf("signing %s: %w", src, err)
 		}
@@ -663,7 +663,7 @@ func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) er
 	if err := os.MkdirAll(keys, 0o755); err != nil {
 		return err
 	}
-	for _, name := range sbVariables {
+	for _, name := range sign.SecureBootVariables {
 		b, err := os.ReadFile(filepath.Join(sbKeys, name))
 		if err != nil {
 			return err

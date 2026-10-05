@@ -1,7 +1,9 @@
-package main
+package sign
 
 import (
 	"bytes"
+	"context"
+	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -25,7 +27,7 @@ func testKeySet(t *testing.T) (map[string][]byte, *rsa.PrivateKey, *x509.Certifi
 		}
 		keys[i] = k
 	}
-	vars, cert, err := makeKeySet(keys[0], keys[1], keys[2])
+	vars, cert, err := SecureBootKeySet(keys[0], keys[1], keys[2])
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +39,7 @@ func testKeySet(t *testing.T) (map[string][]byte, *rsa.PrivateKey, *x509.Certifi
 func TestTheKeySetEnrollsAsTheFirmwareChecksIt(t *testing.T) {
 	vars, _, dbCertificate := testKeySet(t)
 	certs := map[string][]*x509.Certificate{}
-	for _, name := range sbVariables {
+	for _, name := range SecureBootVariables {
 		b := bytes.NewBuffer(vars[name])
 		auth, err := signature.ReadEFIVariableAuthencation2(b)
 		if err != nil {
@@ -76,7 +78,7 @@ func TestABinaryIsSignedByDBsKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signed, err := signEFI(raw, key, cert)
+	signed, err := EFI(raw, key, cert)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,14 +89,14 @@ func TestABinaryIsSignedByDBsKey(t *testing.T) {
 	if ok, err := pe.Verify(cert); !ok || err != nil {
 		t.Errorf("the signature does not verify: %v", err)
 	}
-	if _, err := signEFI(signed, key, cert); err == nil {
+	if _, err := EFI(signed, key, cert); err == nil {
 		t.Error("signed a binary twice")
 	}
 }
 
 // db's key and its certificate come as a pair: a key the certificate is not for is refused, since
 // what it signed would boot nowhere.
-func TestDBSignerRefusesAnotherKeysCertificate(t *testing.T) {
+func TestDBKeyRefusesAnotherKeysCertificate(t *testing.T) {
 	_, key, cert := testKeySet(t)
 	dir := t.TempDir()
 	keyFile, certFile := filepath.Join(dir, "db.pem"), filepath.Join(dir, "db.crt")
@@ -108,14 +110,24 @@ func TestDBSignerRefusesAnotherKeysCertificate(t *testing.T) {
 	if err := os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: cert.Raw}), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := dbSigner(keyFile, certFile); err != nil {
+	if _, _, err := dbKeyFiles(t, keyFile, certFile); err != nil {
 		t.Fatalf("db's own certificate: %v", err)
 	}
 	_, _, other := testKeySet(t)
 	if err := os.WriteFile(certFile, pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := dbSigner(keyFile, certFile); err == nil {
+	if _, _, err := dbKeyFiles(t, keyFile, certFile); err == nil {
 		t.Error("another key's certificate: no error")
 	}
+}
+
+// dbKeyFiles is DBKey with the certificate read from a file, as image usb-sign gives it.
+func dbKeyFiles(t *testing.T, keyFile, certFile string) (crypto.Signer, *x509.Certificate, error) {
+	t.Helper()
+	b, err := os.ReadFile(certFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return DBKey(context.Background(), keyFile, b)
 }

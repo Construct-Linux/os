@@ -1,4 +1,4 @@
-package main
+package sign
 
 import (
 	"crypto"
@@ -15,7 +15,7 @@ import (
 )
 
 // What ukify --pcr-private-key wrote for enter-initrd (systemd 261's systemd-measure, a throwaway
-// RSA-2048 key): a PKCS#1 v1.5 signature of the policy's SHA-256, as signPolicy makes it.
+// RSA-2048 key): a PKCS#1 v1.5 signature of the policy's SHA-256, as PCRPolicy makes it.
 const (
 	systemdPublic = `-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1A850oh00+m4VNbsBDdT
@@ -70,7 +70,7 @@ func digests(phases int) []byte {
 // Every phase's policy is signed, each with its own signature.
 func TestEveryPhaseIsSigned(t *testing.T) {
 	key, pub := pcrKey(t)
-	b, err := signPolicy(digests(4), key, pub)
+	b, err := PCRPolicy(digests(4), key, pub)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestEveryPhaseIsSigned(t *testing.T) {
 func TestAKeyTheKernelImageDoesNotCarryIsRefused(t *testing.T) {
 	key, _ := pcrKey(t)
 	_, other := pcrKey(t)
-	if _, err := signPolicy(digests(4), key, other); err == nil {
+	if _, err := PCRPolicy(digests(4), key, other); err == nil {
 		t.Error("signed with a key the kernel image does not carry")
 	}
 }
