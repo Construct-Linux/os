@@ -233,6 +233,18 @@ func test(args []string) error {
 	// A laptop's sensors, which a VM has not: iio-sensor-proxy starts when udev finds one.
 	laptop, err := g.run(`grep -l iio-sensor-proxy.service /usr/lib/udev/rules.d/*.rules`, "")
 	r.add("laptop services", err == nil && strings.Contains(laptop, "80-iio-sensor-proxy.rules"), oneLine(laptop)+errText(err))
+	// The services that read what the network says, sandboxed (their 20-sandbox.conf): they run,
+	// and systemd rates their exposure as it was measured when they were (1.6 and 1.3).
+	sandboxed, err := g.run(`systemctl start geoclue.service; for u in cups-browsed geoclue; do `+
+		`echo $u $(systemctl is-active $u.service) $(systemd-analyze security --no-pager $u.service | tail -1 | grep -oE '[0-9]+\.[0-9]'); done`, "")
+	r.add("network-facing services sandboxed", err == nil && sandboxedOK(sandboxed), oneLine(sandboxed)+errText(err))
+	// Virtual machines are GNOME Boxes from Flathub, with its own QEMU: the session reaches KVM.
+	kvm, _ := g.run(`if [ -e /dev/kvm ]; then stat -c %a /dev/kvm; else echo none; fi`, "")
+	if strings.TrimSpace(kvm) == "none" {
+		r.skip("KVM for the session", "this VM has no nested KVM")
+	} else {
+		r.add("KVM for the session", strings.TrimSpace(kvm) == "666", "/dev/kvm "+oneLine(kvm))
+	}
 	// A finger is a complement to the password, never in its place: fprintd starts when the bus is
 	// asked for it, and only GDM's own fingerprint service - run beside the password at the login
 	// and lock screens - takes one; sudo, polkit and the password's service do not.
@@ -1042,4 +1054,22 @@ const viewsTime = "2026-10-05 10:10:00"
 func (g *guest) fixClock() error {
 	_, err := g.run(`timedatectl set-ntp false && timedatectl set-time "`+viewsTime+`"`, "")
 	return err
+}
+
+// sandboxedOK reads "unit state exposure" lines: each unit active, its exposure 2.0 at most.
+func sandboxedOK(out string) bool {
+	lines := strings.Split(strings.TrimSpace(out), "\n")
+	if len(lines) != 2 {
+		return false
+	}
+	for _, l := range lines {
+		f := strings.Fields(l)
+		if len(f) != 3 || f[1] != "active" {
+			return false
+		}
+		if v, err := strconv.ParseFloat(f[2], 64); err != nil || v > 2.0 {
+			return false
+		}
+	}
+	return true
 }
