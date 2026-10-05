@@ -88,10 +88,11 @@ func TestWhatIsNotAVersionIsSkipped(t *testing.T) {
 	}
 }
 
-// The desktop's versions are UTC times as cmd/image usb writes them, 20261001.134321: a later
-// build is a newer version, by the day and then by the time of day.
+// The desktop's versions as cmd/image usb writes them - a release's day and build number,
+// 20261001.2, or a development build's UTC time, 20261001.134321 - are ordered by the day, then by
+// the number: a day's 10th release after its 9th, and a development build after the day's releases.
 func TestTheDesktopsVersionsAreOrderedByTime(t *testing.T) {
-	ordered := []string{"20260930.235959", "20261001.000000", "20261001.090000", "20261001.134321", "20261002.010101", "20270101.000000"}
+	ordered := []string{"20260930.235959", "20261001.1", "20261001.9", "20261001.10", "20261001.090000", "20261001.134321", "20261002.1", "20261002.010101", "20270101.000000"}
 	for i, older := range ordered {
 		for _, newer := range ordered[i+1:] {
 			if Compare(newer, older) != 1 || Compare(older, newer) != -1 {

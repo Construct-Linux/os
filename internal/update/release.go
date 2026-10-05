@@ -180,8 +180,9 @@ type Release struct {
 }
 
 // The names of a release's files, as Names makes them. A version is what cmd/image usb writes - a
-// UTC time, 20261001.134321 - and anything systemd orders: no underscore, which ends it, and no
-// '+', which systemd-boot reads as the start of a kernel image's tries.
+// release's day and build number, 20261001.2, or a development build's UTC time, 20261001.134321 -
+// and anything systemd orders: no underscore, which ends it, and no '+', which systemd-boot reads
+// as the start of a kernel image's tries.
 const (
 	versionPattern = `([0-9][0-9A-Za-z.~^-]*)`
 	uuidPattern    = `([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})`

@@ -18,6 +18,31 @@ import (
 // calver is a release's version.
 var calver = regexp.MustCompile(`^[0-9]{8}\.[1-9][0-9]*$`)
 
+// builtAt is the time a version stands for, which every file of its root is stamped with: a
+// release's day and its build number as seconds into it (20261005.2 is 00:00:02 that day), a
+// development build's its own time (20261005.142233). The same version is the same time - the same
+// tree is the same image - and each release's differs, as the caches that key on it need.
+func builtAt(version string) (time.Time, error) {
+	// A build's time first: its six digits are a release's form too (YYYYMMDD.N), and as a number
+	// of seconds they would be a day and a half.
+	if t, err := time.Parse("20060102.150405", version); err == nil {
+		return t, nil
+	}
+	if !calver.MatchString(version) {
+		return time.Time{}, fmt.Errorf("version %q is neither a release's (YYYYMMDD.N) nor a build's time", version)
+	}
+	day, n, _ := strings.Cut(version, ".")
+	t, err := time.Parse("20060102", day)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("version %q: %w", version, err)
+	}
+	k, err := strconv.Atoi(n)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("version %q: %w", version, err)
+	}
+	return t.Add(time.Duration(k) * time.Second), nil
+}
+
 // nextVersion is the version after the tags already published on day: the day's first build is
 // .1, and a day's next one more than its highest, whatever was skipped between.
 func nextVersion(day time.Time, tags []string) string {

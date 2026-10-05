@@ -546,9 +546,9 @@ func verifiedRoot(root, img, tree, version string) (verity, error) {
 	// keys on changes with each release. Mesa's shader cache keys on its drivers' times where a
 	// library has no build ID (Wolfi's libLLVM, which AMD's radeonsi hashes), and a time of 0 turns
 	// it off - every launch compiled every shader again.
-	built, err := time.Parse("20060102.150405", version)
+	built, err := builtAt(version)
 	if err != nil {
-		return verity{}, fmt.Errorf("version %q: %w", version, err)
+		return verity{}, err
 	}
 	if err := run("mkfs.erofs", "-zlz4hc", fmt.Sprintf("-T%d", built.Unix()), "--ignore-mtime", img, root); err != nil {
 		return verity{}, err

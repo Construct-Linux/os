@@ -22,3 +22,23 @@ func TestNextVersion(t *testing.T) {
 		}
 	}
 }
+
+// A release's version and a development build's both stand for a time: a release's is its day and
+// its number as seconds, so the day's releases differ; anything else is refused.
+func TestBuiltAt(t *testing.T) {
+	for v, want := range map[string]string{
+		"20261005.1":      "2026-10-05T00:00:01Z",
+		"20261005.12":     "2026-10-05T00:00:12Z",
+		"20261005.142233": "2026-10-05T14:22:33Z",
+	} {
+		got, err := builtAt(v)
+		if err != nil || got.Format(time.RFC3339) != want {
+			t.Errorf("%s: %v %v, want %s", v, got, err, want)
+		}
+	}
+	for _, bad := range []string{"", "v20261005.1", "20261005", "2026-10-05"} {
+		if _, err := builtAt(bad); err == nil {
+			t.Errorf("%q passed", bad)
+		}
+	}
+}
