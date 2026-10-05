@@ -85,9 +85,6 @@ class KeysPage(Adw.PreferencesPage):
                           "where Construct asks for your password - sudo, the lock screen, a change to the "
                           "system - with a touch. Your password keeps working without it. Add a second key "
                           "and keep it somewhere safe."))
-        add = Gtk.Button(label=_("Add a key"), valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
-        add.connect("clicked", lambda *a: self.add_dialog())
-        self.group.set_header_suffix(add)
         self.add(self.group)
         self.rows = []
         behaviour = Adw.PreferencesGroup()
@@ -103,6 +100,9 @@ class KeysPage(Adw.PreferencesPage):
             for row in self.rows:
                 self.group.remove(row)
             self.rows = []
+            # The list's last row adds a key, under the keys it would join.
+            add = Adw.ButtonRow(title=_("Add a key"), start_icon_name="list-add-symbolic")
+            add.connect("activated", lambda *a: self.add_dialog())
             if not ok:
                 self.window.toast(last_line(err) or _("The keys could not be read"))
                 return
@@ -129,6 +129,8 @@ class KeysPage(Adw.PreferencesPage):
                 row.add_suffix(remove)
                 self.group.add(row)
                 self.rows.append(row)
+            self.group.add(add)
+            self.rows.append(add)
 
         run([CLI, "key", "list", "--json"], done=done)
 
@@ -472,14 +474,18 @@ class Window(Adw.ApplicationWindow):
         for name, page in pages:
             stack.add_titled_with_icon(page, name, page.get_title(), page.get_icon_name())
         sidebar = Adw.ViewSwitcherSidebar(stack=stack)
+        content = Adw.NavigationPage(title=_("Construct"), child=self.with_header(stack))
+        # The content's header names the page shown, as Settings' does.
+        stack.connect("notify::visible-child", lambda s, *a: content.set_title(s.get_visible_child().get_title()))
         split = Adw.NavigationSplitView(
             sidebar=Adw.NavigationPage(title=_("Construct"), child=self.with_header(sidebar)),
-            content=Adw.NavigationPage(title=_("Construct"), child=self.with_header(stack)))
+            content=content)
         self.toasts.set_child(split)
         self.set_content(self.toasts)
         page = os.environ.get("CONSTRUCT_APP_PAGE")
         if page:
             stack.set_visible_child_name(page)
+        content.set_title(stack.get_visible_child().get_title())
 
     @staticmethod
     def with_header(child):
