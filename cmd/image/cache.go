@@ -113,7 +113,8 @@ func cacheCmd(args []string) error {
 			fmt.Printf("cache: %s %s: not built, not stored\n", c.name, key)
 			continue
 		}
-		if aws("s3api", "head-object", "--bucket", bucket, "--key", strings.TrimPrefix(obj, s3+"/")) == nil {
+		// A miss is head-object's 404, said on stderr: awsOut keeps it out of the log.
+		if _, err := awsOut("s3api", "head-object", "--bucket", bucket, "--key", strings.TrimPrefix(obj, s3+"/")); err == nil {
 			continue
 		}
 		if err := packCached(c, local); err != nil {

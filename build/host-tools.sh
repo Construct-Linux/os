@@ -38,10 +38,20 @@ install -D -m 0644 "$tmp/docker.asc" /etc/apt/keyrings/docker.asc
 . /etc/os-release
 echo "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $VERSION_CODENAME stable" > /etc/apt/sources.list.d/docker.list
 apt-get update -q
+# shellcheck disable=SC2086 # a list of packages
+apt-get install -qy $HOST_PACKAGES
 suffix="-1~ubuntu.${VERSION_ID}~${VERSION_CODENAME}"
 apt-get install -qy --allow-downgrades \
   "docker-ce=5:${DOCKER_VERSION}${suffix}" "docker-ce-cli=5:${DOCKER_VERSION}${suffix}" \
   "docker-buildx-plugin=${DOCKER_BUILDX_VERSION}${suffix}" containerd.io
+
+# What the harness opens by path or runs, there before the hour of building that precedes it.
+for f in /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.fd; do
+  test -f "$f" || { echo "host-tools: no $f" >&2; exit 1; }
+done
+for c in mcopy mdel ssh docker go task gh; do
+  command -v "$c" >/dev/null || { echo "host-tools: no $c" >&2; exit 1; }
+done
 
 go version
 task --version
