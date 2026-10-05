@@ -22,6 +22,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/fsx"
 )
 
 // User is a person who logs in.
@@ -114,13 +116,13 @@ func Write(etc, factory string, u User) error {
 			}
 		}
 		out = append(out, own[db])
-		if err := writeFile(filepath.Join(etc, db), []byte(strings.Join(out, "\n")+"\n"), fi.Mode().Perm()); err != nil {
+		if err := fsx.WriteFile(filepath.Join(etc, db), []byte(strings.Join(out, "\n")+"\n"), fi.Mode().Perm()); err != nil {
 			return err
 		}
 	}
 	if u.SudoNoPassword {
 		line := u.Name + " ALL=(ALL:ALL) NOPASSWD: ALL\n"
-		if err := writeFile(filepath.Join(etc, "sudoers.d", "50-"+u.Name), []byte(line), 0o440); err != nil {
+		if err := fsx.WriteFile(filepath.Join(etc, "sudoers.d", "50-"+u.Name), []byte(line), 0o440); err != nil {
 			return err
 		}
 	}
@@ -157,7 +159,7 @@ func withUser(lines []string, name string, isGroups bool, groups []string) ([]st
 func Autologin(etc, name string) error {
 	conf := "# Logged in at boot: the live session, or the person whose password opened /var.\n" +
 		"[daemon]\nAutomaticLoginEnable=true\nAutomaticLogin=" + name + "\n"
-	return writeFile(filepath.Join(etc, "gdm", "custom.conf"), []byte(conf), 0o644)
+	return fsx.WriteFile(filepath.Join(etc, "gdm", "custom.conf"), []byte(conf), 0o644)
 }
 
 // MakeHome makes u's home on varDir, where a /var is mounted, theirs.
@@ -190,29 +192,4 @@ func HasPerson(etc string) (bool, error) {
 		}
 	}
 	return false, nil
-}
-
-// writeFile writes b to path, with its directory, synced: a power cut after an install must not
-// leave a person's record empty.
-func writeFile(path string, b []byte, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, mode)
-	if err != nil {
-		return err
-	}
-	if _, err := f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Chmod(mode); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
 }

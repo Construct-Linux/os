@@ -23,6 +23,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/fsx"
 )
 
 // A security key does two things on an installed machine: it opens /var at boot with its PIN and a
@@ -78,10 +80,10 @@ func writeKeys(etc string, keys []registeredKey) error {
 	if err := os.MkdirAll(filepath.Join(etc, filepath.Dir(keysFile)), 0o755); err != nil {
 		return err
 	}
-	if err := writeAtomic(filepath.Join(etc, keysFile), append(b, '\n')); err != nil {
+	if err := fsx.WriteFile(filepath.Join(etc, keysFile), append(b, '\n'), 0o644); err != nil {
 		return err
 	}
-	return writeAtomic(filepath.Join(etc, u2fMappings), []byte(mappingsOf(keys)))
+	return fsx.WriteFile(filepath.Join(etc, u2fMappings), []byte(mappingsOf(keys)), 0o644)
 }
 
 // mappingsOf is pam_u2f's central file: a line an account, its credentials after its name.
@@ -102,31 +104,6 @@ func mappingsOf(keys []registeredKey) string {
 		b.WriteString(u + ":" + strings.Join(byUser[u], ":") + "\n")
 	}
 	return b.String()
-}
-
-// writeAtomic replaces path with body: the reader sees the old file or the new one, never half.
-func writeAtomic(path string, body []byte) error {
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(body); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(0o644); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }
 
 // u2fCredential makes a pam_u2f credential for name on the key at device: fido2-cred makes it, on
@@ -570,7 +547,7 @@ func keyLockOnRemoval(args []string, stdout io.Writer, etc string) error {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			return err
 		}
-		return writeAtomic(path, nil)
+		return fsx.WriteFile(path, nil, 0o644)
 	case len(args) == 1 && args[0] == "off":
 		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 			return err

@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+
+	"github.com/Construct-Linux/os/internal/fsx"
 )
 
 // Firmware a person brings for their own machine, which the image cannot carry: a laptop maker's
@@ -51,7 +53,7 @@ func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return err
 	}
-	if err := writeSynced(dst, fw); err != nil {
+	if err := fsx.WriteFile(dst, fw, 0o644); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "installed %s as %s: restart for the sensor hub to boot it\n", args[1], dst)
@@ -74,38 +76,4 @@ func ishName(kernelLog string) (string, error) {
 	}
 	sort.Slice(names, func(i, j int) bool { return len(names[i]) > len(names[j]) })
 	return names[0], nil
-}
-
-// writeSynced writes b to path whole, synced, so a power cut leaves the old file or the new one.
-func writeSynced(path string, b []byte) error {
-	tmp := path + ".partial"
-	f, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o644)
-	if err != nil {
-		return err
-	}
-	_, err = f.Write(b)
-	if err == nil {
-		err = f.Sync()
-	}
-	if cerr := f.Close(); err == nil {
-		err = cerr
-	}
-	if err != nil {
-		_ = os.Remove(tmp)
-		return err
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		return err
-	}
-	return syncParent(path)
-}
-
-// syncParent syncs the directory holding path, so its new name outlives a power cut too.
-func syncParent(path string) error {
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
 }
