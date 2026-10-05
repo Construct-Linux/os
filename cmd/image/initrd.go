@@ -21,7 +21,10 @@ var initrdTar = filepath.Join(out, "initrd.tar")
 // one Plymouth writes in, and the keyboard layouts' descriptions for settings screens, which
 // xkbcommon does not read, and libfido2's udev rule, which hands security keys to a plugdev group
 // nobody declares (systemd's 60-fido-id and uaccess rules give them to the seat; image/rootfs
-// replaces it in the root). Globs are filepath.Match's.
+// replaces it in the root). And what systemd brings for a running system: PAM's modules (nothing
+// logs in to the initrd; sulogin, its emergency shell's, reads shadow itself), NSS's modules
+// (its nsswitch.conf names files, compat and dns alone), and the network's daemons, which no
+// initrd unit starts. Globs are filepath.Match's.
 var initrdTrim = []string{
 	"usr/share/doc", "usr/share/man", "usr/share/info", "usr/share/locale", "usr/share/i18n",
 	"usr/share/bash-completion", "usr/share/zsh", "usr/share/fish", "usr/share/gtk-doc",
@@ -30,15 +33,22 @@ var initrdTrim = []string{
 	"usr/share/fonts/Adwaita/AdwaitaMono-*", "usr/share/fonts/Adwaita/AdwaitaSans-Italic.ttf",
 	"usr/share/xkeyboard-config-2/rules/*.xml", "usr/share/xkeyboard-config-2/rules/*.lst",
 	"usr/lib/udev/rules.d/70-u2f.rules",
+	"usr/lib/security", "usr/lib/libnss_systemd.so*", "usr/lib/libnss_myhostname.so*", "usr/lib/libnss_resolve.so*",
+	"usr/lib/systemd/systemd-networkd*", "usr/lib/systemd/systemd-resolved", "usr/lib/systemd/systemd-timesyncd",
+	"usr/lib/systemd/system/systemd-networkd*", "usr/lib/systemd/system/systemd-resolved*",
+	"usr/lib/systemd/system/systemd-timesyncd*", "usr/lib/systemd/network", "usr/bin/networkctl", "usr/bin/resolvectl",
 }
 
 // initrdDrop are packages the initrd's own pull in and it never runs: tpm2-tss's FAPI library
 // brings libcurl, which brings Kerberos twice (krb5 and Heimdal, through OpenLDAP and SASL) and
 // a second OpenSSL; systemd brings curl and quota-tools for units an initrd does not start.
-// Their files go, by the initrd's apk database; checkELF then proves nothing left links them.
+// device-mapper's udev rules bring lvm2 - a 2.5 MB tool, its library and the rules that run it -
+// for volume groups no Construct disk has; dmsetup, which the rules need, is device-mapper's own.
+// OpenSSL 3 is linked by nothing left (everything is on 4). Their files go, by the initrd's apk
+// database; checkELF then proves nothing left links them.
 var initrdDrop = []string{
 	"curl", "libcurl-openssl4", "libpsl", "krb5-libs", "krb5-conf", "heimdal-libs",
-	"cyrus-sasl-heimdal-libs", "libldap-2.7", "quota-tools",
+	"cyrus-sasl-heimdal-libs", "libldap-2.7", "quota-tools", "lvm2", "libcrypto3", "libssl3",
 }
 
 // dropPackages removes the files the apk database under stage lists for each of names.
