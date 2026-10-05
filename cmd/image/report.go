@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/Construct-Linux/os/internal/needle"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
 
@@ -25,7 +26,7 @@ type report struct {
 	// scale is how many physical pixels a stage pixel is in its screenshots: 0 is 1.
 	scale int
 	// views are the specs of the views shot so far, by name: lf's checks count on them.
-	views map[string]*needleSpec
+	views map[string]*needle.Spec
 	// sweeps are C3's sweep of each view, for look.json.
 	sweeps map[string]lookSweep
 	// pal is the guest's palette once lf has read it: a view's noise counts its colours.

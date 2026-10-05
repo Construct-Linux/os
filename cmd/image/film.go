@@ -168,7 +168,7 @@ func startFilm(v *qemu.VM, dir string) *film {
 			case <-f.stopc:
 				read()
 				for name, img := range keep {
-					_ = writePNG(filepath.Join(dir, name+".png"), img)
+					_ = pixels.WritePNG(filepath.Join(dir, name+".png"), img)
 				}
 				return
 			case <-t.C:
@@ -316,7 +316,7 @@ func (r *report) plymouthPrompt(g *guest, dir string) {
 		r.add("lf: prompt plymouth", false, err.Error())
 		return
 	}
-	prompt, err := readPNG(filepath.Join(dir, "password.png"))
+	prompt, err := pixels.ReadPNG(filepath.Join(dir, "password.png"))
 	if err != nil {
 		r.add("lf: prompt plymouth", false, err.Error())
 		return
@@ -335,7 +335,7 @@ func gridPlymouth(prompt image.Image, afters []string) (bool, string) {
 	why := "no readable screen after the password"
 	from, _ := promptRows(prompt.Bounds().Dy())
 	for _, f := range afters {
-		after, err := readPNG(f)
+		after, err := pixels.ReadPNG(f)
 		if err != nil {
 			why = err.Error()
 			continue

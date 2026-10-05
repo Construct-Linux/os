@@ -12,6 +12,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/needle"
 	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
@@ -146,7 +147,7 @@ func test(args []string) error {
 	if *stick {
 		r.secureBoot(g)
 	}
-	r.shotLook(v, g, viewMeta{"desktop", groupDesktop,
+	r.shotLook(v, g, viewMeta{"desktop", needle.GroupDesktop,
 		"The desktop at login over the default dark wallpaper: both bars opaque g with their ring, the top bar a 36 px pill 6 px from the edge, its text Adwaita Sans 400, and no accent",
 		[]string{"S1", "SP2", "R1", "T2", "E2"}})
 	l.view("desktop")
@@ -329,7 +330,7 @@ func test(args []string) error {
 		}
 		ok, detail := g.runPanel(p)
 		r.add("panel:"+p, ok, detail)
-		r.shotLook(v, g, viewMeta{"panel-" + p, groupSettings,
+		r.shotLook(v, g, viewMeta{"panel-" + p, needle.GroupSettings,
 			"Settings' " + p + " panel, among the pages a person reaches first: a dark window's sidebar, rows and preference groups",
 			[]string{"S3", "TY4", "TY5"}})
 		l.view("panel-" + p)
@@ -364,7 +365,7 @@ func test(args []string) error {
 // appView is an app's first window as a view: what its screenshot validates, by the app.
 func appView(id string) viewMeta {
 	name := strings.TrimSuffix(id, ".desktop")
-	m := viewMeta{name, groupApp,
+	m := viewMeta{name, needle.GroupApp,
 		"The first window " + name + " opens, a few seconds in: a dark window on f with its ring, the headerbar and views on g, at most one solid primary",
 		[]string{"S3", "C3", "T2"}}
 	switch id {
@@ -619,7 +620,7 @@ func (r *report) shellViews(v *qemu.VM, g *guest, l *lf) {
 			time.Sleep(4 * time.Second)
 			l.measureLockError()
 		}
-		r.shotLook(v, g, viewMeta{"shell-" + s.name, groupShell, s.about, s.rules})
+		r.shotLook(v, g, viewMeta{"shell-" + s.name, needle.GroupShell, s.about, s.rules})
 		l.view("shell-" + s.name)
 		if s.name == "lock-screen" {
 			r.locked(g)
@@ -661,7 +662,7 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 		if strings.HasSuffix(wall, "light") {
 			about += "; a light wallpaper under the shell, which is dark in both schemes"
 		}
-		r.shotLook(v, g, viewMeta{name, groupDesktop, about, []string{"E2", "S1"}})
+		r.shotLook(v, g, viewMeta{name, needle.GroupDesktop, about, []string{"E2", "S1"}})
 		l.view(name)
 	}
 	// No wallpaper at all: a flat colour, as a person who picks one has. Mid grey is neither the
@@ -672,7 +673,7 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 		asLive+`gsettings set org.gnome.desktop.background primary-color '`+plainDesktop+`'`, "")
 	r.add("view:desktop-plain", err == nil, plainDesktop+errText(err))
 	time.Sleep(3 * time.Second)
-	r.shotLook(v, g, viewMeta{"desktop-plain", groupDesktop,
+	r.shotLook(v, g, viewMeta{"desktop-plain", needle.GroupDesktop,
 		"Both bars over no wallpaper, a flat mid grey: their edge shows without the brand's ground under it",
 		[]string{"E2", "S1"}})
 	l.view("desktop-plain")
@@ -690,7 +691,7 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 	} else {
 		time.Sleep(4 * time.Second)
 		r.add("view:"+lfScaledDesktop, true, "Scale: 1.5")
-		r.shotLook(v, g, viewMeta{lfScaledDesktop, groupDesktop,
+		r.shotLook(v, g, viewMeta{lfScaledDesktop, needle.GroupDesktop,
 			"The desktop at 150%, a fractional scale: the bars, their ring and their text drawn on physical pixels a stage pixel does not divide",
 			[]string{"S1", "SP2"}})
 		l.view(lfScaledDesktop)
@@ -721,7 +722,7 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 	}
 	time.Sleep(3 * time.Second)
 	r.add("view:panel-power-es", title != "", "window "+title)
-	r.shotLook(v, g, viewMeta{"panel-power-es", groupSettings,
+	r.shotLook(v, g, viewMeta{"panel-power-es", needle.GroupSettings,
 		"Settings' Power panel in Spanish, whose strings run longer than English's: rows and groups that still fit",
 		[]string{"S3", "TY4", "TY5"}})
 	l.view("panel-power-es")
@@ -785,7 +786,7 @@ func (r *report) installer(v *qemu.VM, g *guest, l *lf, stick bool) {
 	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), oneLine(walked)+errText(err))
 	if stick && strings.Trim(n, `"`) == "1" {
 		time.Sleep(2 * time.Second)
-		r.shotLook(v, g, viewMeta{"installer", groupInstaller,
+		r.shotLook(v, g, viewMeta{"installer", needle.GroupInstaller,
 			"The graphical installer as a stick's live session offers it: its body f, its headerbar g with one rule under it, the ring outside it",
 			[]string{"S3", "E3", "C3"}})
 		l.view("installer")
@@ -918,7 +919,7 @@ func (r *report) gtkViews(v *qemu.VM, g *guest, l *lf, light bool) {
 				rules = append(rules, "S5")
 			}
 		}
-		r.shotLook(v, g, viewMeta{base + suffix, groupGTK, about, rules})
+		r.shotLook(v, g, viewMeta{base + suffix, needle.GroupGTK, about, rules})
 		l.view(base + suffix)
 	}
 	windows := func() int {

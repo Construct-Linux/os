@@ -7,7 +7,9 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/png"
 	"math"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -589,3 +591,26 @@ func Hex(c color.NRGBA) string { return fmt.Sprintf("#%02X%02X%02X", c.R, c.G, c
 
 // Hexa is c as #RRGGBBAA, as St reports a colour.
 func Hexa(c color.NRGBA) string { return fmt.Sprintf("#%02X%02X%02X%02X", c.R, c.G, c.B, c.A) }
+
+// ReadPNG reads a screenshot.
+func ReadPNG(p string) (image.Image, error) {
+	f, err := os.Open(p)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	return png.Decode(f)
+}
+
+// WritePNG writes img as a PNG at p.
+func WritePNG(p string, img image.Image) error {
+	f, err := os.Create(p)
+	if err != nil {
+		return err
+	}
+	if err := png.Encode(f, img); err != nil {
+		f.Close()
+		return err
+	}
+	return f.Close()
+}

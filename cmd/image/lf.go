@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/Construct-Linux/os/internal/css"
+	"github.com/Construct-Linux/os/internal/needle"
 	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
@@ -422,7 +423,7 @@ func (l *lf) c(token string) color.NRGBA { return l.pal.colors[token] }
 
 // img is a view's screenshot, as r.shot saved it; it sets l.k from its width over the stage's.
 func (l *lf) img(name string) (image.Image, bool) {
-	img, err := readPNG(filepath.Join(l.r.dir, name+".png"))
+	img, err := pixels.ReadPNG(filepath.Join(l.r.dir, name+".png"))
 	if err != nil {
 		l.check("screenshot", name, false, err.Error())
 		return nil, false
@@ -837,7 +838,7 @@ func (l *lf) focus(img image.Image) {
 		return
 	}
 	r := l.px(s.Toggle.rect()).Inset(-2*l.k, -2*l.k)
-	drawn, share := pixels.FocusDiff(before, img, r, needleChannelDelta, accent, lfFocusRingTol)
+	drawn, share := pixels.FocusDiff(before, img, r, needle.ChannelDelta, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
 	l.check("focus", "quick toggle drawn", drawn >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px of the accent drawn in %v against shell-quick-settings, %.0f%% of the change the accent; want >= %d and >= %.0f%%",
@@ -1344,7 +1345,7 @@ func (l *lf) gtkFocus(name string, img image.Image) {
 		accent = l.c("light-accent")
 	}
 	all := pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}
-	drawn, share := pixels.FocusDiff(before, img, all, needleChannelDelta, accent, lfFocusRingTol)
+	drawn, share := pixels.FocusDiff(before, img, all, needle.ChannelDelta, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
 	l.check("focus", name, drawn >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px of %s drawn against %s, %.0f%% of the change the ring, drawn or left; want >= %d and >= %.0f%%",
@@ -1466,7 +1467,7 @@ func (l *lf) app(id, shot string) {
 		_ = l.v.Key("esc")
 		time.Sleep(2 * time.Second)
 		shot = "code-workbench"
-		l.r.shotLook(l.v, l.g, viewMeta{shot, groupApp,
+		l.r.shotLook(l.v, l.g, viewMeta{shot, needle.GroupApp,
 			"VS Code's workbench once its onboarding is dismissed: the title bar and the editor on g, the side and status bars on f, from the palette's construct-theme",
 			[]string{"X1", "S3"}})
 		l.view(shot)
@@ -1533,7 +1534,7 @@ func (l *lf) firefoxControls(id string) {
 		return
 	}
 	time.Sleep(6 * time.Second)
-	l.r.shotLook(l.v, l.g, viewMeta{"firefox-controls", groupApp,
+	l.r.shotLook(l.v, l.g, viewMeta{"firefox-controls", needle.GroupApp,
 		"A light page of the form controls GTK draws with the accent: Firefox fills them with the light accent through Orchis-Construct, not Adwaita's blue",
 		[]string{"X3", "C1"}})
 	l.cur = "firefox-controls"

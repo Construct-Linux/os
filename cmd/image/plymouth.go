@@ -17,6 +17,8 @@ import (
 	"path/filepath"
 	"strings"
 	"text/template"
+
+	"github.com/Construct-Linux/os/internal/pixels"
 )
 
 // themeDir is where plymouthTheme writes the theme, laid into the root as a layer and copied
@@ -165,7 +167,7 @@ func plymouthTheme() error {
 		"entry.png":  pill(320, 36, 2, colors["neutral-g"], colors["dark-accent"]),
 		"bullet.png": pill(10, 10, 0, colors["dark-text"], colors["dark-text"]),
 	} {
-		if err := writePNG(filepath.Join(dir, name), img); err != nil {
+		if err := pixels.WritePNG(filepath.Join(dir, name), img); err != nil {
 			return err
 		}
 	}
@@ -381,16 +383,4 @@ func pill(w, h int, ringWidth float64, fill, ring color.RGBA) image.Image {
 		}
 	}
 	return img
-}
-
-func writePNG(p string, img image.Image) error {
-	f, err := os.Create(p)
-	if err != nil {
-		return err
-	}
-	if err := png.Encode(f, img); err != nil {
-		f.Close()
-		return err
-	}
-	return f.Close()
 }

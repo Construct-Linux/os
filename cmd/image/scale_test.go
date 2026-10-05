@@ -2,6 +2,8 @@ package main
 
 import (
 	"testing"
+
+	"github.com/Construct-Linux/os/internal/needle"
 )
 
 // The X9-15's panel at 200% is 1440x900 logical, and QEMU is asked for exactly that panel; 1x is
@@ -70,13 +72,13 @@ func TestPlymouthScale(t *testing.T) {
 
 // The bar's fallback is where it was at 1280x800, and the same stage rectangle at 2x.
 func TestNeedleBarFallback(t *testing.T) {
-	if r := needleBarFallback(1280, 1); r.X != 640 || r.Y != 8 || r.W != 634 || r.H != 32 {
+	if r := needle.BarFallback(1280, 1); r.X != 640 || r.Y != 8 || r.W != 634 || r.H != 32 {
 		t.Errorf("1x %+v", r)
 	}
-	if r := needleBarFallback(2880, 2); r.X != 1440 || r.Y != 16 || r.W != 1428 || r.H != 64 {
+	if r := needle.BarFallback(2880, 2); r.X != 1440 || r.Y != 16 || r.W != 1428 || r.H != 64 {
 		t.Errorf("2x %+v", r)
 	}
-	if r := needleBarFallback(1280, 0); r.X != 640 {
+	if r := needle.BarFallback(1280, 0); r.X != 640 {
 		t.Errorf("no scale is 1: %+v", r)
 	}
 }

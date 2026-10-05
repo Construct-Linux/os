@@ -6,10 +6,10 @@ import (
 	"image/color"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
+	"github.com/Construct-Linux/os/internal/needle"
 	"github.com/Construct-Linux/os/internal/pixels"
 )
 
@@ -24,140 +24,22 @@ func solid(w, h int, c color.NRGBA) *image.NRGBA {
 }
 
 // tScreen is a 100x100 test view's screen.
-var tScreen = needleScreen{W: 100, H: 100, Scale: 1, StageW: 100, StageH: 100}
+var tScreen = needle.Screen{W: 100, H: 100, Scale: 1, StageW: 100, StageH: 100}
 
 // tSpec is a whole spec for a test view; a needle's is approved.
-func tSpec(needle bool, ignore, actors []needleRect) needleSpec {
-	s := needleSpec{Group: groupShell, About: "a test view", Rules: []string{"S1"}, Scheme: "dark", Screen: tScreen, Ignore: ignore, Actors: actors}
-	if needle {
+func tSpec(approved bool, ignore, actors []needle.Rect) needle.Spec {
+	s := needle.Spec{Group: needle.GroupShell, About: "a test view", Rules: []string{"S1"}, Scheme: "dark", Screen: tScreen, Ignore: ignore, Actors: actors}
+	if approved {
 		share := 0.01
-		s.Approved = &needleApproval{Build: "20261004.1", OS: "abc", Share: &share}
+		s.Approved = &needle.Approval{Build: "20261004.1", OS: "abc", Share: &share}
 	}
 	return s
 }
 
-func writeSpec(t *testing.T, p string, s needleSpec) {
+func writeSpec(t *testing.T, p string, s needle.Spec) {
 	t.Helper()
-	if err := s.write(p); err != nil {
+	if err := s.Write(p); err != nil {
 		t.Fatal(err)
-	}
-}
-
-// A view differs by the share of its compared pixels a theme change moved, not by noise, and
-// leaves out what its .json ignores.
-func TestCompareNeedle(t *testing.T) {
-	dir := t.TempDir()
-	ink := color.NRGBA{0x0B, 0x11, 0x16, 255}
-	ref := filepath.Join(dir, "ref.png")
-	if err := writePNG(ref, solid(100, 100, ink)); err != nil {
-		t.Fatal(err)
-	}
-	spec := filepath.Join(dir, "ref.json")
-	writeSpec(t, spec, tSpec(true, nil, nil))
-	shot := func(name string, img image.Image) string {
-		p := filepath.Join(dir, name+".png")
-		if err := writePNG(p, img); err != nil {
-			t.Fatal(err)
-		}
-		writeSpec(t, filepath.Join(dir, name+".json"), tSpec(false, nil, nil))
-		return p
-	}
-	diff := filepath.Join(dir, "diff.png")
-
-	// Noise under the channel tolerance: nothing differs.
-	noisy := solid(100, 100, color.NRGBA{0x0B + 10, 0x11, 0x16, 255})
-	if share, err := compareNeedle(ref, shot("noisy", noisy), spec, diff); err != nil || share != 0 {
-		t.Errorf("noise: %v, %v", share, err)
-	}
-
-	// A 10x10 square of another colour: 100 of the compared pixels.
-	changed := solid(100, 100, ink)
-	for y := 50; y < 60; y++ {
-		for x := 10; x < 20; x++ {
-			changed.SetNRGBA(x, y, color.NRGBA{0x1F, 0x2A, 0x33, 255})
-		}
-	}
-	share, err := compareNeedle(ref, shot("changed", changed), spec, diff)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if want := 100.0 / 10000; share != want {
-		t.Errorf("share = %v, want %v", share, want)
-	}
-
-	// The same square ignored by the needle's .json: nothing differs.
-	ignoring := filepath.Join(dir, "ignoring.json")
-	writeSpec(t, ignoring, tSpec(true, []needleRect{{X: 10, Y: 50, W: 10, H: 10, Why: "a clock face"}}, nil))
-	if share, err := compareNeedle(ref, shot("changed", changed), ignoring, diff); err != nil || share != 0 {
-		t.Errorf("ignored: %v, %v", share, err)
-	}
-
-	// A needle drawn on another screen, or one that does not say what it is, is no needle for it.
-	other := tSpec(true, nil, nil)
-	other.Screen.Scale, other.Screen.StageW, other.Screen.StageH = 2, 50, 50
-	writeSpec(t, filepath.Join(dir, "other.json"), other)
-	if share, err := compareNeedle(ref, shot("noisy", noisy), filepath.Join(dir, "other.json"), diff); err == nil || share != 1 {
-		t.Errorf("another screen: %v, %v", share, err)
-	}
-	unapproved := tSpec(false, nil, nil)
-	writeSpec(t, filepath.Join(dir, "unapproved.json"), unapproved)
-	if _, err := compareNeedle(ref, shot("noisy", noisy), filepath.Join(dir, "unapproved.json"), diff); err == nil || !strings.Contains(err.Error(), "not approved") {
-		t.Errorf("a needle not approved: %v", err)
-	}
-
-	// A clock whose text changed width: the needle drew it at x 10-20, this run at x 30-45. Each
-	// side's measured actors leave out where it was there, so neither place differs.
-	clockRef := solid(100, 100, ink)
-	fill(clockRef, pixels.Rect{X: 10, Y: 80, W: 10, H: 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
-	clockRefPath := filepath.Join(dir, "clock-ref.png")
-	if err := writePNG(clockRefPath, clockRef); err != nil {
-		t.Fatal(err)
-	}
-	clockSpec := filepath.Join(dir, "clock-ref.json")
-	writeSpec(t, clockSpec, tSpec(true, nil, []needleRect{{X: 8, Y: 78, W: 14, H: 12, Why: "the clock"}}))
-	moved := solid(100, 100, ink)
-	fill(moved, pixels.Rect{X: 30, Y: 80, W: 15, H: 8}, color.NRGBA{0xE6, 0xED, 0xF2, 255})
-	movedPath := shot("moved", moved)
-	if share, err := compareNeedle(clockRefPath, movedPath, clockSpec, diff); err != nil || share == 0 {
-		t.Errorf("the run's clock, unmeasured: %v, %v", share, err)
-	}
-	writeSpec(t, filepath.Join(dir, "moved.json"), tSpec(false, nil, []needleRect{{X: 28, Y: 78, W: 19, H: 12, Why: "the clock"}}))
-	if share, err := compareNeedle(clockRefPath, movedPath, clockSpec, diff); err != nil || share != 0 {
-		t.Errorf("the clock, measured in both: %v, %v", share, err)
-	}
-
-	// Another size is a failure of its own.
-	if _, err := compareNeedle(ref, shot("small", solid(50, 50, ink)), spec, diff); err == nil {
-		t.Error("a different size: no error")
-	}
-}
-
-// A spec says what its view is, every field of it; a needle also how it was approved, and a share
-// only when it replaced one.
-func TestSpecValidate(t *testing.T) {
-	if err := tSpec(false, nil, nil).validate(false); err != nil {
-		t.Errorf("a whole run spec: %v", err)
-	}
-	if err := tSpec(true, nil, nil).validate(true); err != nil {
-		t.Errorf("a whole needle: %v", err)
-	}
-	bad := tSpec(true, nil, nil)
-	bad.Group, bad.About, bad.Rules, bad.Scheme, bad.Screen = "misc", "", []string{"E2", "lf"}, "auto", needleScreen{}
-	bad.Approved.Share = nil
-	err := bad.validate(true)
-	for _, want := range []string{`group "misc"`, "no about", `rule "lf"`, `scheme "auto"`, "screen", "approved: a share"} {
-		if err == nil || !strings.Contains(err.Error(), want) {
-			t.Errorf("%q not said: %v", want, err)
-		}
-	}
-	// Written, every list is a list, empty or not.
-	p := filepath.Join(t.TempDir(), "v.json")
-	writeSpec(t, p, tSpec(false, nil, nil))
-	raw, _ := os.ReadFile(p)
-	for _, want := range []string{`"ignore": []`, `"actors": []`, `"checks": []`, `"stage_h": 100`} {
-		if !strings.Contains(string(raw), want) {
-			t.Errorf("%s lacks %s", raw, want)
-		}
 	}
 }
 
@@ -165,10 +47,10 @@ func TestSpecValidate(t *testing.T) {
 func TestViewMetas(t *testing.T) {
 	var metas []viewMeta
 	for _, s := range shellViews {
-		metas = append(metas, viewMeta{"shell-" + s.name, groupShell, s.about, s.rules})
+		metas = append(metas, viewMeta{"shell-" + s.name, needle.GroupShell, s.about, s.rules})
 	}
 	for name, a := range gtkViewAbout {
-		metas = append(metas, viewMeta{name, groupGTK, a.about, a.rules})
+		metas = append(metas, viewMeta{name, needle.GroupGTK, a.about, a.rules})
 	}
 	for _, a := range apps {
 		metas = append(metas, appView(a.id))
@@ -176,7 +58,7 @@ func TestViewMetas(t *testing.T) {
 	for _, m := range metas {
 		s := tSpec(false, nil, nil)
 		s.Group, s.About, s.Rules = m.group, m.about, m.rules
-		if err := s.validate(false); err != nil {
+		if err := s.Validate(false); err != nil {
 			t.Errorf("%s: %v", m.name, err)
 		}
 	}
@@ -186,10 +68,10 @@ func TestViewMetas(t *testing.T) {
 // regions kept, and how it was approved; the tolerance beside them; retired views gone.
 func TestProposeNeedle(t *testing.T) {
 	from, needles := t.TempDir(), t.TempDir()
-	run := tSpec(false, nil, []needleRect{{X: 1, Y: 1, W: 2, H: 2, Why: "the clock"}})
-	run.LF = viewLF{Pass: 3, Fail: 1, Checks: []string{"accent areas shell-x"}}
+	run := tSpec(false, nil, []needle.Rect{{X: 1, Y: 1, W: 2, H: 2, Why: "the clock"}})
+	run.LF = needle.LF{Pass: 3, Fail: 1, Checks: []string{"accent areas shell-x"}}
 	writeSpec(t, filepath.Join(from, "shell-x.json"), run)
-	if err := writePNG(filepath.Join(from, "shell-x.png"), solid(100, 100, tInk)); err != nil {
+	if err := pixels.WritePNG(filepath.Join(from, "shell-x.png"), solid(100, 100, tInk)); err != nil {
 		t.Fatal(err)
 	}
 	// The needle it replaces predates every field but its regions.
@@ -200,7 +82,7 @@ func TestProposeNeedle(t *testing.T) {
 	if err := proposeNeedle(from, needles, l, lookView{Name: "shell-x", Share: 0.02}); err != nil {
 		t.Fatal(err)
 	}
-	got, err := readSpec(filepath.Join(needles, "shell-x.json"), true)
+	got, err := needle.ReadSpec(filepath.Join(needles, "shell-x.json"), true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -209,13 +91,13 @@ func TestProposeNeedle(t *testing.T) {
 		t.Errorf("needle %+v approved %+v", got, got.Approved)
 	}
 	writeSpec(t, filepath.Join(from, "shell-y.json"), run)
-	if err := writePNG(filepath.Join(from, "shell-y.png"), solid(100, 100, tInk)); err != nil {
+	if err := pixels.WritePNG(filepath.Join(from, "shell-y.png"), solid(100, 100, tInk)); err != nil {
 		t.Fatal(err)
 	}
 	if err := proposeNeedle(from, needles, l, lookView{Name: "shell-y", New: true}); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := readSpec(filepath.Join(needles, "shell-y.json"), true); err != nil || got.Approved.Share != nil || !got.Approved.New {
+	if got, err := needle.ReadSpec(filepath.Join(needles, "shell-y.json"), true); err != nil || got.Approved.Share != nil || !got.Approved.New {
 		t.Errorf("a new view: %+v, %v", got.Approved, err)
 	}
 	if err := writeTolerance(needles); err != nil {
@@ -238,27 +120,14 @@ func TestProposeNeedle(t *testing.T) {
 	}
 }
 
-// The screen is the panel over the stage measured, the scale to the hundredth.
-func TestScreenOf(t *testing.T) {
-	if s := screenOf(2880, 1800, stageActors{W: 1440, H: 900}, 2); s != (needleScreen{2880, 1800, 2, 1440, 900}) {
-		t.Errorf("200%%: %+v", s)
-	}
-	if s := screenOf(2880, 1800, stageActors{W: 1921, H: 1201}, 2); s.Scale != 1.5 {
-		t.Errorf("150%%, a stage a pixel off: %+v", s)
-	}
-	if s := screenOf(2880, 1800, stageActors{}, 2); s != (needleScreen{2880, 1800, 2, 1440, 900}) {
-		t.Errorf("unmeasured: %+v", s)
-	}
-}
-
 // A proposal's commit keeps the table alone; its pull request asks a person what no check measures,
 // as boxes to tick, and names what lf held instead of asking it again.
 func TestProposalBody(t *testing.T) {
 	l := look{Version: "20261004.1", Needles: "abc"}
 	table := proposalTable(l, []lookView{
-		{Name: "shell-calendar", Share: 0.013, LF: viewLF{Pass: 14}},
-		{Name: "gtk-focus", New: true, LF: viewLF{Pass: 2, Fail: 1, Checks: []string{"focus gtk"}}},
-		{Name: "org.gnome.Maps", Share: 0.004, LF: viewLF{Pass: 2}},
+		{Name: "shell-calendar", Share: 0.013, LF: needle.LF{Pass: 14}},
+		{Name: "gtk-focus", New: true, LF: needle.LF{Pass: 2, Fail: 1, Checks: []string{"focus gtk"}}},
+		{Name: "org.gnome.Maps", Share: 0.004, LF: needle.LF{Pass: 2}},
 		{Name: "type-specimen", Share: 0.004},
 	})
 	for _, want := range []string{"| `shell-calendar` | 1.300% | 14 passed |", "| `gtk-focus` | new view | **1 failed**: focus gtk |",
@@ -276,94 +145,32 @@ func TestProposalBody(t *testing.T) {
 	}
 }
 
-// Noise is the share of pixels on an edge and the palette colours that cover a surface; a colour
-// the palette shares between tokens counts once, a speck of one not at all.
-func TestNoiseOf(t *testing.T) {
-	pal, err := parseLFPalette([]byte(tPalette))
-	if err != nil {
-		t.Fatal(err)
-	}
-	img := solid(100, 100, tG)
-	fill(img, pixels.Rect{X: 50, Y: 0, W: 50, H: 100}, tAccent)
-	img.SetNRGBA(10, 10, tRing)
-	n := noiseOf(img, &pal)
-	// The boundary's column, and the speck's left, top and own pixel.
-	if n.Edges != 103.0/10000 || n.PaletteColors != 2 {
-		t.Errorf("noise %+v", n)
-	}
-	if n := noiseOf(img, nil); n.PaletteColors != 0 || n.Edges == 0 {
-		t.Errorf("without a palette %+v", n)
-	}
-	if c := noiseCell(viewNoise{0.031, 9}, &viewNoise{0.029, 8}); c != "edges 3.10%, 9 colours (+0.20, +1)" {
+// A view's noise in the proposal's table, against its needle's when it has one.
+func TestNoiseCell(t *testing.T) {
+	if c := noiseCell(needle.Noise{Edges: 0.031, PaletteColors: 9}, &needle.Noise{Edges: 0.029, PaletteColors: 8}); c != "edges 3.10%, 9 colours (+0.20, +1)" {
 		t.Errorf("cell %q", c)
 	}
-	if c := noiseCell(viewNoise{0.031, 9}, nil); c != "edges 3.10%, 9 colours" {
+	if c := noiseCell(needle.Noise{Edges: 0.031, PaletteColors: 9}, nil); c != "edges 3.10%, 9 colours" {
 		t.Errorf("cell without a needle's %q", c)
-	}
-}
-
-// noiseOf runs on every view a run shoots: what it costs on the X9's screen.
-func BenchmarkNoiseOf(b *testing.B) {
-	pal, err := parseLFPalette([]byte(tPalette))
-	if err != nil {
-		b.Fatal(err)
-	}
-	img := solid(2880, 1800, tG)
-	for y := range 1800 {
-		for x := 0; x < 2880; x += 7 {
-			img.SetNRGBA(x, y, color.NRGBA{uint8(x), uint8(y), uint8(x ^ y), 255})
-		}
-	}
-	for b.Loop() {
-		noiseOf(img, &pal)
 	}
 }
 
 // Up to 20 views are one proposal; more are one per group, in the groups' order.
 func TestProposalBatches(t *testing.T) {
-	few := []lookView{{Name: "a", Group: groupGTK}, {Name: "b", Group: groupShell}}
+	few := []lookView{{Name: "a", Group: needle.GroupGTK}, {Name: "b", Group: needle.GroupShell}}
 	if b := proposalBatches(few); len(b) != 1 || b[0].group != "" || len(b[0].views) != 2 {
 		t.Errorf("few: %+v", b)
 	}
 	var many []lookView
 	for i := range 25 {
-		g := groupApp
+		g := needle.GroupApp
 		if i%5 == 0 {
-			g = groupShell
+			g = needle.GroupShell
 		}
 		many = append(many, lookView{Name: fmt.Sprint(i), Group: g})
 	}
 	b := proposalBatches(many)
-	if len(b) != 2 || b[0].group != groupShell || len(b[0].views) != 5 || b[1].group != groupApp || len(b[1].views) != 20 {
+	if len(b) != 2 || b[0].group != needle.GroupShell || len(b[0].views) != 5 || b[1].group != needle.GroupApp || len(b[1].views) != 20 {
 		t.Errorf("many: %d batches %+v", len(b), b)
-	}
-}
-
-// At 150% the stage is logical and the screenshot physical: the actors' rectangles grow outward
-// to whole pixels, and at 1 they are as measured.
-func TestStageActorsOnScreen(t *testing.T) {
-	s := stageActors{W: 853, Actors: []needleRect{{X: 10, Y: 5, W: 21, H: 11, Why: "the clock"}}}
-	got := s.onScreen(1280)
-	if len(got) != 1 || got[0].Why != "the clock" || got[0].X != 15 || got[0].Y != 7 || got[0].X+got[0].W < 47 || got[0].Y+got[0].H < 24 {
-		t.Errorf("scaled: %+v", got)
-	}
-	s.W = 1280
-	if got := s.onScreen(1280); got[0] != s.Actors[0] {
-		t.Errorf("unscaled: %+v", got)
-	}
-}
-
-// One region an actor: the clock measured at two places a few pixels apart is one rectangle that
-// holds both; an actor that did not move is one; two actors stay two.
-func TestUnionActors(t *testing.T) {
-	clock := func(x, w int) needleRect { return needleRect{X: x, Y: 16, W: w, H: 64, Why: "the clock"} }
-	vitals := func(x, w int) needleRect { return needleRect{X: x, Y: 16, W: w, H: 64, Why: "the readings of Vitals"} }
-	got := unionActors([]needleRect{clock(1786, 258), vitals(2036, 428)}, []needleRect{clock(1792, 258), vitals(2042, 422)})
-	want := []needleRect{clock(1786, 264), vitals(2036, 428)}
-	if !slices.Equal(got, want) {
-		t.Errorf("%+v, want %+v", got, want)
-	}
-	if got := unionActors([]needleRect{clock(1786, 258)}, []needleRect{clock(1786, 258)}); len(got) != 1 {
-		t.Errorf("the same place twice: %+v", got)
 	}
 }

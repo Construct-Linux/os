@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/Construct-Linux/os/internal/css"
+	"github.com/Construct-Linux/os/internal/needle"
 	"github.com/Construct-Linux/os/internal/pixels"
 )
 
@@ -206,7 +207,7 @@ func TestGridPlymouth(t *testing.T) {
 	fill(back, pixels.Rect{X: 500, Y: 140, W: 280, H: 3}, tAccent)
 	fill(back, pixels.Rect{X: 500, Y: 240, W: 280, H: 3}, tAccent)
 	same, grid, broken := filepath.Join(dir, "same.png"), filepath.Join(dir, "grid.png"), filepath.Join(dir, "broken.png")
-	if writePNG(same, prompt) != nil || writePNG(grid, back) != nil || os.WriteFile(broken, []byte("\x89PNG partial"), 0o644) != nil {
+	if pixels.WritePNG(same, prompt) != nil || pixels.WritePNG(grid, back) != nil || os.WriteFile(broken, []byte("\x89PNG partial"), 0o644) != nil {
 		t.Fatal("writing the screens")
 	}
 	for _, c := range []struct {
@@ -411,7 +412,7 @@ func lastResult(t *testing.T, r *report) result {
 // none.
 func TestCheckCountsOnView(t *testing.T) {
 	l := testLF(t, 1)
-	l.r.views = map[string]*needleSpec{"shell-calendar": {}}
+	l.r.views = map[string]*needle.Spec{"shell-calendar": {}}
 	l.cur = "shell-calendar"
 	l.check("today", "calendar", true, "")
 	l.check("focus", "calendar day", false, "")
@@ -435,7 +436,7 @@ func TestButtonState(t *testing.T) {
 	shoot := func(name string, c color.NRGBA) {
 		img := solid(1280, 800, tG)
 		fill(img, l.px(btn), c)
-		if err := writePNG(filepath.Join(l.r.dir, name+".png"), img); err != nil {
+		if err := pixels.WritePNG(filepath.Join(l.r.dir, name+".png"), img); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -459,7 +460,7 @@ func TestButtonState(t *testing.T) {
 func TestGTKFocus(t *testing.T) {
 	l := testLF(t, 2)
 	write := func(name string, img image.Image) {
-		if err := writePNG(filepath.Join(l.r.dir, name+".png"), img); err != nil {
+		if err := pixels.WritePNG(filepath.Join(l.r.dir, name+".png"), img); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -561,7 +562,7 @@ func TestLockErrorCheck(t *testing.T) {
 // - the boot's black would otherwise pass the overview's ground and every "none of" check.
 func TestABlankScreenIsNotMeasured(t *testing.T) {
 	l := testLF(t, 2)
-	if err := writePNG(filepath.Join(l.r.dir, "shell-app-grid.png"), solid(1280, 800, color.NRGBA{0, 0, 0, 255})); err != nil {
+	if err := pixels.WritePNG(filepath.Join(l.r.dir, "shell-app-grid.png"), solid(1280, 800, color.NRGBA{0, 0, 0, 255})); err != nil {
 		t.Fatal(err)
 	}
 	l.r.results = nil

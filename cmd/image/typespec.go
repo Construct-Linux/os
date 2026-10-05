@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/needle"
 	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
@@ -237,13 +238,13 @@ func (r *report) typeMatrix(v *qemu.VM, g *guest, l *lf) {
 		if s.Name == "default" {
 			// The image's own rendering is a view, compared with its needle like any other.
 			name = "type-specimen"
-			r.shotLook(v, g, viewMeta{name, groupType,
+			r.shotLook(v, g, viewMeta{name, needle.GroupType,
 				"The type specimen at the image's own rendering: GTK's text at each size of the type scale, Adwaita Sans and Mono at 400 and 700",
 				[]string{"TY2", "T2", "T3"}})
 		} else {
 			r.shot(v, name)
 		}
-		img, err := readPNG(filepath.Join(r.dir, name+".png"))
+		img, err := pixels.ReadPNG(filepath.Join(r.dir, name+".png"))
 		if err != nil {
 			r.add("type: "+s.Name, false, err.Error())
 			continue
@@ -418,7 +419,7 @@ func measureSpecimen(img image.Image, run specimenRun, frame pixels.Rect, k int,
 		row.Align = pixels.MeasureAlign(pixels.CoverageOf(img, itemRect(frame, align, k), fg, bg))
 		all := itemRect(frame, stems, k).Union(itemRect(frame, align, k)).Union(itemRect(frame, word, k)).Inset(-2 * k)
 		name := fmt.Sprintf("%s-%s-%d-%d.png", key.theme, key.family, key.weight, key.size)
-		if err := writePNG(filepath.Join(dir, "crops", setting, name), cropOf(img, all)); err != nil {
+		if err := pixels.WritePNG(filepath.Join(dir, "crops", setting, name), cropOf(img, all)); err != nil {
 			return rows, err
 		}
 		row.Crop = filepath.Join("type", "crops", setting, name)
@@ -475,7 +476,7 @@ func (r *report) shellType(v *qemu.VM, g *guest, setting string, k int, fg color
 	}
 	name := "type/shell-" + setting
 	r.shot(v, name)
-	img, err := readPNG(filepath.Join(r.dir, name+".png"))
+	img, err := pixels.ReadPNG(filepath.Join(r.dir, name+".png"))
 	if err != nil {
 		return nil, err
 	}
@@ -495,7 +496,7 @@ func (r *report) shellType(v *qemu.VM, g *guest, setting string, k int, fg color
 		}
 		t := typeShell{Setting: setting, Item: item, Stems: pixels.MeasureStems(pixels.HConcat(cs, 4), nil)}
 		file := filepath.Join(dir, "crops", setting, "shell-"+item+".png")
-		if os.MkdirAll(filepath.Dir(file), 0o755) == nil && !box.Empty() && writePNG(file, cropOf(img, box.Inset(-2*k))) == nil {
+		if os.MkdirAll(filepath.Dir(file), 0o755) == nil && !box.Empty() && pixels.WritePNG(file, cropOf(img, box.Inset(-2*k))) == nil {
 			t.Crop = filepath.Join("type", "crops", setting, "shell-"+item+".png")
 		}
 		return t
