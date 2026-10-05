@@ -154,7 +154,7 @@ func lifecycle(args []string) error {
 	// 2b. A security key, enrolled beside the password with its PIN and a touch, opens the disk:
 	// the boot asks for the key's PIN, not the password. Without the key the password still does,
 	// and nothing about the key is an error.
-	if !r.securityKey(m, first, said, *dir) {
+	if !r.securityKey(m, first, *dir) {
 		return r.write(nil)
 	}
 
@@ -300,18 +300,14 @@ func lifecycle(args []string) error {
 const lifecycleKeyPIN = "482913"
 
 // securityKey runs step 2b on the installed machine m (first is it without the password's
-// credential, as a person boots it): a key plugged in, given a PIN as a new key is, enrolled from
-// the running system with the recovery key the install showed, then the boots with and without
-// it. It reports whether the machine still boots for the steps after it. A QEMU without CanoKey
+// credential, as a person boots it): a key plugged in, given a PIN as a new key is, added from the
+// running system by construct key with the person's password - opening the disk and signing them
+// in - then the boots with and without it. It reports whether the machine still boots for the steps after it. A QEMU without CanoKey
 // has no key to plug in, and says so.
-func (r *report) securityKey(m, first machine, installed, dir string) bool {
+func (r *report) securityKey(m, first machine, dir string) bool {
 	if !qemuHasCanoKey() {
 		r.skip("a security key opens the disk", "this host's QEMU has no CanoKey (built without libcanokey-qemu)")
 		return true
-	}
-	recovery := ""
-	if _, rest, ok := strings.Cut(installed, `"recovery_key":"`); ok {
-		recovery, _, _ = strings.Cut(rest, `"`)
 	}
 	key := filepath.Join(dir, "canokey")
 	_ = os.Remove(key)
@@ -323,16 +319,18 @@ func (r *report) securityKey(m, first machine, installed, dir string) bool {
 		return false
 	}
 	// fido2-token asks for a new key's PIN at a terminal, as a person types it, and drops what was
-	// typed before it asked: script gives it one, and each PIN follows its question.
+	// typed before it asked: script gives it one, and each PIN follows its question. Then the key is
+	// added as the app adds it: construct key, the password on its standard input.
 	enroll, err := g.run(`dev=$(fido2-token -L | grep -m1 -i canokey | cut -d: -f1) && `+
 		`(sleep 2; echo '`+lifecycleKeyPIN+`'; sleep 2; echo '`+lifecycleKeyPIN+`'; sleep 2) | script -qec "fido2-token -S $dev" /dev/null && `+
-		`umask 077 && printf '%s' '`+recovery+`' > /run/recovery && creds=$(mktemp -d) && `+
-		// systemd-cryptenroll takes a FIDO2 PIN as a credential only, as the installer gives it.
-		`printf '%s' '`+lifecycleKeyPIN+`' > $creds/cryptenroll.fido2-pin && `+
-		`CREDENTIALS_DIRECTORY=$creds timeout 120 systemd-cryptenroll --unlock-key-file=/run/recovery --fido2-device=$dev `+
-		`--fido2-with-client-pin=yes --fido2-with-user-presence=yes /dev/nvme0n1p6 2>&1; rc=$?; rm -rf /run/recovery $creds; `+
-		`systemd-cryptenroll /dev/nvme0n1p6; exit $rc`, "")
-	r.add("enroll a security key", err == nil && strings.Contains(enroll, "fido2"), oneLine(enroll)+errText(err))
+		`umask 077 && printf '%s' '`+lifecycleKeyPIN+`' > /run/pin && `+
+		`printf '%s\n' '`+lifecyclePassword+`' | timeout 120 construct key add --device $dev --name YubiKey --user `+lifecycleUser+` --pin-file /run/pin 2>&1; `+
+		`rc=$?; rm -f /run/pin; systemd-cryptenroll /dev/nvme0n1p6; construct key list; exit $rc`, "")
+	r.add("enroll a security key", err == nil && strings.Contains(enroll, "fido2") && strings.Contains(enroll, "YubiKey\t"+lifecycleUser+"\topens the disk"),
+		oneLine(enroll)+errText(err))
+	// The key signs the person in where sudo asks: a wrong password, and the touch lets them in.
+	sudo, err := g.run(`runuser -u `+lifecycleUser+` -- sh -c 'echo wrong | sudo -S -k true' 2>&1; echo rc=$?`, "")
+	r.add("the key's touch is sudo's password", err == nil && strings.HasSuffix(strings.TrimSpace(sudo), "rc=0"), oneLine(sudo)+errText(err))
 	v.powerOff(g)
 
 	keyBoot := first
@@ -373,6 +371,9 @@ func (r *report) securityKey(m, first machine, installed, dir string) bool {
 	}
 	without, _ := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -q -o cat -u systemd-cryptsetup@var.service -p err; echo end`, "")
 	r.add("the password opens it without the key", strings.TrimSpace(without) == "active\nend", oneLine(without))
+	// Without the key pam_u2f steps aside: sudo takes the password, and says nothing of the key.
+	sudo, _ = g.run(`runuser -u `+lifecycleUser+` -- sh -c "echo '`+lifecyclePassword+`' | sudo -S -k true" 2>&1; echo rc=$?; journalctl -b -q -o cat -p warning -t sudo; echo end`, "")
+	r.add("sudo takes the password without the key", strings.HasSuffix(strings.TrimSpace(sudo), "rc=0\nend") && !strings.Contains(sudo, "pam_u2f"), oneLine(sudo))
 	v.powerOff(g)
 	return true
 }

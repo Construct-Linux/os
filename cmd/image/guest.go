@@ -200,6 +200,7 @@ func runIn(args []string) error {
 	vars := fl.String("vars", "", "the firmware's variable store to boot with")
 	sticks := fl.String("sticks", "", "comma-separated stick images to plug in")
 	tpm := fl.String("tpm", "", "with -vars: the swtpm state directory to give the machine (the lifecycle's)")
+	key := fl.String("key", "", "plug in a FIDO2 security key, QEMU's CanoKey, its state in this file (made when missing)")
 	var creds appendFlag
 	fl.Var(&creds, "cred", "a systemd credential for the boot, name=value; repeatable")
 	var extra appendFlag
@@ -217,6 +218,7 @@ func runIn(args []string) error {
 	} else if *sticks != "" {
 		m.sticks = strings.Split(*sticks, ",")
 	}
+	m.securityKey = *key
 	v, g, err := m.bootGuest(4 * time.Minute)
 	if err != nil {
 		return err
