@@ -90,6 +90,12 @@ class KeysPage(Adw.PreferencesPage):
         self.group.set_header_suffix(add)
         self.add(self.group)
         self.rows = []
+        behaviour = Adw.PreferencesGroup()
+        self.lock = Adw.SwitchRow(title=_("Lock the screen when a key is unplugged"),
+                                  subtitle=_("Take your key with you, and the computer locks behind you."))
+        behaviour.add(self.lock)
+        self.add(behaviour)
+        self.lock_handler = None
         self.refresh()
 
     def refresh(self):
@@ -125,6 +131,22 @@ class KeysPage(Adw.PreferencesPage):
                 self.rows.append(row)
 
         run([CLI, "key", "list", "--json"], done=done)
+
+        def lock_state(ok, out, err):
+            if self.lock_handler:
+                self.lock.disconnect(self.lock_handler)
+            self.lock.set_active(out.strip() == "on")
+            self.lock_handler = self.lock.connect("notify::active", self.lock_changed)
+
+        run([CLI, "key", "lock-on-removal"], done=lock_state)
+
+    def lock_changed(self, *a):
+        def done(ok, out, err):
+            if not ok:
+                self.window.toast(last_line(err) or _("The setting was not changed"))
+            self.refresh()
+
+        run(["pkexec", CLI, "key", "lock-on-removal", "on" if self.lock.get_active() else "off"], done=done)
 
     def add_dialog(self):
         dialog = Adw.Dialog(title=_("Add a key"), content_width=420)

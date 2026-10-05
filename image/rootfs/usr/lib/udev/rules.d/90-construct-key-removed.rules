@@ -1,0 +1,4 @@
+# A security key unplugged: construct locks the sessions if the person asked for it (construct key
+# lock-on-removal; the Construct app's switch), and does nothing otherwise. ID_SECURITY_TOKEN is
+# systemd's 60-fido-id, kept in udev's database for the remove event.
+ACTION=="remove", SUBSYSTEM=="hidraw", ENV{ID_SECURITY_TOKEN}=="1", RUN+="/usr/bin/construct key removed"
