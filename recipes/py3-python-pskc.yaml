@@ -1,0 +1,36 @@
+# python-pskc: reads and writes PSKC files, the format OTP secrets are handed over in; ykman imports
+# OATH accounts with it. Wolfi has no recipe.
+package:
+  name: py3-python-pskc
+  version: "1.4"
+  epoch: 0
+  description: Python module for handling PSKC files
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    provides:
+      - py3.13-python-pskc=${{package.full-version}}
+    runtime:
+      - py3.13-cryptography
+      - py3.13-python-dateutil
+      - python-3.13
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - python-3.13
+      - py3.13-gpep517
+      - py3.13-installer
+      - py3.13-setuptools
+      - py3.13-wheel
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://files.pythonhosted.org/packages/source/p/python-pskc/python_pskc-${{package.version}}.tar.gz
+      expected-sha256: 4a36381446ca067be728b30e01b4d18dbd9d1ad553bf07c3710abcd87653eefe
+
+  - runs: |
+      python3.13 -m gpep517 build-wheel --wheel-dir .dist --output-fd 1
+      python3.13 -m installer -d "${{targets.destdir}}" .dist/*.whl

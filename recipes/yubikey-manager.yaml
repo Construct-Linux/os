@@ -1,0 +1,38 @@
+# ykman: Yubico's tool for what a YubiKey holds besides the credentials Construct makes - its FIDO
+# PIN, its PIV and OpenPGP keys, OATH codes, a reset, the interfaces it offers. Wolfi has no recipe.
+package:
+  name: yubikey-manager
+  version: "5.9.2"
+  epoch: 0
+  description: Configure and manage a YubiKey (ykman)
+  copyright:
+    - license: BSD-2-Clause
+  dependencies:
+    runtime:
+      - py3.13-click
+      - py3.13-cryptography
+      - py3.13-fido2
+      - py3.13-keyring
+      - py3.13-pyscard
+      - py3.13-python-pskc
+      - python-3.13
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - python-3.13
+      - py3.13-gpep517
+      - py3.13-installer
+      - py3.13-poetry-core
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://files.pythonhosted.org/packages/source/y/yubikey-manager/yubikey_manager-${{package.version}}.tar.gz
+      expected-sha256: 9584c7377449e6487140da6c3f13a289e618b0023c8414be91c1c212fce3c473
+
+  - runs: |
+      python3.13 -m gpep517 build-wheel --wheel-dir .dist --output-fd 1
+      python3.13 -m installer -d "${{targets.destdir}}" .dist/*.whl
+      test -x "${{targets.destdir}}"/usr/bin/ykman

@@ -1,0 +1,43 @@
+# pyscard: Python's PC/SC binding, which ykman reaches a YubiKey's smart card side through (PIV,
+# OpenPGP, OATH). Wolfi has no recipe.
+package:
+  name: py3-pyscard
+  version: "2.3.1"
+  epoch: 0
+  description: Smart card library for Python (PC/SC)
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    provides:
+      # Wolfi names a module's package py3.13-<pypi name>; dependents ask for that.
+      - py3.13-pyscard=${{package.full-version}}
+    runtime:
+      - pcsc-lite
+      - python-3.13
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - pcsc-lite-dev
+      - python-3.13
+      - python-3.13-dev
+      - py3.13-gpep517
+      - py3.13-installer
+      - py3.13-setuptools
+      - py3.13-wheel
+      - swig
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://files.pythonhosted.org/packages/source/p/pyscard/pyscard-${{package.version}}.tar.gz
+      expected-sha256: a24356f57a0a950740b6e54f51f819edd5296ee8892a6625b0da04724e9e6c13
+
+  - runs: |
+      python3.13 -m gpep517 build-wheel --wheel-dir .dist --output-fd 1
+      python3.13 -m installer -d "${{targets.destdir}}" .dist/*.whl
+      rm -rf "${{targets.destdir}}"/usr/lib/python3.13/site-packages/smartcard/test
+
+  - uses: strip

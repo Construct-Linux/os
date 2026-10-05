@@ -1,0 +1,35 @@
+# python-fido2: Yubico's FIDO2 library, which ykman manages a key's FIDO side with (its PIN, its
+# credentials, a reset). Wolfi has no recipe.
+package:
+  name: py3-fido2
+  version: "2.2.1"
+  epoch: 0
+  description: FIDO2 and WebAuthn library for Python
+  copyright:
+    - license: BSD-2-Clause
+  dependencies:
+    provides:
+      - py3.13-fido2=${{package.full-version}}
+    runtime:
+      - py3.13-cryptography
+      - py3.13-pyscard
+      - python-3.13
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - python-3.13
+      - py3.13-gpep517
+      - py3.13-installer
+      - py3.13-poetry-core
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://files.pythonhosted.org/packages/source/f/fido2/fido2-${{package.version}}.tar.gz
+      expected-sha256: 85787428a94c3f8eaf72f0ff30afba983b559a1b1b795c93318c81b4ad4062c4
+
+  - runs: |
+      python3.13 -m gpep517 build-wheel --wheel-dir .dist --output-fd 1
+      python3.13 -m installer -d "${{targets.destdir}}" .dist/*.whl
