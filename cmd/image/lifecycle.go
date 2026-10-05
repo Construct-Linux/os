@@ -370,7 +370,7 @@ func (r *report) securityKey(m, first machine, dir string) bool {
 	without, _ := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -q -o cat -u systemd-cryptsetup@var.service -p err; echo end`, "")
 	r.add("the password opens it without the key", strings.TrimSpace(without) == "active\nend", oneLine(without))
 	// Without the key pam_u2f steps aside: sudo takes the password, and says nothing of the key.
-	sudo, _ = g.run(`runuser -u `+lifecycleUser+` -- sh -c "echo '`+lifecyclePassword+`' | sudo -S -k true" 2>&1; echo rc=$?; journalctl -b -q -o cat -p warning -t sudo; echo end`, "")
+	sudo, _ = g.run(`runuser -u `+lifecycleUser+` -- sh -c "echo '`+lifecycleNewPassword+`' | sudo -S -k true" 2>&1; echo rc=$?; journalctl -b -q -o cat -p warning -t sudo; echo end`, "")
 	r.add("sudo takes the password without the key", strings.HasSuffix(strings.TrimSpace(sudo), "rc=0\nend") && !strings.Contains(sudo, "pam_u2f"), oneLine(sudo))
 	v.powerOff(g)
 	return true
@@ -480,6 +480,9 @@ func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string
 const (
 	lifecycleUser     = "ada"
 	lifecyclePassword = "correct horse battery staple"
+	// lifecycleNewPassword is the one the person changes theirs to (person), before the security
+	// key's step: the disk still opens with the first, which LUKS keeps, and sudo takes this one.
+	lifecycleNewPassword = "quiet lantern harbor seven"
 	// lifecycleHostname is the name the person gives the machine, which it has from its first boot.
 	lifecycleHostname = "ada-x9"
 )
@@ -502,10 +505,9 @@ func (r *report) person(g *guest) {
 	r.add("sudo takes the password", strings.Contains(withPw, "0\nrc=0") || strings.HasPrefix(strings.TrimSpace(withPw), "0"), oneLine(withPw))
 	// The person changes their own password, where Settings and passwd change it (pam_unix,
 	// /etc/shadow), and sudo then takes the new one.
-	const newPassword = "quiet lantern harbor seven"
-	changed, err := g.run(`printf '%s\n%s\n%s\n' '`+lifecyclePassword+`' '`+newPassword+`' '`+newPassword+`' | runuser -u `+lifecycleUser+` -- passwd 2>&1; echo rc=$?`, "")
+	changed, err := g.run(`printf '%s\n%s\n%s\n' '`+lifecyclePassword+`' '`+lifecycleNewPassword+`' '`+lifecycleNewPassword+`' | runuser -u `+lifecycleUser+` -- passwd 2>&1; echo rc=$?`, "")
 	r.add("the person changes their password", err == nil && strings.Contains(changed, "rc=0"), oneLine(changed))
-	newPw, _ := g.run(`printf '%s\n' '`+newPassword+`' | sudo -u `+lifecycleUser+` sudo -k -S -p '' id -u 2>&1; echo rc=$?`, "")
+	newPw, _ := g.run(`printf '%s\n' '`+lifecycleNewPassword+`' | sudo -u `+lifecycleUser+` sudo -k -S -p '' id -u 2>&1; echo rc=$?`, "")
 	r.add("sudo takes the new password", strings.HasPrefix(strings.TrimSpace(newPw), "0"), oneLine(newPw))
 	root, _ := g.run(`getent shadow root | cut -d: -f2`, "")
 	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
