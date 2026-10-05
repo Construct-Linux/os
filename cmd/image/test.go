@@ -566,8 +566,10 @@ var shellViews = []shellView{
 		"The message list dense with notifications: each on h with its ring, its title, body and time readable",
 		[]string{"S2", "C2"}},
 	// libadwaita apps must follow the light/dark switch: Settings, opened in the light scheme.
+	// Opened on Network, at the sidebar's top: Settings reopens on the panel it last showed, and
+	// after the panel loop's System the selected row was scrolled out of sight.
 	{"settings-light",
-		`new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").activate()`,
+		`new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); imports.gi.GLib.spawn_command_line_async("gnome-control-center network")`,
 		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, "", 0,
 		"Settings in the light scheme, the shell still dark: the window on the desk with its ring line, the sidebar the shelf, the selected row the sheet, one headerbar rule across both panes, no bright accent",
 		[]string{"S5", "S6", "C11", "E3", "C2"}},
