@@ -417,6 +417,8 @@ type lf struct {
 	// cur is the view the checks now measure, whose spec counts them; none for the checks on the
 	// guest and across views.
 	cur string
+	// lockError is the lock prompt as measured before shell-lock-error was shot, for its view.
+	lockError *lockErrorSeen
 }
 
 // newLF reads the guest's palette.json; without it no lf check can be measured, and one failure
@@ -506,6 +508,10 @@ func (l *lf) view(name string) {
 		l.search(img)
 	case "shell-app-grid":
 		l.ground(name, img)
+	case "shell-lock-error":
+		if l.lockError != nil {
+			l.lockErrorCheck(*l.lockError)
+		}
 	case "shell-lock-screen":
 		l.lock(img)
 	case "installer":
@@ -1312,19 +1318,30 @@ func (l *lf) states(img image.Image) {
 		fmt.Sprintf("states forced: %v; off: %v", seen, bad))
 }
 
-// lockError is the unlock prompt after a wrong password: it says so, readable on its surface.
-func (l *lf) lockError() {
+// lockErrorSeen is the unlock prompt after a wrong password, as the shell drew it.
+type lockErrorSeen struct {
+	Message *lfLook
+	Labels  []*lfLook
+	err     error
+}
+
+// measureLockError reads the prompt right after the wrong password was typed: GDM shows the
+// message for a while and then clears it, so it is read before the view's screenshot, and judged
+// once the view is shot (lockErrorCheck, from view), where its checks count towards it.
+func (l *lf) measureLockError() {
 	if l == nil || !l.ok {
 		return
 	}
-	l.cur = "shell-lock-error"
-	var s struct {
-		Message *lfLook
-		Labels  []*lfLook
-	}
-	if err := l.g.evalJSON(`const p = Main.screenShield._dialog?._authPrompt ?? null;
-		return {message: look(p?._message ?? null), labels: lfLabels(p)};`, &s); err != nil {
-		l.check("error", "lock prompt", false, err.Error())
+	var s lockErrorSeen
+	s.err = l.g.evalJSON(`const p = Main.screenShield._dialog?._authPrompt ?? null;
+		return {message: look(p?._message ?? null), labels: lfLabels(p)};`, &s)
+	l.lockError = &s
+}
+
+// lockErrorCheck is the prompt after a wrong password: it says so, readable on its surface.
+func (l *lf) lockErrorCheck(s lockErrorSeen) {
+	if s.err != nil {
+		l.check("error", "lock prompt", false, s.err.Error())
 		return
 	}
 	shown := s.Message != nil && s.Message.Mapped && s.Message.Text != ""

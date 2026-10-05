@@ -610,10 +610,11 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 			time.Sleep(2 * time.Second)
 		case "password":
 			// PAM takes its time to refuse: the message comes after its delay. GDM shows it for a
-			// while and then clears it, so the prompt is measured first, before the screenshot.
+			// while and then clears it, so the prompt is measured first, before the screenshot, and
+			// judged with the view.
 			_ = v.typeText("wrong")
 			time.Sleep(4 * time.Second)
-			l.lockError()
+			l.measureLockError()
 		}
 		r.shotLook(v, g, viewMeta{"shell-" + s.name, groupShell, s.about, s.rules})
 		l.view("shell-" + s.name)

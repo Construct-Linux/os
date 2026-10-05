@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"image"
 	"image/color"
 	"math"
@@ -781,5 +782,30 @@ func TestLightAccent(t *testing.T) {
 	l.lightAccent("w", img, win)
 	if res := lastResult(t, l.r); res.ok {
 		t.Errorf("dark's accent in the window passed: %+v", res)
+	}
+}
+
+// The lock prompt's error: a message shown passes, none fails, and a measurement that failed fails.
+func TestLockErrorCheck(t *testing.T) {
+	l := testLF(t, 2)
+	verdict := func(seen lockErrorSeen) bool {
+		l.r.results = nil
+		l.lockErrorCheck(seen)
+		for _, res := range l.r.results {
+			if res.name == "lf: error lock prompt" {
+				return res.ok
+			}
+		}
+		t.Fatalf("no error check in %+v", l.r.results)
+		return false
+	}
+	if !verdict(lockErrorSeen{Message: &lfLook{Mapped: true, Text: "Sorry, that didn't work."}}) {
+		t.Error("a shown message failed")
+	}
+	if verdict(lockErrorSeen{Message: &lfLook{Mapped: false}}) {
+		t.Error("no message passed")
+	}
+	if verdict(lockErrorSeen{err: errors.New("no shell")}) {
+		t.Error("a failed measurement passed")
 	}
 }
