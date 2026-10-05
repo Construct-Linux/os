@@ -132,6 +132,7 @@ func (g *guest) eval(js string) (string, error) {
 	return val, nil
 }
 
+// waitShell waits up to d for GNOME Shell to finish starting up.
 func (g *guest) waitShell(d time.Duration) error {
 	deadline := time.Now().Add(d)
 	var err error
