@@ -303,7 +303,9 @@ tasks:
     desc: "Install from a stick onto an NVMe disk, open it with a security key, refuse forged sticks, update from a URL, roll back from a broken release by stick: three test releases, in QEMU."
     deps: [keygen:test]
     cmds:
-      - mkdir -p _output/lifecycle
+      # .cache/logs is made by task build, which a run whose packages all came from the cache never
+      # ran.
+      - mkdir -p _output/lifecycle .cache/logs
       # The three releases, the forged sticks and the installed disk are ~50 GB a run, of no use
       # once it ends: gone whatever its outcome, the report, screens and journal kept.
       - defer: rm -rf _output/lifecycle/*.raw _output/lifecycle/*.stick _output/lifecycle/*.release
@@ -340,7 +342,7 @@ tasks:
   # it; the builder runs release:build; a person promotes what testing proved (release:promote).
 
   release:
-    desc: "Build and publish a release of this commit on an EC2 builder (infra): it runs task release:build and terminates, at 2 hours at the latest. The commit must be pushed; needs AWS credentials. Its log: s3://<logs bucket>/<date>-<instance>/builder.log."
+    desc: "Build and publish a release of this commit on an EC2 builder (infra): it runs task release:build and terminates, at 2 hours at the latest. NEW=true for the first release, which starts dl's and testing's indexes. The commit must be pushed; needs AWS credentials. Follow it with task release:log."
     vars:
       COMMIT:
         sh: git rev-parse HEAD
@@ -352,7 +354,7 @@ tasks:
     cmds:
       - >-
         aws ec2 run-instances --launch-template LaunchTemplateName=construct-builder
-        --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=construct-builder},{Key=construct:role,Value=builder},{Key=construct:commit,Value={{.COMMIT}}},{Key=construct:job,Value=release:build}]'
+        --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=construct-builder},{Key=construct:role,Value=builder},{Key=construct:commit,Value={{.COMMIT}}},{Key=construct:job,Value=release:build}{{if eq .NEW "true"}},{Key=construct:args,Value=NEW=true}{{end}}]'
         --query 'Instances[0].InstanceId' --output text
 
   release:log:
