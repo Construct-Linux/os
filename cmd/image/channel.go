@@ -17,8 +17,9 @@ import (
 // releases, signed with the release key, at <updates>/<channel>/ (infra updates.tf). systemd-
 // sysupdate reads it as a release's own SHA256SUMS and takes the newest version it lists; a
 // version taken out of it is withdrawn (CoreOS's dead end), and promoting a release is adding its
-// lines to the next channel's index. The files themselves are GitHub Release assets the CDN
-// redirects to, so an index is the only thing a channel holds.
+// lines to the next channel's index. The files themselves are each release's, under
+// <updates>/releases/<version>/, which the CDN redirects a channel's file to, so an index is the
+// only thing a channel holds.
 
 // channels are the channels machines follow: the default sysupdate component is the first, each
 // other its own component (sysupdate.<channel>.d, construct channel).

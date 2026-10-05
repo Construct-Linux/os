@@ -80,7 +80,7 @@ falling back from a release that does not come up.
   test` checks no other PAM service takes one.
 - **Updates come only through url-file transfers.** systemd-sysupdate checks `SHA256SUMS.gpg` and
   every file's digest only for `url-file` sources (via systemd-pull); a `regular-file` source is
-  written unchecked. A stick is read as `file:///run/construct/update`, GitHub Releases as
+  written unchecked. A stick is read as `file:///run/construct/update`, the update CDN as
   https. The transfers are generated in `cmd/image/transfers.go`; never hand-write one.
 - **The test layer never reaches a real disk.** `image/test/` (unsafe-mode shell, the broken GDM)
   goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot credential
@@ -187,7 +187,8 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
   `built.json` and `sign-pcr`/`usb-sign` refuse a KMS key for it.
 - **Versions are CalVer**, `vYYYYMMDD.N` (`image release-version`); files carry them without the v.
 - **Machines follow channels** (`construct channel`): a channel is a signed SHA256SUMS of its
-  newest releases at the update CDN, each file a redirect to its GitHub Release asset. A release
+  newest releases at the update CDN, each file a redirect to its release's own copy there
+  (`releases/<version>/`: a root is past GitHub's 2 GiB asset limit). A release
   goes to `testing`; `task release:promote` offers it to `stable`; `task release:withdraw` takes a
   bad one out before machines take it.
 - **Issues are where problems go**: `.github/labels.json` (`task labels`), the issue forms ask for

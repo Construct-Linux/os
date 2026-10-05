@@ -411,8 +411,8 @@ func (g *guest) waitUpdate(d time.Duration) updateEnd {
 
 // updateCDN is the update CDN (infra updates.tf) on this host, where a guest reaches it at
 // 10.0.2.2 (QEMU's user network): each channel's index, signed with the test release key, and each
-// release file as a redirect to where it is - a path of this server here, a GitHub Release asset
-// there.
+// release file as a redirect to where it is - a path of this server, as the CDN's own
+// releases/<version>/.
 type updateCDN struct {
 	srv       *http.Server
 	url       string

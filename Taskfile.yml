@@ -435,7 +435,7 @@ tasks:
       - task: harness-qemu
 
   release:publish:
-    desc: "Publish the release task usb just built (VERSION): its files, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>; the USB stick at dl.<domain> with the sticks' signed SHA256SUMS; the public keys at keys.<domain>; and the release in the testing channel's index at updates.<domain>. On the builder; NEW=true for the first release, when dl and testing have no index yet."
+    desc: "Publish the release task usb just built (VERSION): its files - the root, its verity tree and the kernel image - at updates.<domain>/releases/<VERSION>/; its notes, SHA256SUMS, packages.txt, the SBOM and Grype's report as GitHub Release v<VERSION>; the USB stick at dl.<domain> with the sticks' signed SHA256SUMS; the public keys at keys.<domain>; and the release in the testing channel's index at updates.<domain>. On the builder; NEW=true for the first release, when dl and testing have no index yet."
     requires: {vars: [VERSION]}
     vars:
       REL: _output/release/{{.VERSION}}
@@ -450,6 +450,12 @@ tasks:
         {{.SYFT_IMAGE}} -q dir:/root -o spdx-json=/out/sbom.spdx.json
       - cp _output/scan/grype.json {{.PUB}}/grype.json
       - cp _output/scan/report.md {{.PUB}}/grype.md
+      # The files machines download, on the update CDN, before any index names them: the root is
+      # past a GitHub asset's 2 GiB, and the repository is private. The CDN redirects a channel's
+      # file to them (infra updates/redirect.js).
+      - >-
+        aws s3 cp --only-show-errors --recursive {{.REL}}/ {{.DIST}}/updates/releases/{{.VERSION}}/
+        --exclude '*' --include '*.raw.xz' --include '*.efi'
       - >-
         prev=$(GH_TOKEN=$(construct-github-token) gh release list --exclude-drafts --limit 1 --json tagName --jq '.[0].tagName // ""');
         prevpkgs="";
@@ -458,7 +464,7 @@ tasks:
       - >-
         GH_TOKEN=$(construct-github-token) gh release create v{{.VERSION}} --target $(git rev-parse HEAD)
         --title "CONSTRUCT {{.VERSION}}" --notes-file {{.PUB}}/notes.md
-        $(find {{.PUB}} -maxdepth 1 -type f ! -name notes.md | sort)
+        $(find {{.PUB}} -maxdepth 1 -type f ! -name notes.md ! -name '*.raw.xz' ! -name '*.efi' | sort)
       # The stick, compressed, for a new machine at dl.<domain>: larger than a GitHub asset may
       # be. The three newest are kept, and dl's SHA256SUMS - signed with the release key, as a
       # release's, and kept by channel-index as a channel's index - lists them. NEW=true, on the

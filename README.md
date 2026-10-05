@@ -22,7 +22,7 @@ not come up.
 - **Boot**: UEFI, systemd-boot, a unified kernel image with Plymouth playing the brand's animation and a
   systemd initrd, the way systemd's image-based distributions boot. `/var` holds everything a
   machine keeps; `/etc` is an overlay on it, so settings persist.
-- **Updates**: signed (Ed25519) releases from GitHub Releases, checked daily, written into the slot
+- **Updates**: signed (Ed25519) releases from the update CDN, checked daily, written into the slot
   not running; or from a release's USB stick. Nothing reboots by itself; a version that does not
   bring the desktop up three times is dropped for the one before it.
 
