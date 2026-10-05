@@ -2,7 +2,7 @@
 Type=Application
 Name=Construct
 Comment=Security keys, updates, the CPU scheduler, power, Tailscale and bug reports
-Icon=construct-logo
+Icon=io.github.construct_linux.Construct
 Exec=construct-app
 Categories=System;Settings;
 Keywords=yubikey;fido;security key;channel;update;scheduler;scx;battery;tailscale;bug;report;

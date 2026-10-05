@@ -10,7 +10,7 @@
 package:
   name: construct-brand
   version: 0_git20261005
-  epoch: 0
+  epoch: 1
   description: CONSTRUCT's logo, boot animation, wallpaper and palette
   copyright:
     - license: CC-BY-SA-4.0
@@ -27,7 +27,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/brand
       branch: main
-      expected-commit: 27298ee8d39a2ca6678033fbcccb6a9cbaa1cdbe
+      expected-commit: 32b719201ebc44bf6971c0b875d920cec041bd80
 
   - runs: |
       d=${{targets.destdir}}/usr/share
@@ -37,7 +37,7 @@ pipeline:
       cp plymouth/frame-*.png plymouth/sequence.json $d/construct/plymouth/
       cp logos/construct.svg $d/icons/hicolor/scalable/apps/construct-logo.svg
       cp logos/construct-symbolic.svg $d/icons/hicolor/symbolic/apps/construct-logo-symbolic.svg
-      cp logos/io.github.construct_linux.Installer.svg $d/icons/hicolor/scalable/apps/
+      cp logos/io.github.construct_linux.Installer.svg logos/io.github.construct_linux.Construct.svg $d/icons/hicolor/scalable/apps/
       cp palette/construct.json $d/construct/palette.json
       cp "palette/ghostty/Construct Dark" "palette/ghostty/Construct Light" $d/ghostty/themes/
       # Its themes include VS Code's own 2026 ones for syntax by a path relative to the extensions
