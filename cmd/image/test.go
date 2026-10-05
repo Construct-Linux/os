@@ -854,9 +854,13 @@ func (r *report) suspend(v *vm, g *guest) {
 // settings back - its numbers are a VM's, not a finding.
 func (r *report) bench(g *guest) {
 	before, _ := g.run(`sysctl -n vm.swappiness; swapon --show=NAME --noheadings`, "")
-	r.benchWindow[0] = g.uptime()
+	// The kernel's lines while the bench ran are left out of the journal's errors (withoutBenchOOM):
+	// only when both ends were read - a window from 0 would hide every kernel error since boot.
+	start, serr := g.uptime()
 	out, err := g.run(`construct bench --rounds 1 --seconds 5 2>&1 | tail -6`, "")
-	r.benchWindow[1] = g.uptime()
+	if end, eerr := g.uptime(); serr == nil && eerr == nil {
+		r.benchWindow = [2]float64{start, end}
+	}
 	after, _ := g.run(`sysctl -n vm.swappiness; swapon --show=NAME --noheadings`, "")
 	r.add("construct bench", err == nil && strings.Contains(out, "wakeup latency p99") && before == after, oneLine(out)+errText(err))
 }

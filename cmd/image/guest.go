@@ -52,8 +52,12 @@ type guest struct {
 }
 
 func (g *guest) run(script string, stdin string) (string, error) {
+	// ServerAlive: a guest that stops answering mid-command - a kernel that froze, a QEMU that
+	// stopped - ends the command in a minute instead of hanging the run, which on the release
+	// builder is the two hours it has. A command that runs long in a guest that answers goes on:
+	// the distrobox, the install and the bench do, and a command that may hang has its own timeout.
 	cmd := exec.Command("ssh",
-		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10",
+		"-o", "BatchMode=yes", "-o", "ConnectTimeout=10", "-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=4",
 		"-o", "IdentitiesOnly=yes", "-i", filepath.Join(".cache", "test_ed25519"),
 		fmt.Sprintf("root@vsock/%d", g.cid), script)
 	cmd.Stdin = strings.NewReader(stdin)
@@ -154,13 +158,8 @@ func (g *guest) version() string {
 }
 
 func (g *guest) uptimeOver(d time.Duration) bool {
-	out, err := g.run(`cut -d. -f1 /proc/uptime`, "")
-	if err != nil {
-		return false
-	}
-	var s int
-	_, _ = fmt.Sscan(strings.TrimSpace(out), &s)
-	return time.Duration(s)*time.Second > d
+	s, err := g.uptime()
+	return err == nil && s > d.Seconds()
 }
 
 // reboot asks the guest to restart and waits for it to stop answering.
@@ -231,13 +230,15 @@ func runIn(args []string) error {
 }
 
 // uptime is the guest's seconds since boot, the clock journalctl -o short-monotonic stamps lines
-// with; 0 when it cannot be read.
-func (g *guest) uptime() float64 {
+// with.
+func (g *guest) uptime() (float64, error) {
 	out, err := g.run(`cut -d' ' -f1 /proc/uptime`, "")
 	if err != nil {
-		return 0
+		return 0, err
 	}
 	var s float64
-	_, _ = fmt.Sscanf(strings.TrimSpace(out), "%f", &s)
-	return s
+	if _, err := fmt.Sscanf(strings.TrimSpace(out), "%f", &s); err != nil {
+		return 0, fmt.Errorf("/proc/uptime: %q: %w", out, err)
+	}
+	return s, nil
 }
