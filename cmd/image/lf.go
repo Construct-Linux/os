@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/css"
 	"github.com/Construct-Linux/os/internal/pixels"
 	"github.com/Construct-Linux/os/internal/qemu"
 )
@@ -1640,7 +1641,7 @@ func (l *lf) guestLook() {
 	if s.CSS == "" {
 		l.check("css", "shell", false, "the shell has no default stylesheet")
 	} else {
-		rules := parseCSS(s.CSS)
+		rules := css.Parse(s.CSS)
 		ok, detail := cssContract(rules, s.CSS, l.pal)
 		l.check("css contract", "G1", ok, detail)
 		ok, detail = cssFocus(rules, l.c("dark-accent"))
@@ -1678,12 +1679,12 @@ func (l *lf) guestLook() {
 	wantDconf := fmt.Sprintf("'%s'\n%.0f\nfalse\n'%s'\n", accent, l.pal.nums["tint-dark-rest"]*100, accent)
 	l.check("extensions", "G5 settings", err == nil && strings.EqualFold(dconf, wantDconf), fmt.Sprintf("%s; want %s", oneLine(dconf), oneLine(wantDconf))+errText(err))
 	for _, uuid := range []string{"dash-to-panel@jderose9.github.com", "tilingshell@ferrarodomenico.com", "Vitals@CoreCoding.com"} {
-		css, err := l.g.run("cat /usr/share/gnome-shell/extensions/"+uuid+"/stylesheet.css", "")
+		sheet, err := l.g.run("cat /usr/share/gnome-shell/extensions/"+uuid+"/stylesheet.css", "")
 		if err != nil {
 			l.check("extensions", "G5 "+uuid, false, "no stylesheet.css"+errText(err))
 			continue
 		}
-		ok, detail := cssPalette(parseCSS(css), l.pal)
+		ok, detail := cssPalette(css.Parse(sheet), l.pal)
 		l.check("extensions", "G5 "+uuid, ok, detail)
 	}
 
@@ -1697,7 +1698,7 @@ func (l *lf) guestLook() {
 	if err != nil {
 		l.check("css weights", "G6 gtk", false, "the GTK themes' CSS: "+err.Error())
 	} else {
-		ok, detail := cssWeights(parseCSS(gtkCSS))
+		ok, detail := cssWeights(css.Parse(gtkCSS))
 		l.check("css weights", "G6 gtk", ok, detail)
 	}
 	link, err := l.g.run(`readlink /usr/share/themes/Orchis-Construct && test -f /usr/share/themes/Orchis-Construct/gtk-3.0/gtk.css && echo gtk-3.0`, "")

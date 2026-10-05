@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Construct-Linux/os/internal/css"
 	"github.com/Construct-Linux/os/internal/pixels"
 )
 
@@ -249,14 +250,14 @@ func TestCSSChecks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	rules := parseCSS(tCSS)
+	rules := css.Parse(tCSS)
 	if len(rules) != 14 {
 		t.Fatalf("%d rules", len(rules))
 	}
-	if m, _ := cssSubject(rules, ".osd-window"); m["background-image"] != `url("assets/a;b.svg")` {
+	if m, _ := css.Subject(rules, ".osd-window"); m["background-image"] != `url("assets/a;b.svg")` {
 		t.Errorf("a ; inside url() split the declaration: %q", m["background-image"])
 	}
-	if m, _ := cssSubject(rules, ".popup-menu-content"); m["background-color"] != "#1f2a33" {
+	if m, _ := css.Subject(rules, ".popup-menu-content"); m["background-color"] != "#1f2a33" {
 		t.Errorf("a :hover rule styled the menu at rest: %v", m)
 	}
 
@@ -281,7 +282,7 @@ func TestCSSChecks(t *testing.T) {
 	if ok || !strings.Contains(detail, "#3584E4") || !strings.Contains(detail, "#282828 (grey)") || strings.Contains(detail, "#FFFFFF") {
 		t.Errorf("G3: %v %s", ok, detail)
 	}
-	if ok, detail := cssPalette(parseCSS(`#panel { color: rgba(230, 237, 242, 0.08); border-color: transparent; }`), p); !ok {
+	if ok, detail := cssPalette(css.Parse(`#panel { color: rgba(230, 237, 242, 0.08); border-color: transparent; }`), p); !ok {
 		t.Errorf("G3, a palette colour at an alpha: %s", detail)
 	}
 
@@ -313,7 +314,7 @@ func TestComposite(t *testing.T) {
 // C8: a ring of the accent is focus's; decoration's 1 px edge on a tint and the Alt+Esc frame are
 // not rings to hold.
 func TestAccentRings(t *testing.T) {
-	css := `
+	sheet := `
 .button:focus { box-shadow: inset 0 0 0 2px #00E5FF; }
 .calendar-day:selected:focus { box-shadow: inset 0 0 0 2px #00E5FF !important; }
 .calendar-today { box-shadow: inset 0 0 0 2px #00E5FF; }
@@ -323,7 +324,7 @@ func TestAccentRings(t *testing.T) {
 .slider { box-shadow: 0 2px 4px #00E5FF; }
 .quick-toggle:checked .quick-toggle-icon { background-color: #00E5FF; }
 .magnifier-zoom-region.full-screen { border-width: 0; }`
-	ok, detail := cssAccentRings(parseCSS(css), tAccent)
+	ok, detail := cssAccentRings(css.Parse(sheet), tAccent)
 	if ok || !strings.Contains(detail, ".calendar-today") || !strings.Contains(detail, ".workspace-thumbnail-indicator") ||
 		strings.Contains(detail, ".button") || strings.Contains(detail, ":selected") || strings.Contains(detail, "tile-preview") || strings.Contains(detail, "cycler") ||
 		strings.Contains(detail, ".slider") || strings.Contains(detail, "quick-toggle") || strings.Contains(detail, "magnifier") {
@@ -333,7 +334,7 @@ func TestAccentRings(t *testing.T) {
 
 // GTK's CSS keeps most of a scheme's rules in @media blocks: they are rules of the sheet.
 func TestParseCSSMedia(t *testing.T) {
-	rules := parseCSS(`@import url("a.css");
+	rules := css.Parse(`@import url("a.css");
 window { color: red; }
 @media (prefers-color-scheme: dark) {
 label.title { font-weight: 800; }
