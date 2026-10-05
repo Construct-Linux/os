@@ -500,21 +500,8 @@ type lookView struct {
 	LF    viewLF    `json:"lf"`
 	Sweep lookSweep `json:"sweep"`
 	Noise viewNoise `json:"noise"`
-	// NeedleNoise is the needle's, for the change; none when the needle measured none.
+	// NeedleNoise is the needle's, for the change; none when the view has no valid needle.
 	NeedleNoise *viewNoise `json:"needle_noise,omitempty"`
-}
-
-// needleNoise is the noise a needle's .json records, or none: a needle approved before noise
-// was measured has none to compare with.
-func needleNoise(p string) *viewNoise {
-	var s struct {
-		Noise *viewNoise `json:"noise"`
-	}
-	raw, err := os.ReadFile(p)
-	if err != nil || json.Unmarshal(raw, &s) != nil {
-		return nil
-	}
-	return s.Noise
 }
 
 // lookSweep is C3's sweep of a view: its solid accent areas larger than a mark, in the
@@ -601,12 +588,14 @@ func (r *report) compareNeedles(needles string) {
 	for _, x := range results {
 		v := r.lookViewOf(x.name)
 		v.Share, v.OK = x.share, x.err == nil && x.share <= needleMaxShare
-		v.NeedleNoise = needleNoise(filepath.Join(needles, x.name+".json"))
+		if spec, err := readSpec(filepath.Join(needles, x.name+".json"), true); err == nil {
+			v.NeedleNoise = &spec.Noise
+		}
 		if x.err != nil {
 			v.Error = x.err.Error()
 			// The pull request's table says it in a line; the report keeps the whole of it.
 			if errors.As(x.err, new(needleSpecError)) {
-				v.Error = "its needle has no metadata the harness reads (no .json, or one from before): the view is approved again"
+				v.Error = "its needle's .json is not as the harness writes it: the view is approved again"
 			}
 		}
 		l.Views = append(l.Views, v)
@@ -920,8 +909,8 @@ func proposeNeedle(from, needles string, l look, v lookView) error {
 	if err != nil {
 		return err
 	}
-	// The regions are a person's and stay; the rest of the old spec is the old run's. Read as
-	// regions alone: the needle it replaces may predate any other field.
+	// The ignored regions are a person's and stay, whatever else the old spec says or lacks - they
+	// outlive a change of the spec's fields; the rest of it is the old run's.
 	var old struct {
 		Ignore []needleRect `json:"ignore"`
 	}
