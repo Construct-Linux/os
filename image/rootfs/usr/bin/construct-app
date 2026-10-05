@@ -1,0 +1,482 @@
+#!/usr/bin/python3
+# Construct: what the desktop has that GNOME's Settings does not show - the security keys, the
+# release channel, the CPU scheduler, what the machine draws, Tailscale, a bug report. A front-end
+# only, as the installer is: every decision is construct's (cmd/construct), scx_loader's or
+# tailscale's; what needs root goes through pkexec or polkit, which ask for the password or a
+# touch of the security key.
+
+import datetime
+import gettext
+import json
+import os
+import re
+import shutil
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gio, GLib, Gtk  # noqa: E402
+
+# _ is gettext's, for every string a person reads: never a name for unused arguments.
+_ = gettext.translation("construct-app", fallback=True).gettext
+
+APP_ID = "io.github.construct_linux.Construct"
+CLI = "/usr/bin/construct"
+ISSUES = "https://github.com/Construct-Linux/os/issues/new/choose"
+REBOOT_MARK = "/run/construct/reboot-required"
+
+# scx_loader's modes (org.scx.Loader.xml). Gaming and Server are left out: a desktop for work.
+SCHED_MODES = [(0, _("Automatic")), (2, _("Power saving")), (3, _("Low latency"))]
+
+
+def run(argv, stdin=None, done=None):
+    """Runs argv, feeding it stdin, and calls done(ok, stdout, stderr) on the main loop."""
+    flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+    if stdin is not None:
+        flags |= Gio.SubprocessFlags.STDIN_PIPE
+    try:
+        proc = Gio.Subprocess.new(argv, flags)
+    except GLib.Error as e:
+        if done:
+            done(False, "", e.message)
+        return
+
+    def finished(p, result):
+        try:
+            _ok, out, err = p.communicate_utf8_finish(result)
+        except GLib.Error as e:
+            out, err = "", e.message
+        if done:
+            done(p.get_successful(), out or "", err or "")
+
+    proc.communicate_utf8_async(stdin, None, finished)
+
+
+def os_release():
+    values = {}
+    try:
+        with open("/usr/lib/os-release") as f:
+            for line in f:
+                key, sep, value = line.strip().partition("=")
+                if sep:
+                    values[key] = value.strip('"')
+    except OSError:
+        pass
+    return values
+
+
+def last_line(text):
+    lines = [line for line in text.strip().splitlines() if line.strip()]
+    return lines[-1] if lines else ""
+
+
+class KeysPage(Adw.PreferencesPage):
+    """The security keys: each opens the disk with its PIN and a touch and signs its person in
+    with a touch (construct key)."""
+
+    def __init__(self, window):
+        super().__init__(title=_("Security keys"), icon_name="security-high-symbolic")
+        self.window = window
+        self.encrypted = False
+        self.group = Adw.PreferencesGroup(
+            title=_("Security keys"),
+            description=_("A key you add opens this computer's disk with its PIN and a touch, and signs you in "
+                          "where Construct asks for your password - sudo, the lock screen, a change to the "
+                          "system - with a touch. Your password keeps working without it. Add a second key "
+                          "and keep it somewhere safe."))
+        add = Gtk.Button(label=_("Add a key"), valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
+        add.connect("clicked", lambda *a: self.add_dialog())
+        self.group.set_header_suffix(add)
+        self.add(self.group)
+        self.rows = []
+        self.refresh()
+
+    def refresh(self):
+        def done(ok, out, err):
+            for row in self.rows:
+                self.group.remove(row)
+            self.rows = []
+            if not ok:
+                self.window.toast(last_line(err) or _("The keys could not be read"))
+                return
+            data = json.loads(out)
+            self.encrypted = data.get("encrypted", False)
+            if not data["keys"]:
+                row = Adw.ActionRow(title=_("No key added yet"))
+                self.group.add(row)
+                self.rows.append(row)
+            if len(data["keys"]) == 1:
+                warn = Adw.ActionRow(title=_("Only one key"),
+                                     subtitle=_("Lose it and only your password opens this computer: add a backup key."),
+                                     css_classes=["warning"])
+                warn.add_prefix(Gtk.Image(icon_name="dialog-warning-symbolic"))
+                self.group.add(warn)
+                self.rows.append(warn)
+            for k in data["keys"]:
+                what = _("Opens the disk and signs you in") if k["slot"] >= 0 else _("Signs you in")
+                row = Adw.ActionRow(title=GLib.markup_escape_text(k["name"]),
+                                    subtitle=f"{what} · {k['user']} · {_('added')} {k['added']}")
+                remove = Gtk.Button(icon_name="user-trash-symbolic", valign=Gtk.Align.CENTER,
+                                    tooltip_text=_("Remove this key"), css_classes=["flat"])
+                remove.connect("clicked", lambda _b, name=k["name"]: self.remove_dialog(name))
+                row.add_suffix(remove)
+                self.group.add(row)
+                self.rows.append(row)
+
+        run([CLI, "key", "list", "--json"], done=done)
+
+    def add_dialog(self):
+        dialog = Adw.Dialog(title=_("Add a key"), content_width=420)
+        page = Adw.PreferencesPage()
+        group = Adw.PreferencesGroup(description=_("Plug in only the key you are adding. It will ask to be touched, twice."))
+        name = Adw.EntryRow(title=_("Name"), text=_("YubiKey"))
+        pin = Adw.PasswordEntryRow(title=_("The key's PIN"))
+        password = Adw.PasswordEntryRow(title=_("Your password"))
+        group.add(name)
+        group.add(pin)
+        if self.encrypted:
+            group.add(password)
+        page.add(group)
+        status = Gtk.Label(wrap=True, css_classes=["dim-label"], margin_top=6)
+        button = Gtk.Button(label=_("Add"), css_classes=["suggested-action", "pill"], halign=Gtk.Align.CENTER, margin_top=12)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, margin_bottom=18)
+        box.append(page)
+        box.append(button)
+        box.append(status)
+        view = Adw.ToolbarView()
+        view.add_top_bar(Adw.HeaderBar())
+        view.set_content(box)
+        dialog.set_child(view)
+
+        def add(*a):
+            button.set_sensitive(False)
+            status.set_label(_("Touch the key when it blinks"))
+            lines = ([password.get_text()] if self.encrypted else []) + [pin.get_text()]
+
+            def done(ok, out, err):
+                button.set_sensitive(True)
+                if ok:
+                    dialog.close()
+                    self.window.toast(_("Key added"))
+                    self.refresh()
+                else:
+                    status.set_label(last_line(err) or _("The key was not added"))
+
+            run(["pkexec", CLI, "key", "add", "--name", name.get_text().strip(), "--pin-file", "-"],
+                stdin="\n".join(lines) + "\n", done=done)
+
+        button.connect("clicked", add)
+        dialog.present(self.window)
+
+    def remove_dialog(self, name):
+        dialog = Adw.AlertDialog(heading=_("Remove “{}”?").format(name),
+                                 body=_("It will no longer open the disk or sign you in."))
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("remove", _("Remove"))
+        dialog.set_response_appearance("remove", Adw.ResponseAppearance.DESTRUCTIVE)
+        password = Adw.PasswordEntryRow(title=_("Your password"))
+        if self.encrypted:
+            box = Gtk.ListBox(css_classes=["boxed-list"])
+            box.append(password)
+            dialog.set_extra_child(box)
+
+        def chosen(_d, response):
+            if response != "remove":
+                return
+
+            def done(ok, out, err):
+                self.window.toast(_("Key removed") if ok else (last_line(err) or _("The key was not removed")))
+                self.refresh()
+
+            run(["pkexec", CLI, "key", "remove", "--name", name],
+                stdin=password.get_text() + "\n", done=done)
+
+        dialog.connect("response", chosen)
+        dialog.present(self.window)
+
+
+class UpdatesPage(Adw.PreferencesPage):
+    """The release this machine runs and the channel it follows (construct channel)."""
+
+    CHANNELS = [("stable", _("Stable")), ("testing", _("Testing"))]
+
+    def __init__(self, window):
+        super().__init__(title=_("Updates"), icon_name="software-update-available-symbolic")
+        self.window = window
+        rel = os_release()
+        group = Adw.PreferencesGroup(title=_("Updates"),
+                                     description=_("Construct updates itself once a day and starts the new release at "
+                                                   "the next restart. If it does not come up, the one before starts again."))
+        version = Adw.ActionRow(title=_("Running"), subtitle=rel.get("IMAGE_VERSION", _("a development build")))
+        group.add(version)
+        if os.path.exists(REBOOT_MARK):
+            try:
+                with open(REBOOT_MARK) as f:
+                    pending = f.read().strip()
+            except OSError:
+                pending = ""
+            ready = Adw.ActionRow(title=_("Ready after a restart"), subtitle=pending, css_classes=["success"])
+            ready.add_prefix(Gtk.Image(icon_name="system-reboot-symbolic"))
+            group.add(ready)
+        self.channel = Adw.ComboRow(title=_("Channel"),
+                                    subtitle=_("Testing gets each release first; stable gets it once it has held up."),
+                                    model=Gtk.StringList.new([label for _c, label in self.CHANNELS]))
+        group.add(self.channel)
+        self.add(group)
+        self.current = None
+        self.handler = None
+        self.read()
+
+    def read(self):
+        def done(ok, out, err):
+            if not ok:
+                return
+            name = out.split(" ", 1)[0].strip()
+            names = [c for c, _l in self.CHANNELS]
+            if name in names:
+                if self.handler:
+                    self.channel.disconnect(self.handler)
+                self.current = name
+                self.channel.set_selected(names.index(name))
+                self.handler = self.channel.connect("notify::selected", self.changed)
+
+        run([CLI, "channel"], done=done)
+
+    def changed(self, *a):
+        name = self.CHANNELS[self.channel.get_selected()][0]
+        if name == self.current:
+            return
+
+        def done(ok, out, err):
+            if ok:
+                self.window.toast(_("Following {}").format(dict(self.CHANNELS)[name]))
+            else:
+                self.window.toast(last_line(err) or _("The channel was not changed"))
+            self.read()
+
+        run(["pkexec", CLI, "channel", name], done=done)
+
+
+class SchedulerPage(Adw.PreferencesPage):
+    """The CPU scheduler sched_ext runs, through scx_loader's bus (polkit asks to change it)."""
+
+    def __init__(self, window):
+        super().__init__(title=_("Scheduler"), icon_name="speedometer-symbolic")
+        self.window = window
+        group = Adw.PreferencesGroup(title=_("CPU scheduler"),
+                                     description=_("Construct schedules the processor's work with a scheduler made for a "
+                                                   "desktop that stays responsive under load. Its mode tunes it."))
+        self.running = Adw.ActionRow(title=_("Running"))
+        self.mode = Adw.ComboRow(title=_("Mode"), model=Gtk.StringList.new([label for _m, label in SCHED_MODES]))
+        group.add(self.running)
+        group.add(self.mode)
+        self.add(group)
+        self.proxy = None
+        self.handler = None
+        Gio.DBusProxy.new_for_bus(Gio.BusType.SYSTEM, Gio.DBusProxyFlags.NONE, None, "org.scx.Loader",
+                                  "/org/scx/Loader", "org.scx.Loader", None, self.connected)
+
+    def connected(self, _src, result):
+        try:
+            self.proxy = Gio.DBusProxy.new_for_bus_finish(result)
+        except GLib.Error:
+            self.running.set_subtitle(_("The scheduler service is not running"))
+            self.mode.set_sensitive(False)
+            return
+        self.proxy.connect("g-properties-changed", lambda *a: self.show())
+        self.show()
+
+    def show(self):
+        name = self.proxy.get_cached_property("CurrentScheduler")
+        mode = self.proxy.get_cached_property("SchedulerMode")
+        name = name.unpack() if name else "unknown"
+        self.running.set_subtitle(_("The kernel's own") if name == "unknown" else name)
+        modes = [m for m, _l in SCHED_MODES]
+        if self.handler:
+            self.mode.disconnect(self.handler)
+        if mode and mode.unpack() in modes:
+            self.mode.set_selected(modes.index(mode.unpack()))
+        self.handler = self.mode.connect("notify::selected", self.changed)
+
+    def changed(self, *a):
+        mode = SCHED_MODES[self.mode.get_selected()][0]
+        current = self.proxy.get_cached_property("CurrentScheduler")
+        name = current.unpack() if current else "unknown"
+        if name == "unknown":
+            default = self.proxy.get_cached_property("DefaultScheduler")
+            name = default.unpack() if default else "scx_lavd"
+
+        def done(p, result):
+            try:
+                p.call_finish(result)
+            except GLib.Error as e:
+                self.window.toast(e.message)
+                self.show()
+
+        self.proxy.call("SwitchScheduler", GLib.Variant("(su)", (name, mode)),
+                        Gio.DBusCallFlags.ALLOW_INTERACTIVE_AUTHORIZATION, -1, None, done)
+
+
+class PowerPage(Adw.PreferencesPage):
+    """What the machine draws now, and what each suspend cost (construct power)."""
+
+    def __init__(self, window):
+        super().__init__(title=_("Power"), icon_name="battery-good-symbolic")
+        now = Adw.PreferencesGroup(title=_("Now"))
+        self.now = Gtk.Label(label=_("Measuring for a few seconds…"), xalign=0, wrap=True, selectable=True,
+                             css_classes=["body"])
+        now.add(self.now)
+        sleeps = Adw.PreferencesGroup(title=_("Suspends"),
+                                      description=_("What each suspend since this boot cost the battery: a good one "
+                                                    "loses under 1% an hour."))
+        self.sleeps = Gtk.Label(xalign=0, wrap=True, selectable=True, css_classes=["monospace"])
+        sleeps.add(self.sleeps)
+        self.add(now)
+        self.add(sleeps)
+        run([CLI, "power", "--seconds", "3"], done=lambda ok, out, err: self.now.set_label(out.strip() or last_line(err)))
+        run([CLI, "power", "suspend"], done=lambda ok, out, err: self.sleeps.set_label(out.strip() or _("No suspend yet")))
+
+
+class TailscalePage(Adw.PreferencesPage):
+    """Tailscale: whether this machine is on the person's tailnet, and joining or leaving it."""
+
+    def __init__(self, window):
+        super().__init__(title=_("Tailscale"), icon_name="network-vpn-symbolic")
+        self.window = window
+        group = Adw.PreferencesGroup(title=_("Tailscale"),
+                                     description=_("A private network between your own devices. Nothing reaches this "
+                                                   "computer through it that you did not open."))
+        self.state = Adw.ActionRow(title=_("State"))
+        self.button = Gtk.Button(valign=Gtk.Align.CENTER)
+        self.button.connect("clicked", self.toggle)
+        self.state.add_suffix(self.button)
+        group.add(self.state)
+        self.add(group)
+        self.connected = False
+        self.refresh()
+
+    def refresh(self):
+        def done(ok, out, err):
+            backend = ""
+            if ok:
+                try:
+                    status = json.loads(out)
+                    backend = status.get("BackendState", "")
+                    name = (status.get("Self") or {}).get("DNSName", "").rstrip(".")
+                except ValueError:
+                    name = ""
+            self.connected = backend == "Running"
+            if self.connected:
+                self.state.set_subtitle(_("Connected as {}").format(name) if name else _("Connected"))
+                self.button.set_label(_("Disconnect"))
+                self.button.set_css_classes([])
+            else:
+                self.state.set_subtitle(_("Not connected"))
+                self.button.set_label(_("Connect"))
+                self.button.set_css_classes(["suggested-action"])
+
+        run(["tailscale", "status", "--json"], done=done)
+
+    def toggle(self, *a):
+        if self.connected:
+            run(["pkexec", "tailscale", "down"], done=lambda *r: self.refresh())
+            return
+        # tailscale up waits until the browser has signed the machine in; the address to sign in
+        # at is on its standard error, opened here as soon as it appears.
+        proc = Gio.Subprocess.new(["pkexec", "tailscale", "up", "--operator=" + GLib.get_user_name()],
+                                  Gio.SubprocessFlags.STDERR_PIPE | Gio.SubprocessFlags.STDOUT_SILENCE)
+        stream = Gio.DataInputStream.new(proc.get_stderr_pipe())
+
+        def line(s, result):
+            try:
+                text, _n = s.read_line_finish_utf8(result)
+            except GLib.Error:
+                text = None
+            if text is None:
+                self.refresh()
+                return
+            found = re.search(r"https://\S+", text)
+            if found:
+                Gtk.UriLauncher.new(found.group(0)).launch(self.window, None, None)
+            s.read_line_async(GLib.PRIORITY_DEFAULT, None, line)
+
+        stream.read_line_async(GLib.PRIORITY_DEFAULT, None, line)
+        proc.wait_async(None, lambda *r: self.refresh())
+
+
+class ReportPage(Adw.PreferencesPage):
+    """A bug report: what construct report knows of the machine, saved for the person to attach."""
+
+    def __init__(self, window):
+        super().__init__(title=_("Report a problem"), icon_name="dialog-information-symbolic")
+        self.window = window
+        group = Adw.PreferencesGroup(title=_("Report a problem"),
+                                     description=_("Saves what a bug report needs - the release, the hardware, what "
+                                                   "failed since this boot - to a file in your home folder, then opens "
+                                                   "Construct's issues for you to attach it. Nothing is sent by itself."))
+        row = Adw.ActionRow(title=_("Make a report"))
+        button = Gtk.Button(label=_("Make"), valign=Gtk.Align.CENTER, css_classes=["suggested-action"])
+        button.connect("clicked", self.make)
+        row.add_suffix(button)
+        group.add(row)
+        self.add(group)
+
+    def make(self, *a):
+        def done(ok, out, err):
+            if not ok:
+                self.window.toast(last_line(err) or _("The report could not be made"))
+                return
+            stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+            path = os.path.join(GLib.get_home_dir(), f"construct-report-{stamp}.txt")
+            with open(path, "w") as f:
+                f.write(out)
+            self.window.toast(_("Saved {}").format(os.path.basename(path)))
+            Gtk.UriLauncher.new(ISSUES).launch(self.window, None, None)
+
+        run([CLI, "report"], done=done)
+
+
+class Window(Adw.ApplicationWindow):
+    def __init__(self, app):
+        super().__init__(application=app, title=_("Construct"), default_width=900, default_height=640)
+        self.toasts = Adw.ToastOverlay()
+        stack = Adw.ViewStack()
+        pages = [("keys", KeysPage(self)), ("updates", UpdatesPage(self)), ("scheduler", SchedulerPage(self)),
+                 ("power", PowerPage(self))]
+        if shutil.which("tailscale"):
+            pages.append(("tailscale", TailscalePage(self)))
+        pages.append(("report", ReportPage(self)))
+        for name, page in pages:
+            stack.add_titled_with_icon(page, name, page.get_title(), page.get_icon_name())
+        sidebar = Adw.ViewSwitcherSidebar(stack=stack)
+        split = Adw.NavigationSplitView(
+            sidebar=Adw.NavigationPage(title=_("Construct"), child=self.with_header(sidebar)),
+            content=Adw.NavigationPage(title=_("Construct"), child=self.with_header(stack)))
+        self.toasts.set_child(split)
+        self.set_content(self.toasts)
+        page = os.environ.get("CONSTRUCT_APP_PAGE")
+        if page:
+            stack.set_visible_child_name(page)
+
+    @staticmethod
+    def with_header(child):
+        view = Adw.ToolbarView()
+        view.add_top_bar(Adw.HeaderBar())
+        view.set_content(child)
+        return view
+
+    def toast(self, text):
+        self.toasts.add_toast(Adw.Toast(title=GLib.markup_escape_text(text)))
+
+
+class App(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID)
+
+    def do_activate(self):
+        (self.get_active_window() or Window(self)).present()
+
+
+if __name__ == "__main__":
+    App().run(None)

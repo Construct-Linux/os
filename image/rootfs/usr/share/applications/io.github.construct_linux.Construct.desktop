@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Construct
+Comment=Security keys, updates, the CPU scheduler, power, Tailscale and bug reports
+Icon=construct-logo
+Exec=construct-app
+Categories=System;Settings;
+Keywords=yubikey;fido;security key;channel;update;scheduler;scx;battery;tailscale;bug;report;
+StartupNotify=true
