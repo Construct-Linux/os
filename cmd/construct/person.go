@@ -16,6 +16,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/Construct-Linux/os/internal/account"
+	"github.com/Construct-Linux/os/internal/securitykey"
 	"github.com/Construct-Linux/os/internal/update"
 )
 
@@ -196,7 +197,7 @@ func crypt64(b []byte) string {
 
 // prepareVar lays p on the new /var at dev: their record, GNOME logging them in, their home.
 // What goes in /etc is written into the overlay's upper layer the initrd mounts /etc with.
-func prepareVar(ctx context.Context, dev string, p person, keys []registeredKey) error {
+func prepareVar(ctx context.Context, dev string, p person, keys []securitykey.Key) error {
 	hash, err := hashPassword(p.password)
 	if err != nil {
 		return err
@@ -222,7 +223,7 @@ func prepareVar(ctx context.Context, dev string, p person, keys []registeredKey)
 	}
 	// The security keys enrolled with the disk sign them in too.
 	if err == nil && len(keys) > 0 {
-		err = writeKeys(upper, keys)
+		err = securitykey.Write(upper, keys)
 	}
 	// Their language and keyboard, which GDM, GNOME and the console start from, and the machine's
 	// name.

@@ -68,12 +68,3 @@ func TestSecurityKeysPINsAfterThePassword(t *testing.T) {
 		t.Errorf("%+v %v", keys, err)
 	}
 }
-
-// A new key says noclientPin among its options; one with a PIN says clientPin.
-func TestNoClientPIN(t *testing.T) {
-	fresh := "proto: 0x02\nmajor: 0x05\noptions: rk, up, noplat, noclientPin, credentialMgmtPreview\n"
-	set := "options: rk, up, noplat, clientPin, credentialMgmtPreview\n"
-	if !noClientPIN(fresh) || noClientPIN(set) || noClientPIN("aaguid: 00\n") {
-		t.Error(noClientPIN(fresh), noClientPIN(set))
-	}
-}

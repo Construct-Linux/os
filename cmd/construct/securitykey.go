@@ -2,15 +2,15 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/securitykey"
 )
 
 // securityKey is a FIDO2 key (a YubiKey) that opens /var at boot with its PIN and a touch, beside
@@ -65,31 +65,20 @@ func securityKeysFrom(devices []string, pinFile string, in *bufio.Reader) ([]sec
 	return keys, nil
 }
 
-// enrollSecurityKeys adds a slot to /var's LUKS2 header for each key, opened by the key's PIN and
-// a touch (systemd-cryptenroll's FIDO2 token, which the initrd's var-key reads), unlocked for it
-// by the person's password, and makes each key's pam_u2f credential for owner: what construct key
-// records. Each asks to be touched twice: the log says which, for the installer to show.
-func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, password, owner string, keys []securityKey) ([]registeredKey, error) {
-	var done []registeredKey
+// enrollSecurityKeys enrolls each key with the new disk (securitykey.Enroll: its PIN and a touch
+// open /var, unlocked for it by the person's password) and makes its pam_u2f credential for owner:
+// what construct key records. Each asks to be touched twice: the log says which, for the installer
+// to show. A failure fails the install, whose disk is then never booted: no slot is taken back.
+func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, password, owner string, keys []securityKey) ([]securitykey.Key, error) {
+	var done []securitykey.Key
 	for i, k := range keys {
 		log.Info("touch the security key", "key", i+1, "of", len(keys), "device", k.device)
-		before, err := fido2Slots(ctx, partition)
-		if err != nil {
-			return nil, err
-		}
-		if err := enrollSecurityKey(ctx, partition, password, k); err != nil {
-			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
-		}
-		after, err := fido2Slots(ctx, partition)
-		if err != nil {
-			return nil, err
-		}
-		slot, err := newSlot(before, after)
+		slot, err := securitykey.Enroll(ctx, partition, password, k.device, k.pin)
 		if err != nil {
 			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
 		}
 		log.Info("touch the security key again", "key", i+1, "of", len(keys), "device", k.device)
-		u2f, err := u2fCredential(ctx, k.device, owner, k.pin)
+		u2f, err := securitykey.Credential(ctx, k.device, owner, k.pin)
 		if err != nil {
 			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
 		}
@@ -97,56 +86,7 @@ func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, passwo
 		if i > 0 {
 			name = fmt.Sprintf("Backup key %d", i)
 		}
-		done = append(done, registeredKey{Name: name, User: owner, Slot: slot, U2F: u2f, Added: time.Now().UTC().Format(time.DateOnly)})
+		done = append(done, securitykey.Key{Name: name, User: owner, Slot: slot, U2F: u2f, Added: time.Now().UTC().Format(time.DateOnly)})
 	}
 	return done, nil
-}
-
-// enrollSecurityKey enrolls one key. systemd-cryptenroll takes the password from $PASSWORD but a
-// FIDO2 PIN only as the credential cryptenroll.fido2-pin (it asks a terminal otherwise): a
-// credentials directory of the one file, root's alone and gone once enrolled.
-func enrollSecurityKey(ctx context.Context, partition, password string, k securityKey) error {
-	if err := ensurePIN(ctx, k); err != nil {
-		return err
-	}
-	creds, err := os.MkdirTemp("/run", "construct-key-")
-	if err != nil {
-		return err
-	}
-	defer os.RemoveAll(creds)
-	if err := os.WriteFile(filepath.Join(creds, "cryptenroll.fido2-pin"), []byte(k.pin), 0o600); err != nil {
-		return err
-	}
-	return cmd(ctx, nil, []string{"PASSWORD=" + password, "CREDENTIALS_DIRECTORY=" + creds},
-		"systemd-cryptenroll", "--fido2-device="+k.device, "--fido2-with-client-pin=yes",
-		"--fido2-with-user-presence=yes", partition)
-}
-
-// ensurePIN gives k the PIN it is to be enrolled with when it has none yet - a new key - since the
-// disk opens with the key's PIN and a touch. A key that has one keeps it: a wrong one fails the
-// enrollment, as it would fail at boot.
-func ensurePIN(ctx context.Context, k securityKey) error {
-	var out bytes.Buffer
-	if err := cmdOut(ctx, nil, nil, &out, "fido2-token", "-I", k.device); err != nil {
-		return err
-	}
-	if !noClientPIN(out.String()) {
-		return nil
-	}
-	return withPIN(ctx, k.pin, "fido2-token", "-S", k.device)
-}
-
-// noClientPIN says from fido2-token -I's output whether the key has no PIN set: its options list
-// clientPin when one is, noclientPin when none is (and neither when it cannot have one).
-func noClientPIN(info string) bool {
-	for _, line := range strings.Split(info, "\n") {
-		if k, v, ok := strings.Cut(line, ":"); ok && strings.TrimSpace(k) == "options" {
-			for _, o := range strings.Split(v, ",") {
-				if strings.TrimSpace(o) == "noclientPin" {
-					return true
-				}
-			}
-		}
-	}
-	return false
 }
