@@ -316,6 +316,17 @@ func (g *guest) evalJSON(body string, v any) error {
 	return json.Unmarshal([]byte(inner), v)
 }
 
+// seen is what js, a measurement of the running shell, answers, decoded as T; a measurement that
+// fails is the check rule surface's failure, and its view's checks are not run.
+func seen[T any](l *lf, rule, surface, js string) (T, bool) {
+	var s T
+	if err := l.g.evalJSON(js, &s); err != nil {
+		l.check(rule, surface, false, err.Error())
+		return s, false
+	}
+	return s, true
+}
+
 // lfLook is an actor as look() reports it.
 type lfLook struct {
 	X, Y, W, H  int
@@ -462,28 +473,52 @@ func (l *lf) view(name string) {
 	l.sweep(name, img)
 	switch name {
 	case "desktop":
-		l.bars(name, img, true)
+		if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
+			l.bars(name, img, true, s)
+		}
 		n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
 		l.check("accent", "desktop", n == 0, fmt.Sprintf("%d px of the accent, want none", n))
 	case "shell-settings-light":
-		l.bars(name, img, false)
-		l.settingsLight(img)
+		if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
+			l.bars(name, img, false, s)
+		}
+		if s, ok := seen[windowSeen](l, "radius", "settings-light window", lfSettingsWindow); ok {
+			l.settingsLight(img, s)
+		}
 	case "shell-quick-settings":
-		l.quickSettings(img)
+		if s, ok := seen[quickSettingsSeen](l, "quick settings", "eval", lfQuickSettingsToggles); ok {
+			l.quickSettings(img, s)
+		}
 	case "shell-quick-settings-focus":
-		l.focus(img)
+		if s, ok := seen[focusSeen](l, "focus", "quick toggle", lfFocusToggle); ok {
+			l.focus(img, s)
+		}
 	case "shell-quick-settings-submenu":
-		l.submenu(img)
+		if s, ok := seen[submenuSeen](l, "submenu", "quick settings", lfSubmenu); ok {
+			l.submenu(img, s)
+		}
 	case "shell-calendar":
-		l.calendar(img)
+		if s, ok := seen[calendarSeen](l, "calendar", "eval", lfCalendar); ok {
+			l.calendar(img, s)
+		}
 	case "shell-calendar-focus":
-		l.dayFocus(img)
+		if s, ok := seen[dayFocusSeen](l, "focus", "calendar day", lfDayFocus); ok {
+			l.dayFocus(img, s)
+		}
 	case "shell-overview":
-		l.overview(img)
+		l.ground(name, img)
+		if s, ok := seen[overviewSeen](l, "ground", "overview", lfOverview); ok {
+			l.overview(img, s)
+		}
 	case "shell-overview-light":
-		l.overviewLight(img)
+		l.ground(name, img)
+		if s, ok := seen[overviewSeen](l, "ground", "overview-light", lfOverview); ok {
+			l.overviewLight(img, s)
+		}
 	case "shell-overview-search":
-		l.search(img)
+		if s, ok := seen[searchSeen](l, "search", "overview", lfSearch); ok {
+			l.search(img, s)
+		}
 	case "shell-app-grid":
 		l.ground(name, img)
 	case "shell-lock-error":
@@ -491,20 +526,33 @@ func (l *lf) view(name string) {
 			l.lockErrorCheck(*l.lockError)
 		}
 	case "shell-lock-screen":
-		l.lock(img)
+		if s, ok := seen[lockSeen](l, "lock", "eval", lfLock); ok {
+			l.lock(img, s)
+		}
 	case "installer":
-		l.installer(img)
+		if s, ok := seen[windowSeen](l, "window", "installer", lfFocusWindow); ok {
+			l.installer(img, s)
+		}
 	case "gtk-popover-light", "gtk-tooltip-light", "gtk-dialog-light", "gtk-maximized-light", "gtk-banner-light", "gtk-destructive-light":
-		l.gtkLight(name, img)
+		r, err := l.appWindow("org.gnome.TextEditor.desktop")
+		if err != nil {
+			l.check("window", name, false, err.Error())
+			return
+		}
+		l.gtkLight(name, img, r)
 	case "gtk-focus", "gtk-focus-light":
 		l.gtkFocus(name, img)
 	case "shell-states":
-		l.states(img)
+		if s, ok := seen[[]stateSeen](l, "states", "quick toggles", lfStates); ok {
+			l.states(img, s)
+		}
 	default:
 		// E2: both bars' edge over every wallpaper. At another scale St's extents are not the
 		// screenshot's pixels.
 		if strings.HasPrefix(name, "desktop-") && name != lfScaledDesktop {
-			l.bars(name, img, false)
+			if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
+				l.bars(name, img, false, s)
+			}
 		}
 	}
 }
@@ -620,16 +668,15 @@ func abs(v int) int {
 	return v
 }
 
-// bars checks the top bar and the dock, S1-S3: opaque g with a ring, in the dark desktop and in
-// the light scheme alike (the shell is dark in both). On the desktop it measures their shape and
-// placement too, and the text of the top bar.
-func (l *lf) bars(view string, img image.Image, desktop bool) {
-	var s struct {
-		Panel, Dock, Menu, Banner *lfLook
-		Labels                    []*lfLook
-		Pads                      []float64
-	}
-	err := l.g.evalJSON(`
+// barsSeen is the top bar, the dock, a popup menu and a banner as St has them, the top bar's labels
+// and its buttons' padding.
+type barsSeen struct {
+	Panel, Dock, Menu, Banner *lfLook
+	Labels                    []*lfLook
+	Pads                      []float64
+}
+
+const lfBars = `
 		const menu = Object.values(Main.panel.statusArea).map(i => i.menu?.box).find(b => b instanceof St.Widget &&
 			b.has_style_class_name('popup-menu-content') && !b.has_style_class_name('quick-settings') && !b.has_style_class_name('datemenu-popover'));
 		// A banner exists only while a notification shows: one like it, styled as the theme styles it.
@@ -644,11 +691,12 @@ func (l *lf) bars(view string, img image.Image, desktop bool) {
 		const pads = lfAll(Main.panel, lfClass('panel-button')).filter(a => a.is_mapped() && !a.has_style_class_name('clock-display') &&
 			a !== activities && a !== activities?.container && a.name !== 'panelActivities')
 			.map(a => a.get_theme_node().get_length('-natural-hpadding'));
-		return {panel: look(Main.panel), dock: look(lfDock()), menu: look(menu), banner: b, labels: lfLabels(Main.panel), pads};`, &s)
-	if err != nil {
-		l.check("bars", view, false, err.Error())
-		return
-	}
+		return {panel: look(Main.panel), dock: look(lfDock()), menu: look(menu), banner: b, labels: lfLabels(Main.panel), pads};`
+
+// bars checks the top bar and the dock, S1-S3: opaque g with a ring, in the dark desktop and in
+// the light scheme alike (the shell is dark in both). On the desktop it checks their shape and
+// placement too, and the text of the top bar.
+func (l *lf) bars(view string, img image.Image, desktop bool, s barsSeen) {
 	g := l.c("neutral-g")
 	l.surfaceCheck("top bar ("+view+")", s.Panel, img, g)
 	l.surfaceCheck("dock ("+view+")", s.Dock, img, g)
@@ -722,20 +770,20 @@ type quickToggle struct {
 
 const lfQuickSettings = `const m = Main.panel.statusArea.quickSettings.menu;`
 
-func (l *lf) quickSettings(img image.Image) {
-	var s struct {
-		Box     *lfLook
-		Toggles []quickToggle
-		Labels  []*lfLook
-	}
-	if err := l.g.evalJSON(lfQuickSettings+`
-		const toggles = lfAll(m.box, lfClass('quick-toggle')).filter(a => a.is_mapped()).map(a => ({
-			look: look(a), checked: a.checked, title: look(a._title), subtitle: a._subtitle?.visible ? look(a._subtitle) : null,
-			icon: look(find(a, 'quick-toggle-icon'))}));
-		return {box: look(m.box), toggles, labels: lfLabels(m.box)};`, &s); err != nil {
-		l.check("quick settings", "eval", false, err.Error())
-		return
-	}
+// quickSettingsSeen is quick settings' menu, its toggles and its labels.
+type quickSettingsSeen struct {
+	Box     *lfLook
+	Toggles []quickToggle
+	Labels  []*lfLook
+}
+
+const lfQuickSettingsToggles = lfQuickSettings + `
+	const toggles = lfAll(m.box, lfClass('quick-toggle')).filter(a => a.is_mapped()).map(a => ({
+		look: look(a), checked: a.checked, title: look(a._title), subtitle: a._subtitle?.visible ? look(a._subtitle) : null,
+		icon: look(find(a, 'quick-toggle-icon'))}));
+	return {box: look(m.box), toggles, labels: lfLabels(m.box)};`
+
+func (l *lf) quickSettings(img image.Image, s quickSettingsSeen) {
 	h := l.c("neutral-h")
 	l.surfaceCheck("quick settings", s.Box, img, h)
 	l.radiusCheck("quick settings", s.Box, lfQuickSettingsRadius)
@@ -813,19 +861,19 @@ func (l *lf) disc(img image.Image, t quickToggle) []string {
 	return bad
 }
 
+// focusSeen is the first quick toggle, and whether it has the key focus.
+type focusSeen struct {
+	Toggle  *lfLook
+	Focused bool
+}
+
+const lfFocusToggle = lfQuickSettings + `
+	const t = find(m.box, 'quick-toggle');
+	return {toggle: look(t), focused: t !== null && global.stage.key_focus === t};`
+
 // focus is S8: the first quick toggle, given the key focus, shows the accent's inset ring, and the
 // ring is what focus changed on the screen.
-func (l *lf) focus(img image.Image) {
-	var s struct {
-		Toggle  *lfLook
-		Focused bool
-	}
-	if err := l.g.evalJSON(lfQuickSettings+`
-		const t = find(m.box, 'quick-toggle');
-		return {toggle: look(t), focused: t !== null && global.stage.key_focus === t};`, &s); err != nil {
-		l.check("focus", "quick toggle", false, err.Error())
-		return
-	}
+func (l *lf) focus(img image.Image, s focusSeen) {
 	if s.Toggle == nil || !s.Focused {
 		l.check("focus", "quick toggle", false, fmt.Sprintf("the first quick toggle did not take the key focus (found: %v)", s.Toggle != nil))
 		return
@@ -845,14 +893,18 @@ func (l *lf) focus(img image.Image) {
 			drawn, r, share*100, least, lfFocusAccentShare*100))
 }
 
+// submenuSeen is quick settings' box and the open toggle menu's.
+type submenuSeen struct{ Box, Well *lfLook }
+
+const lfSubmenu = lfQuickSettings + `
+	const t = lfAll(m.box, lfClass('quick-toggle-has-menu')).find(t => t.menu?.isOpen);
+	return {box: look(m.box), well: look(t?.menu.box ?? null)};`
+
 // submenu is the expanded submenu: a g well in the h menu, with no light slab in it. A toggle's
 // menu is not under the menu's box: QuickSettingsMenu lays them in an overlay of its own.
-func (l *lf) submenu(img image.Image) {
-	var s struct{ Box, Well *lfLook }
-	if err := l.g.evalJSON(lfQuickSettings+`
-		const t = lfAll(m.box, lfClass('quick-toggle-has-menu')).find(t => t.menu?.isOpen);
-		return {box: look(m.box), well: look(t?.menu.box ?? null)};`, &s); err != nil || s.Box == nil {
-		l.check("submenu", "quick settings", false, fmt.Sprintf("no quick settings box%s", errText(err)))
+func (l *lf) submenu(img image.Image, s submenuSeen) {
+	if s.Box == nil {
+		l.check("submenu", "quick settings", false, "no quick settings box")
 		return
 	}
 	if s.Well == nil || !s.Well.Mapped || s.Well.W == 0 {
@@ -883,23 +935,24 @@ type calendarDay struct {
 const lfDays = `const dm = Main.panel.statusArea.dateMenu;
 	const days = (dm._calendar._buttons ?? []).filter(b => b.is_mapped() && b.has_style_class_name('calendar-day'));`
 
-func (l *lf) calendar(img image.Image) {
-	var s struct {
-		Box, Heading    *lfLook
-		Selected, Focus bool
-		Days            []calendarDay
-		Labels          []*lfLook
-	}
-	if err := l.g.evalJSON(lfDays+`
-		const today = days.find(b => b.has_style_class_name('calendar-today'));
-		return {box: look(dm.menu.box), selected: today?.has_style_pseudo_class('selected') ?? false,
-			focus: today !== undefined && global.stage.key_focus === today, heading: look(dm._date?._dayLabel),
-			days: days.map(b => ({look: look(b), today: b === today, other: b.has_style_class_name('calendar-other-month'),
-				weekend: b.has_style_class_name('calendar-weekend'), label: b.label ?? ''})),
-			labels: lfLabels(dm.menu.box)};`, &s); err != nil {
-		l.check("calendar", "eval", false, err.Error())
-		return
-	}
+// calendarSeen is the date menu: its box, its heading, the month's days and its labels, and
+// whether today is selected and has the key focus.
+type calendarSeen struct {
+	Box, Heading    *lfLook
+	Selected, Focus bool
+	Days            []calendarDay
+	Labels          []*lfLook
+}
+
+const lfCalendar = lfDays + `
+	const today = days.find(b => b.has_style_class_name('calendar-today'));
+	return {box: look(dm.menu.box), selected: today?.has_style_pseudo_class('selected') ?? false,
+		focus: today !== undefined && global.stage.key_focus === today, heading: look(dm._date?._dayLabel),
+		days: days.map(b => ({look: look(b), today: b === today, other: b.has_style_class_name('calendar-other-month'),
+			weekend: b.has_style_class_name('calendar-weekend'), label: b.label ?? ''})),
+		labels: lfLabels(dm.menu.box)};`
+
+func (l *lf) calendar(img image.Image, s calendarSeen) {
 	h := l.c("neutral-h")
 	l.surfaceCheck("calendar", s.Box, img, h)
 	l.radiusCheck("calendar", s.Box, int(l.pal.nums["shape-radius-sheet"]))
@@ -986,21 +1039,21 @@ func focusRing(sh *lfShadow, accent color.NRGBA) (bool, string) {
 		fmt.Sprintf("box-shadow %s inset=%v spread %.0f", sh.Color, sh.Inset, sh.Spread)
 }
 
+// dayFocusSeen is the calendar day with the key focus, when it is not today.
+type dayFocusSeen struct {
+	Day     *lfLook
+	Label   string
+	Focused bool
+}
+
+const lfDayFocus = lfDays + `
+	const f = global.stage.key_focus;
+	return {day: days.includes(f) ? look(f) : null, label: days.includes(f) ? f.label ?? '' : '',
+		focused: days.includes(f) && !f.has_style_class_name('calendar-today')};`
+
 // dayFocus is F1 on a calendar day that is not today: with the key focus it draws the inset 2px
 // accent ring, in St and on the screen.
-func (l *lf) dayFocus(img image.Image) {
-	var s struct {
-		Day     *lfLook
-		Label   string
-		Focused bool
-	}
-	if err := l.g.evalJSON(lfDays+`
-		const f = global.stage.key_focus;
-		return {day: days.includes(f) ? look(f) : null, label: days.includes(f) ? f.label ?? '' : '',
-			focused: days.includes(f) && !f.has_style_class_name('calendar-today')};`, &s); err != nil {
-		l.check("focus", "calendar day", false, err.Error())
-		return
-	}
+func (l *lf) dayFocus(img image.Image, s dayFocusSeen) {
 	if s.Day == nil || !s.Focused {
 		l.check("focus", "calendar day", false, "no day but today has the key focus")
 		return
@@ -1020,10 +1073,10 @@ func (l *lf) ground(view string, img image.Image) {
 	l.check("ground", view, pixels.Near(c, l.c("brand-boot"), lfSurfaceTol), fmt.Sprintf("(%d,%d) is %s, want %s", x, y, pixels.Hex(c), pixels.Hex(l.c("brand-boot"))))
 }
 
-// overviewCard is the overview's group and the active workspace's card, as St has them.
-func (l *lf) overviewCard() (group, card *lfLook, err error) {
-	var s struct{ Group, Card *lfLook }
-	err = l.g.evalJSON(`
+// overviewSeen is the overview's group and the active workspace's card, as St has them.
+type overviewSeen struct{ Group, Card *lfLook }
+
+const lfOverview = `
 		// The active workspace's card is the one most on the screen: the next one is as wide, mostly
 		// past the right edge.
 		const shown = a => {
@@ -1034,17 +1087,10 @@ func (l *lf) overviewCard() (group, card *lfLook, err error) {
 		};
 		const cards = lfAll(Main.layoutManager.overviewGroup, lfClass('workspace-background')).filter(a => a.is_mapped());
 		cards.sort((a, b) => shown(b) - shown(a));
-		return {group: look(Main.layoutManager.overviewGroup), card: look(cards[0])};`, &s)
-	return s.Group, s.Card, err
-}
+		return {group: look(Main.layoutManager.overviewGroup), card: look(cards[0])};`
 
-func (l *lf) overview(img image.Image) {
-	l.ground("shell-overview", img)
-	group, c, err := l.overviewCard()
-	if err != nil {
-		l.check("ground", "overview", false, err.Error())
-		return
-	}
+func (l *lf) overview(img image.Image, s overviewSeen) {
+	group, c := s.Group, s.Card
 	if group != nil {
 		l.check("ground", "overviewGroup", group.BG == pixels.Hexa(l.c("brand-boot")), "St "+group.BG)
 	}
@@ -1071,13 +1117,8 @@ const lfCardLight = 0.5
 
 // overviewLight is the overview in the light scheme: the shell's ground stays the boot's black
 // (S4: the shell is dark in both), and the workspace card is the light wallpaper.
-func (l *lf) overviewLight(img image.Image) {
-	l.ground("shell-overview-light", img)
-	group, c, err := l.overviewCard()
-	if err != nil {
-		l.check("ground", "overview-light", false, err.Error())
-		return
-	}
+func (l *lf) overviewLight(img image.Image, s overviewSeen) {
+	group, c := s.Group, s.Card
 	if group != nil {
 		l.check("ground", "overviewGroup light", group.BG == pixels.Hexa(l.c("brand-boot")), "St "+group.BG)
 	}
@@ -1090,13 +1131,12 @@ func (l *lf) overviewLight(img image.Image) {
 		fmt.Sprintf("the card is %s over %.0f%% of it, lightness %.2f; want the light wallpaper, >= %.2f", pixels.Hex(mode), share*100, pixels.Lightness(mode), lfCardLight))
 }
 
-func (l *lf) search(img image.Image) {
-	var s struct{ Entry, Section *lfLook }
-	if err := l.g.evalJSON(`
-		return {entry: look(Main.overview.searchEntry), section: look(find(Main.layoutManager.overviewGroup, 'search-section-content'))};`, &s); err != nil {
-		l.check("search", "overview", false, err.Error())
-		return
-	}
+// searchSeen is the overview's search entry and its results' section.
+type searchSeen struct{ Entry, Section *lfLook }
+
+const lfSearch = `return {entry: look(Main.overview.searchEntry), section: look(find(Main.layoutManager.overviewGroup, 'search-section-content'))};`
+
+func (l *lf) search(img image.Image, s searchSeen) {
 	h := l.c("neutral-h")
 	l.surfaceCheck("search entry", s.Entry, img, h)
 	l.surfaceCheck("search section", s.Section, img, h)
@@ -1104,17 +1144,17 @@ func (l *lf) search(img image.Image) {
 	l.radiusCheck("search section", s.Section, int(l.pal.nums["shape-radius-control"])+lfSearchSectionPadding)
 }
 
-func (l *lf) lock(img image.Image) {
-	var s struct {
-		Group, Time *lfLook
-		URI         string
-	}
-	if err := l.g.evalJSON(`
-		const css = St.ThemeContext.get_for_stage(global.stage).get_theme().default_stylesheet;
-		return {group: look(Main.screenShield._lockDialogGroup), time: look(Main.screenShield._dialog?._clock?._time), uri: css ? css.get_uri() : ''};`, &s); err != nil {
-		l.check("lock", "eval", false, err.Error())
-		return
-	}
+// lockSeen is the lock screen's group and clock, and the stylesheet the shell loaded.
+type lockSeen struct {
+	Group, Time *lfLook
+	URI         string
+}
+
+const lfLock = `
+	const css = St.ThemeContext.get_for_stage(global.stage).get_theme().default_stylesheet;
+	return {group: look(Main.screenShield._lockDialogGroup), time: look(Main.screenShield._dialog?._clock?._time), uri: css ? css.get_uri() : ''};`
+
+func (l *lf) lock(img image.Image, s lockSeen) {
 	if s.Group == nil {
 		l.check("ground", "lock", false, "no lockDialogGroup")
 	} else {
@@ -1134,29 +1174,23 @@ func (l *lf) lock(img image.Image) {
 		fmt.Sprintf("stem/cap %.3f, want under %.2f (regular, not bold)%s", ratio, lfClockStemRatio, errText(err)))
 }
 
-// focusWindow is the window with the focus: its frame on the screen and its class.
-func (l *lf) focusWindow() (pixels.Rect, string, error) {
-	var s struct {
-		Win *struct{ X, Y, W, H int }
-		Cls string
-	}
-	if err := l.g.evalJSON(`const w = global.display.focus_window; return {win: lfWindow(w), cls: w?.get_wm_class() ?? ''};`, &s); err != nil {
-		return pixels.Rect{}, "", err
-	}
-	if s.Win == nil {
-		return pixels.Rect{}, "", errors.New("no window has the focus")
-	}
-	return pixels.Rect{X: s.Win.X, Y: s.Win.Y, W: s.Win.W, H: s.Win.H}, s.Cls, nil
+// windowSeen is a window's frame on the screen, none when there is no such window, and its class.
+type windowSeen struct {
+	Win *pixels.Rect
+	Cls string
 }
+
+// lfFocusWindow is the window with the focus.
+const lfFocusWindow = `const w = global.display.focus_window; return {win: lfWindow(w), cls: w?.get_wm_class() ?? ''};`
 
 // installer is S3 on the installer's window: its body is f, its outer ring the border on the left
 // and the bottom, its headerbar g, and between headerbar and body one solid line of the border.
-func (l *lf) installer(img image.Image) {
-	r, cls, err := l.focusWindow()
-	if err != nil || cls != "io.github.construct_linux.Installer" {
-		l.check("window", "installer", false, fmt.Sprintf("the focused window is %q, not the installer%s", cls, errText(err)))
+func (l *lf) installer(img image.Image, s windowSeen) {
+	if s.Win == nil || s.Cls != "io.github.construct_linux.Installer" {
+		l.check("window", "installer", false, fmt.Sprintf("the focused window is %q, not the installer", s.Cls))
 		return
 	}
+	r := *s.Win
 	k := l.k
 	// The body: 21 px around the screen's middle, three quarters down, where the window's body is
 	// whatever the screen's size (measured at (640, 600) of 1280x800).
@@ -1176,16 +1210,18 @@ func (l *lf) installer(img image.Image) {
 		fmt.Sprintf("the line under the headerbar at y %d (found %v) is %s, want %s", y, ok, pixels.Hex(c), pixels.Hex(ring)))
 }
 
+// lfSettingsWindow is Settings' first window.
+const lfSettingsWindow = `return {win: lfWindow(Shell.AppSystem.get_default().lookup_app('org.gnome.Settings.desktop')?.get_windows()[0])};`
+
 // settingsLight is S5, S6 and C11 on Settings in the light scheme, from the pixels: the window on
 // the desk with the ring line outside it, the sidebar the shelf, the selected row the white sheet
 // with its label in text, and the headerbar's rule one line across both panes.
-func (l *lf) settingsLight(img image.Image) {
-	var s struct{ Win *struct{ X, Y, W, H int } }
-	if err := l.g.evalJSON(`return {win: lfWindow(Shell.AppSystem.get_default().lookup_app('org.gnome.Settings.desktop')?.get_windows()[0])};`, &s); err != nil || s.Win == nil {
-		l.check("radius", "settings-light window", false, "no Settings window"+errText(err))
+func (l *lf) settingsLight(img image.Image, s windowSeen) {
+	if s.Win == nil {
+		l.check("radius", "settings-light window", false, "no Settings window")
 		return
 	}
-	r := pixels.Rect{X: s.Win.X, Y: s.Win.Y, W: s.Win.W, H: s.Win.H}
+	r := *s.Win
 	want := int(l.pal.nums["shape-radius-surface"])
 	p := l.px(r)
 	rad, err := pixels.CornerRadius(img, p.X, p.Y, 2*want*l.k)
@@ -1258,20 +1294,20 @@ func (l *lf) lightPanes(img image.Image, r pixels.Rect) {
 			ys, sideOK, pixels.Hex(yc), yb, mainOK, pixels.Hex(yc2), borderA*100, pixels.Hex(above), pixels.Hex(wantRule)))
 }
 
+// stateSeen is a quick toggle shell-states forced into a step, and its title.
+type stateSeen struct {
+	State string  `json:"state"`
+	Look  *lfLook `json:"look"`
+	Title *lfLook `json:"title"`
+}
+
+const lfStates = lfQuickSettings + `
+	return lfAll(m.box, t => t._lfState !== undefined).map(t => ({state: t._lfState, look: look(t), title: look(t._title ?? null)}));`
+
 // states is S2 on the quick toggles shell-states forced into each step - on at rest, under the
 // pointer, pressed: each fill is the accent at its step's tint over h, in St and on the screen,
 // and each label accent_text.
-func (l *lf) states(img image.Image) {
-	var s []struct {
-		State string  `json:"state"`
-		Look  *lfLook `json:"look"`
-		Title *lfLook `json:"title"`
-	}
-	if err := l.g.evalJSON(lfQuickSettings+`
-		return lfAll(m.box, t => t._lfState !== undefined).map(t => ({state: t._lfState, look: look(t), title: look(t._title ?? null)}));`, &s); err != nil {
-		l.check("states", "quick toggles", false, err.Error())
-		return
-	}
+func (l *lf) states(img image.Image, s []stateSeen) {
 	steps := map[string]string{"rest": "tint-dark-rest", "hover": "tint-dark-hover", "active": "tint-dark-active"}
 	h, ground, accent := l.c("neutral-h"), l.c("neutral-e"), l.c("dark-accent")
 	seen := map[string]bool{}
@@ -1377,12 +1413,7 @@ func (l *lf) buttonState(name, ref string, btn pixels.Rect) {
 // gtkLight is a GTK view in the light scheme: Settings' window probes on the window it is about,
 // where they reach. A libadwaita dialog dims the window under it and a maximized one has no desk
 // or ring, so on those only no bright accent is asked; Text Editor has no sidebar, so no panes.
-func (l *lf) gtkLight(name string, img image.Image) {
-	r, err := l.appWindow("org.gnome.TextEditor.desktop")
-	if err != nil {
-		l.check("window", name, false, err.Error())
-		return
-	}
+func (l *lf) gtkLight(name string, img image.Image, r pixels.Rect) {
 	switch name {
 	case "gtk-popover-light", "gtk-tooltip-light", "gtk-banner-light":
 		l.lightFrame(name, img, r)
@@ -1439,14 +1470,14 @@ func (l *lf) selectedRow(img image.Image, side pixels.Rect) {
 // appWindow is the frame of an app's first normal window: a popover open over it is a window of
 // its own, the app's newest.
 func (l *lf) appWindow(id string) (pixels.Rect, error) {
-	var s struct{ Win *struct{ X, Y, W, H int } }
+	var s windowSeen
 	if err := l.g.evalJSON(fmt.Sprintf(`return {win: lfWindow(Shell.AppSystem.get_default().lookup_app(%q)?.get_windows().find(w => w.get_window_type() === imports.gi.Meta.WindowType.NORMAL))};`, id), &s); err != nil {
 		return pixels.Rect{}, err
 	}
 	if s.Win == nil {
 		return pixels.Rect{}, errors.New("no window")
 	}
-	return pixels.Rect{X: s.Win.X, Y: s.Win.Y, W: s.Win.W, H: s.Win.H}, nil
+	return *s.Win, nil
 }
 
 // app checks the apps outside GTK that take the desktop's surfaces: Ghostty and VS Code on g and
@@ -1477,11 +1508,20 @@ func (l *lf) app(id, shot string) {
 	if !ok {
 		return
 	}
+	if id == "firefox.desktop" {
+		l.firefoxControls(id)
+		return
+	}
 	r, err := l.appWindow(id)
 	if err != nil {
 		l.check("app", shot, false, err.Error())
 		return
 	}
+	l.appSurfaces(id, img, r)
+}
+
+// appSurfaces is app's check on an app's window at r, a stage rectangle.
+func (l *lf) appSurfaces(id string, img image.Image, r pixels.Rect) {
 	g, f := l.c("neutral-g"), l.c("neutral-f")
 	region := func(x, y, w, h int) color.NRGBA {
 		c, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: r.X + x, Y: r.Y + y, W: w, H: h}))
@@ -1509,8 +1549,6 @@ func (l *lf) app(id, shot string) {
 		// asks to be accepted - never Chrome's own #202124, nor a window not yet drawn.
 		strip := region(8, 3, r.W-16, 10)
 		l.check("app", "chrome", pixels.Near(strip, g, lfSurfaceTol), fmt.Sprintf("title bar %s, want the theme's %s (Chrome's own is #202124)", pixels.Hex(strip), pixels.Hex(g)))
-	case "firefox.desktop":
-		l.firefoxControls(id)
 	}
 }
 
@@ -1549,6 +1587,11 @@ func (l *lf) firefoxControls(id string) {
 		l.check("app", "firefox controls", false, err.Error())
 		return
 	}
+	l.firefoxAccent(img, win)
+}
+
+// firefoxAccent is firefoxControls' check on the page's window at win, a stage rectangle.
+func (l *lf) firefoxAccent(img image.Image, win pixels.Rect) {
 	blue := color.NRGBA{0x35, 0x84, 0xE4, 255}
 	n := pixels.CountNear(img, l.px(win), blue, lfFirefoxColorTol)
 	accent := pixels.CountNear(img, l.px(win), l.c("light-accent"), lfFirefoxAccentTol)
@@ -1588,6 +1631,11 @@ func (l *lf) maximized(id, shot string) {
 		l.check("window", shot, false, err.Error())
 		return
 	}
+	l.square(img, r)
+}
+
+// square is maximized's check on the window at r, a stage rectangle.
+func (l *lf) square(img image.Image, r pixels.Rect) {
 	head, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: r.X + 8, Y: r.Y + 3, W: r.W - 16, H: 8}))
 	p := l.px(r)
 	corner := pixels.At(img, p.X, p.Y)
@@ -1603,13 +1651,22 @@ func (l *lf) guestLook() {
 		return
 	}
 	l.cur = ""
-	var s struct {
-		URI, CSS   string
-		ToggleOn   bool
-		Background string
-		Icons      []struct{ ID, Icon, File string }
+	if s, ok := seen[shellSeen](l, "guest", "shell", lfShell); ok {
+		l.shell(s)
 	}
-	err := l.g.evalJSON(`
+	l.guestFiles()
+}
+
+// shellSeen is what the running shell loaded: its default stylesheet, its resources' toggle-on
+// asset and background.js' default colour, and each shown app's icon as the icon theme resolves it.
+type shellSeen struct {
+	URI, CSS   string
+	ToggleOn   bool
+	Background string
+	Icons      []struct{ ID, Icon, File string }
+}
+
+const lfShell = `
 		const css = St.ThemeContext.get_for_stage(global.stage).get_theme().default_stylesheet;
 		let text = '';
 		if (css) {
@@ -1634,11 +1691,11 @@ func (l *lf) guestLook() {
 			const info = i ? theme.lookup_by_gicon(i, 48, 0) : null;
 			return {id: a.get_id() ?? '', icon: i ? i.to_string() : '', file: info ? info.get_filename() ?? '' : ''};
 		});
-		return {uri: css ? css.get_uri() : '', css: text, toggleOn, background: bg.split('\n').find(l => l.includes('DEFAULT_BACKGROUND_COLOR =')) ?? bg.slice(0, 160), icons};`, &s)
-	if err != nil {
-		l.check("guest", "shell", false, err.Error())
-		return
-	}
+		return {uri: css ? css.get_uri() : '', css: text, toggleOn, background: bg.split('\n').find(l => l.includes('DEFAULT_BACKGROUND_COLOR =')) ?? bg.slice(0, 160), icons};`
+
+// shell checks what the shell loaded: its CSS against the theme's rules, its resources, and that
+// every shown app's icon is Tela's or a brand tile.
+func (l *lf) shell(s shellSeen) {
 	if s.CSS == "" {
 		l.check("css", "shell", false, "the shell has no default stylesheet")
 	} else {
@@ -1666,7 +1723,10 @@ func (l *lf) guestLook() {
 		}
 	}
 	l.check("icons", "apps", len(s.Icons) > 0 && len(unresolved) == 0, fmt.Sprintf("%d apps shown; not drawn by Tela or a brand tile: %v", len(s.Icons), unresolved))
+}
 
+// guestFiles checks the settings and files other parts install, as the guest reads them.
+func (l *lf) guestFiles() {
 	user := asLive
 	fonts, err := l.g.run(user+`gsettings get org.gnome.desktop.interface font-name; `+user+`gsettings get org.gnome.desktop.interface monospace-font-name; `+
 		`for f in monospace sans-serif system-ui; do fc-match -f '%{family[0]}\n' $f; done`, "")

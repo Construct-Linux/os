@@ -571,3 +571,152 @@ func TestABlankScreenIsNotMeasured(t *testing.T) {
 		t.Errorf("%+v", l.r.results)
 	}
 }
+
+// resultNamed is the last result of the check called name, failing the test without one.
+func resultNamed(t *testing.T, r *report, name string) result {
+	t.Helper()
+	for i := len(r.results) - 1; i >= 0; i-- {
+		if r.results[i].name == name {
+			return r.results[i]
+		}
+	}
+	t.Fatalf("no %q in %+v", name, r.results)
+	return result{}
+}
+
+// The lock screen: its ground the boot's black, the dark shell theme loaded, and the clock's digits
+// regular - a bold clock's stems are past the ratio.
+func TestLockView(t *testing.T) {
+	l := testLF(t, 1)
+	fg := color.NRGBA{0xE6, 0xED, 0xF2, 255}
+	clock := pixels.Rect{X: 200, Y: 100, W: 240, H: 80}
+	shot := func(stem int) image.Image {
+		img := solid(640, 400, tBlack)
+		fill(img, pixels.Rect{X: 220, Y: 110, W: stem, H: 60}, fg)
+		fill(img, pixels.Rect{X: 260, Y: 110, W: stem, H: 60}, fg)
+		return img
+	}
+	s := lockSeen{Group: &lfLook{BG: "#000000FF"}, Time: &lfLook{X: clock.X, Y: clock.Y, W: clock.W, H: clock.H, FG: "#E6EDF2FF"},
+		URI: "resource:///org/gnome/shell/theme/gnome-shell-dark.css"}
+	l.lock(shot(6), s)
+	for _, n := range []string{"lf: ground lock", "lf: theme lock", "lf: type lock clock"} {
+		if res := resultNamed(t, l.r, n); !res.ok {
+			t.Errorf("%s: %+v", n, res)
+		}
+	}
+	l.lock(shot(14), s)
+	if res := resultNamed(t, l.r, "lf: type lock clock"); res.ok {
+		t.Errorf("a bold clock passed: %+v", res)
+	}
+	s.URI = "resource:///org/gnome/shell/theme/gnome-shell.css"
+	l.lock(shot(6), s)
+	if res := resultNamed(t, l.r, "lf: theme lock"); res.ok {
+		t.Errorf("the stock theme passed: %+v", res)
+	}
+}
+
+// The installer's window: its body f, the border outside its left and bottom edges, its headerbar
+// g, and one line of the border under the headerbar. Without the ring, or with another window
+// focused, it fails.
+func TestInstallerView(t *testing.T) {
+	l := testLF(t, 1)
+	win := pixels.Rect{X: 100, Y: 40, W: 440, H: 320}
+	f, g, border := l.c("neutral-f"), l.c("neutral-g"), l.c("dark-border")
+	shot := func(ring bool) image.Image {
+		img := solid(640, 400, l.c("neutral-e"))
+		fill(img, win, f)
+		fill(img, pixels.Rect{X: win.X, Y: win.Y, W: win.W, H: 46}, g)
+		fill(img, pixels.Rect{X: win.X, Y: win.Y + 46, W: win.W, H: 1}, border)
+		if ring {
+			fill(img, pixels.Rect{X: win.X - 1, Y: win.Y, W: 1, H: win.H}, border)
+			fill(img, pixels.Rect{X: win.X, Y: win.Y + win.H, W: win.W, H: 1}, border)
+		}
+		return img
+	}
+	s := windowSeen{Win: &win, Cls: "io.github.construct_linux.Installer"}
+	l.installer(shot(true), s)
+	for _, n := range []string{"lf: window installer", "lf: rule installer headerbar"} {
+		if res := resultNamed(t, l.r, n); !res.ok {
+			t.Errorf("%s: %+v", n, res)
+		}
+	}
+	l.installer(shot(false), s)
+	if res := resultNamed(t, l.r, "lf: window installer"); res.ok {
+		t.Errorf("no ring passed: %+v", res)
+	}
+	l.installer(shot(true), windowSeen{Win: &win, Cls: "org.gnome.Nautilus"})
+	if res := resultNamed(t, l.r, "lf: window installer"); res.ok {
+		t.Errorf("another window passed: %+v", res)
+	}
+}
+
+// Each forced state fills its toggle with the accent at its step's tint over h, in St and on the
+// screen; a step not forced, or a fill another step's, fails.
+func TestStatesView(t *testing.T) {
+	l := testLF(t, 1)
+	h, accent := l.c("neutral-h"), l.c("dark-accent")
+	img := solid(640, 400, h)
+	var s []stateSeen
+	for i, st := range []struct{ state, tok string }{{"rest", "tint-dark-rest"}, {"hover", "tint-dark-hover"}, {"active", "tint-dark-active"}} {
+		want := pixels.Tint(accent, h, l.pal.nums[st.tok])
+		r := pixels.Rect{X: 20 + 120*i, Y: 20, W: 100, H: 40}
+		fill(img, r, want)
+		look := &lfLook{X: r.X, Y: r.Y, W: r.W, H: r.H, Chain: []string{pixels.Hexa(want)}}
+		title := &lfLook{FG: pixels.Hexa(l.c("dark-accent-text")), Opacity: 1, Chain: []string{pixels.Hexa(want)}}
+		s = append(s, stateSeen{State: st.state, Look: look, Title: title})
+	}
+	l.states(img, s)
+	if res := lastResult(t, l.r); !res.ok {
+		t.Errorf("three states as the tints: %+v", res)
+	}
+	l.states(img, s[:2])
+	if res := lastResult(t, l.r); res.ok {
+		t.Errorf("active not forced passed: %+v", res)
+	}
+	s[1].Look.Chain = s[0].Look.Chain
+	l.states(img, s)
+	if res := lastResult(t, l.r); res.ok {
+		t.Errorf("hover filled as rest passed: %+v", res)
+	}
+}
+
+// Every shown app's icon is Tela's or a brand tile; one the icon theme found elsewhere fails.
+func TestShellIcons(t *testing.T) {
+	l := testLF(t, 1)
+	s := shellSeen{ToggleOn: true, Background: "const DEFAULT_BACKGROUND_COLOR = new Cogl.Color({red: 0, green: 0, blue: 0, alpha: 255});",
+		Icons: []struct{ ID, Icon, File string }{
+			{"org.gnome.TextEditor.desktop", "org.gnome.TextEditor", "/usr/share/icons/Tela-dark/scalable/apps/org.gnome.TextEditor.svg"},
+			{"io.github.construct_linux.Installer.desktop", "io.github.construct_linux.Installer", "/usr/share/icons/hicolor/scalable/apps/io.github.construct_linux.Installer.svg"},
+		}}
+	l.shell(s)
+	for _, n := range []string{"lf: icons apps", "lf: gresource toggle-on", "lf: startup stage background.js"} {
+		if res := resultNamed(t, l.r, n); !res.ok {
+			t.Errorf("%s: %+v", n, res)
+		}
+	}
+	if res := resultNamed(t, l.r, "lf: css shell"); res.ok {
+		t.Errorf("no stylesheet passed: %+v", res)
+	}
+	s.Icons = append(s.Icons, struct{ ID, Icon, File string }{"x.desktop", "x", "/usr/share/icons/Adwaita/scalable/apps/x.svg"})
+	l.shell(s)
+	if res := resultNamed(t, l.r, "lf: icons apps"); res.ok || !strings.Contains(res.detail, "x.desktop") {
+		t.Errorf("Adwaita's icon passed: %+v", res)
+	}
+}
+
+// A maximized window is square and ringless; a rounded corner shows the desk in it.
+func TestSquareView(t *testing.T) {
+	l := testLF(t, 1)
+	win := pixels.Rect{X: 0, Y: 40, W: 640, H: 320}
+	img := solid(640, 400, l.c("neutral-e"))
+	fill(img, win, l.c("neutral-g"))
+	l.square(img, win)
+	if res := lastResult(t, l.r); !res.ok {
+		t.Errorf("a square window: %+v", res)
+	}
+	img.SetNRGBA(win.X, win.Y, l.c("neutral-e"))
+	l.square(img, win)
+	if res := lastResult(t, l.r); res.ok {
+		t.Errorf("a rounded corner passed: %+v", res)
+	}
+}
