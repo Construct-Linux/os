@@ -300,9 +300,9 @@ func lifecycle(args []string) error {
 const lifecycleKeyPIN = "482913"
 
 // securityKey runs step 2b on the installed machine m (first is it without the password's
-// credential, as a person boots it): a key plugged in, given a PIN as a new key is, added from the
-// running system by construct key with the person's password - opening the disk and signing them
-// in - then the boots with and without it. It reports whether the machine still boots for the steps after it. A QEMU without CanoKey
+// credential, as a person boots it): a new key plugged in, added from the running system by
+// construct key with the person's password and the PIN it gives the key - opening the disk and
+// signing them in - then the boots with and without it. It reports whether the machine still boots for the steps after it. A QEMU without CanoKey
 // has no key to plug in, and says so.
 func (r *report) securityKey(m, first machine, dir string) bool {
 	if !qemuHasCanoKey() {
@@ -318,15 +318,13 @@ func (r *report) securityKey(m, first machine, dir string) bool {
 		r.add("boot with a security key not yet enrolled", false, err.Error())
 		return false
 	}
-	// fido2-token asks for a new key's PIN at a terminal, as a person types it, and drops what was
-	// typed before it asked: script gives it one, and each PIN follows its question. Then the key is
-	// added as the app adds it: construct key, the password on its standard input.
+	// A new key, no PIN yet, added as the app adds it: construct key, the password and then the PIN
+	// on its standard input; construct gives the key the PIN before it enrolls it.
 	enroll, err := g.run(`dev=$(fido2-token -L | grep -m1 -i canokey | cut -d: -f1) && `+
-		`(sleep 2; echo '`+lifecycleKeyPIN+`'; sleep 2; echo '`+lifecycleKeyPIN+`'; sleep 2) | script -qec "fido2-token -S $dev" /dev/null && `+
-		`umask 077 && printf '%s' '`+lifecycleKeyPIN+`' > /run/pin && `+
-		`printf '%s\n' '`+lifecyclePassword+`' | timeout 120 construct key add --device $dev --name YubiKey --user `+lifecycleUser+` --pin-file /run/pin 2>&1; `+
-		`rc=$?; rm -f /run/pin; systemd-cryptenroll /dev/nvme0n1p6; construct key list; exit $rc`, "")
-	r.add("enroll a security key", err == nil && strings.Contains(enroll, "fido2") && strings.Contains(enroll, "YubiKey\t"+lifecycleUser+"\topens the disk"),
+		`printf '%s\n%s\n' '`+lifecyclePassword+`' '`+lifecycleKeyPIN+`' | timeout 120 construct key add --device $dev --name YubiKey --user `+lifecycleUser+` --pin-file - 2>&1; `+
+		`rc=$?; fido2-token -I $dev | grep options; systemd-cryptenroll /dev/nvme0n1p6; construct key list; exit $rc`, "")
+	r.add("enroll a security key", err == nil && strings.Contains(enroll, "fido2") && strings.Contains(enroll, "YubiKey\t"+lifecycleUser+"\topens the disk") &&
+		strings.Contains(enroll, " clientPin"),
 		oneLine(enroll)+errText(err))
 	// The key signs the person in where sudo asks: a wrong password, and the touch lets them in.
 	sudo, err := g.run(`runuser -u `+lifecycleUser+` -- sh -c 'echo wrong | sudo -S -k true' 2>&1; echo rc=$?`, "")

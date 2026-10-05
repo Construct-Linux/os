@@ -48,6 +48,8 @@ var apps = []app{
 	{"org.gnome.Software.desktop", 60 * time.Second},
 	{"org.gnome.Papers.desktop", 20 * time.Second},
 	{"org.gnome.Calendar.desktop", 30 * time.Second},
+	// Construct's own app: its security keys page, the first, with none added.
+	{"io.github.construct_linux.Construct.desktop", 20 * time.Second},
 	{"firefox.desktop", 60 * time.Second},
 	{"com.google.Chrome.desktop", 60 * time.Second},
 	// Last: it asks for the camera, a shell dialog over whatever opens after it.
@@ -289,6 +291,11 @@ func test(args []string) error {
 		}
 		ok, detail := g.runApp(a)
 		r.add(a.id, ok, detail)
+		// Software opens on Explore, whose banner and picks are Flathub's of the day: the view
+		// would differ from its needle every day. Its Installed page is what the image carries.
+		if a.id == "org.gnome.Software.desktop" && ok {
+			_, _ = g.run(asLive+`timeout 10 gnome-software --mode=installed`, "")
+		}
 		// A window exists before it is drawn: Software loads its catalogue, Calendar its sources,
 		// Maps its tiles. The screenshot is what a person sees a few seconds in.
 		time.Sleep(5 * time.Second)
@@ -354,6 +361,8 @@ func appView(id string) viewMeta {
 		m.about, m.rules = "Chrome's first window in GTK mode: its tab strip from the theme, not Chrome's own dark grey", []string{"X3"}
 	case "firefox.desktop":
 		m.about, m.rules = "Firefox's first window under Orchis-Construct", []string{"X3"}
+	case "org.gnome.Software.desktop":
+		m.about = "Software's Installed page, what the image carries: its front page is Flathub's of the day"
 	}
 	return m
 }
@@ -986,11 +995,26 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	}
 	r.add("view:gtk-banner"+suffix, err == nil, "a file Text Editor has open, changed on disk"+errText(err))
 	shot("gtk-banner")
-	// A destructive confirmation: the document typed into, Text Editor asked to quit asks first,
-	// a libadwaita alert with Discard as the destructive response. Escape answers Cancel, and the
-	// editor is stopped without its answer: nothing it holds is anyone's.
-	// The alert draws inside the window, no surface of its own: that the editor is still running
-	// is what says it waits on the answer.
+	// The editor is stopped without an answer to anything it asks: nothing it holds is anyone's.
+	stopEditor := func() {
+		pids, _ := g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_pids().join(" ")`, id))
+		// A string comes back JSON-quoted.
+		if pids = strings.Trim(pids, `" `); pids != "" {
+			_, _ = g.run(`kill `+pids, "")
+		}
+		time.Sleep(2 * time.Second)
+	}
+	// A destructive confirmation: a new document typed into, Text Editor asked to quit asks first,
+	// a libadwaita alert with Discard as the destructive response; Escape answers Cancel. A fresh
+	// editor, not the banner's: the banner the changed file raises came and went with the timing,
+	// and the view differed from its needle by it. The alert draws inside the window, no surface
+	// of its own: that the editor still has a window is what says it waits on the answer.
+	stopEditor()
+	if ok, detail := g.runApp(app{id, 20 * time.Second}); !ok {
+		r.add("view:gtk-destructive"+suffix, false, detail)
+		return
+	}
+	time.Sleep(3 * time.Second)
 	err = v.typeText("construct")
 	if err == nil {
 		time.Sleep(time.Second)
@@ -1005,12 +1029,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	shot("gtk-destructive")
 	_ = v.key("esc")
 	time.Sleep(time.Second)
-	pids, _ := g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_pids().join(" ")`, id))
-	// A string comes back JSON-quoted.
-	if pids = strings.Trim(pids, `" `); pids != "" {
-		_, _ = g.run(`kill `+pids, "")
-	}
-	time.Sleep(2 * time.Second)
+	stopEditor()
 }
 
 // viewsTime is the moment the views are shot at: the calendar's month and its today, the date
