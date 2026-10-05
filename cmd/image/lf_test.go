@@ -809,3 +809,17 @@ func TestLockErrorCheck(t *testing.T) {
 		t.Error("a failed measurement passed")
 	}
 }
+
+// A screenshot of one colour drew nothing: the view fails as undrawn and nothing on it is checked
+// - the boot's black would otherwise pass the overview's ground and every "none of" check.
+func TestABlankScreenIsNotMeasured(t *testing.T) {
+	l := testLF(t, 2)
+	if err := writePNG(filepath.Join(l.r.dir, "shell-app-grid.png"), solid(1280, 800, color.NRGBA{0, 0, 0, 255})); err != nil {
+		t.Fatal(err)
+	}
+	l.r.results = nil
+	l.view("shell-app-grid")
+	if len(l.r.results) != 1 || l.r.results[0].ok || l.r.results[0].name != "lf: drawn shell-app-grid" {
+		t.Errorf("%+v", l.r.results)
+	}
+}

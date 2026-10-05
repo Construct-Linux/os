@@ -23,6 +23,9 @@ const (
 	// A surface's most common colour, against its token: llvmpipe draws flat fills exactly, and
 	// 2 leaves room for a dithered gradient's step.
 	lfSurfaceTol = 2
+	// lfBlankShare is the share of one colour past which a screenshot drew nothing: the most
+	// uniform view drawn, Text Editor maximized, is 92% its surface (test:usb, 2026-10-05).
+	lfBlankShare = 0.98
 	// A 1 px ring, against its token: antialiasing on a fractional allocation blends a little of
 	// either neighbour into it.
 	lfRingTol = 3
@@ -479,6 +482,13 @@ func (l *lf) view(name string) {
 	l.cur = name
 	img, ok := l.img(name)
 	if !ok {
+		return
+	}
+	// A screen of one colour drew nothing - a display blanked, a window not yet painted - and
+	// every check below that asks for what is not there (no accent, not Chrome's grey, the boot's
+	// black) would pass on it.
+	if c, share := modeColor(img, lfRect{0, 0, img.Bounds().Dx(), img.Bounds().Dy()}); share > lfBlankShare {
+		l.check("drawn", name, false, fmt.Sprintf("%.1f%% of the screen is %s: nothing drawn to measure", share*100, hexOf(c)))
 		return
 	}
 	l.sweep(name, img)
@@ -1527,9 +1537,10 @@ func (l *lf) app(id, shot string) {
 			fmt.Sprintf("title bar %s and editor %s want %s; side %s and status bar %s want %s",
 				hexOf(title), hexOf(editor), hexOf(g), hexOf(side), hexOf(status), hexOf(f)))
 	case "com.google.Chrome.desktop":
+		// Its title bar in GTK mode is the theme's headerbar, g - on its first window, the terms it
+		// asks to be accepted - never Chrome's own #202124, nor a window not yet drawn.
 		strip := region(8, 3, r.W-16, 10)
-		stock := color.NRGBA{0x20, 0x21, 0x24, 255}
-		l.check("app", "chrome", !near(strip, stock, lfSurfaceTol), fmt.Sprintf("tab strip %s, want not Chrome's own %s", hexOf(strip), hexOf(stock)))
+		l.check("app", "chrome", near(strip, g, lfSurfaceTol), fmt.Sprintf("title bar %s, want the theme's %s (Chrome's own is #202124)", hexOf(strip), hexOf(g)))
 	case "firefox.desktop":
 		l.firefoxControls(id)
 	}
