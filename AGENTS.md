@@ -213,11 +213,14 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 
 AutoFDO/Propeller profiles recorded on the NucBox; boot time measured on the NucBox itself
 (every report's `boot.txt` has the VM's: an installed disk 8.0 s, of it the initrd 1.6 s; the
-stick 13.1 s, most of it GDM's first frame over emulated USB); the initrd's size (38 MB
-compressed): the NSS and PAM modules it never uses, systemd-networkd and its kin, lvm2's
-`lvm` that device-mapper's udev rules pull in with it; a services audit (`systemd-analyze
-security` rates gdm, sshd and docker UNSAFE); fwupd's UEFI capsule updates, which need
-fwupd-efi built and its binary signed with db's key; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
+stick 13.1 s, most of it GDM's first frame over emulated USB); the initrd's size (31 MB
+compressed, after its PAM and NSS modules, network daemons, LVM and OpenSSL 3 went; Wolfi's lvm2
+package carries device-mapper's udev rules, which stay); tailscaled's sandbox (`systemd-analyze
+security` 9.4), which needs a tailnet to be tested - cups-browsed and geoclue are sandboxed, gdm,
+docker, containerd and udisks2 are what they are for; fwupd's UEFI capsule updates, which need
+fwupd-efi built and its binary signed with db's key before the root is made, inside the verified
+`/usr` - a new step at the front of the release's signing, and testable only on hardware with
+capsules; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
 resolver meanwhile): libproxy holds its manager's mutex through a PAC or WPAD download and run, so
 one slow lookup blocks the rest (libproxy#370); take the fix into `recipes/libproxy` once
 libproxy#371 is merged.
