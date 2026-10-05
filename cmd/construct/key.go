@@ -221,12 +221,12 @@ func withPIN(ctx context.Context, pin, name string, args ...string) error {
 	}
 	var said bytes.Buffer
 	buf := make([]byte, 512)
-	asked := false
+	answered := 0
 	for {
 		n, rerr := stdout.Read(buf)
 		said.Write(buf[:n])
-		if !asked && bytes.Contains(said.Bytes(), []byte("PIN")) {
-			asked = true
+		// Each question about the PIN gets it once: setting a new one asks twice.
+		for ; answered < bytes.Count(said.Bytes(), []byte("PIN")); answered++ {
 			if pin == "" {
 				_ = c.Process.Kill()
 				_ = c.Wait()
@@ -323,7 +323,7 @@ func keyCmd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 	}
 	switch args[0] {
 	case "list":
-		return keyList(args[1:], stdout)
+		return keyList(ctx, args[1:], stdout)
 	case "add":
 		return keyAdd(ctx, args[1:], stdin, stdout)
 	case "remove":
@@ -332,7 +332,7 @@ func keyCmd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 	return fmt.Errorf("key: %q is none of list, add, remove", args[0])
 }
 
-func keyList(args []string, stdout io.Writer) error {
+func keyList(ctx context.Context, args []string, stdout io.Writer) error {
 	fl := flag.NewFlagSet("key list", flag.ContinueOnError)
 	asJSON := fl.Bool("json", false, "the keys as JSON")
 	if err := fl.Parse(args); err != nil {
@@ -343,10 +343,18 @@ func keyList(args []string, stdout io.Writer) error {
 		return err
 	}
 	if *asJSON {
+		// Encrypted says whether adding a key asks for the password: it unlocks the disk's header.
+		partition, err := varPartition(ctx)
+		if err != nil {
+			return err
+		}
 		if keys == nil {
 			keys = []registeredKey{}
 		}
-		return json.NewEncoder(stdout).Encode(keys)
+		return json.NewEncoder(stdout).Encode(struct {
+			Encrypted bool            `json:"encrypted"`
+			Keys      []registeredKey `json:"keys"`
+		}{partition != "", keys})
 	}
 	for _, k := range keys {
 		disk := "opens the disk"
@@ -363,7 +371,7 @@ func keyAdd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 	device := fl.String("device", "", "the key's hidraw node; the one key plugged in when unset")
 	name := fl.String("name", "", "what to call it: \"YubiKey\", \"Backup\"")
 	who := fl.String("user", "", "the account it signs in; the one pkexec ran this for when unset")
-	pinFile := fl.String("pin-file", "", "the key's PIN, a file or /dev/fd/N")
+	pinFile := fl.String("pin-file", "", "the key's PIN: a file, or - for the line after the password on standard input (pkexec passes no other descriptor)")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
@@ -380,8 +388,9 @@ func keyAdd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 			return err
 		}
 	}
+	in := bufio.NewReader(stdin)
 	pin := ""
-	if *pinFile != "" {
+	if *pinFile != "" && *pinFile != "-" {
 		b, err := os.ReadFile(*pinFile)
 		if err != nil {
 			return err
@@ -401,9 +410,14 @@ func keyAdd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 		return err
 	}
 	if partition != "" {
-		password, err := keyPassword(stdin)
+		password, err := keyPassword(in)
 		if err != nil {
 			return err
+		}
+		if *pinFile == "-" {
+			if pin, err = readLine(in); err != nil {
+				return fmt.Errorf("key add: the PIN, after the password: %w", err)
+			}
 		}
 		if pin == "" {
 			return errors.New("key add: the disk opens with the key's PIN and a touch: --pin-file")
@@ -422,6 +436,12 @@ func keyAdd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 		}
 		if k.Slot, err = newSlot(before, after); err != nil {
 			return err
+		}
+	}
+	// No disk to unlock, no password: the PIN, if any, is the first line.
+	if partition == "" && *pinFile == "-" {
+		if pin, err = readLine(in); err != nil {
+			return fmt.Errorf("key add: the PIN, on standard input: %w", err)
 		}
 	}
 	fmt.Fprintln(stdout, "touch the key again: it will sign you in")
@@ -461,7 +481,7 @@ func keyRemove(ctx context.Context, args []string, stdin io.Reader, stdout io.Wr
 		}
 		// Only a slot a security key's token opens: the record never wipes the password's.
 		if slices.Contains(slots, k.Slot) {
-			password, err := keyPassword(stdin)
+			password, err := keyPassword(bufio.NewReader(stdin))
 			if err != nil {
 				return err
 			}
@@ -517,8 +537,8 @@ func onlyKey(ctx context.Context) (string, error) {
 
 // keyPassword is the person's password, which unlocks the LUKS2 header for a key's slot: typed
 // at a terminal, or the first line of what stdin carries (pkexec from the app).
-func keyPassword(stdin io.Reader) (string, error) {
-	pw, err := readPassword(bufio.NewReader(stdin), os.Stderr, "Password: ")
+func keyPassword(in *bufio.Reader) (string, error) {
+	pw, err := readPassword(in, os.Stderr, "Password: ")
 	if err == nil && pw == "" {
 		err = errors.New("the password, on standard input")
 	}

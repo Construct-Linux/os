@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bufio"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -18,7 +20,7 @@ func pinFile(t *testing.T, body string) string {
 
 // A key and its backup, each with its own PIN, in the order they were named.
 func TestSecurityKeysPairWithTheirPINs(t *testing.T) {
-	keys, err := securityKeysFrom([]string{"/dev/hidraw4", "/dev/hidraw5"}, pinFile(t, "482913\r\nbackup-pin\n"))
+	keys, err := securityKeysFrom([]string{"/dev/hidraw4", "/dev/hidraw5"}, pinFile(t, "482913\r\nbackup-pin\n"), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -43,13 +45,35 @@ func TestSecurityKeysRefuse(t *testing.T) {
 			if c.pins != "" {
 				file = pinFile(t, c.pins)
 			}
-			_, err := securityKeysFrom(c.devices, file)
+			_, err := securityKeysFrom(c.devices, file, nil)
 			if err == nil || !strings.Contains(err.Error(), c.want) {
 				t.Errorf("err = %v, want %q", err, c.want)
 			}
 		})
 	}
-	if keys, err := securityKeysFrom(nil, ""); err != nil || keys != nil {
+	if keys, err := securityKeysFrom(nil, "", nil); err != nil || keys != nil {
 		t.Errorf("no key: %v, %v", keys, err)
+	}
+}
+
+// Through pkexec the installer has one pipe: the password's line, then each key's PIN.
+func TestSecurityKeysPINsAfterThePassword(t *testing.T) {
+	in := bufio.NewReader(strings.NewReader("correct horse\n482913\nbackup-pin\n"))
+	who, err := personFrom(in, io.Discard, "ada", "", "-")
+	if err != nil || who.password != "correct horse" {
+		t.Fatalf("%q %v", who.password, err)
+	}
+	keys, err := securityKeysFrom([]string{"/dev/hidraw4", "/dev/hidraw5"}, "-", in)
+	if err != nil || len(keys) != 2 || keys[0].pin != "482913" || keys[1].pin != "backup-pin" {
+		t.Errorf("%+v %v", keys, err)
+	}
+}
+
+// A new key says noclientPin among its options; one with a PIN says clientPin.
+func TestNoClientPIN(t *testing.T) {
+	fresh := "proto: 0x02\nmajor: 0x05\noptions: rk, up, noplat, noclientPin, credentialMgmtPreview\n"
+	set := "options: rk, up, noplat, clientPin, credentialMgmtPreview\n"
+	if !noClientPIN(fresh) || noClientPIN(set) || noClientPIN("aaguid: 00\n") {
+		t.Error(noClientPIN(fresh), noClientPIN(set))
 	}
 }

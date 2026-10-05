@@ -181,7 +181,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	hostname := fl.String("hostname", "", "the computer's name, one label: ada-x9 (default: asked; with --yes, "+defaultHostname+")")
 	var keyDevices stringList
 	fl.Var(&keyDevices, "security-key", "a FIDO2 key's hidraw node that opens the disk too, with its PIN and a touch; twice for a backup key")
-	keyPINFile := fl.String("key-pin-file", "", "the security keys' PINs, one a line in --security-key's order: a file or /dev/fd/N")
+	keyPINFile := fl.String("key-pin-file", "", "the security keys' PINs, one a line in --security-key's order: a file, or - for the lines after the password on standard input (pkexec passes no other descriptor)")
 	jsonOut := fl.Bool("json", false, "tell what is done as JSON lines on standard output, progress included: what the graphical installer reads")
 	_ = fl.Parse(args)
 	log, progress := journal(), func(string, int64, int64) {}
@@ -231,7 +231,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	if who.lang, err = languageFrom(*locale, *keyboard); err != nil {
 		return err
 	}
-	if who.keys, err = securityKeysFrom(keyDevices, *keyPINFile); err != nil {
+	if who.keys, err = securityKeysFrom(keyDevices, *keyPINFile, ask); err != nil {
 		return err
 	}
 	switch {

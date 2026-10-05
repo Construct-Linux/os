@@ -37,16 +37,21 @@ func personFrom(in *bufio.Reader, out io.Writer, name, realName, passwordFile st
 		if name == "" || passwordFile == "" {
 			return person{}, errors.New("--user and --password-file go together")
 		}
-		var b []byte
-		var err error
+		var pw string
 		if passwordFile == "-" {
-			// The graphical installer's pipe: a password never on a command line.
-			b, err = io.ReadAll(in)
+			// The graphical installer's pipe: a password never on a command line. Its first line:
+			// the security keys' PINs may follow (--key-pin-file -).
+			line, err := in.ReadString('\n')
+			if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+				return person{}, err
+			}
+			pw = line
 		} else {
-			b, err = os.ReadFile(passwordFile)
-		}
-		if err != nil {
-			return person{}, err
+			b, err := os.ReadFile(passwordFile)
+			if err != nil {
+				return person{}, err
+			}
+			pw = string(b)
 		}
 		if err := account.ValidName(name); err != nil {
 			return person{}, err
@@ -54,7 +59,7 @@ func personFrom(in *bufio.Reader, out io.Writer, name, realName, passwordFile st
 		if realName == "" {
 			realName = name
 		}
-		pw := strings.TrimRight(string(b), "\n")
+		pw = strings.TrimRight(pw, "\r\n")
 		if pw == "" {
 			return person{}, errors.New("the password is empty")
 		}
