@@ -110,7 +110,8 @@ func Writable(root string, p Profile) (Profile, []string) {
 	return kept, dropped
 }
 
-// Apply writes p's settings under root. The caller turns zram on or off: that is swapon's.
+// Apply writes p's settings under root. Use (run.go) turns zram on or off with them: that is
+// systemd's units', not a setting's.
 func Apply(root string, p Profile) error {
 	var errs []error
 	for _, s := range p.Settings {
