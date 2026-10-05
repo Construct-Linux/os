@@ -59,7 +59,7 @@ const usage = `usage:
   construct kernel-profile [--minutes N] [-o FILE]
   construct report
   construct channel    [CHANNEL]
-  construct key        list [--json] | add --name NAME [--device DEV] [--user NAME] [--pin-file FILE] | remove --name NAME
+  construct key        list [--json] | add --name NAME [--device DEV] [--user NAME] [--pin-file FILE|-] | remove --name NAME | lock-on-removal [on|off]
   construct 1password  install | update`
 
 func main() {

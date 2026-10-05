@@ -328,8 +328,12 @@ func keyCmd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 		return keyAdd(ctx, args[1:], stdin, stdout)
 	case "remove":
 		return keyRemove(ctx, args[1:], stdin, stdout)
+	case "lock-on-removal":
+		return keyLockOnRemoval(args[1:], stdout, "/etc")
+	case "removed":
+		return keyRemoved(ctx, "/etc")
 	}
-	return fmt.Errorf("key: %q is none of list, add, remove", args[0])
+	return fmt.Errorf("key: %q is none of list, add, remove, lock-on-removal, removed", args[0])
 }
 
 func keyList(ctx context.Context, args []string, stdout io.Writer) error {
@@ -543,4 +547,44 @@ func keyPassword(in *bufio.Reader) (string, error) {
 		err = errors.New("the password, on standard input")
 	}
 	return pw, err
+}
+
+// lockOnRemoval, when it exists, asks for the sessions to lock as a security key is unplugged:
+// the person walks away with the key, and the screen locks behind them. Off unless they turn it on.
+const lockOnRemoval = "construct/lock-on-key-removal"
+
+// keyLockOnRemoval is construct key lock-on-removal [on|off]: says, or sets, whether unplugging a
+// key locks the screen.
+func keyLockOnRemoval(args []string, stdout io.Writer, etc string) error {
+	path := filepath.Join(etc, lockOnRemoval)
+	switch {
+	case len(args) == 0:
+		_, err := os.Stat(path)
+		on := err == nil
+		if err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		fmt.Fprintln(stdout, map[bool]string{true: "on", false: "off"}[on])
+		return nil
+	case len(args) == 1 && args[0] == "on":
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
+		return writeAtomic(path, nil)
+	case len(args) == 1 && args[0] == "off":
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	return errors.New("key lock-on-removal: on, off, or nothing to say which")
+}
+
+// keyRemoved is what udev runs as a security key is unplugged (usr/lib/udev/rules.d): the
+// sessions lock, if the person asked for it.
+func keyRemoved(ctx context.Context, etc string) error {
+	if _, err := os.Stat(filepath.Join(etc, lockOnRemoval)); errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	return cmd(ctx, nil, nil, "loginctl", "lock-sessions")
 }
