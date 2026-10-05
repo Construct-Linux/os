@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"errors"
 	"fmt"
@@ -180,8 +181,13 @@ func buildInitrd(osRelease, dst string) error {
 	if err := os.Symlink("usr/lib/systemd/systemd", filepath.Join(stage, "init")); err != nil {
 		return err
 	}
-	pack := "cd " + shellQuote(stage) + " && find . -mindepth 1 | LC_ALL=C sort | cpio --quiet -o -H newc -R 0:0 | zstd -q -T0 -19 > " + shellQuote(dst)
-	if err := run("sh", "-c", pack); err != nil {
+	names, err := treeNames(stage, ".")
+	if err != nil {
+		return err
+	}
+	// find . -mindepth 1: everything under the stage, not "." itself.
+	names = bytes.TrimPrefix(names, []byte(".\n"))
+	if err := pipeline(stage, dst, names, []string{"cpio", "--quiet", "-o", "-H", "newc", "-R", "0:0"}, []string{"zstd", "-q", "-T0", "-19"}); err != nil {
 		return fmt.Errorf("packing the initrd: %w", err)
 	}
 	fi, err := os.Stat(dst)

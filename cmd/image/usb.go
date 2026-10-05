@@ -5,9 +5,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -211,7 +213,7 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 	for name, src := range files {
 		dst := filepath.Join(dir, name)
 		if strings.HasSuffix(name, ".xz") {
-			if err := run("sh", "-c", "xz -T0 -6 -c "+shellQuote(src)+" > "+shellQuote(dst)); err != nil {
+			if err := pipeline("", dst, nil, []string{"xz", "-T0", "-6", "-c", src}); err != nil {
 				return "", err
 			}
 		} else if err := os.Link(src, dst); err != nil {
@@ -734,10 +736,11 @@ func microcode(dst string) (string, error) {
 			return "", err
 		}
 	}
-	cmd := exec.Command("sh", "-c", "find kernel | sort | cpio -o -H newc --quiet --reproducible > "+shellQuote(dst))
-	cmd.Dir = work
-	cmd.Stderr = os.Stderr
-	return dst, cmd.Run()
+	names, err := treeNames(work, "kernel")
+	if err != nil {
+		return "", err
+	}
+	return dst, pipeline(work, dst, names, []string{"cpio", "-o", "-H", "newc", "--quiet", "--reproducible"})
 }
 
 // repart lays the stick's image: the ESP, the root and its tree; /var is the stick's own, made at
@@ -781,6 +784,80 @@ func dirSize(dir string) int64 {
 	return n
 }
 
+// pipeline runs cmds in dir, each one's output the next one's input - stdin the first's, dst the
+// last's - and fails when any of them does: a shell's pipeline counts only its last program, and a
+// cpio that failed half way left a truncated initrd that zstd compressed, exiting 0, into a kernel
+// image that was then signed.
+func pipeline(dir, dst string, stdin []byte, cmds ...[]string) error {
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+	procs := make([]*exec.Cmd, len(cmds))
+	var in io.Reader = bytes.NewReader(stdin)
+	var closeAfterStart []*os.File
+	for i, c := range cmds {
+		cmd := exec.Command(c[0], c[1:]...)
+		cmd.Dir, cmd.Stdin, cmd.Stderr = dir, in, os.Stderr
+		if i == len(cmds)-1 {
+			cmd.Stdout = out
+		} else {
+			r, w, err := os.Pipe()
+			if err != nil {
+				return err
+			}
+			cmd.Stdout, in = w, r
+			closeAfterStart = append(closeAfterStart, r, w)
+		}
+		procs[i] = cmd
+	}
+	for _, cmd := range procs {
+		if err := cmd.Start(); err != nil {
+			return fmt.Errorf("%s: %w", cmd.Args[0], err)
+		}
+	}
+	// The children hold the pipes now; ours would keep a reader waiting for an end that never came.
+	for _, f := range closeAfterStart {
+		_ = f.Close()
+	}
+	var errs []error
+	for _, cmd := range procs {
+		if err := cmd.Wait(); err != nil {
+			errs = append(errs, fmt.Errorf("%s: %w", cmd.Args[0], err))
+		}
+	}
+	if err := errors.Join(errs...); err != nil {
+		return err
+	}
+	return out.Close()
+}
+
+// treeNames is what `find top | LC_ALL=C sort` lists from dir, a line a path, as cpio reads them:
+// top itself and everything under it, in byte order, so the same tree is the same archive.
+func treeNames(dir, top string) ([]byte, error) {
+	var names []string
+	err := filepath.WalkDir(filepath.Join(dir, top), func(path string, _ fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		if top == "." && rel != "." {
+			rel = "./" + rel
+		}
+		names = append(names, rel)
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	sort.Strings(names)
+	return []byte(strings.Join(names, "\n") + "\n"), nil
+}
+
 func run(name string, args ...string) error {
 	cmd := exec.Command(name, args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
@@ -794,8 +871,6 @@ func readFile(p string) string {
 	b, _ := os.ReadFile(p)
 	return string(b)
 }
-
-func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'" }
 
 // appendFlag collects -append's options, one per flag: a value with spaces does not survive the
 // quoting task usb passes it through.

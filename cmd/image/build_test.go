@@ -233,3 +233,38 @@ func TestLinkDuplicates(t *testing.T) {
 		t.Error("a different file was linked")
 	}
 }
+
+// A pipeline fails when any of its programs does, not only its last; what it writes is the last's.
+func TestPipeline(t *testing.T) {
+	dst := filepath.Join(t.TempDir(), "out")
+	if err := pipeline("", dst, []byte("b\na\n"), []string{"sort"}, []string{"tr", "a-z", "A-Z"}); err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(dst); string(b) != "A\nB\n" {
+		t.Errorf("%q", b)
+	}
+	if err := pipeline("", dst, nil, []string{"false"}, []string{"cat"}); err == nil {
+		t.Error("a failed first program passed: only the last one's exit was counted")
+	}
+}
+
+// The names are find's, in byte order: top itself, then what is under it, "./" before them for ".".
+func TestTreeNames(t *testing.T) {
+	dir := t.TempDir()
+	for _, p := range []string{"kernel/x86/microcode/GenuineIntel.bin", "kernel/x86/microcode/AuthenticAMD.bin"} {
+		if err := os.MkdirAll(filepath.Join(dir, filepath.Dir(p)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, p), nil, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	got, err := treeNames(dir, "kernel")
+	want := "kernel\nkernel/x86\nkernel/x86/microcode\nkernel/x86/microcode/AuthenticAMD.bin\nkernel/x86/microcode/GenuineIntel.bin\n"
+	if err != nil || string(got) != want {
+		t.Errorf("%q %v", got, err)
+	}
+	if got, _ := treeNames(dir, "."); !strings.HasPrefix(string(got), ".\n./kernel\n") {
+		t.Errorf("%q", got)
+	}
+}
