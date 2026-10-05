@@ -1,0 +1,9 @@
+# The person's security key in place of their password: a touch, where sudo, polkit and the lock
+# screen ask (included by sudo, polkit-1 and gdm-password, before the password). Without the key
+# plugged in, or with none registered, it steps aside and the password is asked as before.
+#
+# authfile: one file for every account, written by root alone (construct key): a key a session could
+# register for itself in its home would be a password anything in that session could set.
+# origin and appid: fixed, not pam://<hostname>, so renaming the machine does not orphan the keys.
+# Never nouserok here: with sufficient, it would let in an account with no key registered.
+auth       sufficient   pam_u2f.so authfile=/etc/u2f_mappings origin=pam://construct appid=pam://construct cue

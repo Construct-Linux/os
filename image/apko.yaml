@@ -247,13 +247,24 @@ contents:
     # A laptop's own: its light, motion and proximity sensors over D-Bus (automatic brightness,
     # rotation), started by udev; Intel's low-power-mode daemon, installed and not enabled until
     # it is measured (recipes/intel-lpmd). No fingerprint reader: the lock screen and sudo ask for
-    # the password, and nothing else would take a finger.
+    # the password or a security key's touch, and nothing else would take a finger.
     - iio-sensor-proxy
     - intel-lpmd
     # libfido2, which systemd-cryptenroll and systemd-cryptsetup open at run time for a security key,
     # and its tools: fido2-token lists keys and sets a new key's PIN, for the installer and a person.
     - libfido2
     - fido2
+    # The key in the session: pam_u2f takes its touch where sudo, polkit and the lock screen ask
+    # (etc/pam.d/construct-key), and pamu2fcfg registers one; ssh-sk-helper makes and uses SSH keys
+    # that live on it (ssh-keygen -t ed25519-sk).
+    - pam-u2f
+    - openssh-sk-helper
+    # A key's smart card side - PIV, OpenPGP, OATH - and a USB NFC reader: pcscd, started by its
+    # socket, polkit letting the active session at a card; the CCID driver it loads; and ykman,
+    # Yubico's tool for the rest of what a YubiKey holds (its PIN, a reset, its interfaces).
+    - pcsc-lite
+    - ccid
+    - yubikey-manager
     # script (util-linux): a terminal for a program that reads one, fido2-token's new-PIN prompt
     # among them.
     - script

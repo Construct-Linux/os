@@ -2,6 +2,7 @@
 # Wolfi does not have (its stack is base-auth, base-account, base-password, base-session): every
 # polkit authentication - GNOME asking for the password to change a setting or mount a disk -
 # failed with "unable to open config for system-auth".
+auth       include      construct-key
 auth       include      base-auth
 account    include      base-account
 password   include      base-password

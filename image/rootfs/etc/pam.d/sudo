@@ -1,0 +1,8 @@
+#%PAM-1.0
+# sudo's, on Wolfi's PAM stack (Wolfi's sudo ships none, and it fell back to other): the security
+# key's touch first, then the password.
+auth       include      construct-key
+auth       include      base-auth
+account    include      base-account
+password   include      base-password
+session    include      base-session-noninteractive

@@ -19,8 +19,11 @@ contents:
     # libkmod, which systemd and udevd open at run time: without it both log an error at every
     # boot, though the initrd loads no module.
     - kmod-libs
-    # libfido2, which systemd-cryptsetup opens at run time to unlock /var with a security key.
+    # libfido2, which systemd-cryptsetup opens at run time to unlock /var with a security key. It
+    # links pcsc-lite's library (recipes/libfido2: PC/SC for NFC readers in the session); the
+    # initrd runs no pcscd, and the disk opens with a key over USB.
     - libfido2
+    - pcsc-lite
     - mount
     - umount
     - util-linux
