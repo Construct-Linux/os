@@ -1,0 +1,106 @@
+package:
+  name: sudo
+  version: 1.9.17_p2
+  # Replaces Wolfi's sudo 1.9.17_p2 (epoch 10), built --without-pam: it checked /etc/shadow itself
+  # and never read /etc/pam.d/sudo, so a security key's touch (etc/pam.d/construct-key) could not
+  # stand beside the password there. Wolfi's recipe, CVE cherry-pick included, with PAM; sudo's
+  # PAM service is etc/pam.d/sudo.
+  epoch: 11
+  description: Give certain users the ability to run some commands as root
+  copyright:
+    - license: BSD-2-Clause AND BSD-2-Clause-NetBSD AND Zlib AND BSD-3-Clause AND BSD-2-Clause AND ISC
+  checks:
+    disabled:
+      - setuidgid
+  dependencies:
+    runtime:
+      - merged-usrsbin
+      - wolfi-baselayout
+
+var-transforms:
+  - from: ${{package.version}}
+    match: _p
+    replace: p
+    to: mangled-package-version
+
+environment:
+  contents:
+    packages:
+      - autoconf
+      - automake
+      - build-base
+      - busybox
+      - glibc-2.44-dev
+      - libselinux-dev
+      - linux-pam-dev
+      - zlib-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/sudo-project/sudo.git
+      tag: v${{vars.mangled-package-version}}
+      expected-commit: d1b48c651cec19fe37d1f0d3299d2283fb0f88e4
+      # TODO: remove once sudo 1.9.18 released (fix is already in the
+      # 1.9.18b2+ beta/rc series, just not in a stable release yet)
+      cherry-picks: |
+        main/3e474c2f201484be83d994ae10a4e20e8c81bb69: CVE-2026-35535
+
+  - uses: autoconf/configure
+    with:
+      opts: |
+        --disable-nls \
+        --enable-pie \
+        --with-env-editor \
+        --with-mdoc \
+        --with-pam \
+        --without-skey \
+        --with-sendmail=/usr/bin/sendmail \
+        --with-passprompt="[sudo] password for %p: " \
+        --sbindir=/usr/bin \
+        --with-selinux \
+        --enable-tmpfiles.d=/usr/lib/tmpfiles.d
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: |
+      # sudo must be owned by root with setuid set
+      chmod u+s ${{targets.contextdir}}/usr/bin/sudo
+      chmod 0644 ${{targets.contextdir}}/etc/sudo.conf
+      chmod 0440 ${{targets.contextdir}}/etc/sudoers
+
+  - uses: strip
+
+subpackages:
+  - name: sudo-doc
+    pipeline:
+      - uses: split/manpages
+    description: sudo manpages
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+
+  - name: sudo-doc-extra
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.contextdir}}/usr/share/doc
+          mv ${{targets.destdir}}/usr/share/doc/sudo ${{targets.contextdir}}/usr/share/doc/sudo
+    description: sudo examples and news
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+
+  - name: sudo-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - sudo
+        - wolfi-baselayout
+    description: sudo dev
+
