@@ -1,0 +1,13 @@
+#%PAM-1.0
+# GDM's fingerprint service, which the login and lock screens run beside the password once a
+# finger is enrolled (Settings, Users): a complement, never in its place - the password field stays,
+# and GDM asks for a finger only of a person who has one. fprintd's PAM module and nothing else
+# that would ask for a password. No pam_gnome_keyring in auth: the login keyring has no password of
+# its own (construct clearKeyring) and opens the same after a finger as after the password. GDM's
+# own build ships no such file for Wolfi's stack.
+auth       requisite   pam_nologin.so
+auth       required    pam_fprintd.so
+account    include     base-account
+password   required    pam_deny.so
+session    include     base-session
+-session   optional    pam_gnome_keyring.so auto_start

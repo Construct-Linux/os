@@ -231,9 +231,13 @@ func test(args []string) error {
 	// A laptop's sensors, which a VM has not: iio-sensor-proxy starts when udev finds one.
 	laptop, err := g.run(`grep -l iio-sensor-proxy.service /usr/lib/udev/rules.d/*.rules`, "")
 	r.add("laptop services", err == nil && strings.Contains(laptop, "80-iio-sensor-proxy.rules"), oneLine(laptop)+errText(err))
-	// The lock screen and sudo ask for the password: no PAM service or module takes a finger.
-	finger, _ := g.run(`ls /etc/pam.d/ /usr/lib/security/ | grep -i fprint`, "")
-	r.add("no fingerprint login", strings.TrimSpace(finger) == "", oneLine(finger))
+	// A finger is a complement to the password, never in its place: fprintd starts when the bus is
+	// asked for it, and only GDM's own fingerprint service - run beside the password at the login
+	// and lock screens - takes one; sudo, polkit and the password's service do not.
+	finger, err := g.run(`busctl --system list --activatable --no-legend | awk '$1=="net.reactivated.Fprint"{print $1}'; `+
+		`grep -l pam_fprintd /etc/pam.d/* | sort | tr '\n' ' '`, "")
+	r.add("fingerprint beside the password", err == nil &&
+		strings.Join(strings.Fields(finger), " ") == "net.reactivated.Fprint /etc/pam.d/gdm-fingerprint", oneLine(finger)+errText(err))
 	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it, and the
 	// cloud CLIs distrobox.conf installs into it.
 	box, err := g.run(`cd /tmp && `+asLive+`timeout 900 distrobox create --yes >/dev/null 2>&1 && `+asLive+`timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1; test -s /usr/share/terminfo/x/xterm-ghostty && echo ghostty-terminfo' 2>&1 | tail -4`, "")

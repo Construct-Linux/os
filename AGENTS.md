@@ -71,6 +71,12 @@ falling back from a release that does not come up.
   it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
   the passphrase when it has none. A recovery key is shown once at
   install. GDM then logs the person in, and sudo and the lock screen ask for the password again.
+- **Whatever else proves the person sits beside the password, never in its place.** A security key
+  (`construct key`) also opens the disk with its PIN and a touch, and its touch is taken where sudo,
+  polkit and the lock screen ask (`etc/pam.d/construct-key`: one root-written mappings file, a fixed
+  origin, never `nouserok`). An enrolled finger is taken at the login and lock screens only, by
+  GDM's own fingerprint service beside the password field (`etc/pam.d/gdm-fingerprint`); `task
+  test` checks no other PAM service takes one.
 - **Updates come only through url-file transfers.** systemd-sysupdate checks `SHA256SUMS.gpg` and
   every file's digest only for `url-file` sources (via systemd-pull); a `regular-file` source is
   written unchecked. A stick is read as `file:///run/construct/update`, GitHub Releases as
@@ -90,7 +96,7 @@ falling back from a release that does not come up.
   passwd and GNOME's Settings change them later; a root with nobody installed boots the
   passwordless `live` user `construct live` adds (construct-live.service). root stays locked (`*`).
   The person is logged in at boot once their password has opened `/var`; sudo (wheel, 15
-  minutes) and the lock screen ask for it.
+  minutes) and the lock screen ask for it, or for what stands beside it (above).
 
 ## What the root is, and what it implies
 
