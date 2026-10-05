@@ -71,7 +71,11 @@ func releaseVersion(args []string) error {
 	day := time.Now().UTC()
 	out, err := exec.Command("git", "ls-remote", "--tags", remote, "refs/tags/v"+day.Format("20060102")+".*").Output()
 	if err != nil {
-		return fmt.Errorf("git ls-remote: %w", err)
+		// git says why on stderr - a remote it cannot authenticate to is exit status 128 alone.
+		if ee, ok := err.(*exec.ExitError); ok {
+			return fmt.Errorf("git ls-remote %s: %w: %s", remote, err, strings.TrimSpace(string(ee.Stderr)))
+		}
+		return fmt.Errorf("git ls-remote %s: %w", remote, err)
 	}
 	var tags []string
 	for _, line := range strings.Split(string(out), "\n") {
