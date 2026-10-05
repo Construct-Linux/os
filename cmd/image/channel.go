@@ -8,8 +8,9 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
+
+	"github.com/Construct-Linux/os/internal/update"
 )
 
 // A channel is what machines that follow it may take: a SHA256SUMS that lists the files of a few
@@ -71,21 +72,8 @@ func (idx index) versions() []string {
 	for v := range idx {
 		vs = append(vs, v)
 	}
-	sort.Slice(vs, func(i, j int) bool { return newer(vs[i], vs[j]) })
+	sort.Slice(vs, func(i, j int) bool { return update.Compare(vs[i], vs[j]) > 0 })
 	return vs
-}
-
-// newer is whether version a is newer than b.
-func newer(a, b string) bool {
-	as, bs := strings.Split(a, "."), strings.Split(b, ".")
-	for i := 0; i < len(as) && i < len(bs); i++ {
-		x, _ := strconv.Atoi(as[i])
-		y, _ := strconv.Atoi(bs[i])
-		if x != y {
-			return x > y
-		}
-	}
-	return len(as) > len(bs)
 }
 
 // String is the index as SHA256SUMS, newest version first.

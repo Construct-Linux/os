@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"cmp"
 	"flag"
 	"fmt"
 	"os"
@@ -169,26 +170,78 @@ func superseded(files []string) []string {
 	return old
 }
 
-// versionLess compares two builds' versions segment by segment, numbers as numbers, then epochs.
+// versionLess is whether build a (version and epoch) is older than b, as apk orders them.
 func versionLess(a string, ea int, b string, eb int) bool {
-	split := func(s string) []string {
-		return strings.FieldsFunc(s, func(r rune) bool { return strings.ContainsRune("._+~", r) })
-	}
-	as, bs := split(a), split(b)
-	for i := 0; i < len(as) && i < len(bs); i++ {
-		x, xerr := strconv.Atoi(as[i])
-		y, yerr := strconv.Atoi(bs[i])
-		switch {
-		case xerr == nil && yerr == nil && x != y:
-			return x < y
-		case (xerr != nil || yerr != nil) && as[i] != bs[i]:
-			return as[i] < bs[i]
-		}
-	}
-	if len(as) != len(bs) {
-		return len(as) < len(bs)
+	if c := apkCompare(a, b); c != 0 {
+		return c < 0
 	}
 	return ea < eb
+}
+
+// apkSuffix orders apk's version suffixes against none, which is 0: a release candidate comes
+// before the release, a patch level after it.
+var apkSuffix = map[string]int{"alpha": -4, "beta": -3, "pre": -2, "rc": -1, "cvs": 1, "svn": 2, "git": 3, "hg": 4, "p": 5}
+
+// apkVersion is a version apk's way: its numbers, an optional letter after the last, and its
+// suffixes, each a rank and a number (18.0_rc20260919: [18 0], no letter, [rc 20260919]).
+type apkVersion struct {
+	nums     []int
+	letter   byte
+	suffixes [][2]int
+}
+
+func parseAPKVersion(v string) apkVersion {
+	var p apkVersion
+	main, rest, _ := strings.Cut(v, "_")
+	if n := len(main); n > 0 && main[n-1] >= 'a' && main[n-1] <= 'z' {
+		p.letter, main = main[n-1], main[:n-1]
+	}
+	for _, f := range strings.Split(main, ".") {
+		n, _ := strconv.Atoi(f)
+		p.nums = append(p.nums, n)
+	}
+	if rest == "" {
+		return p
+	}
+	for _, suf := range strings.Split(rest, "_") {
+		name := strings.TrimRight(suf, "0123456789")
+		n, _ := strconv.Atoi(suf[len(name):])
+		p.suffixes = append(p.suffixes, [2]int{apkSuffix[name], n})
+	}
+	return p
+}
+
+// apkCompare orders two versions as apk-tools does for what Wolfi's carry: numbers as numbers, a
+// shorter one older when the rest is equal (1.0 before 1.0.1), then a letter after none, then the
+// suffixes, where none sits between a release candidate and a patch level (18.0_rc1 before 18.0
+// before 18.0_p1). A letter against a suffix apk orders by the tokens' kinds, which no version
+// built here has.
+func apkCompare(a, b string) int {
+	pa, pb := parseAPKVersion(a), parseAPKVersion(b)
+	for i := 0; i < len(pa.nums) && i < len(pb.nums); i++ {
+		if c := cmp.Compare(pa.nums[i], pb.nums[i]); c != 0 {
+			return c
+		}
+	}
+	if c := cmp.Compare(len(pa.nums), len(pb.nums)); c != 0 {
+		return c
+	}
+	if c := cmp.Compare(pa.letter, pb.letter); c != 0 {
+		return c
+	}
+	for i := 0; i < max(len(pa.suffixes), len(pb.suffixes)); i++ {
+		var x, y [2]int
+		if i < len(pa.suffixes) {
+			x = pa.suffixes[i]
+		}
+		if i < len(pb.suffixes) {
+			y = pb.suffixes[i]
+		}
+		if c := cmp.Or(cmp.Compare(x[0], y[0]), cmp.Compare(x[1], y[1])); c != 0 {
+			return c
+		}
+	}
+	return 0
 }
 
 // packagesCmd answers what packages/ lacks (-missing: recipe names, in build order) or takes out

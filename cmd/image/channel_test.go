@@ -15,24 +15,6 @@ func releaseSums(v string) string {
 		"%s  construct_%s_66666666-7777-8888-9999-000000000000.verity.raw.xz\n%s  construct_%s.efi\n", h, v, h, v, h, v)
 }
 
-// Versions compare as systemd-sysupdate compares them: a day's tenth build is newer than its
-// ninth, and the next day's first newer than both.
-func TestNewer(t *testing.T) {
-	for _, c := range []struct {
-		a, b string
-		want bool
-	}{
-		{"20261004.10", "20261004.9", true},
-		{"20261005.1", "20261004.10", true},
-		{"20261004.1", "20261004.1", false},
-		{"20261004.2", "20261004.150701", false},
-	} {
-		if got := newer(c.a, c.b); got != c.want {
-			t.Errorf("newer(%s, %s) = %v", c.a, c.b, got)
-		}
-	}
-}
-
 // A channel's index gains a release, keeps the newest versions, and loses a withdrawn one; a
 // release with a missing file is refused.
 func TestChannelIndex(t *testing.T) {

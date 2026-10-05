@@ -126,3 +126,28 @@ func TestChangedRecipesBumpVersionOrEpoch(t *testing.T) {
 		}
 	}
 }
+
+// apk's order: a release candidate before its release, a patch level and a snapshot after it, a
+// shorter version older, a letter after none, numbers as numbers.
+func TestAPKCompare(t *testing.T) {
+	ordered := []string{"1.0_rc1", "1.0_rc2", "1.0", "1.0_p1", "1.0.1", "1.9", "1.10", "18.0_rc20260919", "18.0", "18.0_git20260101", "18.0_p2"}
+	for i, older := range ordered {
+		for _, newer := range ordered[i+1:] {
+			if apkCompare(older, newer) != -1 || apkCompare(newer, older) != 1 {
+				t.Errorf("%s is not older than %s", older, newer)
+			}
+		}
+	}
+	// A letter after none: 1.0 before 1.0a. Against a suffix apk orders by the tokens' kinds, which
+	// no Wolfi version this repository builds has, and which this does not try.
+	if apkCompare("1.0", "1.0a") != -1 {
+		t.Error("1.0 is not older than 1.0a")
+	}
+	if apkCompare("1.9.17_p2", "1.9.17_p2") != 0 {
+		t.Error("a version is not equal to itself")
+	}
+	// The epoch orders two builds of one version.
+	if !versionLess("18.0", 1, "18.0", 2) || versionLess("18.0", 2, "18.0_rc1", 9) {
+		t.Error("epochs")
+	}
+}
