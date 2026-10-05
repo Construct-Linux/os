@@ -100,11 +100,9 @@ func test(args []string) error {
 			return err
 		}
 		reel = startFilm(v, filepath.Join(dir, "film"))
-		g = &guest{cid: v.CID}
-		if err := g.wait(4 * time.Minute); err != nil {
+		if g, err = answer(v, 4*time.Minute); err != nil {
 			reel.stop()
-			_ = v.Stop()
-			return fmt.Errorf("the guest never answered over vsock (its boot, filmed: %s): %w", filepath.Join(dir, "film"), err)
+			return fmt.Errorf("%w; its boot, filmed: %s", err, filepath.Join(dir, "film"))
 		}
 	} else if v, g, err = bootGuest(m, 4*time.Minute); err != nil {
 		return err
@@ -324,7 +322,7 @@ func test(args []string) error {
 		r.shotLook(v, g, appView(a.id))
 		l.view(strings.TrimSuffix(a.id, ".desktop"))
 		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
-		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, a.id))
+		g.quitApp(a.id)
 		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
 		// app and would cover every screenshot after it.
 		_, _ = g.eval(`Main.layoutManager.modalDialogGroup.get_children().forEach(d => d.close?.()); true`)
@@ -341,7 +339,7 @@ func test(args []string) error {
 			[]string{"S3", "TY4", "TY5"}})
 		l.view("panel-" + p)
 	}
-	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
+	g.quitApp("org.gnome.Settings.desktop")
 	if len(want) == 0 || want["views"] {
 		if err := g.fixClock(); err != nil {
 			r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
@@ -711,7 +709,7 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 
 	// Settings in Spanish: a process of its own, started with the language, once no instance is
 	// left for the request to go to.
-	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
+	g.quitApp("org.gnome.Settings.desktop")
 	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
 		if n, err := g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").get_windows().length`); err == nil && n == "0" {
 			break
@@ -734,7 +732,7 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 		"Settings' Power panel in Spanish, whose strings run longer than English's: rows and groups that still fit",
 		[]string{"S3", "TY4", "TY5"}})
 	l.view("panel-power-es")
-	_, _ = g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop")?.request_quit(); true`)
+	g.quitApp("org.gnome.Settings.desktop")
 	time.Sleep(2 * time.Second)
 }
 
@@ -825,11 +823,7 @@ func (r *report) suspend(v *qemu.VM, g *guest) {
 	}
 	if err == nil {
 		// Asleep once the guest stops answering.
-		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
-			if g.answers() != nil {
-				break
-			}
-		}
+		g.waitGone(30 * time.Second)
 		time.Sleep(3 * time.Second)
 		err = v.Key("shift")
 	}

@@ -115,14 +115,23 @@ func bootGuest(m qemu.Machine, d time.Duration) (*qemu.VM, *guest, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	g, err := answer(v, d)
+	if err != nil {
+		return nil, nil, err
+	}
+	return v, g, nil
+}
+
+// answer waits up to d for v's sshd, as bootGuest does for a machine it started.
+func answer(v *qemu.VM, d time.Duration) (*guest, error) {
 	g := &guest{cid: v.CID}
 	if err := g.wait(d); err != nil {
 		shot := filepath.Join(out, "no-answer.png")
 		_ = v.PNG(shot)
 		_ = v.Stop()
-		return nil, nil, fmt.Errorf("the guest never answered over vsock (its screen: %s): %w", shot, err)
+		return nil, fmt.Errorf("the guest never answered over vsock (its screen: %s): %w", shot, err)
 	}
-	return v, g, nil
+	return g, nil
 }
 
 func (g *guest) wait(d time.Duration) error {
@@ -187,6 +196,11 @@ func (g *guest) waitShell(d time.Duration) error {
 	return err
 }
 
+// quitApp asks an app to quit, as closing its last window does; one not running is no error.
+func (g *guest) quitApp(id string) {
+	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, id))
+}
+
 // version is the IMAGE_VERSION the guest booted, or "" when it does not answer.
 func (g *guest) version() string {
 	out, err := g.run(`. /usr/lib/os-release && echo $IMAGE_VERSION`, "")
@@ -204,12 +218,16 @@ func (g *guest) uptimeOver(d time.Duration) bool {
 // reboot asks the guest to restart and waits for it to stop answering.
 func (g *guest) reboot() {
 	_, _ = g.run(`systemctl reboot`, "")
-	deadline := time.Now().Add(2 * time.Minute)
-	for time.Now().Before(deadline) {
+	g.waitGone(2 * time.Minute)
+}
+
+// waitGone waits up to d for the guest to stop answering: a reboot, a suspend or a reset it was
+// asked for has begun.
+func (g *guest) waitGone(d time.Duration) {
+	for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(time.Second) {
 		if g.answers() != nil {
 			return
 		}
-		time.Sleep(time.Second)
 	}
 }
 

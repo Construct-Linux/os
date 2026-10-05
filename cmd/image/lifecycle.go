@@ -282,11 +282,7 @@ func lifecycle(args []string) error {
 	// initrd - the release kept, the person and what they kept gone - and GDM opens GNOME's
 	// Initial Setup for the machine's new person.
 	_, _ = g.run(`systemctl start --no-block factory-reset.target`, "")
-	for down := time.Now().Add(3 * time.Minute); time.Now().Before(down); time.Sleep(time.Second) {
-		if g.answers() != nil {
-			break
-		}
-	}
+	g.waitGone(3 * time.Minute)
 	err = g.wait(10 * time.Minute)
 	r.add("factory reset reboots", err == nil && g.version() == versions["v2"], "running "+g.version()+errText(err))
 	gone, _ := g.run(`ls /var/home/; getent passwd `+lifecycleUser+`; cat /etc/construct-marker 2>&1`, "")
