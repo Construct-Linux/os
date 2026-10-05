@@ -132,20 +132,20 @@ func (g *guest) eval(js string) (string, error) {
 	return val, nil
 }
 
-func (g *guest) waitShell(d time.Duration) (string, error) {
+func (g *guest) waitShell(d time.Duration) error {
 	deadline := time.Now().Add(d)
 	var err error
 	var v string
 	for time.Now().Before(deadline) {
 		if v, err = g.eval(`Main.layoutManager._startingUp === false`); err == nil && v == "true" {
-			return v, nil
+			return nil
 		}
 		time.Sleep(3 * time.Second)
 	}
 	if err == nil {
 		err = fmt.Errorf("still starting up (%s)", v)
 	}
-	return v, err
+	return err
 }
 
 // version is the IMAGE_VERSION the guest booted, or "" when it does not answer.

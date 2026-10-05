@@ -523,7 +523,7 @@ const sessionsScript = `for s in $(loginctl list-sessions --no-legend | awk '{pr
 // Shell starts it, so polkit sees the session's process), and answers what construct printed: its
 // JSON records, then its errors.
 func (g *guest) installAsTheInstaller() (string, error) {
-	if _, err := g.waitShell(5 * time.Minute); err != nil {
+	if err := g.waitShell(5 * time.Minute); err != nil {
 		// Which session the seat shows - a greeter in front of the live one, once - and what GDM said.
 		outs, _ := g.run(sessionsScript+`journalctl -b -q -o short-monotonic --no-pager -u gdm -u construct-live -t gdm-autologin -t gnome-shell -t systemd-logind | tail -60`, "")
 		return outs, err

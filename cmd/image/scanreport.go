@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -97,7 +98,7 @@ func bySeverity(ms []grype.Match) map[string][]grype.Match {
 	by := map[string][]grype.Match{}
 	for _, m := range ms {
 		s := m.Vulnerability.Severity
-		if !contains(severities, s) {
+		if !slices.Contains(severities, s) {
 			s = "Unknown"
 		}
 		by[s] = append(by[s], m)
@@ -111,13 +112,4 @@ func bySeverity(ms []grype.Match) map[string][]grype.Match {
 		})
 	}
 	return by
-}
-
-func contains(list []string, s string) bool {
-	for _, v := range list {
-		if v == s {
-			return true
-		}
-	}
-	return false
 }

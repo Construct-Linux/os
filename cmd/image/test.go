@@ -110,7 +110,7 @@ func test(args []string) error {
 	r := &report{dir: dir, user: "live", scale: sc.Scale}
 	r.add("boot", true, "sshd over vsock answered")
 	g.startMemWatch()
-	_, shellErr := g.waitShell(3 * time.Minute)
+	shellErr := g.waitShell(3 * time.Minute)
 	var bootMark *[2]float64
 	if reel != nil {
 		bootMark = r.filmReport(reel.stop(), reel.failed)

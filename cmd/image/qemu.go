@@ -438,9 +438,15 @@ func (v *vm) powerOff(g *guest) {
 	select {
 	case <-done:
 	case <-time.After(3 * time.Minute):
-		// The goroutine above is already in Wait; stop() would wait a second time.
+		// The goroutine above is already in Wait; stop() would wait a second time. A QEMU that
+		// does not even quit is killed, or the run would wait on it for good.
 		_ = qmpRun(v.qmp, map[string]any{"execute": "quit"})
-		<-done
+		select {
+		case <-done:
+		case <-time.After(30 * time.Second):
+			_ = v.cmd.Process.Kill()
+			<-done
+		}
 	}
 }
 

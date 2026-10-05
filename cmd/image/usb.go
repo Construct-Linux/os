@@ -687,6 +687,11 @@ func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) er
 	if err := buildInitrd(rel, initrd); err != nil {
 		return err
 	}
+	// uname: systemd-boot and the stub show it, and an empty one is a kernel image no one can name.
+	uname, err := os.ReadFile(filepath.Join(out, "kernel", "release"))
+	if err != nil {
+		return fmt.Errorf("the kernel's release (task kernel): %w", err)
+	}
 	stage := filepath.Dir(esp)
 	digests, err := os.Create(filepath.Join(stage, pcrDigests))
 	if err != nil {
@@ -699,7 +704,7 @@ func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) er
 		"--initrd", ucode, "--initrd", initrd,
 		"--cmdline", v.cmdline(extra),
 		"--os-release", "@"+filepath.Join(root, "usr/lib/os-release"),
-		"--uname", strings.TrimSpace(readFile(filepath.Join(out, "kernel", "release"))),
+		"--uname", strings.TrimSpace(string(uname)),
 		// The key systemd-stub hands the initrd, and the policy's digests for the host to sign.
 		"--pcrpkey", pcrPub, "--pcr-public-key", pcrPub, "--pcr-banks", "sha256",
 		"--policy-digest", "--json", "short",
@@ -877,11 +882,6 @@ func run(name string, args ...string) error {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 	return nil
-}
-
-func readFile(p string) string {
-	b, _ := os.ReadFile(p)
-	return string(b)
 }
 
 // appendFlag collects -append's options, one per flag: a value with spaces does not survive the

@@ -68,7 +68,7 @@ func devUp(args []string) error {
 		return err
 	}
 	defer v.stop()
-	if _, err := g.waitShell(3 * time.Minute); err != nil {
+	if err := g.waitShell(3 * time.Minute); err != nil {
 		return fmt.Errorf("GNOME Shell never answered Eval: %w", err)
 	}
 	// As the harness does: no blanking, and the installer the live session opens closed.
