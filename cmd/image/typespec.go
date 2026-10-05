@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // The type specimen and its rendering matrix: the same text, drawn by GTK 4 under each way of
@@ -180,7 +182,7 @@ func (s typeSetting) values() []string { return []string{s.Rendering, s.Hinting,
 
 // typeMatrix takes the specimen under every typeSetting, measures it, and writes type.json and
 // type.html; the image's own rendering is the type-specimen view.
-func (r *report) typeMatrix(v *vm, g *guest, l *lf) {
+func (r *report) typeMatrix(v *qemu.VM, g *guest, l *lf) {
 	dir := filepath.Join(r.dir, "type")
 	if err := os.MkdirAll(filepath.Join(dir, "crops"), 0o755); err != nil {
 		r.add("type", false, err.Error())
@@ -471,7 +473,7 @@ func pixelsDiffer(a, b image.Image, r image.Rectangle, k int) int {
 
 // shellType opens the date menu - the top bar's clock, the menu's labels, the calendar - shoots it
 // and measures each, light text on the shell's dark surfaces.
-func (r *report) shellType(v *vm, g *guest, setting string, k int, fg color.NRGBA, dir string) ([]typeShell, error) {
+func (r *report) shellType(v *qemu.VM, g *guest, setting string, k int, fg color.NRGBA, dir string) ([]typeShell, error) {
 	_, _ = g.eval(`Main.panel.statusArea.dateMenu.menu.open(); true`)
 	defer func() { _, _ = g.eval(`Main.panel.statusArea.dateMenu.menu.close(); true`) }()
 	time.Sleep(2 * time.Second)

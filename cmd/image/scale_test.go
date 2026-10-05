@@ -5,7 +5,7 @@ import (
 )
 
 // The X9-15's panel at 200% is 1440x900 logical, and QEMU is asked for exactly that panel; 1x is
-// QEMU's own default, and nothing else is a screen.
+// 1280x800, and nothing else is a screen.
 func TestScreenFor(t *testing.T) {
 	s, err := screenFor(2)
 	if err != nil || s != screenX9 {
@@ -14,14 +14,8 @@ func TestScreenFor(t *testing.T) {
 	if w, h := s.logical(); w != 1440 || h != 900 {
 		t.Errorf("logical %dx%d", w, h)
 	}
-	if d := s.device(); d != "virtio-vga,xres=2880,yres=1800" {
-		t.Errorf("device %q", d)
-	}
-	if s, err := screenFor(1); err != nil || s.device() != "virtio-vga,xres=1280,yres=800" {
+	if s, err := screenFor(1); err != nil || s != screen1x {
 		t.Errorf("1: %+v %v", s, err)
-	}
-	if d := (screen{}).device(); d != "virtio-vga" {
-		t.Errorf("the zero screen: %q", d)
 	}
 	if _, err := screenFor(3); err == nil {
 		t.Error("-scale 3 accepted")

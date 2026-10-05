@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // lifecycle is a machine's life with Construct, in QEMU: installed from a stick onto its NVMe
@@ -43,29 +45,29 @@ func lifecycle(args []string) error {
 	if err := os.RemoveAll(tpm); err != nil {
 		return err
 	}
-	if err := copyCmd("truncate", "-s", "64G", nvme); err != nil {
+	if err := qemu.Blank(nvme, "64G"); err != nil {
 		return err
 	}
-	if err := freshVars(vars); err != nil {
+	if err := qemu.FreshVars(vars); err != nil {
 		return err
 	}
 	// A stick is a 32 GB copy of a release's image, one per boot that plugs it in: removed once
 	// that boot is over, or the copies fill the host's disk.
 	stick := func(v string) (string, error) {
 		s := filepath.Join(dir, v+".stick")
-		return s, stickCopy(filepath.Join(dir, v+".raw"), s)
+		return s, qemu.StickCopy(filepath.Join(dir, v+".raw"), s)
 	}
 	r := &report{dir: dir}
 	// The machine has a TPM, and every boot after the first of its disk is handed the person's
 	// password as the TPM's PIN, as if typed: systemd-cryptsetup asks for it through libcryptsetup's
 	// token plugin, which reads cryptsetup.luks2-pin. No passphrase credential: a TPM that refuses
 	// leaves the boot waiting, and the check fails.
-	m := machine{mem: vmMemory, pubkey: pub, vars: vars, nvme: nvme, tpm: tpm,
-		credentials: []string{"cryptsetup.luks2-pin=" + lifecyclePassword}}
-	boot := func(sticks ...string) (*vm, *guest, error) {
+	m := qemu.Machine{Memory: vmMemory, PubKey: pub, Vars: vars, NVMe: nvme, TPM: tpm, Dir: out,
+		Credentials: []string{"cryptsetup.luks2-pin=" + lifecyclePassword}}
+	boot := func(sticks ...string) (*qemu.VM, *guest, error) {
 		m := m
-		m.sticks = sticks
-		return m.bootGuest(5 * time.Minute)
+		m.Sticks = sticks
+		return bootGuest(m, 5*time.Minute)
 	}
 
 	// 1. The live stick installs onto the NVMe disk.
@@ -85,7 +87,7 @@ func lifecycle(args []string) error {
 	_ = os.WriteFile(filepath.Join(dir, "install.txt"), []byte(outs), 0o644)
 	if err != nil {
 		// The live session's screen when the install did not end: a password asked, a dialog.
-		_ = v.png(filepath.Join(dir, "install.png"))
+		_ = v.PNG(filepath.Join(dir, "install.png"))
 	}
 	if err == nil && (!strings.Contains(outs, `"percent":100`) || !strings.Contains(outs, `"msg":"done"`)) {
 		err = fmt.Errorf("no 100%% or done record")
@@ -99,7 +101,7 @@ func lifecycle(args []string) error {
 	}
 	r.add("install", err == nil, fmt.Sprintf("%s in %s%s", oneLine(said), time.Since(start).Round(time.Second), errText(err)))
 	r.add("a recovery key is shown", strings.Contains(said, `"recovery_key":"`) && !strings.Contains(said, `"recovery_key":""`), "")
-	v.powerOff(g)
+	powerOff(v, g)
 	_ = os.Remove(s1)
 	if err != nil {
 		return r.write(nil)
@@ -108,27 +110,27 @@ func lifecycle(args []string) error {
 	// 2. The machine boots its disk: the boot waits for the person's password, typed at the
 	// prompt - the TPM's PIN - then v1, /var on the NVMe and encrypted, and what the person keeps.
 	first := m
-	first.credentials = nil
-	if v, err = first.start(); err != nil {
+	first.Credentials = nil
+	if v, err = first.Start(); err != nil {
 		return err
 	}
-	g = &guest{cid: v.cid}
+	g = &guest{cid: v.CID}
 	asked := g.wait(45*time.Second) != nil
-	_ = v.png(filepath.Join(dir, "password.png"))
+	_ = v.PNG(filepath.Join(dir, "password.png"))
 	r.add("the disk asks for the password", asked, "screen: password.png")
-	err = v.typeText(lifecyclePassword)
+	err = v.TypeText(lifecyclePassword)
 	// The outro goes back into the loop once the password is in, so the grid is there before GDM:
 	// eight screens, one as soon as the one before is saved (~0.5 s each), since when it starts
 	// depends on the TPM's unlock.
 	for i := range 8 {
-		_ = v.png(filepath.Join(dir, fmt.Sprintf("password-after-%d.png", i)))
+		_ = v.PNG(filepath.Join(dir, fmt.Sprintf("password-after-%d.png", i)))
 	}
 	if err == nil {
 		err = g.wait(5 * time.Minute)
 	}
 	r.add("the password opens the disk", err == nil, errText(err))
 	if err != nil {
-		v.stop()
+		_ = v.Stop()
 		return r.write(nil)
 	}
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
@@ -151,7 +153,7 @@ func lifecycle(args []string) error {
 	r.person(g)
 	ok, detail := g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v1 comes up", ok, detail)
-	v.powerOff(g)
+	powerOff(v, g)
 
 	// 2b. A security key, enrolled beside the password with its PIN and a touch, opens the disk:
 	// the boot asks for the key's PIN, not the password. Without the key the password still does,
@@ -176,7 +178,7 @@ func lifecycle(args []string) error {
 		// read the stick (its mount), refused nothing.
 		refused := u.ended && !u.ok && u.sysupdate != "" && !strings.Contains(esp, versions["v2"]) && g.version() == versions["v1"]
 		r.add("refuse a stick: "+bad, refused, u.detail()+"; ESP: "+oneLine(esp))
-		v.powerOff(g)
+		powerOff(v, g)
 		_ = os.Remove(s)
 	}
 
@@ -229,9 +231,9 @@ func lifecycle(args []string) error {
 	g.reboot()
 	if err := g.wait(5 * time.Minute); err != nil {
 		// What the screen shows where the boot stopped: a prompt, an emergency shell.
-		_ = v.png(filepath.Join(dir, "reboot-v2.png"))
+		_ = v.PNG(filepath.Join(dir, "reboot-v2.png"))
 		r.add("reboot into v2", false, err.Error()+"; screen: reboot-v2.png")
-		v.stop()
+		_ = v.Stop()
 		return r.write(nil)
 	}
 	r.add("reboot into v2", g.version() == versions["v2"], "running "+g.version())
@@ -242,7 +244,7 @@ func lifecycle(args []string) error {
 	time.Sleep(10 * time.Second) // systemd-bless-boot runs once the target is reached
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v2 is blessed", strings.Contains(esp, "construct_"+versions["v2"]+".efi"), oneLine(esp))
-	v.powerOff(g)
+	powerOff(v, g)
 
 	// 5. v3's desktop never comes up: three tries, then systemd-boot falls back to v2 by itself.
 	s3, err := stick("v3")
@@ -292,7 +294,7 @@ func lifecycle(args []string) error {
 	setup, _ := g.run(`for i in $(seq 60); do loginctl list-sessions --no-legend | grep -q gnome-initial-setup && break; sleep 2; done; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
 	r.add("initial setup for the new person", strings.Contains(setup, "gnome-initial-setup"), "sessions: "+setup)
 	err = r.write(g)
-	v.powerOff(g)
+	powerOff(v, g)
 	_ = os.Remove(s3)
 	return err
 }
@@ -306,16 +308,16 @@ const lifecycleKeyPIN = "482913"
 // construct key with the person's password and the PIN it gives the key - opening the disk and
 // signing them in - then the boots with and without it. It reports whether the machine still boots for the steps after it. A QEMU without CanoKey
 // has no key to plug in, and says so.
-func (r *report) securityKey(m, first machine, dir string) bool {
-	if !qemuHasCanoKey() {
+func (r *report) securityKey(m, first qemu.Machine, dir string) bool {
+	if !qemu.HasCanoKey() {
 		r.skip("a security key opens the disk", "this host's QEMU has no CanoKey (built without libcanokey-qemu)")
 		return true
 	}
 	key := filepath.Join(dir, "canokey")
 	_ = os.Remove(key)
 	withKey := m
-	withKey.securityKey = key
-	v, g, err := withKey.bootGuest(5 * time.Minute)
+	withKey.SecurityKey = key
+	v, g, err := bootGuest(withKey, 5*time.Minute)
 	if err != nil {
 		r.add("boot with a security key not yet enrolled", false, err.Error())
 		return false
@@ -331,26 +333,26 @@ func (r *report) securityKey(m, first machine, dir string) bool {
 	// The key signs the person in where sudo asks: a wrong password, and the touch lets them in.
 	sudo, err := g.run(`runuser -u `+lifecycleUser+` -- sh -c 'echo wrong | sudo -S -k true' 2>&1; echo rc=$?`, "")
 	r.add("the key's touch is sudo's password", err == nil && strings.HasSuffix(strings.TrimSpace(sudo), "rc=0"), oneLine(sudo)+errText(err))
-	v.powerOff(g)
+	powerOff(v, g)
 
 	keyBoot := first
-	keyBoot.securityKey = key
-	if v, err = keyBoot.start(); err != nil {
+	keyBoot.SecurityKey = key
+	if v, err = keyBoot.Start(); err != nil {
 		r.add("boot with the security key", false, err.Error())
 		return false
 	}
-	g = &guest{cid: v.cid}
+	g = &guest{cid: v.CID}
 	asked := g.wait(45*time.Second) != nil
-	_ = v.png(filepath.Join(dir, "key-pin.png"))
+	_ = v.PNG(filepath.Join(dir, "key-pin.png"))
 	r.add("the disk asks for the key's PIN", asked, "screen: key-pin.png")
 	// The key's PIN is no password: had the boot asked for the password, this would not open it.
-	err = v.typeText(lifecycleKeyPIN)
+	err = v.TypeText(lifecycleKeyPIN)
 	if err == nil {
 		err = g.wait(5 * time.Minute)
 	}
 	r.add("the key's PIN and a touch open the disk", err == nil, errText(err))
 	if err != nil {
-		v.stop()
+		_ = v.Stop()
 		return false
 	}
 	used, _ := g.run(`journalctl -b -q -o cat -u systemd-cryptsetup@var.service -p err; echo end`, "")
@@ -362,9 +364,9 @@ func (r *report) securityKey(m, first machine, dir string) bool {
 	// No password was typed, and the keyring is open all the same.
 	keyring, _ := g.run(`sleep 20; `+keyringRoundTrip(lifecycleUser, 1000), "")
 	r.add("the login keyring is open after the key", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
-	v.powerOff(g)
+	powerOff(v, g)
 
-	v, g, err = m.bootGuest(5 * time.Minute)
+	v, g, err = bootGuest(m, 5*time.Minute)
 	if err != nil {
 		r.add("the password opens it without the key", false, err.Error())
 		return false
@@ -374,7 +376,7 @@ func (r *report) securityKey(m, first machine, dir string) bool {
 	// Without the key pam_u2f steps aside: sudo takes the password, and says nothing of the key.
 	sudo, _ = g.run(`runuser -u `+lifecycleUser+` -- sh -c "echo '`+lifecycleNewPassword+`' | sudo -S -k true" 2>&1; echo rc=$?; journalctl -b -q -o cat -p warning -t sudo; echo end`, "")
 	r.add("sudo takes the password without the key", strings.HasSuffix(strings.TrimSpace(sudo), "rc=0\nend") && !strings.Contains(sudo, "pam_u2f"), oneLine(sudo))
-	v.powerOff(g)
+	powerOff(v, g)
 	return true
 }
 

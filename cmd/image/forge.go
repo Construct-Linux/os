@@ -55,7 +55,7 @@ func forge(args []string) error {
 		{"uki", func(img string) error { return flipIn(img, efi, work, 1<<20) }},
 	} {
 		dst := strings.TrimSuffix(*src, ".raw") + "-" + v.name + ".raw"
-		if err := copyCmd("cp", "--sparse=always", *src, dst); err != nil {
+		if err := run("cp", "--sparse=always", *src, dst); err != nil {
 			return err
 		}
 		if err := v.edit(fmt.Sprintf("%s@@%d", dst, offset)); err != nil {

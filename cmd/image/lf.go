@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // The look-and-feel checks, "lf: <rule> <surface>": each rule of the brand's THEMING.md measured
@@ -405,7 +407,7 @@ func (l *lfLook) ink(ground color.NRGBA) color.NRGBA {
 // measures for a check another view finishes.
 type lf struct {
 	r   *report
-	v   *vm
+	v   *qemu.VM
 	g   *guest
 	pal lfPalette
 	ok  bool
@@ -426,7 +428,7 @@ type lf struct {
 
 // newLF reads the guest's palette.json; without it no lf check can be measured, and one failure
 // says why.
-func newLF(r *report, v *vm, g *guest) *lf {
+func newLF(r *report, v *qemu.VM, g *guest) *lf {
 	l := &lf{r: r, v: v, g: g, menuY: map[string]int{}, k: 1}
 	var st [2]int
 	if err := g.evalJSON(`return [global.stage.width, global.stage.height];`, &st); err != nil {
@@ -1496,7 +1498,7 @@ func (l *lf) app(id, shot string) {
 	// every surface of the workbench to 0.6 of its colour: Escape, as a person would, and the
 	// workbench is what is measured.
 	if id == "code.desktop" {
-		_ = l.v.key("esc")
+		_ = l.v.Key("esc")
 		time.Sleep(2 * time.Second)
 		shot = "code-workbench"
 		l.r.shotLook(l.v, l.g, viewMeta{shot, groupApp,

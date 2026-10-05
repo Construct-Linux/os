@@ -21,6 +21,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // A needle is how a view must look: the screenshot the harness took of it once someone looked at
@@ -355,7 +357,7 @@ func (s stageActors) onScreen(width int) []needleRect {
 // clock may tick between them. A view whose actors cannot be measured leaves out the top bar's
 // inside instead, and fails a check that says so. The spec is kept for lf's results on the view,
 // which writeViews adds once every view is measured.
-func (r *report) shotLook(v *vm, g *guest, m viewMeta) {
+func (r *report) shotLook(v *qemu.VM, g *guest, m viewMeta) {
 	name := m.name
 	before, errBefore := measureActors(g)
 	r.shot(v, name)

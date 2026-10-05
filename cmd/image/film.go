@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // The boot film: the screen from the firmware to the shell's first frame, every filmInterval.
@@ -120,7 +122,7 @@ type film struct {
 
 // startFilm screenshots v every filmInterval into dir and reads each frame a tick after asking for
 // it, so QEMU has written it; the frames worth looking at are kept as PNGs when it stops.
-func startFilm(v *vm, dir string) *film {
+func startFilm(v *qemu.VM, dir string) *film {
 	f := &film{stopc: make(chan struct{}), done: make(chan struct{})}
 	_ = os.MkdirAll(dir, 0o755)
 	go func() {
@@ -133,7 +135,7 @@ func startFilm(v *vm, dir string) *film {
 			if pending == "" {
 				return
 			}
-			img, err := decodePPM(pending)
+			img, err := qemu.DecodePPM(pending)
 			_ = os.Remove(pending)
 			pending = ""
 			if err != nil {
@@ -172,7 +174,7 @@ func startFilm(v *vm, dir string) *film {
 			}
 			read()
 			p := filepath.Join(dir, fmt.Sprintf("%05d.ppm", n))
-			if v.screenshot(p) == nil {
+			if v.Screendump(p) == nil {
 				pending, pendingAt = p, time.Since(start)
 			}
 		}

@@ -11,6 +11,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // app is one scenario: the desktop file GNOME Shell launches, and how long its first window may
@@ -85,27 +87,27 @@ func test(args []string) error {
 	if err != nil {
 		return err
 	}
-	m.screen = sc
-	var v *vm
+	m.Width, m.Height = sc.W, sc.H
+	var v *qemu.VM
 	var g *guest
 	// A stick boots as a machine does, firmware, systemd-boot and Plymouth: it is filmed from the
 	// start until the shell has started, for what the person sees on the way (lf.go, filmReport).
 	var reel *film
 	if *stick {
-		if v, err = m.start(); err != nil {
+		if v, err = m.Start(); err != nil {
 			return err
 		}
 		reel = startFilm(v, filepath.Join(dir, "film"))
-		g = &guest{cid: v.cid}
+		g = &guest{cid: v.CID}
 		if err := g.wait(4 * time.Minute); err != nil {
 			reel.stop()
-			v.stop()
+			_ = v.Stop()
 			return fmt.Errorf("the guest never answered over vsock (its boot, filmed: %s): %w", filepath.Join(dir, "film"), err)
 		}
-	} else if v, g, err = m.bootGuest(4 * time.Minute); err != nil {
+	} else if v, g, err = bootGuest(m, 4*time.Minute); err != nil {
 		return err
 	}
-	defer v.stop()
+	defer v.Stop()
 
 	r := &report{dir: dir, user: "live", scale: sc.Scale}
 	r.add("boot", true, "sshd over vsock answered")
@@ -119,7 +121,7 @@ func test(args []string) error {
 	}
 	if shellErr != nil {
 		r.add("shell", false, shellErr.Error())
-		_ = v.png(filepath.Join(dir, "shell.png"))
+		_ = v.PNG(filepath.Join(dir, "shell.png"))
 		r.write(g)
 		return errors.New("GNOME Shell never answered Eval")
 	}
@@ -587,7 +589,7 @@ var shellViews = []shellView{
 
 // Each view opens and closes with lf.go's helpers at hand (find, lfAll), and its lf checks measure
 // it while it is open.
-func (r *report) shellViews(v *vm, g *guest, l *lf) {
+func (r *report) shellViews(v *qemu.VM, g *guest, l *lf) {
 	for _, s := range shellViews {
 		_, err := g.eval(lfPrelude + s.open + "; true")
 		r.add("view:"+s.name, err == nil, "screenshot shell-"+s.name+".png")
@@ -598,21 +600,21 @@ func (r *report) shellViews(v *vm, g *guest, l *lf) {
 		time.Sleep(settle)
 		switch s.wake {
 		case "pointer":
-			_ = v.pointTo(16000, 16000)
-			_ = v.pointTo(16400, 16400)
+			_ = v.PointTo(16000, 16000)
+			_ = v.PointTo(16400, 16400)
 			time.Sleep(2 * time.Second)
 		case "key":
 			// The first key wakes the display; the second lifts the curtain to the prompt, and a
 			// modifier alone does not.
-			_ = v.key("shift")
+			_ = v.Key("shift")
 			time.Sleep(2 * time.Second)
-			_ = v.key("spc")
+			_ = v.Key("spc")
 			time.Sleep(2 * time.Second)
 		case "password":
 			// PAM takes its time to refuse: the message comes after its delay. GDM shows it for a
 			// while and then clears it, so the prompt is measured first, before the screenshot, and
 			// judged with the view.
-			_ = v.typeText("wrong")
+			_ = v.TypeText("wrong")
 			time.Sleep(4 * time.Second)
 			l.measureLockError()
 		}
@@ -636,7 +638,7 @@ const plainDesktop = "#808080"
 
 // desktopViews are the desktop over each of the brand's wallpapers and over a flat colour (E2: the
 // bars' edge over every one), the desktop at 150%, and Settings in Spanish, whose strings run longer than English's.
-func (r *report) desktopViews(v *vm, g *guest, l *lf, sc screen) {
+func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 	walls, err := g.run(`ls /usr/share/backgrounds/construct/*.png`, "")
 	if err != nil || strings.TrimSpace(walls) == "" {
 		r.add("view:desktop wallpapers", false, "no wallpaper in /usr/share/backgrounds/construct"+errText(err))
@@ -763,7 +765,7 @@ const installerWindows = `global.get_window_actors().map(a => a.meta_window).fil
 
 // installer checks the live session offers the graphical installer at login on a stick, and
 // nowhere else; its window is shot, measured (lf), and closed, so it covers nothing after.
-func (r *report) installer(v *vm, g *guest, l *lf, stick bool) {
+func (r *report) installer(v *qemu.VM, g *guest, l *lf, stick bool) {
 	n := "0"
 	deadline := time.Now().Add(time.Minute)
 	for stick && time.Now().Before(deadline) {
@@ -800,7 +802,7 @@ func (r *report) installer(v *vm, g *guest, l *lf, stick bool) {
 // QEMU's S3 is no stand-in for them - its xHCI controller cannot save and restore its state
 // (USBSTS SRE), the kernel resets it on resume, and the stick the live root is read from comes
 // back offline. A key press wakes it: the PS/2 keyboard is made a wakeup source, as a laptop's is.
-func (r *report) suspend(v *vm, g *guest) {
+func (r *report) suspend(v *qemu.VM, g *guest) {
 	before, _ := g.run(`cat /sys/power/suspend_stats/success`, "")
 	_, err := g.run(`echo s2idle > /sys/power/mem_sleep && echo enabled > /sys/devices/platform/i8042/serio0/power/wakeup`, "")
 	if err == nil {
@@ -815,7 +817,7 @@ func (r *report) suspend(v *vm, g *guest) {
 			}
 		}
 		time.Sleep(3 * time.Second)
-		err = v.key("shift")
+		err = v.Key("shift")
 	}
 	if err == nil {
 		err = g.wait(2 * time.Minute)
@@ -887,7 +889,7 @@ var gtkViewAbout = map[string]struct {
 // Files. They are screenshots for the needles; each passes when what opens it worked. light shoots
 // them in the light scheme, named -light: only Settings exercised light's own rules (the sheet,
 // the lines inside a state, the light accent) before, and every other GTK view ran dark.
-func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
+func (r *report) gtkViews(v *qemu.VM, g *guest, l *lf, light bool) {
 	const id = "org.gnome.TextEditor.desktop"
 	suffix := ""
 	if light {
@@ -932,11 +934,11 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	time.Sleep(time.Second)
 	// F10 opens a GTK window's primary menu: a popover, its own surface.
 	before := windows()
-	_ = v.key("f10")
+	_ = v.Key("f10")
 	time.Sleep(2 * time.Second)
 	r.add("view:gtk-popover"+suffix, windows() > before, fmt.Sprintf("%d surfaces, %d before F10", windows(), before))
 	shot("gtk-popover")
-	_ = v.key("esc")
+	_ = v.Key("esc")
 	time.Sleep(time.Second)
 	sw, sh := l.stageW, l.stageH
 	// The headerbar's maximize button under the pointer, then held down: GTK's hover and active,
@@ -946,49 +948,49 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	// below: GTK takes hover from motion inside the widget.
 	maxBtn := lfRect{frame.X + frame.W - 71, frame.Y + 13, 20, 20}
 	cx, cy := maxBtn.X+maxBtn.W/2, maxBtn.Y+maxBtn.H/2
-	_ = v.pointTo(absPoint(cx-6, cy, sw, sh))
+	_ = v.PointTo(absPoint(cx-6, cy, sw, sh))
 	time.Sleep(300 * time.Millisecond)
-	err := v.pointTo(absPoint(cx, cy, sw, sh))
+	err := v.PointTo(absPoint(cx, cy, sw, sh))
 	time.Sleep(time.Second)
 	r.add("view:gtk-hover"+suffix, err == nil, fmt.Sprintf("the pointer over the maximize button at (%d, %d)%s", cx, cy, errText(err)))
 	shot("gtk-hover")
 	l.buttonState("gtk-hover"+suffix, "gtk-popover"+suffix, maxBtn)
-	err = v.button(true)
+	err = v.Button(true)
 	time.Sleep(500 * time.Millisecond)
 	r.add("view:gtk-pressed"+suffix, err == nil, "the maximize button held down"+errText(err))
 	shot("gtk-pressed")
 	l.buttonState("gtk-pressed"+suffix, "gtk-hover"+suffix, maxBtn)
-	_ = v.button(false)
+	_ = v.Button(false)
 	time.Sleep(time.Second)
 	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0].unmaximize(); true`, id))
-	_ = v.pointTo(16000, 30000)
+	_ = v.PointTo(16000, 30000)
 	time.Sleep(time.Second)
 	// The pointer over the headerbar's New Tab button, the second from the start, until GTK shows
 	// its tooltip; GTK 4's window controls have none. Two moves: GTK starts the tooltip's timer on
 	// motion inside the widget.
 	before = windows()
 	x, y := frame.X+105, frame.Y+23
-	_ = v.pointTo(absPoint(x-6, y, sw, sh))
+	_ = v.PointTo(absPoint(x-6, y, sw, sh))
 	time.Sleep(300 * time.Millisecond)
-	_ = v.pointTo(absPoint(x, y, sw, sh))
+	_ = v.PointTo(absPoint(x, y, sw, sh))
 	time.Sleep(3 * time.Second)
 	r.add("view:gtk-tooltip"+suffix, windows() > before, fmt.Sprintf("%d surfaces with the pointer at (%d, %d), %d before", windows(), x, y, before))
 	shot("gtk-tooltip")
-	_ = v.pointTo(16000, 30000)
+	_ = v.PointTo(16000, 30000)
 	time.Sleep(time.Second)
 	// A libadwaita dialog: Text Editor's preferences, by its shortcut. win.show-preferences is a
 	// widget action, which GTK does not export on the bus.
-	err = v.key("ctrl", "comma")
+	err = v.Key("ctrl", "comma")
 	time.Sleep(2 * time.Second)
 	r.add("view:gtk-dialog"+suffix, err == nil, "Ctrl+, in Text Editor"+errText(err))
 	shot("gtk-dialog")
 	// Tab moves the key focus in the dialog, and GTK draws its focus outline only once the
 	// keyboard has moved it: the outline is what changed against gtk-dialog.
-	err = v.key("tab")
+	err = v.Key("tab")
 	time.Sleep(time.Second)
 	r.add("view:gtk-focus"+suffix, err == nil, "Tab in the dialog"+errText(err))
 	shot("gtk-focus")
-	_ = v.key("esc")
+	_ = v.Key("esc")
 	time.Sleep(time.Second)
 	// A window maximized: no ring, no radius, no shadow (S3).
 	if err := g.evalJSON(fmt.Sprintf(`const w = Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0]; w.maximize(); return true;`, id), new(bool)); err != nil {
@@ -1034,7 +1036,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 		return
 	}
 	time.Sleep(3 * time.Second)
-	err = v.typeText("construct")
+	err = v.TypeText("construct")
 	if err == nil {
 		time.Sleep(time.Second)
 		_, err = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).request_quit(); true`, id))
@@ -1046,7 +1048,7 @@ func (r *report) gtkViews(v *vm, g *guest, l *lf, light bool) {
 	}
 	r.add("view:gtk-destructive"+suffix, err == nil && open != "0", "Text Editor asked to quit with a change unsaved: "+open+" windows still open"+errText(err))
 	shot("gtk-destructive")
-	_ = v.key("esc")
+	_ = v.Key("esc")
 	time.Sleep(time.Second)
 	stopEditor()
 }

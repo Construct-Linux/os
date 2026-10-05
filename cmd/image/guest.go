@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"golang.org/x/crypto/ssh"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // testKey is the harness's SSH key, made once and kept under .cache: the guest receives the
@@ -72,16 +74,16 @@ func (g *guest) run(script string, stdin string) (string, error) {
 
 // bootGuest starts m and waits up to d for its sshd to answer, stopping it when it does not -
 // with the screen it showed then in _output/no-answer.png, since nothing else says how far it got.
-func (m machine) bootGuest(d time.Duration) (*vm, *guest, error) {
-	v, err := m.start()
+func bootGuest(m qemu.Machine, d time.Duration) (*qemu.VM, *guest, error) {
+	v, err := m.Start()
 	if err != nil {
 		return nil, nil, err
 	}
-	g := &guest{cid: v.cid}
+	g := &guest{cid: v.CID}
 	if err := g.wait(d); err != nil {
 		shot := filepath.Join(out, "no-answer.png")
-		_ = v.png(shot)
-		v.stop()
+		_ = v.PNG(shot)
+		_ = v.Stop()
 		return nil, nil, fmt.Errorf("the guest never answered over vsock (its screen: %s): %w", shot, err)
 	}
 	return v, g, nil
@@ -210,20 +212,20 @@ func runIn(args []string) error {
 	if err != nil {
 		return err
 	}
-	m := machine{mem: vmMemory, pubkey: pub, vars: *vars, nvme: *nvme, tpm: *tpm, credentials: creds, cmdline: extra}
+	m := qemu.Machine{Memory: vmMemory, PubKey: pub, Vars: *vars, NVMe: *nvme, TPM: *tpm, Credentials: creds, Cmdline: extra, Dir: out}
 	if *vars == "" {
 		if m, err = testMachine(vmMemory, pub, *stick); err != nil {
 			return err
 		}
 	} else if *sticks != "" {
-		m.sticks = strings.Split(*sticks, ",")
+		m.Sticks = strings.Split(*sticks, ",")
 	}
-	m.securityKey = *key
-	v, g, err := m.bootGuest(4 * time.Minute)
+	m.SecurityKey = *key
+	v, g, err := bootGuest(m, 4*time.Minute)
 	if err != nil {
 		return err
 	}
-	defer v.stop()
+	defer v.Stop()
 	time.Sleep(*wait)
 	outs, err := g.run(strings.Join(fl.Args(), " "), "")
 	fmt.Print(outs)

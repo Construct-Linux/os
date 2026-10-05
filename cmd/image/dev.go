@@ -17,6 +17,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+
+	"github.com/Construct-Linux/os/internal/qemu"
 )
 
 // The theme's inner loop. The image is the source of truth - a theme lands through its fork's
@@ -39,7 +41,7 @@ var (
 	devState = filepath.Join(devDir, "vm.json")
 )
 
-const devCID = vsockCID + 1
+const devCID = qemu.DefaultCID + 1
 
 // devUp boots the test stick (task usb -- -test) and keeps it until it is told to stop: SIGINT,
 // SIGTERM or task dev:down.
@@ -59,15 +61,15 @@ func devUp(args []string) error {
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		return err
 	}
-	m, err := machine{mem: *mem, pubkey: pub, dir: devDir, cid: devCID, screen: sc}.withStick(devDir)
+	m, err := withStick(qemu.Machine{Memory: *mem, PubKey: pub, Dir: devDir, CID: devCID, Width: sc.W, Height: sc.H}, devDir)
 	if err != nil {
 		return err
 	}
-	v, g, err := m.bootGuest(4 * time.Minute)
+	v, g, err := bootGuest(m, 4*time.Minute)
 	if err != nil {
 		return err
 	}
-	defer v.stop()
+	defer v.Stop()
 	if err := g.waitShell(3 * time.Minute); err != nil {
 		return fmt.Errorf("GNOME Shell never answered Eval: %w", err)
 	}
@@ -85,7 +87,7 @@ func devUp(args []string) error {
 	if out, err := g.setSessionScale(float64(sc.Scale), w, h); err != nil {
 		return fmt.Errorf("the session at %d00%%: %w: %s", sc.Scale, err, lastLines(out, 12))
 	}
-	b, err := json.Marshal(devVM{CID: v.cid, QMP: v.qmp, Scale: sc.Scale})
+	b, err := json.Marshal(devVM{CID: v.CID, QMP: v.QMP, Scale: sc.Scale})
 	if err != nil {
 		return err
 	}
@@ -97,7 +99,7 @@ func devUp(args []string) error {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	exited := make(chan error, 1)
-	go func() { exited <- v.cmd.Wait() }()
+	go func() { exited <- v.Wait() }()
 	select {
 	case <-stop:
 		return nil
@@ -116,7 +118,7 @@ func devDown([]string) error {
 	if err != nil {
 		return err
 	}
-	return qmpRun(d.QMP, map[string]any{"execute": "quit"})
+	return qemu.Attach(d.QMP, d.CID).Stop()
 }
 
 func readDevVM() (devVM, error) {
@@ -154,7 +156,7 @@ func themeDev(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, g := &vm{qmp: d.QMP, cid: d.CID}, &guest{cid: d.CID}
+	v, g := qemu.Attach(d.QMP, d.CID), &guest{cid: d.CID}
 
 	built := filepath.Join(devDir, "themes")
 	if err := os.RemoveAll(built); err != nil {
@@ -224,7 +226,7 @@ func typeDev(args []string) error {
 	if err != nil {
 		return err
 	}
-	v, g := &vm{qmp: d.QMP, cid: d.CID}, &guest{cid: d.CID}
+	v, g := qemu.Attach(d.QMP, d.CID), &guest{cid: d.CID}
 	dir := filepath.Join(out, "test")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err

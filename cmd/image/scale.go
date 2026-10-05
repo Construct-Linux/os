@@ -34,17 +34,6 @@ func screenFor(scale int) (screen, error) {
 // logical is the session's stage: the panel over its scale.
 func (s screen) logical() (int, int) { return s.W / s.Scale, s.H / s.Scale }
 
-// device is QEMU's display device for it: virtio-vga's xres and yres are what the virtio GPU
-// reports to the guest (VIRTIO_GPU_CMD_GET_DISPLAY_INFO) and the preferred mode of the EDID QEMU
-// generates for it, which the kernel's virtio_gpu offers mutter. The zero screen is QEMU's own
-// default.
-func (s screen) device() string {
-	if s.W == 0 {
-		return "virtio-vga"
-	}
-	return fmt.Sprintf("virtio-vga,xres=%d,yres=%d", s.W, s.H)
-}
-
 // scaleOf is how many physical pixels a stage pixel is, from a screenshot's width and the
 // stage's: a whole number at the scales the harness measures at, false at a fractional one.
 func scaleOf(physical, stage int) (int, bool) {
