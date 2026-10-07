@@ -1,7 +1,7 @@
 package:
   name: accountsservice
   version: 26.27.3
-  epoch: 1
+  epoch: 2
   description: D-Bus interface for user account query and manipulation
   copyright:
     - license: GPL-3.0-or-later
@@ -32,6 +32,13 @@ pipeline:
   # which is /home/build here.
   - runs: |
       printf '#!/bin/sh\necho %s\n' "${{package.version}}" > generate-version.sh
+
+  # Two warnings on every load of the users, of what this machine never has: /etc/tcb (shadow's
+  # per-user files, which nothing here makes) and systemd-homed, whose service is not installed.
+  # Each is a journal error a boot would otherwise carry; other failures of either still warn.
+  - uses: patch
+    with:
+      patches: accountsservice/quiet-without-tcb-homed.patch
 
   # vapi off: no vala consumers in the session.
   # An administrator it creates - GNOME's Initial Setup's after a factory reset, one added in

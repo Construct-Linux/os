@@ -1,0 +1,22 @@
+diff -ru a/src/daemon.c b/src/daemon.c
+--- a/src/daemon.c	2026-10-07 20:13:32.236185233 -0300
++++ b/src/daemon.c	2026-10-07 20:13:32.256904643 -0300
+@@ -383,7 +383,7 @@
+                                 build_shadow_users_hash (local_users, shadow_users, shadow_tcb_path);
+                         }
+                         (void) closedir (dir);
+-                } else {
++                } else if (errno != ENOENT) {
+                         g_warning ("Unable to open %s: %s", tcb_path, g_strerror (errno));
+                 }
+ 
+@@ -696,7 +696,8 @@
+                                                       NULL,
+                                                       &error);
+                 if (error != NULL) {
+-                        g_warning ("couldn't list homed users: %s", error->message);
++                        if (!g_error_matches (error, G_DBUS_ERROR, G_DBUS_ERROR_SERVICE_UNKNOWN))
++                                g_warning ("couldn't list homed users: %s", error->message);
+                         return;
+                 }
+ 
