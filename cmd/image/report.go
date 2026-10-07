@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,6 +50,21 @@ func (r *report) add(name string, ok bool, detail string) {
 func (r *report) skip(name, why string) {
 	r.results = append(r.results, result{name: name, detail: why, ok: true, skipped: true})
 	fmt.Printf("SKIP %-36s %s\n", name, why)
+}
+
+// guestFile copies the guest's file at path into the report as name; one it cannot copy is a
+// failure, as a shot is.
+func (r *report) guestFile(path, name string, g *guest) {
+	out, err := g.run("base64 -w0 "+path, "")
+	if err == nil {
+		var b []byte
+		if b, err = base64.StdEncoding.DecodeString(strings.TrimSpace(out)); err == nil {
+			err = os.WriteFile(filepath.Join(r.dir, name), b, 0o644)
+		}
+	}
+	if err != nil {
+		r.add("file "+name, false, err.Error())
+	}
 }
 
 // shot saves the screen as name.png; one it cannot take is a failure of its own, since the report

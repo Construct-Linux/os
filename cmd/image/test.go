@@ -781,9 +781,13 @@ func (r *report) installer(v *qemu.VM, g *guest, l *lf, stick bool) {
 	}
 	want := map[bool]string{true: "1", false: "0"}[stick]
 	r.add("installer offered", strings.Trim(n, `"`) == want, fmt.Sprintf("%s installer windows on a stick=%v", n, stick))
-	// Its pages, walked as a person does (image/test/rootfs/usr/lib/construct-test).
+	// Its pages, walked as a person does (image/test/rootfs/usr/lib/construct-test), and the two a
+	// person must read whole - installing, done - as the walk drew them, for the report.
 	walked, err := g.run(asLive+`WAYLAND_DISPLAY=wayland-0 /usr/lib/construct-test/walk-installer.py 2>&1`, "")
-	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), oneLine(walked)+errText(err))
+	r.add("installer's pages", err == nil && strings.Contains(walked, "walked"), lastLine(walked)+errText(err))
+	for _, page := range []string{"installer-installing", "installer-done"} {
+		r.guestFile("/run/user/1000/construct-test/"+page+".png", page+".png", g)
+	}
 	if stick && strings.Trim(n, `"`) == "1" {
 		time.Sleep(2 * time.Second)
 		r.shotLook(v, g, viewMeta{"installer", needle.GroupInstaller,
