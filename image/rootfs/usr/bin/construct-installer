@@ -324,21 +324,27 @@ class Installer(Adw.ApplicationWindow):
             self.failed("\n".join(self.errors[-6:]) or _("The installer stopped."))
 
     # The recovery key opens the disk in place of a forgotten password: shown here once, never kept.
+    # All of the page fits the window unscrolled (walk-installer.py checks it): compact, and the key
+    # and its Copy one row.
     def done(self):
         status = Adw.StatusPage(
             icon_name="object-select-symbolic",
             title=_("Construct is installed"),
             description=_("Remove the stick, then restart: the computer starts Construct from its disk and asks for "
                           "your password to open it."),
+            css_classes=["compact"],
         )
         key = Gtk.Label(label=self.recovery_key, selectable=True, wrap=True, css_classes=["monospace", "title-4"])
-        copy = Gtk.Button(icon_name="edit-copy-symbolic", tooltip_text=_("Copy"), halign=Gtk.Align.CENTER,
+        copy = Gtk.Button(icon_name="edit-copy-symbolic", tooltip_text=_("Copy"), valign=Gtk.Align.CENTER,
                           css_classes=["flat"])
         copy.connect("clicked", lambda *args: self.get_clipboard().set(self.recovery_key))
+        row = Gtk.Box(spacing=6, halign=Gtk.Align.CENTER)
+        row.append(key)
+        row.append(copy)
         note = Gtk.Label(wrap=True, justify=Gtk.Justification.CENTER, css_classes=["dim-label"],
                          label=_("This recovery key opens the disk if you forget your password. Write it down "
                                  "and keep it away from the computer: it is not shown again."))
-        status.set_child(self.form(note, key, copy,
+        status.set_child(self.form(note, row,
                                    self.button(_("Restart"), "suggested-action",
                                                lambda *args: Gio.Subprocess.new(["systemctl", "reboot"], 0))))
         page = self.page(_("Done"), status, "done")
