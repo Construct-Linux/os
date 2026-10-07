@@ -106,10 +106,11 @@ def find(widget, match):
     return None
 
 
+# The window whole: its content alone is drawn on nothing, and the theme's light text on a PNG's
+# transparency cannot be read.
 def shot(name):
-    content = w.get_content()
     snap = Gtk.Snapshot()
-    Gtk.WidgetPaintable.new(content).snapshot(snap, content.get_width(), content.get_height())
+    Gtk.WidgetPaintable.new(w).snapshot(snap, w.get_width(), w.get_height())
     os.makedirs(SHOTS, exist_ok=True)
     w.get_renderer().render_texture(snap.to_node(), None).save_to_png(os.path.join(SHOTS, name + ".png"))
 
