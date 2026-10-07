@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -67,18 +68,28 @@ func securityKeysFrom(devices []string, pinFile string, in *bufio.Reader) ([]sec
 
 // enrollSecurityKeys enrolls each key with the new disk (securitykey.Enroll: its PIN and a touch
 // open /var, unlocked for it by the person's password) and makes its pam_u2f credential for owner:
-// what construct key records. Each asks to be touched twice: the log says which, for the installer
-// to show. A failure fails the install, whose disk is then never booted: no slot is taken back.
+// what construct key records. Each asks to be touched twice: the log says which, and which try, for
+// the installer to show. A touch missed is asked for again, up to touchTries times: by then the
+// disk is partitioned and its TPM enrolled, and starting the install over costs minutes. Any
+// other failure fails the install, whose disk is then never booted: no slot is taken back.
 func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, password, owner string, keys []securityKey) ([]securitykey.Key, error) {
 	var done []securitykey.Key
 	for i, k := range keys {
-		log.Info("touch the security key", "key", i+1, "of", len(keys), "device", k.device)
-		slot, err := securitykey.Enroll(ctx, partition, password, k.device, k.pin)
+		var slot int
+		err := untilTouched(func(try int) (err error) {
+			log.Info("touch the security key", "key", i+1, "of", len(keys), "device", k.device, "try", try)
+			slot, err = securitykey.Enroll(ctx, partition, password, k.device, k.pin)
+			return err
+		})
 		if err != nil {
 			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
 		}
-		log.Info("touch the security key again", "key", i+1, "of", len(keys), "device", k.device)
-		u2f, err := securitykey.Credential(ctx, k.device, owner, k.pin)
+		var u2f string
+		err = untilTouched(func(try int) (err error) {
+			log.Info("touch the security key again", "key", i+1, "of", len(keys), "device", k.device, "try", try)
+			u2f, err = securitykey.Credential(ctx, k.device, owner, k.pin)
+			return err
+		})
 		if err != nil {
 			return nil, fmt.Errorf("security key %d (%s): %w", i+1, k.device, err)
 		}
@@ -89,4 +100,18 @@ func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, passwo
 		done = append(done, securitykey.Key{Name: name, User: owner, Slot: slot, U2F: u2f, Added: time.Now().UTC().Format(time.DateOnly)})
 	}
 	return done, nil
+}
+
+// touchTries is how many times a touch is asked for: a key waits about 30 s for each.
+const touchTries = 3
+
+// untilTouched runs ask, numbering its tries from 1, again while the key was not touched.
+func untilTouched(ask func(try int) error) error {
+	var err error
+	for try := 1; try <= touchTries; try++ {
+		if err = ask(try); !errors.Is(err, securitykey.ErrNotTouched) {
+			return err
+		}
+	}
+	return err
 }

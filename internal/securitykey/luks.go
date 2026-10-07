@@ -56,7 +56,7 @@ func Enroll(ctx context.Context, partition, password, device, pin string) (int, 
 	if err := run(ctx, []string{"PASSWORD=" + password, "CREDENTIALS_DIRECTORY=" + creds}, nil,
 		"systemd-cryptenroll", "--fido2-device="+device, "--fido2-with-client-pin=yes",
 		"--fido2-with-user-presence=yes", partition); err != nil {
-		return 0, err
+		return 0, notTouched(err)
 	}
 	after, err := Slots(ctx, partition)
 	if err != nil {

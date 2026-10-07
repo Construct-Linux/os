@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/pem"
+	"errors"
 	"strings"
 	"testing"
 )
@@ -47,5 +48,21 @@ func TestNoClientPIN(t *testing.T) {
 	set := "options: rk, up, noplat, clientPin, credentialMgmtPreview\n"
 	if !noClientPIN(fresh) || noClientPIN(set) || noClientPIN("aaguid: 00\n") {
 		t.Error(noClientPIN(fresh), noClientPIN(set))
+	}
+}
+
+// libfido2's two answers for a touch that never came are ErrNotTouched; a wrong PIN is not.
+func TestNotTouched(t *testing.T) {
+	for msg, want := range map[string]bool{
+		"systemd-cryptenroll: exit status 1: Failed to generate FIDO2 credential: FIDO_ERR_OPERATION_DENIED": true,
+		"fido2-cred: exit status 1: fido2-cred: fido_dev_make_cred: FIDO_ERR_ACTION_TIMEOUT":                 true,
+		"fido2-cred: exit status 1: fido2-cred: fido_dev_make_cred: FIDO_ERR_PIN_INVALID":                    false,
+	} {
+		if got := errors.Is(notTouched(errors.New(msg)), ErrNotTouched); got != want {
+			t.Errorf("%q: not touched = %v, want %v", msg, got, want)
+		}
+	}
+	if notTouched(nil) != nil {
+		t.Error("notTouched(nil) is an error")
 	}
 }

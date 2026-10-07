@@ -2,11 +2,15 @@ package main
 
 import (
 	"bufio"
+	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/Construct-Linux/os/internal/securitykey"
 )
 
 func pinFile(t *testing.T, body string) string {
@@ -66,5 +70,35 @@ func TestSecurityKeysPINsAfterThePassword(t *testing.T) {
 	keys, err := securityKeysFrom([]string{"/dev/hidraw4", "/dev/hidraw5"}, "-", in)
 	if err != nil || len(keys) != 2 || keys[0].pin != "482913" || keys[1].pin != "backup-pin" {
 		t.Errorf("%+v %v", keys, err)
+	}
+}
+
+// A missed touch is asked for again, up to touchTries times; any other failure, or a touch, ends
+// the asking.
+func TestUntilTouched(t *testing.T) {
+	missed := fmt.Errorf("enroll: %w", securitykey.ErrNotTouched)
+	other := errors.New("cryptsetup: no such device")
+	for _, c := range []struct {
+		name    string
+		answers []error
+		tries   int
+		want    error
+	}{
+		{"touched", []error{nil}, 1, nil},
+		{"touched on the second try", []error{missed, nil}, 2, nil},
+		{"never touched", []error{missed, missed, missed, nil}, touchTries, securitykey.ErrNotTouched},
+		{"another failure", []error{other, nil}, 1, other},
+	} {
+		tries := 0
+		err := untilTouched(func(try int) error {
+			tries++
+			if try != tries {
+				t.Errorf("%s: try %d, want %d", c.name, try, tries)
+			}
+			return c.answers[try-1]
+		})
+		if tries != c.tries || !errors.Is(err, c.want) || (c.want == nil) != (err == nil) {
+			t.Errorf("%s: %d tries, err %v; want %d, %v", c.name, tries, err, c.tries, c.want)
+		}
 	}
 }

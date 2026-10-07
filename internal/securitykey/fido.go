@@ -59,7 +59,7 @@ func Credential(ctx context.Context, device, user, pin string) (string, error) {
 		return "", err
 	}
 	if err := withPIN(ctx, pin, "fido2-cred", "-M", "-i", in, "-o", made, device); err != nil {
-		return "", err
+		return "", notTouched(err)
 	}
 	if err := run(ctx, nil, nil, "fido2-cred", "-V", "-i", made, "-o", verified); err != nil {
 		return "", err
@@ -182,16 +182,32 @@ func withPIN(ctx context.Context, pin, name string, args ...string) error {
 }
 
 // run runs a program, its output into out when given (else construct's standard error), env added
-// to the environment, and says what failed - never env, which holds the password.
+// to the environment, and says what failed with the last line it wrote to standard error - never
+// env, which holds the password.
 func run(ctx context.Context, env []string, out *bytes.Buffer, name string, args ...string) error {
 	c := exec.CommandContext(ctx, name, args...)
 	c.Env = append(os.Environ(), env...)
-	c.Stdout, c.Stderr = os.Stderr, os.Stderr
+	var said bytes.Buffer
+	c.Stdout, c.Stderr = os.Stderr, io.MultiWriter(os.Stderr, &said)
 	if out != nil {
 		c.Stdout = out
 	}
 	if err := c.Run(); err != nil {
-		return fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+		lines := strings.Split(strings.TrimSpace(said.String()), "\n")
+		return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, lines[len(lines)-1])
 	}
 	return nil
+}
+
+// ErrNotTouched is a key that waited for its touch and got none: libfido2's
+// FIDO_ERR_ACTION_TIMEOUT, or FIDO_ERR_OPERATION_DENIED, which a YubiKey answers when its wait runs
+// out. Nothing was made on the key or the disk, and asking again is safe.
+var ErrNotTouched = errors.New("the security key was not touched in time")
+
+// notTouched marks err as ErrNotTouched when the key said so.
+func notTouched(err error) error {
+	if err != nil && (strings.Contains(err.Error(), "FIDO_ERR_ACTION_TIMEOUT") || strings.Contains(err.Error(), "FIDO_ERR_OPERATION_DENIED")) {
+		return fmt.Errorf("%w: %w", ErrNotTouched, err)
+	}
+	return err
 }

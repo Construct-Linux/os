@@ -295,7 +295,8 @@ class Installer(Adw.ApplicationWindow):
         if msg == "done":
             self.recovery_key = rec.get("recovery_key", "")
         elif msg in TOUCH:
-            self.step.set_label(_("Touch your security key"))
+            self.step.set_label(_("Touch your security key") if rec.get("try", 1) == 1
+                                else _("The key was not touched in time. Touch it now"))
         elif msg in STEPS:
             text, at = STEPS[msg]
             self.step.set_label(text)
@@ -333,8 +334,13 @@ class Installer(Adw.ApplicationWindow):
         self.nav.push(page)
 
     def failed(self, detail):
+        detail = detail.replace("construct: ", "")
+        # securitykey.ErrNotTouched, after every try construct gave it.
+        if "not touched in time" in detail:
+            detail = _("Your security key was not touched in time. Install again, and touch the key when it "
+                       "blinks.") + "\n\n" + detail
         status = Adw.StatusPage(icon_name="dialog-error-symbolic", title=_("Construct was not installed"),
-                                description=detail.replace("construct: ", ""))
+                                description=detail)
         status.set_child(self.button(_("Back"), "pill", lambda *args: self.nav.pop_to_tag("person")))
         self.nav.push(self.page(_("Error"), status, "error"))
 
