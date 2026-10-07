@@ -128,15 +128,22 @@ func TestRootLocked(t *testing.T) {
 }
 
 // The kernel's command line names the root by its hash alone, and options given for one build
-// come last, with no stray space when there are none.
+// come last, with no stray space when there are none. Only a test build has a serial console, and
+// tty0 stays /dev/console.
 func TestCmdline(t *testing.T) {
 	v := verity{rootHash: strings.Repeat("ab", 32)}
-	plain := v.cmdline("")
+	plain := v.cmdline(false, "")
 	if !strings.HasPrefix(plain, "roothash="+v.rootHash+" ") || strings.HasSuffix(plain, " ") {
 		t.Errorf("cmdline = %q", plain)
 	}
-	if got := v.cmdline("plymouth.debug"); got != plain+" plymouth.debug" {
+	if got := v.cmdline(false, "plymouth.debug"); got != plain+" plymouth.debug" {
 		t.Errorf("cmdline with an option = %q", got)
+	}
+	if strings.Contains(plain, "ttyS0") {
+		t.Errorf("a release's cmdline has a serial console: %q", plain)
+	}
+	if got := v.cmdline(true, ""); !strings.Contains(got, "console=ttyS0,115200n8 console=tty0 ") {
+		t.Errorf("a test build's cmdline = %q, want ttyS0 then tty0", got)
 	}
 }
 

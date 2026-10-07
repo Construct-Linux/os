@@ -72,7 +72,7 @@ func usb(args []string) error {
 	}
 	esp := filepath.Join(stage, "esp")
 	label := update.ImageID + "_" + version
-	if err := espTree(root, esp, label, v, strings.Join(extra, " "), filepath.Join(stage, pcrPublic), *sbKeys); err != nil {
+	if err := espTree(root, esp, label, v, *test || *broken, strings.Join(extra, " "), filepath.Join(stage, pcrPublic), *sbKeys); err != nil {
 		return err
 	}
 	b, err := json.Marshal(built{Version: version, RootHash: v.rootHash, Test: *test || *broken, Release: *release != ""})
@@ -624,9 +624,18 @@ func verityOf(rh, img, tree string) verity {
 // derived from it), cgroup v2 only, firmware a person installed for their own machine searched
 // first (construct firmware: /var, root's to write), and extra, options added for one build to
 // diagnose a boot.
-func (v verity) cmdline(extra string) string {
+//
+// The serial console is a test build's alone, for the harness's serial.log: on the command line it
+// makes systemd-getty-generator start an agetty on ttyS0, and on a PC whose ttyS0 is a node with no
+// UART behind it agetty fails ("could not get terminal name: -22") and restarts every few seconds,
+// for as long as the machine is up. tty0 stays last, /dev/console either way.
+func (v verity) cmdline(serial bool, extra string) string {
+	consoles := " console=tty0"
+	if serial {
+		consoles = " console=ttyS0,115200n8" + consoles
+	}
 	return "roothash=" + v.rootHash + " systemd.verity_root_options=panic-on-corruption rootfstype=erofs ro" +
-		" console=ttyS0,115200n8 console=tty0 cgroup_no_v1=all,named" +
+		consoles + " cgroup_no_v1=all,named" +
 		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" +
 		" firmware_class.path=/var/lib/construct/firmware" + strings.TrimRight(" "+extra, " ")
 }
@@ -637,7 +646,7 @@ func (v verity) cmdline(extra string) string {
 // kernel runs, the initrd systemd runs in before the root (buildInitrd), and pcrPub, the PCR key's
 // public half - is left in the stage unsigned, with its PCR 11 policy's digests, for the host to
 // sign (pcrsig.go); image usb-sign signs it and systemd-boot and puts it in the ESP.
-func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) error {
+func espTree(root, esp, label string, v verity, serial bool, extra, pcrPub, sbKeys string) error {
 	boot, err := os.ReadFile(filepath.Join(root, "usr/lib/systemd/boot/efi/systemd-bootx64.efi"))
 	if err != nil {
 		return fmt.Errorf("the image's systemd-boot: %w", err)
@@ -702,7 +711,7 @@ func espTree(root, esp, label string, v verity, extra, pcrPub, sbKeys string) er
 		"--linux", filepath.Join(out, "kernel", "bzImage"),
 		// The microcode first: the kernel looks for it at the start of the initrds.
 		"--initrd", ucode, "--initrd", initrd,
-		"--cmdline", v.cmdline(extra),
+		"--cmdline", v.cmdline(serial, extra),
 		"--os-release", "@"+filepath.Join(root, "usr/lib/os-release"),
 		"--uname", strings.TrimSpace(string(uname)),
 		// The key systemd-stub hands the initrd, and the policy's digests for the host to sign.
