@@ -6,4 +6,10 @@ auth       include      construct-key
 auth       include      base-auth
 account    include      base-account
 password   include      base-password
-session    include      base-session-noninteractive
+# Wolfi's base-session-noninteractive, without pam_systemd: what pkexec runs is not a login, and
+# with it every pkexec registered a logind session for root (the installer's "Session c4 of User
+# root") and warned that root's /run/user/0/bus was not there. Debian's noninteractive stack leaves
+# pam_systemd out for the same reason.
+session    required     pam_env.so
+session    required     pam_limits.so
+session    required     pam_unix.so
