@@ -1,7 +1,7 @@
 package:
   name: gvfs
   version: 1.62.0
-  epoch: 1
+  epoch: 2
   description: Backends for the gio framework in GLib
   copyright:
     - license: LGPL-2.0-or-later
@@ -53,10 +53,14 @@ pipeline:
   # is plugged in by USB in Files. afc (iPhones) needs libimobiledevice,
   # cdda, nfs and bluray need libraries Wolfi has not, and the NucBox has
   # no optical drive; onedrive needs msgraph, not in Wolfi. The private
-  # libexecdir keeps the many gvfsd-* helpers out of /usr/libexec.
+  # libexecdir keeps the many gvfsd-* helpers out of /usr/libexec. wsdd
+  # (Windows machines in Files' Network) runs the wsdd daemon, which the
+  # image does not have, and its WS-Discovery answers come to port 3702
+  # from addresses the firewall has no connection for: on, it only logs
+  # "Failed to spawn the wsdd daemon" whenever Network is browsed.
   - uses: meson/configure
     with:
-      opts: --libexecdir=/usr/libexec/gvfs -Dsystemduserunitdir=/usr/lib/systemd/user -Dtmpfilesdir=/usr/lib/tmpfiles.d -Dafc=false -Dgphoto2=true -Dmtp=true -Dcdda=false -Dnfs=false -Dbluray=false -Donedrive=false -Dman=false -Dunit_tests=false -Dinstalled_tests=false -Ddevel_utils=false
+      opts: --libexecdir=/usr/libexec/gvfs -Dsystemduserunitdir=/usr/lib/systemd/user -Dtmpfilesdir=/usr/lib/tmpfiles.d -Dafc=false -Dgphoto2=true -Dmtp=true -Dcdda=false -Dnfs=false -Dbluray=false -Donedrive=false -Dwsdd=false -Dman=false -Dunit_tests=false -Dinstalled_tests=false -Ddevel_utils=false
 
   - uses: meson/compile
 
