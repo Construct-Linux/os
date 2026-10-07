@@ -137,7 +137,7 @@ class Installer(Adw.ApplicationWindow):
             )
             row.add_prefix(check)
             group.add(row)
-        box = self.form(group, self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.person_page())))
+        box = self.scrolled(self.form(group, self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.person_page()))))
         return self.page(_("Disk"), box, "disk")
 
     def person_page(self):
@@ -158,7 +158,7 @@ class Installer(Adw.ApplicationWindow):
         self.person_next = self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.key_page()))
         self.person_next.set_sensitive(False)
         self.person_hint = Gtk.Label(css_classes=["dim-label"], wrap=True)
-        return self.page(_("You"), self.form(group, self.person_hint, self.person_next), "person")
+        return self.page(_("You"), self.scrolled(self.form(group, self.person_hint, self.person_next)), "person")
 
     def on_name(self, *args):
         if not self.login_edited:
@@ -205,7 +205,7 @@ class Installer(Adw.ApplicationWindow):
         refresh = Gtk.Button(icon_name="view-refresh-symbolic", valign=Gtk.Align.CENTER, css_classes=["flat"],
                              tooltip_text=_("Look again for keys"))
         group.set_header_suffix(refresh)
-        box = self.form(group, self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.confirm_page())))
+        box = self.scrolled(self.form(group, self.button(_("Next"), "suggested-action", lambda *args: self.nav.push(self.confirm_page()))))
         rows = []
 
         def fill(*args):
@@ -343,8 +343,13 @@ class Installer(Adw.ApplicationWindow):
                       margin_start=12, margin_end=12)
         for c in children:
             box.append(c)
-        clamp = Adw.Clamp(maximum_size=480, child=box)
-        return Gtk.ScrolledWindow(child=clamp, vexpand=True)
+        return Adw.Clamp(maximum_size=480, child=box)
+
+    # A page's own scrolling, for a form that is the page. Never inside an Adw.StatusPage, which
+    # scrolls itself: a ScrolledWindow in it is given its minimum height, a strip a few lines tall,
+    # and what is below its first line - the step being done, the recovery key, Restart - is hidden.
+    def scrolled(self, child):
+        return Gtk.ScrolledWindow(child=child, vexpand=True)
 
 
 class App(Adw.Application):
