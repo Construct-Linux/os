@@ -248,7 +248,8 @@ class Installer(Adw.ApplicationWindow):
 
     def install(self, *args):
         self.progress = Gtk.ProgressBar(show_text=False)
-        self.step = Gtk.Label(label=_("Starting"), css_classes=["title-4"])
+        self.step = Gtk.Label(label=_("Starting"), css_classes=["title-4"], wrap=True,
+                              justify=Gtk.Justification.CENTER)
         status = Adw.StatusPage(icon_name="construct-logo-symbolic", title=_("Installing Construct"))
         status.set_child(self.form(self.step, self.progress))
         page = self.page(_("Installing"), status, "installing")
@@ -295,14 +296,25 @@ class Installer(Adw.ApplicationWindow):
         if msg == "done":
             self.recovery_key = rec.get("recovery_key", "")
         elif msg in TOUCH:
-            self.step.set_label(_("Touch your security key") if rec.get("try", 1) == 1
-                                else _("The key was not touched in time. Touch it now"))
+            self.step.set_label(self.touch_label(rec))
         elif msg in STEPS:
             text, at = STEPS[msg]
             self.step.set_label(text)
             self.progress.set_fraction(max(self.progress.get_fraction(), at))
         elif msg == "progress" and rec.get("file", "").endswith(".root.raw.xz"):
             self.progress.set_fraction(0.05 + 0.85 * rec.get("percent", 0) / 100)
+
+    # Which key to touch, by the name the security key page showed it with, and its place in the
+    # order there: two of the same model share a name, and only the one asked for blinks.
+    def touch_label(self, rec):
+        names = {dev: use.get_title() for dev, use, _pin in getattr(self, "keys", [])}
+        key = names.get(rec.get("device"), _("your security key"))
+        if rec.get("of", 1) > 1:
+            key = _("%(name)s, key %(n)d of %(of)d") % {"name": key, "n": rec.get("key", 1), "of": rec["of"]}
+        label = _("Touch %s when it blinks") % key
+        if rec.get("try", 1) > 1:
+            label = _("It was not touched in time.") + " " + label
+        return label
 
     def on_exit(self, proc, result):
         proc.wait_finish(result)
