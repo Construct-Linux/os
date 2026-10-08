@@ -180,9 +180,12 @@ func test(args []string) error {
 	// The default terminal, as GLib and the session's "open a terminal" find it.
 	term, _ := g.run(asLive+`xdg-terminal-exec --print-id 2>&1`, "")
 	r.add("default terminal", strings.Contains(term, "com.mitchellh.ghostty.desktop"), oneLine(term))
-	// A machine nobody named is os-release's DEFAULT_HOSTNAME.
-	name, err := g.run(`hostnamectl hostname`, "")
-	r.add("the computer's default name", err == nil && strings.TrimSpace(name) == "construct", "hostname: "+oneLine(name)+errText(err))
+	// A machine nobody named is os-release's DEFAULT_HOSTNAME, whatever the network says: on a
+	// network whose DNS names every address (AWS's, on the release builder) NetworkManager renamed
+	// it, so its mode is checked too, which a network that answers nothing would never show.
+	name, err := g.run(`hostnamectl hostname; NetworkManager --print-config | grep -x 'hostname-mode=none'`, "")
+	r.add("the computer's default name", err == nil && strings.HasPrefix(name, "construct\n") && strings.Contains(name, "hostname-mode=none"),
+		"hostname: "+oneLine(name)+errText(err))
 	// .local names go through avahi, the one mDNS stack (nss-mdns): its own resolves, and nothing
 	// else holds port 5353.
 	local, err := g.run(`getent hosts "$(hostname).local"; ss -Hulnp 'sport = :5353' | grep -o 'users:(("[^"]*' | sort -u`, "")
