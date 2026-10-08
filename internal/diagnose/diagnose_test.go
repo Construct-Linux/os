@@ -67,12 +67,14 @@ func TestErrorsByUnit(t *testing.T) {
 	}
 }
 
-// A fingerprint that did not match and a wrong password are failures; a session opened is not.
+// A fingerprint that did not match and a wrong password are failures; a session opened, or a D-Bus
+// service a slow boot did not start in time, is not.
 func TestAuthFailures(t *testing.T) {
 	j := strings.Join([]string{
 		`{"_COMM":"fprintd","MESSAGE":"verify-no-match"}`,
 		`{"SYSLOG_IDENTIFIER":"gdm-password]","MESSAGE":"pam_unix(gdm-password:auth): authentication failure; logname= uid=0"}`,
 		`{"SYSLOG_IDENTIFIER":"gdm-password]","MESSAGE":"pam_unix(gdm-password:session): session opened for user ada"}`,
+		`{"SYSLOG_IDENTIFIER":"dbus-daemon","MESSAGE":"[system] Failed to activate service 'org.freedesktop.UPower': timed out (service_start_timeout=25000ms)"}`,
 	}, "\n")
 	got := AuthFailures([]byte(j), 20)
 	if len(got) != 2 || !strings.HasPrefix(got[0], "fprintd: verify-no-match") || !strings.Contains(got[1], "authentication failure") {

@@ -124,7 +124,10 @@ func ErrorsByUnit(journal []byte, n int) []string {
 	return out
 }
 
-var authFailed = regexp.MustCompile(`(?i)authentication failure|auth could not identify|verify-no-match|verify-disconnected|verify-unknown-error|failed to (?:claim|open|verify)|no match|incorrect password|conversation failed|timed out`)
+// authFailed is what a failed login, unlock, sudo, polkit prompt, fingerprint or security key says.
+// Not "timed out" alone: D-Bus says it of every service a slow boot did not start in time, and a
+// laptop's stick reading at 49 kB/s filled the section with upower, udisks2 and the portals.
+var authFailed = regexp.MustCompile(`(?i)authentication failure|auth could not identify|verify-no-match|verify-disconnected|verify-unknown-error|failed to (?:claim|open|verify)|no match|incorrect password|conversation failed`)
 
 // AuthFailures are the records of journalctl -o json that say a login, an unlock, sudo or polkit,
 // a fingerprint or a security key failed: the last n.
