@@ -140,6 +140,7 @@ func test(args []string) error {
 	// Before the desktop is shot: the stick's icon is gone again by then.
 	r.keyd(v, g)
 	r.usbStick(v, g)
+	r.appFolder(g)
 	// The live user's login keyring has no password (construct live): a secret is kept and read back
 	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
 	// does what an app does; a prompt would hang it until the timeout.
@@ -539,6 +540,13 @@ var shellViews = []shellView{
 	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, "", 0,
 		"The app grid on the boot's black, every app's icon Tela's or a brand tile",
 		[]string{"S4", "X2"}},
+	// A folder of the app grid open, as a click opens it: its dialog grows from the folder's icon to
+	// the apps it holds. On a laptop it stopped at the name's row, the apps under it unseen.
+	{"app-folder",
+		`Main.overview.showApps(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => { lfAll(Main.overview._overview, lfClass('app-folder')).find(f => f.is_mapped() && f.reactive)?.emit('clicked', 1); return GLib.SOURCE_REMOVE; })`,
+		`Main.overview.hide()`, "", 5 * time.Second,
+		"A folder of the app grid open: its dialog on g with the ring and its radius, its name at the top, the apps it holds in a grid under it",
+		[]string{"S3", "E3"}},
 	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, "", 0,
 		"Quick settings: the menu on h with its ring and concentric radius, toggles on as the rest tint with the accent's 24 px disc and accent_text, off in text",
 		[]string{"S2", "C3", "C4", "R1"}},

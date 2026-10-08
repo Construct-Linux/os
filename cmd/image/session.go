@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -145,4 +146,41 @@ func (r *report) diagnose(g *guest) {
 		ok = ok && strings.Contains(out, want)
 	}
 	r.add("construct diagnose", ok, "diagnose.txt"+errText(err))
+}
+
+// appFolder opens a folder of the app grid, as a click does, and checks every app it holds is
+// drawn whole inside its dialog: GNOME Shell 51 sizes the dialog from the stylesheet, and a theme
+// that set no size cut the apps off under the folder's name.
+func (r *report) appFolder(g *guest) {
+	type rect struct{ X, Y, W, H int }
+	var got struct {
+		Err   string
+		Box   *rect
+		Tiles []rect
+	}
+	err := g.evalJSON(`
+		const wait = ms => new Promise(r => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => { r(); return GLib.SOURCE_REMOVE; }));
+		Main.overview.showApps();
+		await wait(1500);
+		const f = lfAll(Main.overview._overview, lfClass('app-folder')).find(a => a.is_mapped() && a.reactive);
+		if (!f) { Main.overview.hide(); return {err: 'no folder in the app grid'}; }
+		f.emit('clicked', 1);
+		await wait(2000);
+		const d = lfAll(global.stage, lfClass('app-folder-dialog')).find(a => a.is_mapped());
+		const res = d ? {box: lfBox(d), tiles: lfAll(d, lfClass('overview-tile')).filter(a => a.is_mapped()).map(lfBox)} : {err: 'no dialog opened'};
+		Main.overview.hide();
+		await wait(1000);
+		return res;`, &got)
+	if err == nil && got.Err != "" {
+		err = errors.New(got.Err)
+	}
+	inside := err == nil && got.Box != nil && len(got.Tiles) > 0
+	var cut []rect
+	for _, t := range got.Tiles {
+		if b := got.Box; b != nil && (t.Y < b.Y || t.Y+t.H > b.Y+b.H || t.X < b.X || t.X+t.W > b.X+b.W) {
+			cut = append(cut, t)
+		}
+	}
+	r.add("an app folder shows its apps", inside && len(cut) == 0,
+		fmt.Sprintf("dialog %+v, %d apps, cut off: %+v", got.Box, len(got.Tiles), cut)+errText(err))
 }
