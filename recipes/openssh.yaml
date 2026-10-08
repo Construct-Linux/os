@@ -1,0 +1,248 @@
+# Replaces Wolfi's openssh 10.6_p1 (r0), built without built-in FIDO: its ssh-sk-helper says
+# "internal security key support not enabled", and ssh-keygen -t ed25519-sk failed with "No FIDO
+# SecurityKeyProvider specified" - an SSH key that lives on a YubiKey, which a person with one is
+# told to make, could not be made. Wolfi's recipe (its public tree is at 10.5_p1) at 10.6_p1, with
+# --with-security-key-builtin against this repository's libfido2, as Fedora and Arch build it.
+package:
+  name: openssh
+  version: "10.6_p1"
+  epoch: 1
+  description: "the OpenBSD SSH implementation"
+  copyright:
+    - license: ISC
+  checks:
+    disabled:
+      - setuidgid
+  dependencies:
+    runtime:
+      - merged-usrsbin
+      - openssh-client
+      - openssh-server
+      - openssh-sftp-server
+      - wolfi-baselayout
+
+vars:
+  openssl-version: "4.0"
+
+environment:
+  contents:
+    packages:
+      - bash
+      - build-base
+      - busybox
+      - ca-certificates-bundle
+      - glibc-2.44-dev
+      - libedit-dev
+      - libfido2-dev
+      - libselinux-dev
+      - linux-pam-dev
+      - openssl-hardened-${{vars.openssl-version}}-dev
+      - wolfi-baselayout
+      - zlib-dev
+
+var-transforms:
+  - from: ${{package.version}}
+    match: ^(\d+)\.(\d+)_p(\d+)$
+    replace: V_${1}_${2}_P$3
+    to: tag-name
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/openssh/openssh-portable
+      tag: ${{vars.tag-name}}
+      expected-commit: a8c72b842423f0774f542d3c2197247c3dd28d74
+
+  # Patch out checking for OpenSSL version compatibility. This is dangerous and unneeded.
+  - uses: patch
+    with:
+      patches: |
+        openssh/no-version-check.patch
+
+  - runs: autoreconf -fi
+
+  - uses: autoconf/configure
+    with:
+      opts: |
+        --sbindir=/usr/bin \
+        --sysconfdir=/etc/ssh \
+        --libexecdir=/usr/lib/ssh \
+        --with-pid-dir=/run \
+        --with-mantype=doc \
+        --disable-utmp \
+        --disable-wtmp \
+        --disable-lastlog \
+        --disable-strip \
+        --with-privsep-path=/var/empty \
+        --with-xauth=/usr/bin/xauth \
+        --with-default-path='/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin' \
+        --with-privsep-user=sshd \
+        --with-pam \
+        --with-pam-service=sshd \
+        --with-libedit \
+        --with-security-key-builtin \
+        --with-selinux
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - uses: strip
+
+subpackages:
+  - name: "openssh-doc"
+    description: "OpenSSH documentation"
+    pipeline:
+      - uses: split/manpages
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+
+  - name: "openssh-keygen"
+    description: "OpenSSH key generator"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/bin
+          mv "${{targets.destdir}}"/usr/bin/ssh-keygen "${{targets.subpkgdir}}"/usr/bin/
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+  - name: "openssh-keyscan"
+    description: "OpenSSH key scanner"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/bin
+          mv "${{targets.destdir}}"/usr/bin/ssh-keyscan "${{targets.subpkgdir}}"/usr/bin/
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+  - name: "openssh-keysign"
+    description: "OpenSSH key signing tool"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/lib/ssh
+          mv "${{targets.destdir}}"/usr/lib/ssh/ssh-keysign "${{targets.subpkgdir}}"/usr/lib/ssh/
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+  - name: "openssh-sftp-server"
+    description: "OpenSSH SFTP server"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/lib/ssh
+          mv "${{targets.destdir}}"/usr/lib/ssh/sftp-server "${{targets.subpkgdir}}"/usr/lib/ssh/
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+  - name: "openssh-pkcs11-helper"
+    description: "PKCS11 helper for OpenSSH"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/lib/ssh
+          mv "${{targets.destdir}}"/usr/lib/ssh/ssh-pkcs11-helper "${{targets.subpkgdir}}"/usr/lib/ssh/
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+  - name: "openssh-sk-helper"
+    description: "Security key helper for OpenSSH"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/lib/ssh
+          mv "${{targets.destdir}}"/usr/lib/ssh/ssh-sk-helper "${{targets.subpkgdir}}"/usr/lib/ssh/
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+  - name: "openssh-server"
+    description: "OpenSSH server"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/bin
+          mv "${{targets.destdir}}"/usr/bin/sshd "${{targets.subpkgdir}}"/usr/bin/
+          mkdir -p "${{targets.subpkgdir}}"/usr/lib/ssh
+          mv "${{targets.destdir}}"/usr/lib/ssh/sshd-session "${{targets.subpkgdir}}"/usr/lib/ssh/
+          mv "${{targets.destdir}}"/usr/lib/ssh/sshd-auth "${{targets.subpkgdir}}"/usr/lib/ssh/
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - openssh-keygen
+        - openssh-server-config
+        - wolfi-baselayout
+    scriptlets:
+      post-install: |
+        #!/bin/sh
+        if grep -q '^openssl-config-fipshardened-3.1.2' /etc/apk/world; then
+           ssh-keygen -q -N "" -f /etc/ssh/ssh_host_rsa_key -t rsa
+           ssh-keygen -q -N "" -f /etc/ssh/ssh_host_ecdsa_key -t ecdsa
+        else
+           ssh-keygen -A -q -N ""
+        fi
+  - name: "openssh-client"
+    description: "OpenSSH client"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr
+          mv "${{targets.destdir}}"/usr/bin "${{targets.subpkgdir}}"/usr/
+
+          mkdir -p "${{targets.subpkgdir}}"/etc/ssh
+          mv "${{targets.destdir}}"/etc/ssh/moduli "${{targets.subpkgdir}}"/etc/ssh/
+          mv "${{targets.destdir}}"/etc/ssh/ssh_config "${{targets.subpkgdir}}"/etc/ssh/
+          mkdir -p "${{targets.subpkgdir}}"/etc/ssh/ssh_config.d
+          sed -i 's|\(^# Host\)|Include /etc/ssh/ssh_config.d/*.conf\n\n\1|' "${{targets.subpkgdir}}"/etc/ssh/ssh_config
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+
+  - name: "openssh-service"
+    description: "System OpenSSH server unit"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/usr/lib/systemd/system
+          mkdir -p ${{targets.subpkgdir}}/usr/lib/systemd/system-preset/
+          install -Dm644  openssh/sshd.service "${{targets.subpkgdir}}"/usr/lib/systemd/system
+          echo "enable sshd.service" > "${{targets.subpkgdir}}/usr/lib/systemd/system-preset/80-sshd.preset"
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - openssh-server
+        - systemd
+        - wolfi-baselayout
+  - name: "openssh-server-config"
+    description: "OpenSSH server configuration"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/etc
+          mv "${{targets.destdir}}"/etc/ssh "${{targets.subpkgdir}}"/etc/
+          mkdir -p "${{targets.subpkgdir}}"/etc/ssh/sshd_config.d
+          sed -i 's|\(^#Port\)|Include /etc/ssh/sshd_config.d/*.conf\n\n\1|' "${{targets.subpkgdir}}"/etc/ssh/sshd_config
+          chmod 600 "${{targets.subpkgdir}}"/etc/ssh/sshd_config
+    dependencies:
+      runtime:
+        - merged-usrsbin
+        - wolfi-baselayout
+
+  - name: "openssh-pam-config"
+    description: "OpenSSH server pam configuration"
+    pipeline:
+      - runs: |
+          mkdir -p "${{targets.subpkgdir}}"/etc/pam.d
+          mkdir -p "${{targets.subpkgdir}}"/etc/ssh/sshd_config.d
+          mkdir -p "${{targets.subpkgdir}}"/etc/skel # may be needed for the pam_mkhomedir module to work, TBD
+          install -Dm644 openssh/sshd.pam "${{targets.subpkgdir}}"/etc/pam.d/sshd
+          echo "UsePAM yes" >> "${{targets.subpkgdir}}"/etc/ssh/sshd_config.d/pam.conf
+update:
+  enabled: true
+  github:
+    identifier: openssh/openssh-portable
+    use-tag: true
+    tag-filter-prefix: V_
+  version-transform:
+    - match: ^V_(\d+)_(\d+)_P(\d+)$
+      replace: $1.${2}_p$3
