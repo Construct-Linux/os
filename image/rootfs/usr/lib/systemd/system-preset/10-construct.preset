@@ -14,8 +14,12 @@ enable avahi-daemon.service
 # (usr/lib/systemd/oomd.conf.d).
 enable fstrim.timer
 enable systemd-oomd.service
-# The desktop.
+# The desktop. GDM takes tty1 (its Conflicts=getty@tty1); getty@ answers as autovt@, which logind
+# starts on tty2-tty6 when Ctrl+Alt+F2-F6 switches there: a text login beside the session.
 enable gdm.service
+enable getty@.service
+# Super+C, V, X and the rest as copy, paste, cut (etc/keyd/default.conf).
+enable keyd.service
 enable bluetooth.service
 enable power-profiles-daemon.service
 enable scx_loader.service

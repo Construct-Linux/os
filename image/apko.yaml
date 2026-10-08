@@ -91,6 +91,13 @@ contents:
     - lm-sensors
     - lm-sensors-detect
     - i2c-tools
+    # What is plugged in and what drives it, for construct diagnose and a person: lspci, lsusb
+    # (recipes/usbutils), and the firmware's tables (dmidecode).
+    - pciutils
+    - usbutils
+    - dmidecode
+    # Super+C, V, X and the rest as copy, paste, cut (recipes/keyd, etc/keyd/default.conf).
+    - keyd
     - bluez
     - polkit
     # GNOME Shell's JavaScript reaches GLib, GObject, Gio and cairo through their typelibs: glib's
@@ -187,7 +194,7 @@ contents:
     - orchis-theme-shell
     - tela-icon-theme
     - bibata-cursor-theme
-    # GNOME Shell extensions, built for 51; the defaults enable the first seven, and the rest are
+    # GNOME Shell extensions, built for 51; the defaults enable the first eight, and the rest are
     # installed, off (00-construct says why).
     - gnome-shell-extension-appindicator
     - gnome-shell-extension-clipboard-indicator
@@ -196,6 +203,7 @@ contents:
     - gnome-shell-extension-vitals
     - gnome-shell-extension-tiling-shell
     - gnome-shell-extension-dash-to-panel
+    - gnome-shell-extension-gtk4-ding
     - gnome-shell-extension-user-theme
     - gnome-shell-extension-workspace-indicator
     - gnome-shell-extension-drive-menu
@@ -318,6 +326,7 @@ contents:
     - gnome-shell-extension-appindicator-lang
     - gnome-shell-extension-caffeine-lang
     - gnome-shell-extension-clipboard-indicator-lang
+    - gnome-shell-extension-gtk4-ding-lang
     - gnome-shell-extension-just-perfection-lang
     - gnome-shell-lang
     - gnome-software-lang

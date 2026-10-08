@@ -34,11 +34,11 @@ maximize=@as []
 unmaximize=@as []
 
 # The set a developer keeps on: tray icons, clipboard history, the panel's tweaks, staying
-# awake, system monitors, tiling, and a taskbar. User Themes, Workspace Indicator, Removable
+# awake, system monitors, tiling, a taskbar, and disks and USB sticks on the desktop. User Themes, Workspace Indicator, Removable
 # Drive Menu and Night Theme Switcher are installed, off: Orchis is the system shell theme, and
 # the last turns libadwaita light by day while the shell and GTK 3 stay on Orchis's dark theme.
 [org/gnome/shell]
-enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com']
+enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com', 'gtk4-ding@smedius.gitlab.com']
 
 # The dock: Files, the browser, the editor, the terminal, Software, Calendar.
 favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'code.desktop', 'com.mitchellh.ghostty.desktop', 'org.gnome.Software.desktop', 'org.gnome.Calendar.desktop']
@@ -75,6 +75,8 @@ button-layout='appmenu:minimize,maximize,close'
 # Perfection's startup-status is set, because a desktop-first start fades the desktop in over
 # GNOME's startup stage instead of rising from the boot's black.
 [org/gnome/shell/extensions/dash-to-panel]
+# Super+Q is keyd's (Ctrl+Q, quit), not the taskbar's number overlay.
+shortcut=@as []
 stockgs-keep-top-panel=true
 panel-positions='{"0":"BOTTOM","1":"BOTTOM","2":"BOTTOM"}'
 panel-lengths='{"0":-1,"1":-1,"2":-1}'
@@ -116,9 +118,22 @@ usb-protection=false
 
 [org/gnome/shell/keybindings]
 show-screenshot-ui=['Print', 'XF86SelectiveScreenshot']
+# keyd takes Super with C, V, X, Z, A, S, F, T, W and Q for the clipboard and the rest
+# (etc/keyd/default.conf): the shell never sees them, so it binds none. The notification list
+# keeps Super+M; the app grid is Super pressed twice; Quick Settings is the panel's menu.
+toggle-message-tray=['<Super>m']
+toggle-application-view=@as []
+toggle-quick-settings=@as []
 
 # Vitals' readings at their own widths: fixed widths reserved room for the widest value each can
 # take, which spread the bar out; the bar's numbers are tabular, so a reading keeps its width as
 # it changes.
 [org/gnome/shell/extensions/vitals]
 fixed-widths=false
+
+# Disks and USB sticks on the desktop, mounted ones only: not home, the trash or network shares.
+[org/gnome/shell/extensions/gtk4-ding]
+show-home=false
+show-trash=false
+show-volumes=true
+show-network-volumes=false
