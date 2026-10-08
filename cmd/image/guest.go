@@ -54,6 +54,38 @@ type guest struct {
 }
 
 func (g *guest) run(script string, stdin string) (string, error) {
+	var out string
+	var err error
+	for try := 1; ; try++ {
+		var stderr string
+		out, stderr, err = g.ssh(script, stdin)
+		// A connection that never reached the guest's shell ran nothing, and is tried again: a
+		// busy guest's sshd can take longer than ConnectTimeout to send its banner - on the release
+		// builder one did, during the type matrix, and failed a release on a check that never ran.
+		if err == nil || !notConnected(stderr) || try == connectTries {
+			if err != nil {
+				err = fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr))
+			}
+			return out, err
+		}
+		time.Sleep(time.Duration(try) * 5 * time.Second)
+	}
+}
+
+// connectTries is how many times run connects before a guest that does not answer is a failure.
+const connectTries = 3
+
+// answers says whether the guest's sshd answers now, once: what waits for a guest to come up or go
+// down loops on it, and a retry inside would only blur when it did.
+func (g *guest) answers() error {
+	_, stderr, err := g.ssh("true", "")
+	if err != nil {
+		return fmt.Errorf("%w: %s", err, strings.TrimSpace(stderr))
+	}
+	return nil
+}
+
+func (g *guest) ssh(script, stdin string) (string, string, error) {
 	// ServerAlive: a guest that stops answering mid-command - a kernel that froze, a QEMU that
 	// stopped - ends the command in a minute instead of hanging the run, which on the release
 	// builder is the two hours it has. A command that runs long in a guest that answers goes on:
@@ -66,10 +98,14 @@ func (g *guest) run(script string, stdin string) (string, error) {
 	var outb, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &outb, &errb
 	err := cmd.Run()
-	if err != nil {
-		return outb.String(), fmt.Errorf("%w: %s", err, strings.TrimSpace(errb.String()))
-	}
-	return outb.String(), nil
+	return outb.String(), errb.String(), err
+}
+
+// notConnected says ssh failed before the guest ran anything: no banner, no connection. A command
+// that ran and failed, or a connection that dropped while it ran, is not this.
+func notConnected(stderr string) bool {
+	return strings.Contains(stderr, "during banner exchange") || strings.Contains(stderr, "Connection refused") ||
+		strings.Contains(stderr, "connect to host") && strings.Contains(stderr, "timed out")
 }
 
 // bootGuest starts m and waits up to d for its sshd to answer, stopping it when it does not -
@@ -93,7 +129,7 @@ func (g *guest) wait(d time.Duration) error {
 	deadline := time.Now().Add(d)
 	var err error
 	for time.Now().Before(deadline) {
-		if _, err = g.run("true", ""); err == nil {
+		if err = g.answers(); err == nil {
 			return nil
 		}
 		time.Sleep(3 * time.Second)
@@ -170,7 +206,7 @@ func (g *guest) reboot() {
 	_, _ = g.run(`systemctl reboot`, "")
 	deadline := time.Now().Add(2 * time.Minute)
 	for time.Now().Before(deadline) {
-		if _, err := g.run("true", ""); err != nil {
+		if g.answers() != nil {
 			return
 		}
 		time.Sleep(time.Second)

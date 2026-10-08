@@ -283,7 +283,7 @@ func lifecycle(args []string) error {
 	// Initial Setup for the machine's new person.
 	_, _ = g.run(`systemctl start --no-block factory-reset.target`, "")
 	for down := time.Now().Add(3 * time.Minute); time.Now().Before(down); time.Sleep(time.Second) {
-		if _, err := g.run("true", ""); err != nil {
+		if g.answers() != nil {
 			break
 		}
 	}

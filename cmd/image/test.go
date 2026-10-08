@@ -826,7 +826,7 @@ func (r *report) suspend(v *qemu.VM, g *guest) {
 	if err == nil {
 		// Asleep once the guest stops answering.
 		for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
-			if _, perr := g.run("true", ""); perr != nil {
+			if g.answers() != nil {
 				break
 			}
 		}
