@@ -105,6 +105,14 @@ func enrollSecurityKeys(ctx context.Context, log *slog.Logger, partition, passwo
 // touchTries is how many times a touch is asked for: a key waits about 30 s for each.
 const touchTries = 3
 
+// touchPrompt is what a person reads before a touch: prompt, said again after a missed one.
+func touchPrompt(try int, prompt string) string {
+	if try == 1 {
+		return prompt
+	}
+	return "not touched in time; " + prompt
+}
+
 // untilTouched runs ask, numbering its tries from 1, again while the key was not touched.
 func untilTouched(ask func(try int) error) error {
 	var err error

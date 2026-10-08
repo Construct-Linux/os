@@ -123,8 +123,12 @@ func keyAdd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 		if pin == "" {
 			return errors.New("key add: the disk opens with the key's PIN and a touch: --pin-file")
 		}
-		fmt.Fprintln(stdout, "touch the key: it will open the disk")
-		if k.Slot, err = securitykey.Enroll(ctx, partition, password, dev, pin); err != nil {
+		err = untilTouched(func(try int) (err error) {
+			fmt.Fprintln(stdout, touchPrompt(try, "touch the key: it will open the disk"))
+			k.Slot, err = securitykey.Enroll(ctx, partition, password, dev, pin)
+			return err
+		})
+		if err != nil {
 			return err
 		}
 	}
@@ -138,8 +142,12 @@ func keyAdd(ctx context.Context, args []string, stdin io.Reader, stdout io.Write
 		}
 		return err
 	}
-	fmt.Fprintln(stdout, "touch the key again: it will sign you in")
-	if k.U2F, err = securitykey.Credential(ctx, dev, owner, pin); err != nil {
+	err = untilTouched(func(try int) (err error) {
+		fmt.Fprintln(stdout, touchPrompt(try, "touch the key again: it will sign you in"))
+		k.U2F, err = securitykey.Credential(ctx, dev, owner, pin)
+		return err
+	})
+	if err != nil {
 		return fail(err)
 	}
 	if err := securitykey.Write("/etc", append(keys, k)); err != nil {
