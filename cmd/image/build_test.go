@@ -129,21 +129,33 @@ func TestRootLocked(t *testing.T) {
 
 // The kernel's command line names the root by its hash alone, and options given for one build
 // come last, with no stray space when there are none. Only a test build has a serial console, and
-// tty0 stays /dev/console.
+// tty0 stays /dev/console. The boot without the splash is the same boot, as text: Plymouth off in
+// the initrd and after, each unit's status shown.
 func TestCmdline(t *testing.T) {
 	v := verity{rootHash: strings.Repeat("ab", 32)}
-	plain := v.cmdline(false, "")
+	plain := v.cmdline(false, true, "")
 	if !strings.HasPrefix(plain, "roothash="+v.rootHash+" ") || strings.HasSuffix(plain, " ") {
 		t.Errorf("cmdline = %q", plain)
 	}
-	if got := v.cmdline(false, "plymouth.debug"); got != plain+" plymouth.debug" {
+	if got := v.cmdline(false, true, "plymouth.debug"); got != plain+" plymouth.debug" {
 		t.Errorf("cmdline with an option = %q", got)
 	}
 	if strings.Contains(plain, "ttyS0") {
 		t.Errorf("a release's cmdline has a serial console: %q", plain)
 	}
-	if got := v.cmdline(true, ""); !strings.Contains(got, "console=ttyS0,115200n8 console=tty0 ") {
+	if got := v.cmdline(true, true, ""); !strings.Contains(got, "console=ttyS0,115200n8 console=tty0 ") {
 		t.Errorf("a test build's cmdline = %q, want ttyS0 then tty0", got)
+	}
+	text := v.cmdline(false, false, "")
+	for _, want := range []string{"plymouth.enable=0", "rd.plymouth=0", "systemd.show_status=1", "roothash=" + v.rootHash, "firmware_class.path="} {
+		if !strings.Contains(text, want) {
+			t.Errorf("the boot without the splash lacks %s: %q", want, text)
+		}
+	}
+	for _, gone := range []string{"quiet", " splash", "plymouth.use-simpledrm"} {
+		if strings.Contains(text, gone) {
+			t.Errorf("the boot without the splash has %s: %q", gone, text)
+		}
 	}
 }
 

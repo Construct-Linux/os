@@ -627,16 +627,31 @@ func verityOf(rh, img, tree string) verity {
 // makes systemd-getty-generator start an agetty on ttyS0, and on a PC whose ttyS0 is a node with no
 // UART behind it agetty fails ("could not get terminal name: -22") and restarts every few seconds,
 // for as long as the machine is up. tty0 stays last, /dev/console either way.
-func (v verity) cmdline(serial bool, extra string) string {
+//
+// Without splash the boot is text, for a person finding where one stops: no Plymouth, in the
+// initrd or after, the kernel's messages and each unit's status as it starts.
+func (v verity) cmdline(serial, splash bool, extra string) string {
 	consoles := " console=tty0"
 	if serial {
 		consoles = " console=ttyS0,115200n8" + consoles
 	}
+	shown := " quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles"
+	if !splash {
+		shown = " plymouth.enable=0 rd.plymouth=0 systemd.show_status=1"
+	}
 	return "roothash=" + v.rootHash + " systemd.verity_root_options=panic-on-corruption rootfstype=erofs ro" +
-		consoles + " cgroup_no_v1=all,named" +
-		" systemd.machine_id=firmware panic=10 quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles" +
+		consoles + " cgroup_no_v1=all,named systemd.machine_id=firmware panic=10" + shown +
 		" firmware_class.path=/var/lib/construct/firmware" + strings.TrimRight(" "+extra, " ")
 }
+
+// The kernel image's profiles, which systemd-boot offers as entries of their own: the boot as it
+// is, first and the default, and the same boot without the splash. ukify measures each and gives
+// the policies of both to sign (pcrsig.go), so /var opens from the TPM under either.
+const (
+	mainProfile     = "ID=main"
+	noSplashProfile = "ID=no-splash\nTITLE=without the splash: the boot's messages"
+	noSplashPE      = "no-splash.profile.efi"
+)
 
 // espTree lays the ESP: systemd-boot at the removable-media path, which firmware boots from a
 // stick with no boot entry, and the Secure Boot variables in sbKeys for it to enroll
@@ -705,11 +720,16 @@ func espTree(root, esp, label string, v verity, serial bool, extra, pcrPub, sbKe
 		return err
 	}
 	defer digests.Close()
+	noSplash := filepath.Join(stage, noSplashPE)
+	if err := run("ukify", "build", "--profile", noSplashProfile, "--cmdline", v.cmdline(serial, false, extra), "--output", noSplash); err != nil {
+		return err
+	}
 	cmd := exec.Command("ukify", "build",
 		"--linux", filepath.Join(out, "kernel", "bzImage"),
 		// The microcode first: the kernel looks for it at the start of the initrds.
 		"--initrd", ucode, "--initrd", initrd,
-		"--cmdline", v.cmdline(serial, extra),
+		"--cmdline", v.cmdline(serial, true, extra),
+		"--profile", mainProfile, "--join-profile", noSplash,
 		"--os-release", "@"+filepath.Join(root, "usr/lib/os-release"),
 		"--uname", strings.TrimSpace(string(uname)),
 		// The key systemd-stub hands the initrd, and the policy's digests for the host to sign.
