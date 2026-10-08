@@ -140,19 +140,18 @@ func lifecycle(args []string) error {
 	r.add("/var on the disk, encrypted", strings.Contains(src, "/dev/mapper/var") && strings.Contains(src, "LUKS2") && strings.Contains(src, "nvme0n1p6"), oneLine(src))
 	slots, _ := g.run(`systemd-cryptenroll /dev/nvme0n1p6`, "")
 	r.add("the TPM, the password and the recovery key open it", strings.Contains(slots, "tpm2") && strings.Contains(slots, "password") && strings.Contains(slots, "recovery"), oneLine(slots))
-	// The PIN typed is cached for the passphrase prompt that follows a TPM refusal, so a boot that
-	// came up says nothing: the unit's log does.
-	unlocked, err := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -o cat -u systemd-cryptsetup@var.service | grep -iE 'unseal|falling back|failed' | tail -3`, "")
 	lang, _ := g.run(`cat /etc/locale.conf /etc/vconsole.conf; ls /boot/loader/credentials/; journalctl -b -o cat -u construct-boot-language.service | tail -2`, "")
 	r.add("the person's language and keyboard, at boot too", strings.Contains(lang, "LANG=es_ES.UTF-8") && strings.Contains(lang, "XKBLAYOUT=es") &&
 		strings.Contains(lang, "construct.vconsole.cred") && strings.Contains(lang, "construct.plymouth.cred") &&
 		strings.Contains(lang, "Finished") && !strings.Contains(lang, "Failed"), oneLine(lang))
-	r.add("the TPM unlocked it", err == nil && strings.HasPrefix(unlocked, "active") && strings.TrimSpace(strings.TrimPrefix(unlocked, "active")) == "", oneLine(unlocked))
+	unlocked, why := tpmUnlocked(g)
+	r.add("the TPM unlocked it", unlocked, why)
 	_, err = g.run(`echo kept > /var/home/`+lifecycleUser+`/marker && echo kept > /etc/construct-marker`, "")
 	r.add("keep a file in /var and one in /etc", err == nil, errText(err))
 	r.person(g)
 	ok, detail := g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v1 comes up", ok, detail)
+	r.noSplash(v, g, dir, "construct_"+versions["v1"]+".efi")
 	powerOff(v, g)
 
 	// 2b. A security key, enrolled beside the password with its PIN and a touch, opens the disk:
@@ -551,4 +550,36 @@ func (g *guest) installAsTheInstaller() (string, error) {
 	outs, _ := g.run(`tail -3 `+run+`.json; tail -5 `+run+`.err; ps -eo pid,etime,args | grep -E 'pkexec|construct install|polkit' | grep -v grep; `+
 		sessionsScript+`journalctl -b -q -o short-monotonic -n 25 --no-pager`, "")
 	return outs, fmt.Errorf("construct install did not end")
+}
+
+// tpmUnlocked is whether systemd-cryptsetup opened /var with the TPM: the PIN typed is cached for
+// the passphrase prompt that follows a TPM refusal, so a boot that came up says nothing, and the
+// unit's log does.
+func tpmUnlocked(g *guest) (bool, string) {
+	out, err := g.run(`systemctl is-active systemd-cryptsetup@var.service; journalctl -b -o cat -u systemd-cryptsetup@var.service | grep -iE 'unseal|falling back|failed' | tail -3`, "")
+	return err == nil && strings.HasPrefix(out, "active") && strings.TrimSpace(strings.TrimPrefix(out, "active")) == "", oneLine(out)
+}
+
+// noSplash boots the kernel image's profile without the splash once (usb.go), as a person picks
+// it in systemd-boot's menu: the boot is text, and the TPM still opens /var - the profile's PCR 11
+// policy is signed as the main one's is - with the password typed at a text prompt.
+func (r *report) noSplash(v *qemu.VM, g *guest, dir, entry string) {
+	if _, err := g.run(`bootctl set-oneshot `+entry+`@no-splash`, ""); err != nil {
+		r.add("the boot without the splash", false, "bootctl set-oneshot: "+err.Error())
+		return
+	}
+	g.reboot()
+	asked := g.wait(45*time.Second) != nil
+	_ = v.PNG(filepath.Join(dir, "no-splash-password.png"))
+	err := v.TypeText(lifecyclePassword)
+	if err == nil {
+		err = g.wait(5 * time.Minute)
+	}
+	cmdline, _ := g.run(`cat /proc/cmdline`, "")
+	r.add("the boot without the splash", err == nil && asked && strings.Contains(cmdline, "plymouth.enable=0") && strings.Contains(cmdline, "rd.plymouth=0"),
+		"asked for the password "+fmt.Sprint(asked)+"; "+oneLine(cmdline)+errText(err)+"; screen: no-splash-password.png")
+	if err == nil {
+		unlocked, why := tpmUnlocked(g)
+		r.add("the TPM unlocked it without the splash", unlocked, why)
+	}
 }
