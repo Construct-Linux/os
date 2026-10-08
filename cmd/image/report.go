@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/Construct-Linux/os/internal/needle"
@@ -149,6 +150,14 @@ func (r *report) system(g *guest) {
 	r.add("pam", pamErr == nil && strings.TrimSpace(pam) == "", oneLine(pam)+errText(pamErr))
 	errs = withoutBenchOOM(errs, r.benchWindow)
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
+	// What every error came after and with: an error line alone - a read cut short by a process
+	// killed, say - does not name what was killed, and a failure only the release builder's
+	// timing shows cannot be booted again to look.
+	if strings.TrimSpace(errs) != "" {
+		if all, err := g.run(`journalctl -b -q --no-pager -o short-monotonic`, ""); err == nil {
+			_ = os.WriteFile(filepath.Join(r.dir, "journal-context.txt"), []byte(aroundErrors(all, errs, 5, 2)), 0o644)
+		}
+	}
 	// An error in the journal is a fault of the image's, whoever logged it: none is expected. -q, or
 	// an empty journal reads "-- No entries --".
 	errLines := strings.Count(strings.TrimSpace(errs), "\n")
@@ -197,15 +206,48 @@ func errText(err error) string {
 // construct bench ran: its memory test asks for more than there is, and the kernel's report of
 // the stress-ng worker it kills for that is the measurement, not a fault. Any other error then -
 // a unit's, a service's - stays.
+// aroundErrors is journal's lines from before seconds ahead of each of errs' lines to after
+// seconds past it, by their monotonic stamps, a "--" between windows apart.
+func aroundErrors(journal, errs string, before, after float64) string {
+	var at []float64
+	for _, line := range strings.Split(errs, "\n") {
+		if t, ok := monotonic(line); ok {
+			at = append(at, t)
+		}
+	}
+	var b strings.Builder
+	in := false
+	for _, line := range strings.Split(journal, "\n") {
+		t, ok := monotonic(line)
+		if !ok {
+			continue
+		}
+		near := slices.ContainsFunc(at, func(e float64) bool { return t >= e-before && t <= e+after })
+		if !near && in {
+			b.WriteString("--\n")
+		}
+		if near {
+			b.WriteString(line + "\n")
+		}
+		in = near
+	}
+	return b.String()
+}
+
+// monotonic is the seconds since boot a journalctl -o short-monotonic line starts with.
+func monotonic(line string) (float64, bool) {
+	var t float64
+	_, err := fmt.Sscanf(strings.TrimLeft(line, "[ "), "%f]", &t)
+	return t, err == nil
+}
+
 func withoutBenchOOM(errs string, window [2]float64) string {
 	if window[1] == 0 {
 		return errs
 	}
 	var kept []string
 	for _, line := range strings.Split(errs, "\n") {
-		var at float64
-		if _, err := fmt.Sscanf(strings.TrimLeft(line, "[ "), "%f]", &at); err == nil &&
-			at >= window[0] && at <= window[1] && strings.Contains(line, " kernel: ") {
+		if at, ok := monotonic(line); ok && at >= window[0] && at <= window[1] && strings.Contains(line, " kernel: ") {
 			continue
 		}
 		kept = append(kept, line)

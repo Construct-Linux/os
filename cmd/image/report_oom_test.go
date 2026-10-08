@@ -23,3 +23,27 @@ func TestWithoutBenchOOM(t *testing.T) {
 		t.Error("no bench, yet lines went")
 	}
 }
+
+// Each error comes with the journal's lines from five seconds before it to two after, windows
+// apart split by "--": what was killed, or what failed first, is in them.
+func TestAroundErrors(t *testing.T) {
+	journal := strings.Join([]string{
+		"[    2.000000] construct systemd[1]: Started early.",
+		"[    8.500000] construct systemd[1]: gdm.service: Killing process 812 (gdm) with signal SIGKILL.",
+		"[   13.140042] construct kernel: erofs (device dm-0): failed to read inode meta block (nid: 99033472): -4",
+		"[   14.000000] construct systemd[1]: Started late.",
+		"[   30.000000] construct systemd[1]: Unrelated.",
+		"[   40.000000] construct kernel: second error",
+		"-- Boot b1 --",
+	}, "\n")
+	errs := "[   13.140042] construct kernel: erofs (device dm-0): failed to read inode meta block (nid: 99033472): -4\n" +
+		"[   40.000000] construct kernel: second error"
+	want := "[    8.500000] construct systemd[1]: gdm.service: Killing process 812 (gdm) with signal SIGKILL.\n" +
+		"[   13.140042] construct kernel: erofs (device dm-0): failed to read inode meta block (nid: 99033472): -4\n" +
+		"[   14.000000] construct systemd[1]: Started late.\n" +
+		"--\n" +
+		"[   40.000000] construct kernel: second error\n"
+	if got := aroundErrors(journal, errs, 5, 2); got != want {
+		t.Errorf("aroundErrors =\n%s\nwant\n%s", got, want)
+	}
+}
