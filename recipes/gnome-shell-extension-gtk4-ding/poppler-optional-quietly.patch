@@ -1,0 +1,15 @@
+--- a/dependencies/gi.js	2026-10-07 21:04:25.329996221 -0300
++++ b/dependencies/gi.js	2026-10-07 21:04:25.339950612 -0300
+@@ -23,10 +23,10 @@
+ import Pango from 'gi://Pango';
+ const Poppler = await import('gi://Poppler')
+     .then(module => module.default)
+-    .catch(e => console.error(`Install Poppler for proper fallback pdf thumbnailing \n ${e}`));
++    .catch(e => console.log(`Install Poppler for proper fallback pdf thumbnailing \n ${e}`));
+ const Cairo = await import('gi://cairo')
+     .then(module => module.default)
+-    .catch(e => console.error(`Install Cairo for proper fallback pdf thumbnailing \n ${e}`));
++    .catch(e => console.log(`Install Cairo for proper fallback pdf thumbnailing \n ${e}`));
+ import gettext from 'gettext';
+ 
+ const GioUnix = await import('gi://GioUnix?version=2.0')

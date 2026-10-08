@@ -1,0 +1,66 @@
+# Disks and USB sticks on the desktop: GNOME Shell draws no icons there, and this extension does
+# (a GTK 4 window of its own behind the others). Construct shows mounted volumes only - not home,
+# not the trash (etc/dconf/db/local.d/00-construct). Its HTML widgets need WebKitGTK, which the
+# image does not have: without it they are off, by the extension's own check.
+package:
+  name: gnome-shell-extension-gtk4-ding
+  # The newest tag (gtk4-100.12) is for GNOME 48; main's metadata.json names 50 and 51.
+  version: 100.29_git20261002
+  epoch: 0
+  description: GNOME Shell extension that shows icons on the desktop
+  copyright:
+    - license: GPL-3.0-or-later
+  dependencies:
+    runtime:
+      - gjs
+      - gnome-autoar
+      - gnome-desktop
+      - gnome-shell
+      - libadwaita
+      - nautilus
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - gettext
+      - glib-dev
+      - meson
+      - ninja
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.com/smedius/desktop-icons-ng
+      branch: main
+      expected-commit: cdbc65d1f92883c9527e85c694dff7f9af53a385
+
+  # Poppler and cairo are a fallback for PDF thumbnails (papers' thumbnailer makes them); Wolfi's
+  # poppler-glib has no typelib, and each start would log their absence as an error.
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-gtk4-ding/poppler-optional-quietly.patch
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # The image compiles the schemas and the desktop database at build: the copies meson's
+  # post-install made of them would be this package's. AppArmor is not used. The extension's own
+  # launcher - enable it, its shortcuts, its settings - stays out of the app grid: the desktop's
+  # right-click menu has the same.
+  - runs: |
+      sed -i 's/^\[Desktop Entry\]$/[Desktop Entry]\nNoDisplay=true/' ${{targets.destdir}}/usr/share/applications/com.desktop.ding.desktop
+      grep -q '^NoDisplay=true$' ${{targets.destdir}}/usr/share/applications/com.desktop.ding.desktop
+      rm -f ${{targets.destdir}}/usr/share/glib-2.0/schemas/gschemas.compiled
+      rm -f ${{targets.destdir}}/usr/share/applications/mimeinfo.cache
+      rm -r ${{targets.destdir}}/etc
+      test -f ${{targets.destdir}}/usr/share/gnome-shell/extensions/gtk4-ding@smedius.gitlab.com/extension.js
+      test -f ${{targets.destdir}}/usr/share/glib-2.0/schemas/org.gnome.shell.extensions.gtk4-ding.gschema.xml
+
+subpackages:
+  - name: gnome-shell-extension-gtk4-ding-lang
+    pipeline:
+      - uses: split/locales

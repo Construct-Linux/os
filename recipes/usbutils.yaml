@@ -1,0 +1,44 @@
+# lsusb, for construct diagnose and a person looking at their own machine: what is plugged in,
+# its driver, its speed. Wolfi has no usbutils. Device names come from udev's hwdb (baked into the
+# root), not a usb.ids of its own.
+package:
+  name: usbutils
+  version: "019"
+  epoch: 0
+  description: USB device listing utilities
+  copyright:
+    - license: GPL-2.0-or-later
+  dependencies:
+    runtime:
+      # usb-devices is a shell script.
+      - busybox
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - libusb-dev
+      - meson
+      - ninja
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://www.kernel.org/pub/linux/utils/usb/usbutils/usbutils-${{package.version}}.tar.xz
+      expected-sha256: 659f40c440e31ba865c52c818a33d3ba6a97349e3353f8b1985179cb2aa71ec5
+
+  - uses: meson/configure
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  # lsusb.py needs Python's usb ids file, which nothing here ships; lsusb -t is the same tree.
+  - runs: |
+      rm -f ${{targets.destdir}}/usr/bin/lsusb.py
+      rm -rf ${{targets.destdir}}/usr/share/man
+      test -x ${{targets.destdir}}/usr/bin/lsusb
+
+  - uses: strip

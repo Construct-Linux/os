@@ -1,0 +1,36 @@
+# keyd remaps keys below every application, from the kernel's input devices to a uinput keyboard
+# of its own: Super+C, V, X and the rest act as copy, paste, cut (/etc/keyd/default.conf). GNOME
+# cannot do it - each application binds Ctrl+C itself, and Mutter remaps nothing. Wolfi has no
+# keyd. keyd-application-mapper is left out: it rebinds keys over keyd's socket, the path by which
+# a binding could reach command(), which runs a shell as root (the unit allows no exec anyway).
+package:
+  name: keyd
+  version: "2.6.0"
+  epoch: 0
+  description: A key remapping daemon for Linux
+  copyright:
+    - license: MIT
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - linux-headers
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/rvaiya/keyd/archive/refs/tags/v${{package.version}}.tar.gz
+      expected-sha256: 697089681915b89d9e98caf93d870dbd4abce768af8a647d54650a6a90744e26
+
+  - runs: |
+      # The socket in the unit's own runtime directory (keyd.service.d), not /var/run.
+      make PREFIX=/usr COMMIT=v${{package.version}} SOCKET_PATH=/run/keyd/keyd.socket
+      install -Dm755 bin/keyd ${{targets.destdir}}/usr/bin/keyd
+      sed -e 's#@PREFIX@#/usr#' keyd.service.in > keyd.service
+      install -Dm644 keyd.service ${{targets.destdir}}/usr/lib/systemd/system/keyd.service
+      install -Dm644 data/sysusers.d ${{targets.destdir}}/usr/lib/sysusers.d/keyd.conf
+      test -x ${{targets.destdir}}/usr/bin/keyd
+
+  - uses: strip
