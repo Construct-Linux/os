@@ -97,7 +97,7 @@ func main() {
 	case "firmware":
 		err = firmwareCmd(ctx, os.Args[2:], os.Stdout)
 	case "power":
-		err = powerCmd(os.Args[2:], os.Stdout)
+		err = powerCmd(ctx, os.Args[2:], os.Stdout)
 	case "bench":
 		err = benchCmd(ctx, os.Args[2:], os.Stdout)
 	case "report":

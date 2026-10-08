@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -27,7 +28,7 @@ var sleepState = "/run/construct/power-sleep.json"
 
 // powerCmd says what the machine draws, measured over a few seconds, or with "suspend" what each
 // suspend since the journal began cost.
-func powerCmd(args []string, stdout io.Writer) error {
+func powerCmd(ctx context.Context, args []string, stdout io.Writer) error {
 	if len(args) > 0 && args[0] == "suspend" {
 		return powerSuspends(stdout)
 	}
@@ -36,13 +37,7 @@ func powerCmd(args []string, stdout io.Writer) error {
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
-	r := power.Sysfs{Root: "/"}
-	a, err := r.Snapshot()
-	if err != nil {
-		return err
-	}
-	time.Sleep(time.Duration(*seconds) * time.Second)
-	b, err := r.Snapshot()
+	a, b, err := power.Sysfs{Root: "/"}.Measure(ctx, time.Duration(*seconds)*time.Second)
 	if err != nil {
 		return err
 	}
