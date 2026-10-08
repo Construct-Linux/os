@@ -395,20 +395,28 @@ func batteries(root string) []string {
 	return out
 }
 
+// oneLineCut is s on one line, cut to n characters: a journal message in a person's language has
+// letters of more than one byte, and a cut inside one is not text.
 func oneLineCut(s string, n int) string {
-	s = strings.Join(strings.Fields(s), " ")
-	if len(s) > n {
-		return s[:n] + "…"
+	r := []rune(strings.Join(strings.Fields(s), " "))
+	if len(r) > n {
+		return string(r[:n]) + "…"
 	}
-	return s
+	return string(r)
 }
 
-// writeArchive writes files under dir in a gzipped tar at path, root's alone until chowned.
-func writeArchive(path, dir string, files map[string][]byte) error {
+// writeArchive writes files under dir in a gzipped tar at path, root's alone until chowned; an
+// archive it could not finish is removed, not left half written.
+func writeArchive(path, dir string, files map[string][]byte) (err error) {
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
 	if err != nil {
 		return err
 	}
+	defer func() {
+		if err != nil {
+			_ = os.Remove(path)
+		}
+	}()
 	zw := gzip.NewWriter(f)
 	tw := tar.NewWriter(zw)
 	now := time.Now()

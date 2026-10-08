@@ -117,3 +117,13 @@ func TestLUKSSummary(t *testing.T) {
 		t.Errorf("luksSummary =\n%s\nwant\n%s", b, want)
 	}
 }
+
+// A cut counts characters, not bytes: a message in Spanish stays text.
+func TestOneLineCut(t *testing.T) {
+	if got := oneLineCut("autenticación  fallida\npara ada", 13); got != "autenticación…" {
+		t.Errorf("oneLineCut = %q", got)
+	}
+	if got := oneLineCut("corto", 13); got != "corto" {
+		t.Errorf("oneLineCut = %q", got)
+	}
+}
