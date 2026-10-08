@@ -1,0 +1,40 @@
+--- a/gnome-settings-daemon/gnome-settings-systemd.c	2026-10-08 18:58:43.723510240 -0300
++++ b/gnome-settings-daemon/gnome-settings-systemd.c	2026-10-08 19:08:53.612886972 -0300
+@@ -57,6 +57,17 @@
+                                              res, &error);
+ 
+         if (error) {
++                g_autofree char *remote_error = g_dbus_error_get_remote_error (error);
++
++                /* Stopping a unit that is not there leaves it stopped. Said
++                 * here: once prefixed, the message no longer starts with the
++                 * D-Bus error's name, and the callers' own check for
++                 * NoSuchUnit never matched. */
++                if (!data->running &&
++                    g_strcmp0 (remote_error, "org.freedesktop.systemd1.NoSuchUnit") == 0) {
++                        g_task_return_boolean (task, TRUE);
++                        return;
++                }
+                 g_prefix_error (&error, "Failed to %s %s: ",
+                                 data->running ? "start" : "stop",
+                                 data->unit);
+@@ -78,11 +89,18 @@
+         ret = g_dbus_connection_call_finish (G_DBUS_CONNECTION (source_object),
+                                              res, &error);
+ 
+-        if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED))
++        if (error && !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
++                g_autofree char *remote_error = g_dbus_error_get_remote_error (error);
++
++                /* Nor is a unit that is not there to disable. */
++                if (!data->running &&
++                    g_strcmp0 (remote_error, "org.freedesktop.systemd1.NoSuchUnit") == 0)
++                        return;
+                 g_warning ("Failed to %s %s: %s",
+                            data->running ? "enable" : "disable",
+                            data->unit,
+                            error->message);
++        }
+ }
+ 
+ void

@@ -1,7 +1,7 @@
 package:
   name: gnome-settings-daemon
   version: "51.0"
-  epoch: 0
+  epoch: 1
   description: GNOME settings daemon
   copyright:
     - license: GPL-2.0-only AND LGPL-2.1-only
@@ -13,6 +13,7 @@ environment:
       - build-base
       - busybox
       - colord-dev
+      - cups-dev
       # plugins/meson-add-wants.sh runs ln --relative, which busybox lacks
       - coreutils
       - fontconfig-dev
@@ -46,11 +47,20 @@ pipeline:
       uri: https://download.gnome.org/sources/gnome-settings-daemon/${{vars.series}}/gnome-settings-daemon-${{package.version}}.tar.xz
       expected-sha256: 7c6249118ddfffc4bb34d6b3edaa86b3ea02a1ad2b7711d79480749906767665
 
-  # cups off: printer notifications need cups-pk-helper, which is not shipped
+  # Stopping a sharing service the image does not have (rygel, gnome-user-share-webdav) warned at
+  # every network change, and accessibility's stopping and disabling orca when the screen reader is
+  # off: the plugins' check for NoSuchUnit never matched a message prefixed "Failed to stop ...",
+  # and disabling had none. A unit that is not there is stopped, and disabled.
+  - uses: patch
+    with:
+      patches: gnome-settings-daemon/stop-absent-unit-is-done.patch
+
   # wwan off: needs ModemManager, which is not shipped
+  # usb-protection off: it drives USBGuard, which is not shipped, and asked for it at every
+  # resume ("The name org.usbguard1 was not provided").
   - uses: meson/configure
     with:
-      opts: -Dsystemd=true -Dsystemd-units=true -Delogind=false -Dcups=false -Dwwan=false -Dgcr3=false -Dcolord=true -Dnetwork_manager=true -Dsmartcard=true -Dxwayland=true
+      opts: -Dsystemd=true -Dsystemd-units=true -Delogind=false -Dcups=true -Dwwan=false -Dgcr3=false -Dcolord=true -Dnetwork_manager=true -Dsmartcard=true -Dxwayland=true -Dusb-protection=false
 
   - uses: meson/compile
 
