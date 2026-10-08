@@ -49,7 +49,7 @@ apt-get install -qy --allow-downgrades \
 for f in /usr/share/OVMF/OVMF_CODE_4M.secboot.fd /usr/share/OVMF/OVMF_VARS_4M.fd; do
   test -f "$f" || { echo "host-tools: no $f" >&2; exit 1; }
 done
-for c in mcopy mdel ssh docker go task gh; do
+for c in mcopy mdel mkfs.vfat ssh docker go task gh; do
   command -v "$c" >/dev/null || { echo "host-tools: no $c" >&2; exit 1; }
 done
 

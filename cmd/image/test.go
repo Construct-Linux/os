@@ -139,6 +139,9 @@ func test(args []string) error {
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.installer(v, g, l, *stick)
+	// Before the desktop is shot: the stick's icon is gone again by then.
+	r.keyd(v, g)
+	r.usbStick(v, g)
 	// The live user's login keyring has no password (construct live): a secret is kept and read back
 	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
 	// does what an app does; a prompt would hang it until the timeout.
@@ -352,6 +355,8 @@ func test(args []string) error {
 	}
 	// What the run needed, before the bench asks for more than there is.
 	r.memory(g)
+	r.console(g)
+	r.diagnose(g)
 	if len(want) == 0 || want["bench"] {
 		r.bench(g)
 	}

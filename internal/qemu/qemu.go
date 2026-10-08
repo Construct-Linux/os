@@ -353,6 +353,25 @@ func (v *VM) Button(down bool) error {
 	}}})
 }
 
+// PlugUSB plugs the disk image file in as a USB stick, named id, as a person plugs one into a
+// running machine: QEMU opens it and puts a usb-storage device on the xHCI bus. file must be under
+// the repository, which is all QEMU's container sees of the host.
+func (v *VM) PlugUSB(id, file string) error {
+	if err := qmp(v.QMP, map[string]any{"execute": "blockdev-add", "arguments": map[string]any{
+		"node-name": id, "driver": "raw", "file": map[string]any{"driver": "file", "filename": file},
+	}}); err != nil {
+		return err
+	}
+	return qmp(v.QMP, map[string]any{"execute": "device_add", "arguments": map[string]any{
+		"driver": "usb-storage", "bus": "xhci.0", "drive": id, "id": id, "removable": true,
+	}})
+}
+
+// UnplugUSB pulls out the stick PlugUSB plugged in as id.
+func (v *VM) UnplugUSB(id string) error {
+	return qmp(v.QMP, map[string]any{"execute": "device_del", "arguments": map[string]any{"id": id}})
+}
+
 // Key presses and releases a key, or a chord of them held together, by QEMU qcode ("shift",
 // "esc"; "ctrl", "comma").
 func (v *VM) Key(qcodes ...string) error {
