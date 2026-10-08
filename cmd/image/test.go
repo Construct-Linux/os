@@ -141,6 +141,7 @@ func test(args []string) error {
 	r.keyd(v, g)
 	r.usbStick(v, g)
 	r.appFolder(g)
+	r.screencast(g)
 	// The live user's login keyring has no password (construct live): a secret is kept and read back
 	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
 	// does what an app does; a prompt would hang it until the timeout.

@@ -184,3 +184,40 @@ func (r *report) appFolder(g *guest) {
 	r.add("an app folder shows its apps", inside && len(cut) == 0,
 		fmt.Sprintf("dialog %+v, %d apps, cut off: %+v", got.Box, len(got.Tiles), cut)+errText(err))
 }
+
+// screencast records two seconds of the screen through the shell's own screencast proxy, as the
+// screenshot UI's record button does, and checks a file came of it: the service registers only
+// when GStreamer has the fallback pipeline's encoder (vp8enc), and without it the shell waited out
+// its activation and offered no recording at all.
+func (r *report) screencast(g *guest) {
+	var got struct {
+		Supported bool
+		OK        bool
+		File      string
+		Err       string
+	}
+	err := g.evalJSON(`
+		const wait = ms => new Promise(r => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => { r(); return GLib.SOURCE_REMOVE; }));
+		const ui = Main.screenshotUI;
+		const res = {supported: ui._screencastSupported};
+		try {
+			const [ok, file] = await ui._screencastProxy.ScreencastAsync('/tmp/construct-recording', {});
+			Object.assign(res, {ok, file});
+			await wait(2000);
+			await ui._screencastProxy.StopScreencastAsync();
+			await wait(1000);
+		} catch (e) {
+			res.err = String(e);
+		}
+		return res;`, &got)
+	if err == nil && got.Err != "" {
+		err = errors.New(got.Err)
+	}
+	size := ""
+	if got.File != "" {
+		size, _ = g.run(`stat -c %s `+got.File+`; rm -f `+got.File, "")
+		size = strings.TrimSpace(strings.Split(size, "\n")[0])
+	}
+	r.add("screen recording", err == nil && got.Supported && got.OK && size != "" && size != "0",
+		fmt.Sprintf("supported %v, recorded %v to %s, %s bytes", got.Supported, got.OK, got.File, size)+errText(err))
+}

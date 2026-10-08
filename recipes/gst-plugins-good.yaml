@@ -1,0 +1,104 @@
+# Replaces Wolfi's gst-plugins-good 1.29.2 (epoch 1), built with -Dvpx=disabled: GNOME Shell's
+# screencast service needs vp8enc for the fallback pipeline it requires before it registers at
+# all (js/dbusServices/screencast canScreencast), so screen recording never started - the shell
+# waited out its D-Bus activation ("Error connecting to the screencast service"). Wolfi's recipe
+# with vpx on, against Wolfi's libvpx; its melange tests are out, as the harness is the test.
+package:
+  name: gst-plugins-good
+  version: "1.29.2"
+  epoch: 2
+  description: GStreamer streaming media framework good plug-ins
+  copyright:
+    - license: LGPL-2.1
+  resources:
+    cpu: "2"
+    memory: 5Gi
+  test-resources:
+    memory: 1Gi
+
+environment:
+  contents:
+    packages:
+      - alsa-lib-dev
+      - build-base
+      - busybox
+      - bzip2-dev
+      - ca-certificates-bundle
+      - cdparanoia-dev
+      - cmake
+      - curl-dev
+      - expat-dev
+      - flac-dev
+      - glib-dev
+      - glib-gir
+      - glibc-2.44-dev
+      - gobject-introspection-dev
+      - gst-plugins-base-dev
+      - gstreamer-dev
+      - libjpeg-turbo-dev
+      - libogg-dev
+      - libpng-dev
+      - libtheora-dev
+      - libvpx-dev
+      - libvorbis-dev
+      - meson
+      - nasm
+      - opencore-amr-dev
+      - opus-dev
+      - orc-compiler
+      - orc-dev
+      - pulseaudio-dev
+      - python3
+      - samba-dev
+      - speex-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/GStreamer/gstreamer
+      tag: ${{package.version}}
+      expected-commit: badd9563b2ac3117ea2a99348bbe46298d6992ec
+
+  - working-directory: subprojects/gst-plugins-good
+    pipeline:
+      - runs: |
+          export CFLAGS="$CFLAGS -O2 -DMPG123_NO_LARGENAME"
+          export CXXFLAGS="$CXXFLAGS -O2 -DMPG123_NO_LARGENAME"
+          export CPPFLAGS="$CPPFLAGS -O2 -DMPG123_NO_LARGENAME"
+      - uses: meson/configure
+        with:
+          opts: |
+            -Db_lto=true \
+            -Dpackage-origin="https://wolfi.dev" \
+            -Dpackage-name="GStreamer good plug-ins (Wolfi-Linux)" \
+            -Dtests=disabled \
+            -Damrnb=enabled \
+            -Damrwbdec=enabled \
+            -Dqt-x11=disabled \
+            -Dqt6=disabled \
+            -Dgtk3=disabled \
+            -Djack=disabled \
+            -Dpulse=enabled \
+            -Dsoup=disabled \
+            -Dspeex=enabled \
+            -Dtaglib=disabled \
+            -Dv4l2=disabled \
+            -Dvpx=enabled \
+            -Dwavpack=disabled
+      - uses: meson/compile
+      - uses: meson/install
+      - uses: strip
+
+subpackages:
+  - name: ${{package.name}}-dev
+    dependencies:
+      runtime:
+        - ${{package.name}}
+    pipeline:
+      - uses: split/dev
+    description: ${{package.name}} dev
+update:
+  enabled: true
+  github:
+    identifier: GStreamer/gstreamer
+    use-tag: true
