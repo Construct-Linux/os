@@ -113,13 +113,14 @@ func touchPrompt(try int, prompt string) string {
 	return "not touched in time; " + prompt
 }
 
-// untilTouched runs ask, numbering its tries from 1, again while the key was not touched.
+// untilTouched runs ask, numbering its tries from 1, again while the key was not touched. After
+// the last miss the error is said for a person - the installer shows it as it is - and the tools'
+// own words stay in the log, where each try wrote them.
 func untilTouched(ask func(try int) error) error {
-	var err error
 	for try := 1; try <= touchTries; try++ {
-		if err = ask(try); !errors.Is(err, securitykey.ErrNotTouched) {
+		if err := ask(try); !errors.Is(err, securitykey.ErrNotTouched) {
 			return err
 		}
 	}
-	return err
+	return fmt.Errorf("%w, %d times: touch it when it blinks", securitykey.ErrNotTouched, touchTries)
 }

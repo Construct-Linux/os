@@ -100,5 +100,9 @@ func TestUntilTouched(t *testing.T) {
 		if tries != c.tries || !errors.Is(err, c.want) || (c.want == nil) != (err == nil) {
 			t.Errorf("%s: %d tries, err %v; want %d, %v", c.name, tries, err, c.tries, c.want)
 		}
+		// The installer shows the error as it is: a person's words, not the last tool's.
+		if c.want == securitykey.ErrNotTouched && strings.Contains(err.Error(), "enroll") {
+			t.Errorf("%s: %q carries the tool's words", c.name, err)
+		}
 	}
 }
