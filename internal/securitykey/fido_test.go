@@ -1,6 +1,7 @@
 package securitykey
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -64,5 +65,18 @@ func TestNotTouched(t *testing.T) {
 	}
 	if notTouched(nil) != nil {
 		t.Error("notTouched(nil) is an error")
+	}
+}
+
+// A program that failed is named with the last line it wrote to standard error, and with nothing
+// after it when it wrote none.
+func TestRunSaysWhy(t *testing.T) {
+	err := run(context.Background(), nil, nil, "sh", "-c", "echo first >&2; echo FIDO_ERR_ACTION_TIMEOUT >&2; exit 1")
+	if err == nil || !strings.HasSuffix(err.Error(), ": FIDO_ERR_ACTION_TIMEOUT") {
+		t.Errorf("run = %v", err)
+	}
+	err = run(context.Background(), nil, nil, "false")
+	if err == nil || strings.HasSuffix(err.Error(), ": ") {
+		t.Errorf("run = %q", err)
 	}
 }

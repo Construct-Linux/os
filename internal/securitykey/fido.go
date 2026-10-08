@@ -193,8 +193,11 @@ func run(ctx context.Context, env []string, out *bytes.Buffer, name string, args
 		c.Stdout = out
 	}
 	if err := c.Run(); err != nil {
-		lines := strings.Split(strings.TrimSpace(said.String()), "\n")
-		return fmt.Errorf("%s %s: %w: %s", name, strings.Join(args, " "), err, lines[len(lines)-1])
+		err = fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
+		if said := strings.TrimSpace(said.String()); said != "" {
+			err = fmt.Errorf("%w: %s", err, said[strings.LastIndex(said, "\n")+1:])
+		}
+		return err
 	}
 	return nil
 }
