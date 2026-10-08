@@ -22,10 +22,16 @@ func TestSleepSummary(t *testing.T) {
 	}
 }
 
+// No battery is mains power; a RAPL counter that is there and not read asks for sudo, and one the
+// machine does not have is said to be missing, not root's.
 func TestDescribePowerWithoutBattery(t *testing.T) {
 	now := time.Now()
 	got := describePower(power.Snapshot{Time: now}, power.Snapshot{Time: now.Add(time.Second)})
 	if !strings.HasPrefix(got, "No battery") || !strings.Contains(got, "sudo construct power") {
+		t.Errorf("%q", got)
+	}
+	got = describePower(power.Snapshot{Time: now, NoPackage: true}, power.Snapshot{Time: now.Add(time.Second), NoPackage: true})
+	if !strings.Contains(got, "no RAPL counter") || strings.Contains(got, "sudo") {
 		t.Errorf("%q", got)
 	}
 }

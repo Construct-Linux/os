@@ -26,9 +26,10 @@ type Snapshot struct {
 	// DrawW is what the batteries report they deliver now, 0 when charging or unknown.
 	DrawW float64
 	// PackageJ is the CPU package's energy counter, in joules; HavePackage is whether it could be
-	// read (RAPL's counter is root's alone).
-	PackageJ, PackageMaxJ float64
-	HavePackage           bool
+	// read (RAPL's counter is root's alone), NoPackage that the machine has none (a VM, a CPU
+	// without RAPL).
+	PackageJ, PackageMaxJ  float64
+	HavePackage, NoPackage bool
 	// HWSleep is the time the hardware has spent in its lowest power state across every suspend
 	// since boot; Suspends how many suspends succeeded.
 	HWSleep  time.Duration
@@ -83,7 +84,9 @@ func (s Sysfs) Snapshot() (Snapshot, error) {
 		snap.OnBattery = false
 	}
 	rapl := s.path("sys/class/powercap/intel-rapl:0")
-	if v, err := os.ReadFile(filepath.Join(rapl, "energy_uj")); err == nil {
+	v, err := os.ReadFile(filepath.Join(rapl, "energy_uj"))
+	snap.NoPackage = errors.Is(err, fs.ErrNotExist)
+	if err == nil {
 		if uj, err := strconv.ParseFloat(strings.TrimSpace(string(v)), 64); err == nil {
 			snap.PackageJ, snap.HavePackage = uj/1e6, true
 			snap.PackageMaxJ = micro(rapl, "max_energy_range_uj")

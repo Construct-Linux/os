@@ -72,7 +72,7 @@ func TestSnapshot(t *testing.T) {
 // A desktop without a battery is on mains, whatever its supplies say.
 func TestNoBattery(t *testing.T) {
 	s, err := Sysfs{Root: t.TempDir()}.Snapshot()
-	if err != nil || s.OnBattery || s.HavePackage {
+	if err != nil || s.OnBattery || s.HavePackage || !s.NoPackage {
 		t.Errorf("%+v, %v", s, err)
 	}
 }
