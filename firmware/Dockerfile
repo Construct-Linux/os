@@ -50,6 +50,20 @@ RUN --mount=type=cache,sharing=locked,id=desktop-firmware,target=/var/cache/firm
     cd /lf && cp -a WHENCE LICENSES /src && cp -a --parents amd-ucode /src; \
     tar -xzf "/var/cache/firmware/$iu" -C /src --strip-components=1 --wildcards '*/intel-ucode/*' '*/license'
 
+# Fixes linux-firmware has merged and not yet released, each a file at its commit, checked by
+# its sha256, over the release's - each goes when LINUX_FIRMWARE_VERSION is a release that has it.
+# - intel/ibt-00a0-01a1-pci.ddc (a98a6daa): the BE211's Bluetooth DDC ended in a stray byte, a
+#   record the controller refused - "Failed to send Intel_Write_DDC (-95)" at every boot and
+#   resume of a ThinkPad X9-15p, the rest of its parameters unsent.
+ADD --checksum=sha256:a2df9880d1895220e9bfbb86b2e2358419c56856b5dcc2d6300713969dfd0744 \
+    https://gitlab.com/kernel-firmware/linux-firmware/-/raw/a98a6daa9f4dee2f662cc8a48610287189b23499/intel/ibt-00a0-01a1-pci.ddc \
+    /fixes/intel/ibt-00a0-01a1-pci.ddc
+RUN set -eu; cd /fixes; \
+    for f in $(find . -type f); do \
+      [ -e "/src/$f.zst" ] || { echo "firmware fix: /src/$f.zst is not in the release"; exit 1; }; \
+      zstd -q -19 --rm -f "$f" -o "/src/$f.zst"; \
+    done
+
 # The same files are the same tar: sorted, root's, at time zero.
 RUN mkdir /out && \
     tar -C /src --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner -cf /out/firmware.tar . && \
