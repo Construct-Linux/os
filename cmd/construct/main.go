@@ -58,6 +58,7 @@ const usage = `usage:
   construct bench      [--rounds N] [--seconds N]
   construct kernel-profile [--minutes N] [-o FILE]
   construct report
+  construct diagnose   [-o DIR] [--power-seconds N]
   construct channel    [CHANNEL]
   construct key        list [--json] | add --name NAME [--device DEV] [--user NAME] [--pin-file FILE|-] | remove --name NAME | lock-on-removal [on|off]
   construct 1password  install | update`
@@ -101,6 +102,8 @@ func main() {
 		err = benchCmd(ctx, os.Args[2:], os.Stdout)
 	case "report":
 		err = reportCmd(ctx, os.Args[2:], os.Stdout)
+	case "diagnose":
+		err = diagnoseCmd(ctx, os.Args[2:], os.Stdout)
 	case "channel":
 		err = channelCmd(os.Args[2:], os.Stdout, "/")
 	case "1password":
