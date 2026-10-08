@@ -78,26 +78,50 @@ func Wipe(ctx context.Context, partition, password string, slot int) error {
 	return run(ctx, []string{"PASSWORD=" + password}, nil, "systemd-cryptenroll", "--wipe-slot="+strconv.Itoa(slot), partition)
 }
 
-// Slots are the LUKS2 keyslots of partition that a systemd-fido2 token opens.
-func Slots(ctx context.Context, partition string) ([]int, error) {
-	var out bytes.Buffer
-	if err := run(ctx, nil, &out, "cryptsetup", "luksDump", "--dump-json-metadata", partition); err != nil {
-		return nil, err
-	}
-	return slotsOf(out.Bytes())
+// Header is a LUKS2 header by kinds: its keyslots, its tokens and the slots each token opens.
+// Nothing in it is secret - no salt, digest or wrapped key is read.
+type Header struct {
+	Keyslots map[string]Keyslot `json:"keyslots"`
+	Tokens   map[string]Token   `json:"tokens"`
 }
 
-// slotsOf reads them from the header's JSON.
-func slotsOf(header []byte) ([]int, error) {
-	var h struct {
-		Tokens map[string]struct {
-			Type     string   `json:"type"`
-			Keyslots []string `json:"keyslots"`
-		} `json:"tokens"`
+// Keyslot is a slot's kind (luks2).
+type Keyslot struct {
+	Type string `json:"type"`
+}
+
+// Token is what opens slots without the password: systemd-tpm2, systemd-fido2, systemd-recovery.
+type Token struct {
+	Type     string   `json:"type"`
+	Keyslots []string `json:"keyslots"`
+}
+
+// ReadHeader reads partition's LUKS2 header.
+func ReadHeader(ctx context.Context, partition string) (Header, error) {
+	var out bytes.Buffer
+	if err := run(ctx, nil, &out, "cryptsetup", "luksDump", "--dump-json-metadata", partition); err != nil {
+		return Header{}, err
 	}
-	if err := json.Unmarshal(header, &h); err != nil {
+	return parseHeader(out.Bytes())
+}
+
+func parseHeader(b []byte) (Header, error) {
+	var h Header
+	err := json.Unmarshal(b, &h)
+	return h, err
+}
+
+// Slots are the LUKS2 keyslots of partition that a systemd-fido2 token opens.
+func Slots(ctx context.Context, partition string) ([]int, error) {
+	h, err := ReadHeader(ctx, partition)
+	if err != nil {
 		return nil, err
 	}
+	return h.FIDO2Slots()
+}
+
+// FIDO2Slots are the keyslots a systemd-fido2 token opens, in order.
+func (h Header) FIDO2Slots() ([]int, error) {
 	var slots []int
 	for _, t := range h.Tokens {
 		if t.Type != "systemd-fido2" {

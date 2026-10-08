@@ -168,26 +168,14 @@ func luksKinds(ctx context.Context) ([]byte, error) {
 	if err != nil || part == "" {
 		return []byte("/var is not encrypted\n"), err
 	}
-	b, err := exec.CommandContext(ctx, "cryptsetup", "luksDump", "--dump-json-metadata", part).Output()
+	h, err := securitykey.ReadHeader(ctx, part)
 	if err != nil {
 		return nil, err
 	}
-	return luksSummary(part, b)
+	return luksSummary(part, h), nil
 }
 
-func luksSummary(part string, header []byte) ([]byte, error) {
-	var h struct {
-		Keyslots map[string]struct {
-			Type string `json:"type"`
-		} `json:"keyslots"`
-		Tokens map[string]struct {
-			Type     string   `json:"type"`
-			Keyslots []string `json:"keyslots"`
-		} `json:"tokens"`
-	}
-	if err := json.Unmarshal(header, &h); err != nil {
-		return nil, err
-	}
+func luksSummary(part string, h securitykey.Header) []byte {
 	var b bytes.Buffer
 	fmt.Fprintf(&b, "%s\n", part)
 	for _, k := range slices.Sorted(maps.Keys(h.Keyslots)) {
@@ -196,7 +184,7 @@ func luksSummary(part string, header []byte) ([]byte, error) {
 	for _, k := range slices.Sorted(maps.Keys(h.Tokens)) {
 		fmt.Fprintf(&b, "token %s: %s, keyslots %s\n", k, h.Tokens[k].Type, strings.Join(h.Tokens[k].Keyslots, ","))
 	}
-	return b.Bytes(), nil
+	return b.Bytes()
 }
 
 // displays are the DRM connectors, connected or not, with their modes: a panel the GPU's driver

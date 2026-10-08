@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/Construct-Linux/os/internal/securitykey"
 )
 
 // A device whose block has no "Kernel driver in use" is listed; one with a driver, or with only
@@ -103,15 +105,14 @@ func TestBatteries(t *testing.T) {
 	}
 }
 
-// The header's kinds reach the archive, its salts and digests never.
+// Slots and tokens in order, each token with the slots it opens.
 func TestLUKSSummary(t *testing.T) {
-	header := `{"keyslots":{"1":{"type":"luks2","kdf":{"salt":"c2FsdA=="}},"0":{"type":"luks2"}},
-		"tokens":{"0":{"type":"systemd-tpm2","keyslots":["1"],"tpm2-blob":"YmxvYg=="},"1":{"type":"systemd-fido2","keyslots":["2"]}},
-		"digests":{"0":{"digest":"ZGlnZXN0"}}}`
-	b, err := luksSummary("/dev/nvme0n1p6", []byte(header))
-	if err != nil {
-		t.Fatal(err)
+	h := securitykey.Header{
+		Keyslots: map[string]securitykey.Keyslot{"1": {Type: "luks2"}, "0": {Type: "luks2"}},
+		Tokens: map[string]securitykey.Token{"0": {Type: "systemd-tpm2", Keyslots: []string{"1"}},
+			"1": {Type: "systemd-fido2", Keyslots: []string{"2"}}},
 	}
+	b := luksSummary("/dev/nvme0n1p6", h)
 	want := "/dev/nvme0n1p6\nkeyslot 0: luks2\nkeyslot 1: luks2\ntoken 0: systemd-tpm2, keyslots 1\ntoken 1: systemd-fido2, keyslots 2\n"
 	if string(b) != want {
 		t.Errorf("luksSummary =\n%s\nwant\n%s", b, want)
