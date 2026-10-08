@@ -189,12 +189,15 @@ func test(args []string) error {
 	local, err := g.run(`getent hosts "$(hostname).local"; ss -Hulnp 'sport = :5353' | grep -o 'users:(("[^"]*' | sort -u`, "")
 	r.add("mdns", err == nil && strings.Contains(local, "construct.local") && strings.Contains(local, `"avahi-daemon`) && !strings.Contains(local, `"systemd-resolve`), oneLine(local)+errText(err))
 	// The memory, writeback and network settings (usr/lib/sysctl.d/70-construct.conf, zram,
-	// THP), as the running kernel has them.
+	// THP), as the running kernel has them; and the qdisc the network's interface was given when it
+	// came up, fq - a multiqueue one's under mq - which a default_qdisc set after it would not be.
 	tune, _ := g.run(`swapon --show=NAME,TYPE --noheadings | tr -s ' ' | tr '\n' ';'; `+
-		`sysctl -n vm.swappiness vm.page-cluster vm.vfs_cache_pressure vm.dirty_bytes net.ipv4.tcp_congestion_control kernel.nmi_watchdog | tr '\n' ' '; `+
+		`sysctl -n vm.swappiness vm.page-cluster vm.vfs_cache_pressure vm.dirty_bytes net.core.default_qdisc net.ipv4.tcp_congestion_control kernel.nmi_watchdog | tr '\n' ' '; `+
 		`cat /sys/kernel/mm/transparent_hugepage/defrag /sys/module/zswap/parameters/enabled | tr '\n' ' '`, "")
 	r.add("memory and network settings", strings.Contains(tune, "/dev/zram0 partition;") &&
-		strings.Contains(tune, "150 0 50 268435456 bbr 0") && strings.Contains(tune, "[defer+madvise]") && strings.HasSuffix(strings.TrimSpace(tune), "N"), oneLine(tune))
+		strings.Contains(tune, "150 0 50 268435456 fq bbr 0") && strings.Contains(tune, "[defer+madvise]") && strings.HasSuffix(strings.TrimSpace(tune), "N"), oneLine(tune))
+	qdisc, err := g.run(`tc qdisc show dev "$(ip route show default | awk '{print $5; exit}')"`, "")
+	r.add("the network's interface is queued by fq", err == nil && strings.Contains(qdisc, "qdisc fq ") && !strings.Contains(qdisc, "fq_codel"), oneLine(qdisc)+errText(err))
 	// Tailscale's agent runs, waiting for someone to log in (no tailnet in the harness).
 	ts, _ := g.run(`systemctl is-active tailscaled; tailscale status --json 2>/dev/null | grep -o '"BackendState": *"[A-Za-z]*"'`, "")
 	r.add("tailscale", strings.HasPrefix(ts, "active") && strings.Contains(ts, "NeedsLogin"), oneLine(ts))
