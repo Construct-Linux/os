@@ -328,6 +328,10 @@ func (r *report) securityKey(m, first qemu.Machine, dir string) bool {
 	// The key signs the person in where sudo asks: a wrong password, and the touch lets them in.
 	sudo, err := g.run(`runuser -u `+lifecycleUser+` -- sh -c 'echo wrong | sudo -S -k true' 2>&1; echo rc=$?`, "")
 	r.add("the key's touch is sudo's password", err == nil && strings.HasSuffix(strings.TrimSpace(sudo), "rc=0"), oneLine(sudo)+errText(err))
+	// An SSH key that lives on the security key, made as the person makes one: OpenSSH's built-in
+	// FIDO (recipes/openssh), which Wolfi's build had not.
+	sk, err := g.run(`runuser -u `+lifecycleUser+` -- sh -c 'rm -f /tmp/id_sk*; timeout 60 ssh-keygen -q -t ed25519-sk -N "" -f /tmp/id_sk </dev/null 2>&1; echo rc=$?; head -c 40 /tmp/id_sk.pub'`, "")
+	r.add("an SSH key on the security key", err == nil && strings.Contains(sk, "rc=0") && strings.Contains(sk, "sk-ssh-ed25519@openssh.com"), oneLine(sk)+errText(err))
 	powerOff(v, g)
 
 	keyBoot := first
