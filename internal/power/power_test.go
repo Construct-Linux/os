@@ -1,6 +1,8 @@
 package power
 
 import (
+	"context"
+	"errors"
 	"math"
 	"os"
 	"path/filepath"
@@ -96,5 +98,53 @@ func TestPackageWraps(t *testing.T) {
 	b := Snapshot{Time: t0.Add(2 * time.Second), HavePackage: true, PackageJ: 5, PackageMaxJ: 100}
 	if w, ok := PackageW(a, b); !ok || !near(w, 3) {
 		t.Errorf("%v W (%v)", w, ok)
+	}
+}
+
+// A battery's health is its full charge against its design's, in energy or, where it reports
+// none, in charge; a mouse's battery is not the system's.
+func TestBatteries(t *testing.T) {
+	root := t.TempDir()
+	writeSys(t, root, map[string]string{
+		"sys/class/power_supply/BAT0/type":               "Battery",
+		"sys/class/power_supply/BAT0/status":             "Discharging",
+		"sys/class/power_supply/BAT0/capacity":           "81",
+		"sys/class/power_supply/BAT0/energy_full":        "45000000",
+		"sys/class/power_supply/BAT0/energy_full_design": "50000000",
+		"sys/class/power_supply/BAT0/cycle_count":        "212",
+		"sys/class/power_supply/BAT1/type":               "Battery",
+		"sys/class/power_supply/BAT1/status":             "Full",
+		"sys/class/power_supply/BAT1/capacity":           "100",
+		"sys/class/power_supply/BAT1/charge_full":        "3000000",
+		"sys/class/power_supply/BAT1/charge_full_design": "4000000",
+		"sys/class/power_supply/hid-mouse/type":          "Battery",
+		"sys/class/power_supply/hid-mouse/scope":         "Device",
+	})
+	got := Sysfs{Root: root}.Batteries()
+	want := []Battery{
+		{Name: "BAT0", Status: "Discharging", Capacity: 81, Health: 90, Cycles: 212},
+		{Name: "BAT1", Status: "Full", Capacity: 100, Health: 75},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("Batteries = %+v", got)
+	}
+	for i := range want {
+		if got[i].Name != want[i].Name || got[i].Status != want[i].Status || got[i].Capacity != want[i].Capacity ||
+			!near(got[i].Health, want[i].Health) || got[i].Cycles != want[i].Cycles {
+			t.Errorf("battery %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
+}
+
+// A measurement whose context ends stops waiting, and says why.
+func TestMeasureCancelled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	if _, _, err := (Sysfs{Root: t.TempDir()}).Measure(ctx, time.Minute); !errors.Is(err, context.Canceled) {
+		t.Errorf("Measure = %v, want context.Canceled", err)
+	}
+	if time.Since(start) > 5*time.Second {
+		t.Error("Measure waited out its minute")
 	}
 }

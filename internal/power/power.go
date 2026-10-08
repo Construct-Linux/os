@@ -4,6 +4,7 @@
 package power
 
 import (
+	"context"
 	"errors"
 	"io/fs"
 	"os"
@@ -92,6 +93,59 @@ func (s Sysfs) Snapshot() (Snapshot, error) {
 	snap.HWSleep = time.Duration(us) * time.Microsecond
 	snap.Suspends, _ = strconv.Atoi(read(s.path("sys/power/suspend_stats"), "success"))
 	return snap, nil
+}
+
+// Measure snapshots the machine, waits d, and snapshots it again: what it drew in between. A ctx
+// that ends first ends the wait, with its error.
+func (s Sysfs) Measure(ctx context.Context, d time.Duration) (Snapshot, Snapshot, error) {
+	a, err := s.Snapshot()
+	if err != nil {
+		return a, a, err
+	}
+	select {
+	case <-ctx.Done():
+		return a, a, ctx.Err()
+	case <-time.After(d):
+	}
+	b, err := s.Snapshot()
+	return a, b, err
+}
+
+// Battery is one of the system's batteries as the kernel reports it.
+type Battery struct {
+	Name, Status string
+	// Capacity is its charge, in percent.
+	Capacity int
+	// Health is what it holds when full against what it was designed to, in percent; 0 when the
+	// kernel does not say.
+	Health float64
+	// Cycles is how many times it was charged, 0 when unknown.
+	Cycles int
+}
+
+// Batteries are the system's batteries - not a mouse's or a keyboard's - in the kernel's order.
+func (s Sysfs) Batteries() []Battery {
+	supplies, _ := os.ReadDir(s.path("sys/class/power_supply"))
+	var out []Battery
+	for _, e := range supplies {
+		dir := s.path(filepath.Join("sys/class/power_supply", e.Name()))
+		if read(dir, "type") != "Battery" || read(dir, "scope") == "Device" {
+			continue
+		}
+		b := Battery{Name: e.Name(), Status: read(dir, "status")}
+		b.Capacity, _ = strconv.Atoi(read(dir, "capacity"))
+		b.Cycles, _ = strconv.Atoi(read(dir, "cycle_count"))
+		full, design := micro(dir, "energy_full"), micro(dir, "energy_full_design")
+		if full == 0 {
+			// Batteries that count charge instead of energy.
+			full, design = micro(dir, "charge_full"), micro(dir, "charge_full_design")
+		}
+		if design > 0 {
+			b.Health = 100 * full / design
+		}
+		out = append(out, b)
+	}
+	return out
 }
 
 // PackageW is the CPU package's mean power between two snapshots, false when unreadable. The
