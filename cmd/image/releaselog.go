@@ -1,13 +1,11 @@
 package main
 
 import (
-	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -55,26 +53,31 @@ func releaseLog(args []string) error {
 	defer os.RemoveAll(tmp)
 	part := filepath.Join(tmp, "part")
 	var offset int64
-	for {
-		// What was written since the last read: a range past the end is no new bytes.
+	// printNew prints what was written since the last read: a range past the end is no new bytes.
+	printNew := func() error {
 		if _, err := awsOut("s3api", "get-object", "--bucket", bucket, "--key", prefix+*file,
-			"--range", fmt.Sprintf("bytes=%d-", offset), part); err == nil {
-			b, err := os.ReadFile(part)
-			if err != nil {
-				return err
-			}
-			os.Stdout.Write(b)
-			offset += int64(len(b))
+			"--range", fmt.Sprintf("bytes=%d-", offset), part); err != nil {
+			return nil
+		}
+		b, err := os.ReadFile(part)
+		if err != nil {
+			return err
+		}
+		os.Stdout.Write(b)
+		offset += int64(len(b))
+		return nil
+	}
+	for {
+		if err := printNew(); err != nil {
+			return err
 		}
 		if !*follow {
 			return nil
 		}
 		// The job's exit status is the last thing a builder writes: once it is there, so is the log.
 		if rc, err := awsOut("s3", "cp", "--quiet", "s3://"+bucket+"/"+prefix+"rc", "-"); err == nil {
-			if _, err := awsOut("s3api", "get-object", "--bucket", bucket, "--key", prefix+*file,
-				"--range", fmt.Sprintf("bytes=%d-", offset), part); err == nil {
-				b, _ := os.ReadFile(part)
-				os.Stdout.Write(b)
+			if err := printNew(); err != nil {
+				return err
 			}
 			fmt.Fprintf(os.Stderr, "release-log: the job ended with %s\n", strings.TrimSpace(rc))
 			if strings.TrimSpace(rc) != "0" {
@@ -121,15 +124,4 @@ func buildPrefix(bucket string, run builderRun) (string, error) {
 		}
 	}
 	return "", fmt.Errorf("%s has written nothing to s3://%s yet: it uploads its log every 15 seconds once it runs", run.ID, bucket)
-}
-
-// awsOut runs the AWS CLI and answers what it printed, or its error with what it said.
-func awsOut(args ...string) (string, error) {
-	var out, errb bytes.Buffer
-	cmd := exec.Command("aws", args...)
-	cmd.Stdout, cmd.Stderr = &out, &errb
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("aws %s: %w: %s", args[0], err, strings.TrimSpace(errb.String()))
-	}
-	return strings.TrimSpace(out.String()), nil
 }

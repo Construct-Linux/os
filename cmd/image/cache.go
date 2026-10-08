@@ -147,12 +147,6 @@ func unpackCached(c cached, local string) error {
 	return run("tar", "-I", "zstd", "-xf", local)
 }
 
-func aws(args ...string) error {
-	cmd := exec.Command("aws", args...)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	return cmd.Run()
-}
-
 func shell(script string) error {
 	cmd := exec.Command("bash", "-c", "set -o pipefail; "+script)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
