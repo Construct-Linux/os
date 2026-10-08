@@ -1,0 +1,14 @@
+--- a/app/desktopFolderMonitor.js	2026-10-08 13:54:02.322103590 -0300
++++ b/app/desktopFolderMonitor.js	2026-10-08 13:54:02.332896592 -0300
+@@ -641,8 +641,9 @@
+ 
+     async getFileList() {
+         const fileList = await this._doReadAsync();
+-        this._fileList = fileList;
+-        return fileList;
++        if (fileList !== null)
++            this._fileList = fileList;
++        return this._fileList;
+     }
+ 
+     async reLoadFileList() {

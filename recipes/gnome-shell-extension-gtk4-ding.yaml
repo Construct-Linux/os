@@ -6,7 +6,7 @@ package:
   name: gnome-shell-extension-gtk4-ding
   # The newest tag (gtk4-100.12) is for GNOME 48; main's metadata.json names 50 and 51.
   version: 100.29_git20261002
-  epoch: 0
+  epoch: 1
   description: GNOME Shell extension that shows icons on the desktop
   copyright:
     - license: GPL-3.0-or-later
@@ -40,6 +40,15 @@ pipeline:
   - uses: patch
     with:
       patches: gnome-shell-extension-gtk4-ding/poppler-optional-quietly.patch
+
+  # getFileList kept what reading the desktop answered, which is null when the read was cancelled
+  # or the desktop changed while it ran; every redraw then spread this.desktopMonitor.fileList
+  # and threw ("can't access property Symbol.iterator, ... fileList is null"), and a stick's
+  # icon stayed after it was ejected (the release builder's harness). It keeps the last list read,
+  # as _updateFileList already does.
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-gtk4-ding/file-list-never-null.patch
 
   - uses: meson/configure
 
