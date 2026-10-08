@@ -113,25 +113,13 @@ func (r *report) usbStick(v *qemu.VM, g *guest) {
 }
 
 // desktopHasIcon waits up to 20 s for the desktop to show (want) or stop showing (!want) an icon
-// labelled label, as the accessibility bus has the session's labels - nothing else is open - and
-// says whether it came to that.
+// labelled label - nothing else is open to show one (image/test's a11y-label.py) - and says
+// whether it came to that.
 func (r *report) desktopHasIcon(g *guest, label string, want bool) bool {
+	answer := map[bool]string{true: "yes", false: "no"}[want]
 	for range 20 {
 		time.Sleep(time.Second)
-		out, _ := g.run(asLive+`python3 -c '
-import gi
-gi.require_version("Atspi", "2.0")
-from gi.repository import Atspi
-def walk(a, d=0):
-    if a is None or d > 30: return False
-    try:
-        if a.get_name() == "`+label+`": return True
-        return any(walk(a.get_child_at_index(i), d + 1) for i in range(a.get_child_count()))
-    except Exception: return False
-desk = Atspi.get_desktop(0)
-print(any(walk(desk.get_child_at_index(i)) for i in range(desk.get_child_count())))
-'`, "")
-		if (strings.TrimSpace(out) == "True") == want {
+		if out, _ := g.run(asLive+`/usr/lib/construct-test/a11y-label.py `+label, ""); strings.TrimSpace(out) == answer {
 			return true
 		}
 	}

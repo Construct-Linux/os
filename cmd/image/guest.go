@@ -75,8 +75,8 @@ func (g *guest) run(script string, stdin string) (string, error) {
 // connectTries is how many times run connects before a guest that does not answer is a failure.
 const connectTries = 3
 
-// answers says whether the guest's sshd answers now, once: what waits for a guest to come up or go
-// down loops on it, and a retry inside would only blur when it did.
+// answers is nil when the guest's sshd answers now, asked once: what waits for a guest to come up
+// or go down loops on it, and a retry inside would only blur when it did.
 func (g *guest) answers() error {
 	_, stderr, err := g.ssh("true", "")
 	if err != nil {
