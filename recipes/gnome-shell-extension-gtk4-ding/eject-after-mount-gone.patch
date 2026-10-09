@@ -1,0 +1,78 @@
+--- a/app/volumeIcon.js	2026-10-08 23:04:13.722814986 -0300
++++ b/app/volumeIcon.js	2026-10-08 23:04:13.816571278 -0300
+@@ -29,18 +29,44 @@
+         this._ejectCancellable = null;
+         this._umountCancellable = null;
+ 
++        // gvfs's volume monitor disposes a mount once it is gone, after its "unmounted": an eject's
++        // or unmount's own success. Their callbacks come later, and finishing them then reached a
++        // disposed GProxyMount (Gjs-CRITICAL "has been already disposed") on every eject.
++        this._mountGone = false;
+         if (this._gioMount) {
+-            /* gjs doesn't handle some virtual implementations well*/
+-            Gio._promisify(this._gioMount.constructor.prototype,
+-                'eject_with_operation');
+-            Gio._promisify(this._gioMount.constructor.prototype,
+-                'unmount_with_operation');
++            this._unmountedId = this._gioMount.connect('unmounted', () => {
++                this._mountGone = true;
++                this._gioMount.disconnect(this._unmountedId);
++                this._unmountedId = 0;
++            });
+         }
+     }
+ 
++    _mountCall(method, mountOp, cancellable) {
++        const mount = this._gioMount;
++        return new Promise((resolve, reject) => {
++            mount[method](Gio.MountUnmountFlags.NONE, mountOp, cancellable, (_source, res) => {
++                if (this._mountGone) {
++                    resolve(true);
++                    return;
++                }
++                try {
++                    resolve(mount[`${method}_finish`](res));
++                } catch (e) {
++                    reject(e);
++                }
++            });
++        });
++    }
++
+     _destroy() {
+         this._destroying = true;
+ 
++        if (this._unmountedId) {
++            this._gioMount.disconnect(this._unmountedId);
++            this._unmountedId = 0;
++        }
++
+         if (this._umountCancellable)
+             this._umountCancellable.cancel();
+         this._umountCancellable = null;
+@@ -94,11 +120,7 @@
+         this._ejectCancellable = cancellable;
+ 
+         try {
+-            await this._gioMount.eject_with_operation(
+-                Gio.MountUnmountFlags.NONE,
+-                mountOp,
+-                cancellable
+-            );
++            await this._mountCall('eject_with_operation', mountOp, cancellable);
+         } catch (e) {
+             // I cannot find the exact Gio Enum, Gio.MountOperationResult
+             // does not work. Shortcut :)
+@@ -130,11 +152,7 @@
+         this._umountCancellable = cancellable;
+ 
+         try {
+-            await this._gioMount.unmount_with_operation(
+-                Gio.MountUnmountFlags.NONE,
+-                mountOp,
+-                cancellable
+-            );
++            await this._mountCall('unmount_with_operation', mountOp, cancellable);
+         } catch (e) {
+             // I cannot find the exact Gio Enum, Gio.MountOperationResult
+             // does not work. Shortcut :)

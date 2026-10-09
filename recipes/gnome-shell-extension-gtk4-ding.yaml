@@ -6,7 +6,7 @@ package:
   name: gnome-shell-extension-gtk4-ding
   # The newest tag (gtk4-100.12) is for GNOME 48; main's metadata.json names 50 and 51.
   version: 100.29_git20261002
-  epoch: 1
+  epoch: 2
   description: GNOME Shell extension that shows icons on the desktop
   copyright:
     - license: GPL-3.0-or-later
@@ -49,6 +49,13 @@ pipeline:
   - uses: patch
     with:
       patches: gnome-shell-extension-gtk4-ding/file-list-never-null.patch
+
+  # An eject from a stick's icon finished its call on the mount gvfs had already disposed - its
+  # success is what removes the mount - and logged a Gjs-CRITICAL each time. The icon marks the
+  # mount gone at its "unmounted", which gvfs emits before it disposes it, and finishes nothing then.
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-gtk4-ding/eject-after-mount-gone.patch
 
   - uses: meson/configure
 
