@@ -201,6 +201,15 @@ func test(args []string) error {
 		strings.Contains(tune, "150 0 50 268435456 fq bbr 0") && strings.Contains(tune, "[defer+madvise]") && strings.HasSuffix(strings.TrimSpace(tune), "N"), oneLine(tune))
 	qdisc, err := g.run(`tc qdisc show dev "$(ip route show default | awk '{print $5; exit}')"`, "")
 	r.add("the network's interface is queued by fq", err == nil && strings.Contains(qdisc, "qdisc fq ") && !strings.Contains(qdisc, "fq_codel"), oneLine(qdisc)+errText(err))
+	// The fonts' cache baked into /usr is the one fontconfig takes: a program with no cache of its
+	// own to write (nobody's home is /) finds every font without scanning, and says nothing. With
+	// a cache the times of the root's font directories did not match, each app scanned and tried
+	// to write one ("Fontconfig error: No writable cache directories").
+	fonts, err := g.run(`runuser -u nobody -- env -i fc-match sans-serif 2>&1`, "")
+	r.add("the fonts' cache is the root's", err == nil && !strings.Contains(fonts, "Fontconfig") && strings.Contains(fonts, "Adwaita Sans"), oneLine(fonts)+errText(err))
+	// Two tmpfiles.d lines for one path: the later one is ignored, and logged at every boot.
+	dup, _ := g.run(`journalctl -b -o cat -t systemd-tmpfiles | grep 'Duplicate line' | sort -u`, "")
+	r.add("tmpfiles.d declares each path once", strings.TrimSpace(dup) == "", oneLine(dup))
 	// Tailscale's agent runs, waiting for someone to log in (no tailnet in the harness).
 	ts, _ := g.run(`systemctl is-active tailscaled; tailscale status --json 2>/dev/null | grep -o '"BackendState": *"[A-Za-z]*"'`, "")
 	r.add("tailscale", strings.HasPrefix(ts, "active") && strings.Contains(ts, "NeedsLogin"), oneLine(ts))
