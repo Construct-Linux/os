@@ -1,0 +1,43 @@
+# dotconf: the configuration file parser speech-dispatcher reads its files with. Wolfi has none.
+package:
+  name: dotconf
+  version: "1.4.1"
+  epoch: 0
+  description: A configuration file parser library
+  copyright:
+    - license: LGPL-2.1-only
+
+environment:
+  contents:
+    packages:
+      - autoconf
+      - automake
+      - build-base
+      - busybox
+      - libtool
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/williamh/dotconf/archive/refs/tags/v${{package.version}}.tar.gz
+      expected-sha256: 5922c46cacf99b2ecc4853d28a2bda4a489292e73276e604bd9cba29dfca892d
+
+  - runs: autoreconf -fi
+
+  - uses: autoconf/configure
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: rm -rf ${{targets.destdir}}/usr/share/doc
+
+  - uses: strip
+
+subpackages:
+  - name: dotconf-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - dotconf

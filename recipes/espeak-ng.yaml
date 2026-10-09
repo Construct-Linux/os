@@ -1,0 +1,52 @@
+# espeak-ng: the speech synthesizer speech-dispatcher speaks with for Orca, the screen reader -
+# every language it has, as the image ships every language (AGENTS.md). Wolfi has none. Its audio
+# is speech-dispatcher's (PipeWire), so it is built without its own (pcaudiolib) and without the
+# rate-up library sonic; mbrola's voices are a separate download nobody ships.
+package:
+  name: espeak-ng
+  version: "1.52.0"
+  epoch: 0
+  description: Compact multilingual speech synthesizer
+  copyright:
+    - license: GPL-3.0-or-later
+
+environment:
+  contents:
+    packages:
+      - autoconf
+      - automake
+      - build-base
+      - busybox
+      - libtool
+      - pkgconf
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/espeak-ng/espeak-ng/archive/refs/tags/${{package.version}}.tar.gz
+      expected-sha256: bb4338102ff3b49a81423da8a1a158b420124b055b60fa76cfb4b18677130a23
+
+  - runs: ./autogen.sh
+
+  - uses: autoconf/configure
+    with:
+      opts: --with-pcaudiolib=no --with-sonic=no --with-mbrola=no --disable-static
+
+  # The voices' data is compiled by the tool the build just made, one language after another: a
+  # parallel make races on it.
+  - runs: |
+      make -j1
+      make -j1 DESTDIR="${{targets.destdir}}" install
+      rm -rf ${{targets.destdir}}/usr/share/vim
+      find ${{targets.destdir}} -name "*.la" -delete
+      test -d ${{targets.destdir}}/usr/share/espeak-ng-data/voices
+
+  - uses: strip
+
+subpackages:
+  - name: espeak-ng-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - espeak-ng

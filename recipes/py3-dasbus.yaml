@@ -1,0 +1,35 @@
+# dasbus: a D-Bus library for Python, which Orca's remote controller interface is built on and
+# which its build requires. Wolfi has no recipe.
+package:
+  name: py3-dasbus
+  version: "1.7"
+  epoch: 0
+  description: DBus library in Python 3
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    provides:
+      - py3.13-dasbus=${{package.full-version}}
+    runtime:
+      - py3.13-gobject3
+      - python-3.13
+
+environment:
+  contents:
+    packages:
+      - busybox
+      - python-3.13
+      - py3.13-gpep517
+      - py3.13-installer
+      - py3.13-setuptools
+      - py3.13-wheel
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://files.pythonhosted.org/packages/37/79/9c5984d723ffbe2e839ee649690f3e1fa6544ab6a17a5150e5ac14a47072/dasbus-${{package.version}}.tar.gz
+      expected-sha256: a8850d841adfe8ee5f7bb9f82cf449ab9b4950dc0633897071718e0d0036b6f6
+
+  - runs: |
+      python3.13 -m gpep517 build-wheel --backend setuptools.build_meta --wheel-dir .dist --output-fd 1
+      python3.13 -m installer -d "${{targets.destdir}}" .dist/*.whl

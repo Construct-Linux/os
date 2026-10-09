@@ -1,0 +1,85 @@
+# speech-dispatcher: the speech service Orca, the screen reader, speaks through - its espeak-ng
+# module, its audio over PipeWire, and the speechd Python module Orca imports. Wolfi has none.
+# Other synthesizers' modules (Festival, flite, pico, the commercial ones) are not built: nothing
+# here ships them.
+package:
+  name: speech-dispatcher
+  version: "0.12.1"
+  epoch: 0
+  description: High-level device independent layer for speech synthesis
+  copyright:
+    - license: GPL-2.0-or-later AND LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - espeak-ng
+      - python-3.13
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - dotconf-dev
+      - espeak-ng-dev
+      - gettext-dev
+      - glib-dev
+      - intltool
+      - libsndfile-dev
+      - libtool
+      - pipewire-dev
+      - pkgconf
+      - python-3.13-dev
+      - py3.13-setuptools
+      - systemd-dev
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://github.com/brailcom/speechd/releases/download/${{package.version}}/speech-dispatcher-${{package.version}}.tar.gz
+      expected-sha256: b14a5238d287d2dcce4dd42bbd66ca65fa228e7e683708267f7b34036f7ba4b4
+
+  - uses: autoconf/configure
+    with:
+      opts: |
+        --sysconfdir=/etc \
+        --with-espeak-ng \
+        --without-espeak \
+        --without-flite \
+        --without-ivona \
+        --without-pico \
+        --without-baratinoo \
+        --without-kali \
+        --without-voxin \
+        --with-pipewire \
+        --without-pulse \
+        --without-alsa \
+        --without-oss \
+        --without-nas \
+        --without-libao \
+        --with-default-audio-method=pipewire \
+        --with-systemdsystemunitdir=/usr/lib/systemd/system \
+        --with-systemduserunitdir=/usr/lib/systemd/user \
+        --disable-static \
+        PYTHON=python3.13
+
+  - uses: autoconf/make
+
+  - uses: autoconf/make-install
+
+  - runs: |
+      find ${{targets.destdir}} -name "*.la" -delete
+      test -x ${{targets.destdir}}/usr/libexec/speech-dispatcher-modules/sd_espeak-ng
+      test -d ${{targets.destdir}}/usr/lib/python3.13/site-packages/speechd
+
+  - uses: strip
+
+subpackages:
+  - name: speech-dispatcher-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - speech-dispatcher
+  - name: speech-dispatcher-lang
+    pipeline:
+      - uses: split/locales

@@ -199,6 +199,10 @@ func (r *report) screencast(g *guest) {
 	err := g.evalJSON(`
 		const wait = ms => new Promise(r => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => { r(); return GLib.SOURCE_REMOVE; }));
 		const ui = Main.screenshotUI;
+		// The shell learns it can record once its proxy reaches the service, which a slow start
+		// can leave for after the session is up.
+		for (let i = 0; i < 40 && !ui._screencastSupported; i++)
+			await wait(500);
 		const res = {supported: ui._screencastSupported};
 		try {
 			const [ok, file] = await ui._screencastProxy.ScreencastAsync('/tmp/construct-recording', {});
@@ -220,4 +224,17 @@ func (r *report) screencast(g *guest) {
 	}
 	r.add("screen recording", err == nil && got.Supported && got.OK && size != "" && size != "0",
 		fmt.Sprintf("supported %v, recorded %v to %s, %s bytes", got.Supported, got.OK, got.File, size)+errText(err))
+}
+
+// screenReader turns the screen reader on as Settings' Accessibility page does, and checks Orca
+// comes up and speaks - speech-dispatcher, which Orca starts on its first word, running its
+// espeak-ng module - then turns it off again: without Orca in the image, the switch did nothing.
+func (r *report) screenReader(g *guest) {
+	gs := asLive + `gsettings set org.gnome.desktop.a11y.applications screen-reader-enabled `
+	out, err := g.run(gs+`true; for i in $(seq 40); do `+
+		asLive+`systemctl --user -q is-active orca.service && pgrep -u live -f sd_espeak-ng >/dev/null && break; sleep 0.5; done; `+
+		asLive+`systemctl --user is-active orca.service; pgrep -u live -l -f 'speech-dispatcher|sd_espeak-ng' | sed 's/^[0-9]* //' | sort -u | tr '\n' ' '`, "")
+	_, offErr := g.run(gs+`false; for i in $(seq 20); do `+asLive+`systemctl --user -q is-active orca.service || break; sleep 0.5; done`, "")
+	r.add("the screen reader speaks", err == nil && offErr == nil && strings.HasPrefix(strings.TrimSpace(out), "active") &&
+		strings.Contains(out, "sd_espeak-ng"), oneLine(out)+errText(err)+errText(offErr))
 }

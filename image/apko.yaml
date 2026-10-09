@@ -105,6 +105,9 @@ contents:
     - glib-gir
     - gobject-introspection-dev
     - at-spi2-core
+    # The screen reader: Settings' Accessibility > Screen Reader and Super+Alt+S start Orca, which
+    # reads applications through AT-SPI and speaks through speech-dispatcher and espeak-ng.
+    - orca
     # The session.
     - gdm
     - gnome-shell
@@ -297,6 +300,8 @@ contents:
     # installs unless it is named here. go run ./cmd/image check-langs (in task rootfs) fails the
     # build when one is missing.
     - at-spi2-core-lang
+    - orca-lang
+    - speech-dispatcher-lang
     - cracklib-lang
     - cups-pk-helper-lang
     - decibels-lang

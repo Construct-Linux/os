@@ -1,0 +1,65 @@
+# Orca, GNOME's screen reader: Settings' Accessibility > Screen Reader, and Super+Alt+S, started
+# orca.service, which was not there. It speaks through speech-dispatcher and espeak-ng and reads
+# applications through pyatspi. Braille (brltty, liblouis) is not built: neither is in Wolfi, and
+# speech is what a person turning the screen reader on gets first. MathCAT needs cargo at build.
+package:
+  name: orca
+  version: "51.0"
+  epoch: 0
+  description: Screen reader for individuals who are blind or visually impaired
+  copyright:
+    - license: LGPL-2.1-or-later
+  dependencies:
+    runtime:
+      - at-spi2-core
+      - gtk-3
+      - py3.13-dasbus
+      - py3.13-gobject3
+      - py3.13-psutil
+      - py3.13-pyatspi
+      - python-3.13
+      - speech-dispatcher
+
+environment:
+  contents:
+    packages:
+      - at-spi2-core-dev
+      - build-base
+      - busybox
+      - gettext
+      - glib-gir
+      - gobject-introspection-dev
+      - gtk-3
+      - itstool
+      - meson
+      - ninja
+      - pkgconf
+      - py3.13-dasbus
+      - py3.13-gobject3
+      - py3.13-gobject3-dev
+      - pyatspi
+      - python-3.13
+      - speech-dispatcher
+      - systemd-dev
+
+vars:
+  series: "51"
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://download.gnome.org/sources/orca/${{vars.series}}/orca-${{package.version}}.tar.xz
+      expected-sha256: 8bc3e44bc5b7b66ec7e0cc5c82695c0075661922745d25724f5fc84a25602108
+
+  - uses: meson/configure
+    with:
+      opts: -Dmathcat=false -Dspiel=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+subpackages:
+  - name: orca-lang
+    pipeline:
+      - uses: split/locales
