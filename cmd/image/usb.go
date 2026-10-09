@@ -338,6 +338,9 @@ func bake(root, version string) error {
 			return err
 		}
 	}
+	if err := fontDirTimes(root, version); err != nil {
+		return err
+	}
 	// The image's own programs, in the image: they read and write its paths.
 	if err := chroot(root,
 		"glib-compile-schemas /usr/share/glib-2.0/schemas",
@@ -552,6 +555,29 @@ type verity struct {
 const verityBlock = 4096
 
 var rootHashLine = regexp.MustCompile(`(?m)^Root hash:\s+([0-9a-f]{64})$`)
+
+// fontDirTimes gives the font directories the time every file of the EROFS will have: fontconfig
+// keeps a directory's cache only while the directory's time is the one the cache was made at, and
+// with the times of the packages' unpacking every app scanned all fonts again at its start and
+// wrote a cache of its own - where it could (etc/fonts/conf.d/05-construct-cache.conf).
+func fontDirTimes(root, version string) error {
+	built, err := builtAt(version)
+	if err != nil {
+		return err
+	}
+	for _, top := range []string{"usr/share/fonts", "usr/local/share/fonts"} {
+		err := filepath.WalkDir(filepath.Join(root, top), func(p string, d fs.DirEntry, err error) error {
+			if err != nil || !d.IsDir() {
+				return err
+			}
+			return os.Chtimes(p, built, built)
+		})
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	}
+	return nil
+}
 
 // verifiedRoot writes root as an EROFS image, and its dm-verity tree to a file of its own for a
 // partition of its own; the salt is the image's SHA-256, so the same tree is the same root.
