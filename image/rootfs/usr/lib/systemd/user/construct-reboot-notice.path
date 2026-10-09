@@ -2,9 +2,14 @@
 # its version in /run/construct/reboot-required.
 [Unit]
 Description=Tell the person a new Construct waits for a reboot
+# Only where a person sits at the desktop: root's manager (sudo, polkit) and GDM's greeter have no
+# notification server, and the notice failed there until the start limit, once a second.
+ConditionUser=!@system
+PartOf=graphical-session.target
+After=graphical-session.target
 
 [Path]
 PathExists=/run/construct/reboot-required
 
 [Install]
-WantedBy=default.target
+WantedBy=graphical-session.target

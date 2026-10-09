@@ -5,4 +5,9 @@ auth       include      construct-key
 auth       include      base-auth
 account    include      base-account
 password   include      base-password
-session    include      base-session-noninteractive
+# Wolfi's base-session-noninteractive without pam_systemd, as polkit-1: with it every sudo started
+# root's user manager, which warned that /run/user/0/bus was not there and ran the user units
+# meant for a person's session.
+session    required     pam_env.so
+session    required     pam_limits.so
+session    required     pam_unix.so

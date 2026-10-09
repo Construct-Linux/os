@@ -210,6 +210,8 @@ func lifecycle(args []string) error {
 	r.add("its files came through redirects", cdn.redirects.Load() >= 3, fmt.Sprintf("%d redirects", cdn.redirects.Load()))
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v2 is counted on the ESP", strings.Contains(esp, "construct_"+versions["v2"]+"+3"), oneLine(esp))
+	// A user manager with no desktop, as a person's sudo or ssh starts: the notice is not its to show.
+	_, _ = g.run(`systemctl start user@0.service`, "")
 	mark, _ := g.run(`cat /run/construct/reboot-required`, "")
 	r.add("the person is told to reboot", strings.TrimSpace(mark) == versions["v2"], "reboot-required: "+oneLine(mark))
 	// Told once: the mark stays until the reboot, and a path unit whose service went inactive
