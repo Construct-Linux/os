@@ -138,6 +138,7 @@ func lifecycle(args []string) error {
 	r.secureBoot(g)
 	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts; cryptsetup status var | grep -E 'type|device'`, "")
 	r.add("/var on the disk, encrypted", strings.Contains(src, "/dev/mapper/var") && strings.Contains(src, "LUKS2") && strings.Contains(src, "nvme0n1p6"), oneLine(src))
+	r.cryptFlags(g, "/var's mapping has crypttab's flags")
 	slots, _ := g.run(`systemd-cryptenroll /dev/nvme0n1p6`, "")
 	r.add("the TPM, the password and the recovery key open it", strings.Contains(slots, "tpm2") && strings.Contains(slots, "password") && strings.Contains(slots, "recovery"), oneLine(slots))
 	lang, _ := g.run(`cat /etc/locale.conf /etc/vconsole.conf; ls /boot/loader/credentials/; journalctl -b -o cat -u construct-boot-language.service | tail -2`, "")
@@ -362,6 +363,7 @@ func (r *report) securityKey(m, first qemu.Machine, dir string) bool {
 		used, _ = g.run(`journalctl -b -q -o short-monotonic -u systemd-cryptsetup@var.service`, "")
 	}
 	r.add("no error opening it with the key", strings.TrimSpace(used) == "end", oneLine(used))
+	r.cryptFlags(g, "the key's mapping has crypttab's flags")
 	// No password was typed, and the keyring is open all the same.
 	keyring, _ := g.run(`sleep 20; `+keyringRoundTrip(lifecycleUser, 1000), "")
 	r.add("the login keyring is open after the key", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
@@ -556,6 +558,14 @@ func (g *guest) installAsTheInstaller() (string, error) {
 	outs, _ := g.run(`tail -3 `+run+`.json; tail -5 `+run+`.err; ps -eo pid,etime,args | grep -E 'pkexec|construct install|polkit' | grep -v grep; `+
 		sessionsScript+`journalctl -b -q -o short-monotonic -n 25 --no-pager`, "")
 	return outs, fmt.Errorf("construct install did not end")
+}
+
+// cryptFlags checks /var's mapping carries crypttab's flags (image/initrd's etc/crypttab): TRIM
+// through it and no workqueues. var-key opens it by other words than crypttab's, and a flag either
+// drops shows nowhere else - the disk still opens.
+func (r *report) cryptFlags(g *guest, name string) {
+	out, _ := g.run(`cryptsetup status var | sed -n 's/^ *flags: *//p'`, "")
+	r.add(name, strings.Join(strings.Fields(out), " ") == "discards no_read_workqueue no_write_workqueue", oneLine(out))
 }
 
 // tpmUnlocked is whether systemd-cryptsetup opened /var with the TPM: the PIN typed is cached for
