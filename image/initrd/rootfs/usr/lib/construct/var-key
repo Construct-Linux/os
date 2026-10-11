@@ -12,6 +12,8 @@
 # The PIN is asked here, in systemd's own words (the boot screen shows them as the key's), and
 # handed over as $PIN: systemd-cryptsetup's FIDO2 path otherwise tries the key without one first
 # and logs that as an error on every boot.
+#
+# The mapping takes crypttab's options (etc/crypttab says why): the same volume, however opened.
 dev=/dev/disk/by-designator/var-luks
 header=$(cryptsetup luksDump --dump-json-metadata "$dev") || exit 0
 [[ $header == *'"systemd-fido2"'* ]] || exit 0
@@ -33,4 +35,4 @@ done
 pin=$(systemd-ask-password --timeout=0 --echo=masked --icon=drive-harddisk --keyname=fido2-pin \
     --credential=cryptsetup.fido2-pin "Please enter security token PIN:") || exit 0
 PIN=$pin SYSTEMD_CRYPTSETUP_USE_TOKEN_MODULE=0 exec /usr/lib/systemd/systemd-cryptsetup attach var "$dev" - \
-    "fido2-device=$key,tries=1,discard,password-echo=masked"
+    "fido2-device=$key,tries=1,discard,no-read-workqueue,no-write-workqueue,password-echo=masked"

@@ -1,5 +1,8 @@
 # An installed machine's /var (cmd/construct makeVar), opened by the person's password: the TPM's PIN
 # where a TPM sealed its key to the signed PCR 11 policy, the passphrase where not, or the
 # recovery key. Started by 91-construct-var.rules once the partition appears, so noauto. discard,
-# for the SSD's TRIM through the mapping.
-var /dev/disk/by-designator/var-luks - noauto,discard,tpm2-device=auto,password-echo=masked
+# for the SSD's TRIM through the mapping. No workqueues: dm-crypt encrypts and decrypts in the
+# caller's context. On the X9 (2026-10-11, fio as construct bench runs it, A B B A) small reads beside
+# a large write went from a p99 of 1744 to 257 µs and the CPU busy from 24 to 9%, for writeback at
+# 2.75 instead of 4.26 GB/s, one thread's AES-XTS. Without the read workqueue alone: 1417 µs.
+var /dev/disk/by-designator/var-luks - noauto,discard,no-read-workqueue,no-write-workqueue,tpm2-device=auto,password-echo=masked
