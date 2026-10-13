@@ -110,9 +110,9 @@ func Writable(root string, p Profile) (Profile, []string) {
 	return kept, dropped
 }
 
-// Apply writes p's settings under root. Use (run.go) turns zram on or off with them: that is
+// apply writes p's settings under root. Use (run.go) turns zram on or off with them: that is
 // systemd's units', not a setting's.
-func Apply(root string, p Profile) error {
+func apply(root string, p Profile) error {
 	var errs []error
 	for _, s := range p.Settings {
 		if err := os.WriteFile(filepath.Join(root, s.Path), []byte(s.Value), 0o644); err != nil {
@@ -138,9 +138,9 @@ func read(path string) (string, error) {
 	return v, nil
 }
 
-// SchbenchWakeupP99 is the 99th percentile of schbench's wakeup latency, in microseconds, from its
+// schbenchWakeupP99 is the 99th percentile of schbench's wakeup latency, in microseconds, from its
 // JSON (-j): how long a woken thread waited for a CPU.
-func SchbenchWakeupP99(b []byte) (float64, error) {
+func schbenchWakeupP99(b []byte) (float64, error) {
 	var out struct {
 		Int map[string]float64 `json:"int"`
 	}
@@ -154,9 +154,9 @@ func SchbenchWakeupP99(b []byte) (float64, error) {
 	return v, nil
 }
 
-// FioReadP99 is the 99th percentile of the named job's read completion latency, in microseconds,
+// fioReadP99 is the 99th percentile of the named job's read completion latency, in microseconds,
 // from fio's JSON (--output-format=json).
-func FioReadP99(b []byte, job string) (float64, error) {
+func fioReadP99(b []byte, job string) (float64, error) {
 	var out struct {
 		Jobs []struct {
 			Name string `json:"jobname"`
@@ -182,9 +182,9 @@ func FioReadP99(b []byte, job string) (float64, error) {
 
 var bogoRate = regexp.MustCompile(`(?m)^\s*-?\s*stressor:\s*vm\s*$[\s\S]*?bogo-ops-per-second-real-time:\s*([0-9.]+)`)
 
-// StressVMRate is stress-ng's vm stressor's bogo operations a second (real time), from its YAML
+// stressVMRate is stress-ng's vm stressor's bogo operations a second (real time), from its YAML
 // (--yaml): how much work got done while memory was short.
-func StressVMRate(b []byte) (float64, error) {
+func stressVMRate(b []byte) (float64, error) {
 	m := bogoRate.FindSubmatch(b)
 	if m == nil {
 		return 0, errors.New("stress-ng: no vm bogo-ops-per-second-real-time")

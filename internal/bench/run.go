@@ -45,7 +45,7 @@ func Run(ctx context.Context, dir string, seconds int) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if m.WakeupP99, err = SchbenchWakeupP99(b); err != nil {
+	if m.WakeupP99, err = schbenchWakeupP99(b); err != nil {
 		return Result{}, err
 	}
 
@@ -58,7 +58,7 @@ func Run(ctx context.Context, dir string, seconds int) (Result, error) {
 	if err != nil {
 		return Result{}, fmt.Errorf("fio: %w", err)
 	}
-	if m.ReadP99, err = FioReadP99(fio, "reader"); err != nil {
+	if m.ReadP99, err = fioReadP99(fio, "reader"); err != nil {
 		return Result{}, err
 	}
 
@@ -82,7 +82,7 @@ func Run(ctx context.Context, dir string, seconds int) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	if m.VMOps, err = StressVMRate(b); err != nil {
+	if m.VMOps, err = stressVMRate(b); err != nil {
 		return Result{}, err
 	}
 	return m, nil
@@ -91,7 +91,7 @@ func Run(ctx context.Context, dir string, seconds int) (Result, error) {
 // Use puts the machine under p: its settings, zram swap on or off with it, then the page cache
 // emptied so each run starts from the same place.
 func Use(p Profile) error {
-	if err := Apply("/", p); err != nil {
+	if err := apply("/", p); err != nil {
 		return err
 	}
 	if _, err := os.Stat("/dev/zram0"); err == nil && p.Zram != ZramOn() {

@@ -39,13 +39,13 @@ func TestApplyAndRestore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := Apply(root, kernel); err != nil {
+	if err := apply(root, kernel); err != nil {
 		t.Fatal(err)
 	}
 	if v, _ := read(filepath.Join(root, "sys/block/nvme0n1/queue/scheduler")); v != "none" {
 		t.Errorf("NVMe scheduler under the kernel's profile: %q", v)
 	}
-	if err := Apply(root, construct); err != nil {
+	if err := apply(root, construct); err != nil {
 		t.Fatal(err)
 	}
 	// CONSTRUCT's dirty limits are bytes, its ratios reading 0: the bytes are what come back, never a
@@ -65,15 +65,15 @@ func TestApplyAndRestore(t *testing.T) {
 
 func TestParsers(t *testing.T) {
 	sch := []byte(`{"normal": {"version": "7.2.8"},"int": {"time": 1, "wakeup_latency_pct50.0": 9, "wakeup_latency_pct99.0": 1834, "wakeup_latency_min": 1,"wakeup_latency_max": 9000}}`)
-	if v, err := SchbenchWakeupP99(sch); err != nil || v != 1834 {
+	if v, err := schbenchWakeupP99(sch); err != nil || v != 1834 {
 		t.Errorf("schbench: %v, %v", v, err)
 	}
 	fio := []byte(`{"jobs": [{"jobname": "writer", "read": {"clat_ns": {}}}, {"jobname": "reader", "read": {"clat_ns": {"percentile": {"50.000000": 90000, "99.000000": 2457600}}}}]}`)
-	if v, err := FioReadP99(fio, "reader"); err != nil || v != 2457.6 {
+	if v, err := fioReadP99(fio, "reader"); err != nil || v != 2457.6 {
 		t.Errorf("fio: %v, %v", v, err)
 	}
 	yaml := []byte("system-info:\n    run-by: root\nmetrics:\n    - stressor: vm\n      bogo-ops: 1200\n      bogo-ops-per-second-usr-sys-time: 30.5\n      bogo-ops-per-second-real-time: 20.25\n")
-	if v, err := StressVMRate(yaml); err != nil || v != 20.25 {
+	if v, err := stressVMRate(yaml); err != nil || v != 20.25 {
 		t.Errorf("stress-ng: %v, %v", v, err)
 	}
 	if m := Median([]float64{5, 1, 3, 9}); m != 4 {
