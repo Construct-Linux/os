@@ -32,5 +32,11 @@ jobs:
       - name: Install Task
         run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
 
+      # GNU gettext's msgfmt and msgunfmt, which the .mo reader is checked against
+      # (cmd/image/bootprompt_mo_test.go); systemd-analyze, which update.Compare is checked
+      # against, is the runner's own.
+      - name: Install gettext
+        run: sudo apt-get install -y --no-install-recommends gettext
+
       - name: Check
         run: task check
