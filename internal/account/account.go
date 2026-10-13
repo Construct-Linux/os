@@ -115,8 +115,8 @@ func idOf(lines []string, name string) (string, bool) {
 // Shell is a person's login shell.
 const Shell = "/bin/bash"
 
-// Home is where a user's home is: /var holds what a machine keeps.
-func Home(name string) string { return "/var/home/" + name }
+// home is where a user's home is: /var holds what a machine keeps.
+func home(name string) string { return "/var/home/" + name }
 
 // databases are the account files a user is written into.
 var databases = []string{"passwd", "group", "shadow", "gshadow"}
@@ -136,7 +136,7 @@ func Write(etc, factory string, u User) error {
 	uid := strconv.Itoa(u.UID)
 	days := strconv.FormatInt(time.Now().Unix()/86400, 10)
 	own := map[string]string{
-		"passwd":  strings.Join([]string{u.Name, "x", uid, uid, u.RealName, Home(u.Name), Shell}, ":"),
+		"passwd":  strings.Join([]string{u.Name, "x", uid, uid, u.RealName, home(u.Name), Shell}, ":"),
 		"group":   u.Name + ":x:" + uid + ":",
 		"shadow":  strings.Join([]string{u.Name, u.HashedPassword, days, "0", "99999", "7", "", "", ""}, ":"),
 		"gshadow": u.Name + ":!::",
@@ -222,14 +222,14 @@ func Autologin(etc, name string) error {
 
 // MakeHome makes u's home on varDir, where a /var is mounted, theirs.
 func MakeHome(varDir string, u User) error {
-	home := filepath.Join(varDir, strings.TrimPrefix(Home(u.Name), "/var/"))
-	if err := os.MkdirAll(filepath.Dir(home), 0o755); err != nil {
+	dir := filepath.Join(varDir, strings.TrimPrefix(home(u.Name), "/var/"))
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
 		return err
 	}
-	if err := os.Mkdir(home, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
+	if err := os.Mkdir(dir, 0o700); err != nil && !errors.Is(err, fs.ErrExist) {
 		return err
 	}
-	return os.Chown(home, u.UID, u.UID)
+	return os.Chown(dir, u.UID, u.UID)
 }
 
 // HasPerson says whether etc's passwd has a person in it: a user in systemd's range of regular
