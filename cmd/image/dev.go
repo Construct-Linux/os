@@ -247,41 +247,9 @@ func tarGz(dir string) (string, error) {
 	var b bytes.Buffer
 	zw := gzip.NewWriter(&b)
 	tw := tar.NewWriter(zw)
-	err := filepath.WalkDir(dir, func(p string, e fs.DirEntry, err error) error {
-		if err != nil || p == dir {
-			return err
-		}
-		info, err := e.Info()
-		if err != nil {
-			return err
-		}
-		link := ""
-		if info.Mode()&fs.ModeSymlink != 0 {
-			if link, err = os.Readlink(p); err != nil {
-				return err
-			}
-		}
-		h, err := tar.FileInfoHeader(info, link)
-		if err != nil {
-			return err
-		}
-		if h.Name, err = filepath.Rel(dir, p); err != nil {
-			return err
-		}
-		if err := tw.WriteHeader(h); err != nil {
-			return err
-		}
-		if info.Mode().IsRegular() {
-			f, err := os.ReadFile(p)
-			if err != nil {
-				return err
-			}
-			_, err = tw.Write(f)
-			return err
-		}
-		return nil
-	})
-	if err != nil {
+	// A link in the build stays a link in the guest (os.DirFS reads its target for AddFS), not a
+	// copy of what it names.
+	if err := tw.AddFS(os.DirFS(dir)); err != nil {
 		return "", err
 	}
 	if err := tw.Close(); err != nil {
