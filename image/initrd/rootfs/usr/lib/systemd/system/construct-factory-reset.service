@@ -24,4 +24,5 @@ Type=oneshot
 RemainAfterExit=yes
 # status says "on", in the journal, with exit status 10.
 ExecCondition=/bin/sh -c '/usr/lib/systemd/systemd-factory-reset status; test $? -eq 10'
-ExecStart=mkfs.ext4 -q -F -L var /dev/disk/by-designator/var
+# verity: as construct install makes /var (cmd/construct makeVar).
+ExecStart=mkfs.ext4 -q -F -O verity -L var /dev/disk/by-designator/var

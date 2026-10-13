@@ -70,7 +70,9 @@ func makeVar(ctx context.Context, log *slog.Logger, partition string, p person, 
 		return "", err
 	}
 	dev := "/dev/mapper/" + installVar
-	err = cmd(ctx, nil, nil, "mkfs.ext4", "-q", "-L", "var", dev)
+	// verity: containerd checks its content store with fs-verity, and ext4 takes it only from a
+	// file system made with the feature. A factory reset and a stick's first boot make /var so too.
+	err = cmd(ctx, nil, nil, "mkfs.ext4", "-q", "-O", "verity", "-L", "var", dev)
 	if err == nil {
 		log.Info("preparing /var")
 		err = prepareVar(ctx, dev, p, registered)
