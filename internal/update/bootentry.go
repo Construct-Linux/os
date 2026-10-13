@@ -14,19 +14,19 @@ import (
 	"github.com/Construct-Linux/os/internal/gpt"
 )
 
-// LoaderPath is where an installed ESP holds the systemd-boot the boot entry starts, as firmware
+// loaderPath is where an installed ESP holds the systemd-boot the boot entry starts, as firmware
 // writes a path: the one systemd's tools install to. The removable path, EFI/BOOT/BOOTX64.EFI,
 // holds the same bytes for firmware that boots without an entry, or loses it.
-const LoaderPath = `\EFI\systemd\systemd-bootx64.efi`
+const loaderPath = `\EFI\systemd\systemd-bootx64.efi`
 
-// EntryTitle is what the firmware's boot menu calls the entry.
-const EntryTitle = "Construct"
+// entryTitle is what the firmware's boot menu calls the entry.
+const entryTitle = "Construct"
 
-// BootEntry makes the firmware whose variables are vars start systemd-boot from the ESP esp of the
+// bootEntry makes the firmware whose variables are vars start systemd-boot from the ESP esp of the
 // disk whose table is disk: a Boot#### entry, first in BootOrder. An entry of the same title and
 // ESP - a machine installed again - is replaced rather than added to. It answers the entry's
 // number: what efibootmgr writes, without needing it.
-func BootEntry(vars Vars, disk gpt.Table, esp gpt.Partition) (uint16, error) {
+func bootEntry(vars Vars, disk gpt.Table, esp gpt.Partition) (uint16, error) {
 	i := slices.Index(disk.Partitions, esp)
 	if i < 0 || esp.Type != gpt.TypeESP {
 		return 0, fmt.Errorf("install: %q is not an ESP of the disk", esp.Name)
@@ -40,7 +40,7 @@ func BootEntry(vars Vars, disk gpt.Table, esp gpt.Partition) (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := vars.Write(fmt.Sprintf("Boot%04X", n), Global, NVBootRuntime, option); err != nil {
+	if err := vars.Write(fmt.Sprintf("Boot%04X", n), Global, nvBootRuntime, option); err != nil {
 		return 0, err
 	}
 	order, err := vars.Read("BootOrder", Global)
@@ -53,7 +53,7 @@ func BootEntry(vars Vars, disk gpt.Table, esp gpt.Partition) (uint16, error) {
 			next = binary.LittleEndian.AppendUint16(next, e)
 		}
 	}
-	return n, vars.Write("BootOrder", Global, NVBootRuntime, next)
+	return n, vars.Write("BootOrder", Global, nvBootRuntime, next)
 }
 
 // bootVariable is a Boot#### variable's name.
@@ -90,7 +90,7 @@ func entryNumber(vars Vars, option []byte) (uint16, error) {
 	return 0, errors.New("install: the firmware has no free boot entry")
 }
 
-// loadOption is an active EFI_LOAD_OPTION titled EntryTitle for LoaderPath on esp, partition
+// loadOption is an active EFI_LOAD_OPTION titled entryTitle for loaderPath on esp, partition
 // number of its disk: a hard drive device path - the partition by its number, its sectors and its
 // GUID, as efibootmgr writes one and firmware finds a partition by - then the file.
 func loadOption(number uint32, esp gpt.Partition) ([]byte, error) {
@@ -110,7 +110,7 @@ func loadOption(number uint32, esp gpt.Partition) ([]byte, error) {
 	path = append(path, guid...)
 	path = append(path, 2, 2) // a GPT partition, known by its GUID
 	// File: type 4, subtype 4.
-	file := UTF16(LoaderPath)
+	file := efiString(loaderPath)
 	path = append(path, 4, 4)
 	path = le.AppendUint16(path, uint16(4+len(file)))
 	path = append(path, file...)
@@ -120,6 +120,6 @@ func loadOption(number uint32, esp gpt.Partition) ([]byte, error) {
 	var o []byte
 	o = le.AppendUint32(o, 1) // LOAD_OPTION_ACTIVE
 	o = le.AppendUint16(o, uint16(len(path)))
-	o = append(o, UTF16(EntryTitle)...)
+	o = append(o, efiString(entryTitle)...)
 	return append(o, path...), nil
 }

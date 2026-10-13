@@ -14,8 +14,8 @@ import (
 	"github.com/Construct-Linux/os/internal/gpt"
 )
 
-// TypeVar is /var's partition type, x86-64's in the Discoverable Partitions Specification.
-const TypeVar = "4d21b016-b534-45c2-a9fb-5c16e091fd2d"
+// typeVar is /var's partition type, x86-64's in the Discoverable Partitions Specification.
+const typeVar = "4d21b016-b534-45c2-a9fb-5c16e091fd2d"
 
 // The installed disk's partitions, in sectors: an ESP with room for two kernel images and many
 // times their size, two slots each with room for a root several times today's (2 GiB) and its
@@ -33,15 +33,15 @@ const (
 // The names of the installed disk's partitions besides the slots', for a person reading the table:
 // systemd finds them by type (and /var by its UUID, VarUUID).
 const (
-	ESPName = "esp"
-	VarName = "var"
+	espName = "esp"
+	varName = "var"
 )
 
-// Layout is the table the installer writes on a disk of size bytes for r: the ESP, slot A holding
+// layout is the table the installer writes on a disk of size bytes for r: the ESP, slot A holding
 // r - labelled with its version and given the UUIDs its files name, which its kernel image's
 // command line names - slot B Empty for the first update, and /var, with varUUID (VarUUID: the
 // one its installation's machine id gives it). uuid makes every other GUID.
-func Layout(r Release, size int64, varUUID string, uuid func() string) (gpt.Table, error) {
+func layout(r Release, size int64, varUUID string, uuid func() string) (gpt.Table, error) {
 	at := int64(firstSector)
 	next := func(sectors int64) (int64, int64) {
 		first := at
@@ -54,11 +54,11 @@ func Layout(r Release, size int64, varUUID string, uuid func() string) (gpt.Tabl
 		typ, uuid, name string
 		sectors         int64
 	}{
-		{gpt.TypeESP, uuid(), ESPName, espSectors},
-		{TypeRoot, r.Root.UUID, label, rootSectors},
-		{TypeRootVerity, r.Verity.UUID, label, veritySectors},
-		{TypeRoot, uuid(), Empty, rootSectors},
-		{TypeRootVerity, uuid(), Empty, veritySectors},
+		{gpt.TypeESP, uuid(), espName, espSectors},
+		{typeRoot, r.Root.UUID, label, rootSectors},
+		{typeRootVerity, r.Verity.UUID, label, veritySectors},
+		{typeRoot, uuid(), Empty, rootSectors},
+		{typeRootVerity, uuid(), Empty, veritySectors},
 	} {
 		first, last := next(p.sectors)
 		parts = append(parts, gpt.Partition{Type: p.typ, UUID: p.uuid, First: first, Last: last, Name: p.name})
@@ -68,7 +68,7 @@ func Layout(r Release, size int64, varUUID string, uuid func() string) (gpt.Tabl
 		return gpt.Table{}, fmt.Errorf("install: the disk is %s, and the desktop needs %s at least",
 			humanSize(size), humanSize((at+int64(minVar/gpt.Sector)+40)*gpt.Sector))
 	}
-	parts = append(parts, gpt.Partition{Type: TypeVar, UUID: varUUID, First: at, Last: last, Name: VarName})
+	parts = append(parts, gpt.Partition{Type: typeVar, UUID: varUUID, First: at, Last: last, Name: varName})
 	// Each entry's number is its place: what the kernel calls the partition once it reads the table.
 	for i := range parts {
 		parts[i].Number = i + 1
@@ -119,11 +119,11 @@ type InstallOptions struct {
 // release's kernel image, blessed - a fresh install is known good, there is nothing to fall back
 // to - /var is made by o.MakeVar, and the firmware boots the disk first. It answers the table written.
 func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
-	r, fetch, err := Newest(ctx, o.Source, o.Keys)
+	r, fetch, err := newest(ctx, o.Source, o.Keys)
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	table, err := Layout(r, o.Disk.Size, o.VarUUID, o.UUID)
+	table, err := layout(r, o.Disk.Size, o.VarUUID, o.UUID)
 	if err != nil {
 		return gpt.Table{}, err
 	}
@@ -195,7 +195,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	n, err := BootEntry(o.Vars, table, table.Partitions[0])
+	n, err := bootEntry(o.Vars, table, table.Partitions[0])
 	if err != nil {
 		return gpt.Table{}, err
 	}
@@ -249,7 +249,7 @@ func layESP(ctx context.Context, dir, from string, r Release, fetch Fetch) error
 			return err
 		}
 	}
-	linux := filepath.Join(dir, Linux)
+	linux := filepath.Join(dir, linuxDir)
 	if err := os.MkdirAll(linux, 0o755); err != nil {
 		return err
 	}

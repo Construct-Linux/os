@@ -35,13 +35,13 @@ func TestTheNewestReleaseOnTheStickIsTheOneTaken(t *testing.T) {
 		dir, _ := release(t, r.version, r.root, r.verity, signer(), 0xb)
 		must(t, os.Rename(dir, filepath.Join(stick, r.version)))
 	}
-	r, _, err := Newest(t.Context(), stick, trusted(t))
+	r, _, err := newest(t.Context(), stick, trusted(t))
 	if err != nil || r.Version != "1.2" {
 		t.Fatalf("took %+v, %v", r, err)
 	}
 	dir, _ := release(t, "1.3", newRoot, newVerity, otherKey(), 0xb)
 	must(t, os.Rename(dir, filepath.Join(stick, "1.3")))
-	if _, _, err := Newest(t.Context(), stick, trusted(t)); err == nil {
+	if _, _, err := newest(t.Context(), stick, trusted(t)); err == nil {
 		t.Fatal("a stick carrying a release of another key was taken")
 	}
 }
@@ -49,7 +49,7 @@ func TestTheNewestReleaseOnTheStickIsTheOneTaken(t *testing.T) {
 // A source that holds no release is an error, not a quiet nothing: the stick plugged in is not
 // what the person thinks it is.
 func TestASourceWithNoReleaseIsAnError(t *testing.T) {
-	if _, _, err := Newest(t.Context(), t.TempDir(), trusted(t)); err == nil {
+	if _, _, err := newest(t.Context(), t.TempDir(), trusted(t)); err == nil {
 		t.Error("an empty source was taken")
 	}
 }

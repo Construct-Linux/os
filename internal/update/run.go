@@ -25,11 +25,11 @@ const (
 	maxSignature = 64 << 10
 )
 
-// Newest is the newest release under source - source itself when it holds SHA256SUMS, else each
+// newest is the newest release under source - source itself when it holds SHA256SUMS, else each
 // directory in it that does - and how its files are read. Every release there is checked against
 // keys before any is chosen: a stick that carries one signed by another key is refused whole, not
 // passed over for its neighbour.
-func Newest(ctx context.Context, source string, keys openpgp.KeyRing) (Release, Fetch, error) {
+func newest(ctx context.Context, source string, keys openpgp.KeyRing) (Release, Fetch, error) {
 	dirs, err := releaseDirs(source)
 	if err != nil {
 		return Release{}, nil, err
@@ -37,7 +37,7 @@ func Newest(ctx context.Context, source string, keys openpgp.KeyRing) (Release, 
 	var best Release
 	var bestDir string
 	for _, dir := range dirs {
-		r, err := ReadRelease(ctx, dirFetch(dir), keys)
+		r, err := readRelease(ctx, dirFetch(dir), keys)
 		if err != nil {
 			return Release{}, nil, fmt.Errorf("%s: %w", dir, err)
 		}
@@ -89,9 +89,9 @@ func dirFetch(dir string) Fetch {
 	}
 }
 
-// ReadRelease is the release fetch reads: SHA256SUMS, checked against its signature by keys
+// readRelease is the release fetch reads: SHA256SUMS, checked against its signature by keys
 // before anything of it is read, and the files it names.
-func ReadRelease(ctx context.Context, fetch Fetch, keys openpgp.KeyRing) (Release, error) {
+func readRelease(ctx context.Context, fetch Fetch, keys openpgp.KeyRing) (Release, error) {
 	sums, err := readSmall(ctx, fetch, SumsFile, maxSums)
 	if err != nil {
 		return Release{}, err

@@ -20,7 +20,7 @@ func VarUUID(machineID string) (string, error) {
 	if err != nil || len(key) != 16 {
 		return "", fmt.Errorf("update: %q is not a machine id", strings.TrimSpace(machineID))
 	}
-	app, err := hex.DecodeString(strings.ReplaceAll(TypeVar, "-", ""))
+	app, err := hex.DecodeString(strings.ReplaceAll(typeVar, "-", ""))
 	if err != nil {
 		return "", err
 	}

@@ -55,8 +55,8 @@ func SlotUUIDs(rootHash string) (root, verity string) {
 	return uuid(rootHash), uuid(rootHash[32:])
 }
 
-// RootHash is the root hash whose halves are the partition UUIDs root and verity: SlotUUIDs undone.
-func RootHash(root, verity string) string {
+// rootHash is the root hash whose halves are the partition UUIDs root and verity: SlotUUIDs undone.
+func rootHash(root, verity string) string {
 	return strings.ReplaceAll(root, "-", "") + strings.ReplaceAll(verity, "-", "")
 }
 

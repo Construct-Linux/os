@@ -16,16 +16,16 @@ import (
 func TestABootThatIsNotGoodIsRebootedWhileCounted(t *testing.T) {
 	log := slog.New(slog.NewTextHandler(io.Discard, nil))
 	vars := Vars(t.TempDir())
-	s := &fakeSystem{active: map[string]bool{BootComplete: true}}
+	s := &fakeSystem{active: map[string]bool{bootComplete: true}}
 	if err := BootCheck(t.Context(), s, vars, log); err != nil || s.reboots != 0 {
 		t.Errorf("a good boot: %v, %d reboots", err, s.reboots)
 	}
-	s.active[BootComplete] = false
-	if err := BootCheck(t.Context(), s, vars, log); !errors.Is(err, ErrNothingToFallBackTo) || s.reboots != 0 {
+	s.active[bootComplete] = false
+	if err := BootCheck(t.Context(), s, vars, log); !errors.Is(err, errNothingToFallBackTo) || s.reboots != 0 {
 		t.Errorf("a blessed image's bad boot: %v, %d reboots", err, s.reboots)
 	}
 	path := `\EFI\Linux\` + ImageID + `_1.1+2-1.efi`
-	must(t, vars.Write("LoaderBootCountPath", Loader, BootService|Runtime, UTF16(path)))
+	must(t, vars.Write("LoaderBootCountPath", loader, bootService|runtimeAccess, efiString(path)))
 	if err := BootCheck(t.Context(), s, vars, log); err != nil || s.reboots != 1 {
 		t.Errorf("a counted image's bad boot: %v, %d reboots", err, s.reboots)
 	}

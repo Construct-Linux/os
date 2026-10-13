@@ -92,8 +92,8 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 	for _, p := range read.Partitions {
 		got = append(got, p.Type+" "+p.Name)
 	}
-	want := []string{gpt.TypeESP + " " + ESPName, TypeRoot + " " + label, TypeRootVerity + " " + label,
-		TypeRoot + " " + Empty, TypeRootVerity + " " + Empty, TypeVar + " " + VarName}
+	want := []string{gpt.TypeESP + " " + espName, typeRoot + " " + label, typeRootVerity + " " + label,
+		typeRoot + " " + Empty, typeRootVerity + " " + Empty, typeVar + " " + varName}
 	if !slices.Equal(got, want) {
 		t.Errorf("the partitions are %v", got)
 	}
@@ -112,12 +112,12 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 	if !slices.Equal(in.ran, []string{"mkfs.vfat -F 32 -n ESP /dev/nvme0n1p1", "make /var on /dev/nvme0n1p6"}) {
 		t.Errorf("ran %v", in.ran)
 	}
-	for _, f := range []string{"EFI/BOOT/BOOTX64.EFI", "EFI/systemd/systemd-bootx64.efi", "loader/loader.conf", "loader/keys/auto/db.auth", Linux + "/" + label + ".efi"} {
+	for _, f := range []string{"EFI/BOOT/BOOTX64.EFI", "EFI/systemd/systemd-bootx64.efi", "loader/loader.conf", "loader/keys/auto/db.auth", linuxDir + "/" + label + ".efi"} {
 		if _, err := os.Stat(filepath.Join(in.esp, f)); err != nil {
 			t.Errorf("the ESP lacks %s", f)
 		}
 	}
-	if images, _ := os.ReadDir(filepath.Join(in.esp, Linux)); len(images) != 1 || images[0].Name() != label+".efi" {
+	if images, _ := os.ReadDir(filepath.Join(in.esp, linuxDir)); len(images) != 1 || images[0].Name() != label+".efi" {
 		t.Errorf("the ESP's kernel images are %v, not %s.efi alone, blessed", images, label)
 	}
 	order, err := in.vars.Read("BootOrder", Global)
@@ -176,7 +176,7 @@ func TestAnInstallOfAChangedRootLeavesSlotAEmpty(t *testing.T) {
 	if read.Partitions[1].Name != Empty || read.Partitions[2].Name != Empty {
 		t.Errorf("slot A is labelled %q and %q", read.Partitions[1].Name, read.Partitions[2].Name)
 	}
-	if _, err := os.Stat(filepath.Join(in.esp, Linux)); err == nil {
+	if _, err := os.Stat(filepath.Join(in.esp, linuxDir)); err == nil {
 		t.Error("a kernel image was laid")
 	}
 }

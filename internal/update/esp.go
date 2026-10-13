@@ -10,8 +10,8 @@ import (
 	"strings"
 )
 
-// Linux is where the ESP holds the kernel images systemd-boot finds by itself.
-const Linux = "EFI/Linux"
+// linuxDir is where the ESP holds the kernel images systemd-boot finds by itself.
+const linuxDir = "EFI/Linux"
 
 // checkImage is nil when the kernel image at path is version's and boots the slot whose
 // partitions are root and verity: its os-release says the version, and its command line names both
@@ -44,7 +44,7 @@ func checkImage(path, version, root, verity string) error {
 	if !slices.Contains(strings.Split(osrel, "\n"), "IMAGE_VERSION="+version) {
 		errs = append(errs, fmt.Errorf("its os-release is not %s's", version))
 	}
-	if !slices.Contains(strings.Fields(cmdline), "roothash="+RootHash(root, verity)) {
+	if !slices.Contains(strings.Fields(cmdline), "roothash="+rootHash(root, verity)) {
 		errs = append(errs, fmt.Errorf("its command line's roothash= is not the one partitions %s and %s halve", root, verity))
 	}
 	if len(errs) > 0 {

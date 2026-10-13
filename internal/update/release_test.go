@@ -216,7 +216,7 @@ func TestSlotUUIDs(t *testing.T) {
 	if root != "01234567-89ab-cdef-0123-456789abcdef" || verity != "fedcba98-7654-3210-fedc-ba9876543210" {
 		t.Errorf("%s %s", root, verity)
 	}
-	if got := RootHash(root, verity); got != rh {
-		t.Errorf("RootHash = %s", got)
+	if got := rootHash(root, verity); got != rh {
+		t.Errorf("rootHash = %s", got)
 	}
 }

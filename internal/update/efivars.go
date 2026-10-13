@@ -21,16 +21,16 @@ const EFIVars = "/sys/firmware/efi/efivars"
 // systemd-boot's.
 const (
 	Global = "8be4df61-93ca-11d2-aa0d-00e098032b8c"
-	Loader = "4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
+	loader = "4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
 )
 
-// Attributes a variable is written with; a boot entry's is NVBootRuntime: non-volatile, and seen
+// Attributes a variable is written with; a boot entry's is nvBootRuntime: non-volatile, and seen
 // at boot and after.
 const (
-	NonVolatile   = 0x01
-	BootService   = 0x02
-	Runtime       = 0x04
-	NVBootRuntime = NonVolatile | BootService | Runtime
+	nonVolatile   = 0x01
+	bootService   = 0x02
+	runtimeAccess = 0x04
+	nvBootRuntime = nonVolatile | bootService | runtimeAccess
 )
 
 // fsImmutable is the inode flag (FS_IMMUTABLE_FL) efivarfs sets on a variable's file.
@@ -104,8 +104,8 @@ func (v Vars) String(name, guid string) (string, error) {
 	return strings.TrimRight(string(utf16.Decode(units)), "\x00"), nil
 }
 
-// UTF16 is s as UEFI stores a string: UTF-16, little-endian, NUL-terminated.
-func UTF16(s string) []byte {
+// efiString is s as UEFI stores a string: UTF-16, little-endian, NUL-terminated.
+func efiString(s string) []byte {
 	var b []byte
 	for _, u := range utf16.Encode([]rune(s)) {
 		b = binary.LittleEndian.AppendUint16(b, u)
