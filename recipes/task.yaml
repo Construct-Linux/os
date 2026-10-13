@@ -4,7 +4,7 @@
 package:
   name: task
   version: 3.54.0
-  epoch: 4
+  epoch: 5
   description: A task runner and build tool (Taskfile.yml)
   copyright:
     - license: MIT
