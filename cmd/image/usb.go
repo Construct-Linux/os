@@ -722,7 +722,7 @@ func espTree(root, esp, label string, v verity, serial bool, extra, pcrPub, sbKe
 	if err := os.MkdirAll(keys, 0o755); err != nil {
 		return err
 	}
-	for _, name := range sign.SecureBootVariables {
+	for _, name := range sign.SecureBootVariables() {
 		b, err := os.ReadFile(filepath.Join(sbKeys, name))
 		if err != nil {
 			return err

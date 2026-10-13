@@ -35,8 +35,8 @@ import (
 var microsoftCAs embed.FS
 
 // SecureBootVariables are the signed variables SecureBootKeySet makes, by file name, in the order
-// they are enrolled.
-var SecureBootVariables = []string{"PK.auth", "KEK.auth", "db.auth"}
+// they are enrolled. A function, so no caller can reorder or drop one for every other caller.
+func SecureBootVariables() []string { return []string{"PK.auth", "KEK.auth", "db.auth"} }
 
 // owner is the owner GUID of the signatures Construct adds.
 var owner = *util.StringToGUID("0239b3ac-9f59-4d16-84ae-cdd4977061a5")
@@ -61,7 +61,7 @@ func SecureBootKeySet(pk, kek, db crypto.Signer) (map[string][]byte, *x509.Certi
 	dbList := []*x509.Certificate{dbCertificate}
 	cas, err := fs.Glob(microsoftCAs, "secureboot/*.der")
 	if err != nil || len(cas) != 2 {
-		return nil, nil, fmt.Errorf("Microsoft's option ROM CAs: %v %v", cas, err)
+		return nil, nil, fmt.Errorf("sign: Microsoft's option ROM CAs: %v %v", cas, err)
 	}
 	for _, f := range cas {
 		raw, err := microsoftCAs.ReadFile(f)

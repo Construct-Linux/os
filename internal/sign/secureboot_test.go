@@ -39,7 +39,7 @@ func testKeySet(t *testing.T) (map[string][]byte, *rsa.PrivateKey, *x509.Certifi
 func TestTheKeySetEnrollsAsTheFirmwareChecksIt(t *testing.T) {
 	vars, _, dbCertificate := testKeySet(t)
 	certs := map[string][]*x509.Certificate{}
-	for _, name := range SecureBootVariables {
+	for _, name := range SecureBootVariables() {
 		b := bytes.NewBuffer(vars[name])
 		auth, err := signature.ReadEFIVariableAuthencation2(b)
 		if err != nil {
