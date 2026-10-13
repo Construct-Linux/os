@@ -1,12 +1,9 @@
 package main
 
 import (
-	"archive/tar"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
-	"os"
 	"path"
 	"sort"
 	"strings"
@@ -44,55 +41,48 @@ var englishPrompt = promptWords{
 // promptFont is the font the prompt is written in, in the root and in the initrd.
 const promptFont = "usr/share/fonts/Adwaita/AdwaitaSans-Regular.ttf"
 
-// promptLanguages reads, from the root's tarball, the prompt's words in every language
-// gnome-shell has a catalog for, by its locale name (es, pt_BR, sr@latin). A language is left out
-// unless the font draws all three of its words.
-func promptLanguages(rootfs string) (map[string]promptWords, error) {
-	f, err := os.Open(rootfs)
-	if err != nil {
-		return nil, err
+// promptSources are the root's files the prompt's words come from: gnome-shell's, GTK's and
+// systemd's catalogs, by domain and locale name (es, pt_BR, sr@latin), and the font.
+type promptSources struct {
+	catalogs map[string]map[string][]byte // domain -> language -> .mo
+	font     []byte
+}
+
+// add keeps the file name when it is the prompt's font or one of its catalogs.
+func (p *promptSources) add(name string, r io.Reader) error {
+	if name == promptFont {
+		var err error
+		p.font, err = io.ReadAll(r)
+		return err
 	}
-	defer f.Close()
-	catalogs := map[string]map[string][]byte{} // domain -> language -> .mo
-	var font []byte
-	tr := tar.NewReader(f)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return nil, err
-		}
-		name := strings.TrimPrefix(path.Clean("/"+h.Name), "/")
-		if name == promptFont {
-			if font, err = io.ReadAll(tr); err != nil {
-				return nil, err
+	dir, file := path.Split(name)
+	lang := strings.TrimSuffix(strings.TrimPrefix(dir, "usr/share/locale/"), "/LC_MESSAGES/")
+	if lang == dir || strings.Contains(lang, "/") {
+		return nil
+	}
+	for _, domain := range []string{"gnome-shell", "gtk40", "systemd"} {
+		if file == domain+".mo" {
+			b, err := io.ReadAll(r)
+			if err != nil {
+				return err
 			}
-			continue
-		}
-		dir, file := path.Split(name)
-		lang := strings.TrimSuffix(strings.TrimPrefix(dir, "usr/share/locale/"), "/LC_MESSAGES/")
-		if lang == dir || strings.Contains(lang, "/") {
-			continue
-		}
-		for _, domain := range []string{"gnome-shell", "gtk40", "systemd"} {
-			if file == domain+".mo" {
-				b, err := io.ReadAll(tr)
-				if err != nil {
-					return nil, err
-				}
-				if catalogs[domain] == nil {
-					catalogs[domain] = map[string][]byte{}
-				}
-				catalogs[domain][lang] = b
+			if p.catalogs[domain] == nil {
+				p.catalogs[domain] = map[string][]byte{}
 			}
+			p.catalogs[domain][lang] = b
 		}
 	}
-	if font == nil {
+	return nil
+}
+
+// languages are the prompt's words in every language gnome-shell has a catalog for in the root
+// rootfs, by its locale name. A language is left out unless the font draws all three of its words.
+func (p promptSources) languages(rootfs string) (map[string]promptWords, error) {
+	catalogs := p.catalogs
+	if p.font == nil {
 		return nil, fmt.Errorf("%s has no %s", rootfs, promptFont)
 	}
-	face, err := sfnt.Parse(font)
+	face, err := sfnt.Parse(p.font)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", promptFont, err)
 	}

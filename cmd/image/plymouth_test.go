@@ -188,19 +188,26 @@ func TestReadBrandFiles(t *testing.T) {
 		return p
 	}
 	frame := brandFrames + "/frame-0001.png"
-	brand, err := readBrandFiles(write(frame, brandPalette, brandWallpaper, "usr/share/construct/other"))
+	read := func(rootfs string) (brandFiles, error) {
+		brand, _, err := readThemeSources(rootfs)
+		if err != nil {
+			return brand, err
+		}
+		return brand, brand.complete(rootfs)
+	}
+	brand, err := read(write(frame, brandPalette, brandWallpaper, "usr/share/construct/other"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(brand.frames) != 1 || brand.frames["frame-0001.png"] == nil || brand.palette == nil || brand.wallpaper == nil {
-		t.Errorf("readBrandFiles = %+v", brand)
+		t.Errorf("brand files = %+v", brand)
 	}
 	for missing, files := range map[string][]string{
 		brandFrames:    {brandPalette, brandWallpaper},
 		brandPalette:   {frame, brandWallpaper},
 		brandWallpaper: {frame, brandPalette},
 	} {
-		if _, err := readBrandFiles(write(files...)); err == nil || !strings.Contains(err.Error(), missing) {
+		if _, err := read(write(files...)); err == nil || !strings.Contains(err.Error(), missing) {
 			t.Errorf("without %s: %v", missing, err)
 		}
 	}

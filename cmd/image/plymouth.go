@@ -77,8 +77,11 @@ var themeScript string
 // (construct install, a credential the boot-language unit writes into plymouthd.conf).
 func plymouthTheme() error {
 	rootfs := filepath.Join(out, "rootfs.tar")
-	brand, err := readBrandFiles(rootfs)
+	brand, prompt, err := readThemeSources(rootfs)
 	if err != nil {
+		return err
+	}
+	if err := brand.complete(rootfs); err != nil {
 		return err
 	}
 	seq, frames, err := brandAnimation(brand.frames)
@@ -120,7 +123,7 @@ func plymouthTheme() error {
 	if err := os.MkdirAll(filepath.Join(dir, "lang"), 0o755); err != nil {
 		return err
 	}
-	langs, err := promptLanguages(rootfs)
+	langs, err := prompt.languages(rootfs)
 	if err != nil {
 		return err
 	}
@@ -179,51 +182,53 @@ func plymouthTheme() error {
 	return os.WriteFile(filepath.Join(etc, "plymouthd.conf"), []byte(conf), 0o644)
 }
 
-// readBrandFiles reads construct-brand's animation, palette and dark wallpaper from the root's
-// tarball.
-func readBrandFiles(rootfs string) (brandFiles, error) {
+// readThemeSources reads what the theme takes from the root's tarball - construct-brand's files,
+// and the prompt's catalogs and font - in one pass: the tarball is the whole root.
+func readThemeSources(rootfs string) (brandFiles, promptSources, error) {
 	brand := brandFiles{frames: map[string][]byte{}}
-	f, err := os.Open(rootfs)
+	prompt := promptSources{catalogs: map[string]map[string][]byte{}}
+	err := tarLayer{file: rootfs}.walk(func(h *tar.Header, r io.Reader) error {
+		if err := brand.add(h.Name, r); err != nil {
+			return err
+		}
+		return prompt.add(h.Name, r)
+	})
+	return brand, prompt, err
+}
+
+// add keeps the file name when it is construct-brand's animation, palette or dark wallpaper.
+func (b *brandFiles) add(name string, r io.Reader) error {
+	if name != brandPalette && name != brandWallpaper && path.Dir(name) != brandFrames {
+		return nil
+	}
+	data, err := io.ReadAll(r)
 	if err != nil {
-		return brand, err
+		return err
 	}
-	defer f.Close()
-	tr := tar.NewReader(f)
-	for {
-		h, err := tr.Next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
-		if err != nil {
-			return brand, err
-		}
-		name := strings.TrimPrefix(path.Clean("/"+h.Name), "/")
-		if name != brandPalette && name != brandWallpaper && path.Dir(name) != brandFrames {
-			continue
-		}
-		b, err := io.ReadAll(tr)
-		if err != nil {
-			return brand, err
-		}
-		switch name {
-		case brandPalette:
-			brand.palette = b
-		case brandWallpaper:
-			brand.wallpaper = b
-		default:
-			brand.frames[path.Base(name)] = b
-		}
+	switch name {
+	case brandPalette:
+		b.palette = data
+	case brandWallpaper:
+		b.wallpaper = data
+	default:
+		b.frames[path.Base(name)] = data
 	}
+	return nil
+}
+
+// complete fails, by name, unless the root rootfs gave the brand's animation, palette and dark
+// wallpaper.
+func (b brandFiles) complete(rootfs string) error {
 	for what, missing := range map[string]bool{
-		brandFrames:    len(brand.frames) == 0,
-		brandPalette:   brand.palette == nil,
-		brandWallpaper: brand.wallpaper == nil,
+		brandFrames:    len(b.frames) == 0,
+		brandPalette:   b.palette == nil,
+		brandWallpaper: b.wallpaper == nil,
 	} {
 		if missing {
-			return brand, fmt.Errorf("%s has no %s: image/apko.yaml installs construct-brand, and recipes/construct-brand.yaml puts it there", rootfs, what)
+			return fmt.Errorf("%s has no %s: image/apko.yaml installs construct-brand, and recipes/construct-brand.yaml puts it there", rootfs, what)
 		}
 	}
-	return brand, nil
+	return nil
 }
 
 // brandAnimation is the brand's sequence and the frames it plays, by file name: every part has

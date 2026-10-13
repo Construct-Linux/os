@@ -86,7 +86,11 @@ func TestALanguageIsOfferedWhenTheFontDrawsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.Close()
-	langs, err := promptLanguages(file)
+	_, prompt, err := readThemeSources(file)
+	if err != nil {
+		t.Fatal(err)
+	}
+	langs, err := prompt.languages(file)
 	if err != nil {
 		t.Fatal(err)
 	}
