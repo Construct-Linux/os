@@ -220,3 +220,34 @@ func TestSlotUUIDs(t *testing.T) {
 		t.Errorf("rootHash = %s", got)
 	}
 }
+
+// A keyring that holds no key is refused: a root that carried one would trust no release, and say
+// so only at the first update.
+func TestAnEmptyKeyringIsRefused(t *testing.T) {
+	if _, err := ParseKeyring(nil); err == nil {
+		t.Error("an empty keyring was taken")
+	}
+}
+
+// A subkey flagged to sign is a key a release may be signed with, held to Ed25519 as the primary
+// is; a subkey that only encrypts signs nothing, and is let be.
+func TestASigningSubkeyThatIsNotEd25519IsRefused(t *testing.T) {
+	e, err := openpgp.NewEntity("subkeys", "", "subkeys@construct", &packet.Config{Algorithm: packet.PubKeyAlgoEdDSA})
+	must(t, err)
+	// NewEntity's encryption subkey (X25519) is no signing key.
+	if _, err := ParseKeyring(publicKeyring(t, e, false)); err != nil {
+		t.Fatalf("an Ed25519 key with an encryption subkey was refused: %v", err)
+	}
+	must(t, e.AddSigningSubkey(&packet.Config{Algorithm: packet.PubKeyAlgoRSA, RSABits: 2048}))
+	if _, err := ParseKeyring(publicKeyring(t, e, false)); err == nil {
+		t.Error("an Ed25519 key with an RSA signing subkey was taken")
+	}
+}
+
+// A root that carries no keyring trusts no release: it is an error, not a machine that takes any.
+func TestARootWithoutAKeyringTrustsNoRelease(t *testing.T) {
+	_, err := ReadKeyring(filepath.Join(t.TempDir(), KeyringPath))
+	if err == nil || !strings.Contains(err.Error(), "trusts no release") {
+		t.Errorf("no keyring: %v", err)
+	}
+}

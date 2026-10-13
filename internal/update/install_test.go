@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -272,3 +273,72 @@ func TestTheMediumIsTheDiskUnderTheRoot(t *testing.T) {
 
 // testVarUUID is /var's UUID for the machine id of TestVarUUIDIsSystemds.
 const testVarUUID = "cc7a4ffd-7252-425e-8a6a-2142f38a9264"
+
+// The kernel image is downloaded beside its name and renamed only once its digest and what it
+// names are the release's: one that is not leaves nothing on the ESP for systemd-boot to boot.
+func TestAKernelImageThatIsNotTheReleasesIsNotLeftOnTheESP(t *testing.T) {
+	const version = "20261013.1"
+	from := t.TempDir()
+	write(t, filepath.Join(from, "EFI/systemd/systemd-bootx64.efi"), "systemd-boot")
+	write(t, filepath.Join(from, "loader/keys/auto/db.auth"), "db")
+	cmdline := "roothash=" + strings.ReplaceAll(newRoot+newVerity, "-", "")
+	image := func(v string) []byte {
+		return peImage(t, map[string]string{".osrel": "IMAGE_VERSION=" + v + "\n", ".cmdline": cmdline})
+	}
+	good, other := image(version), image("20261013.2")
+	for name, tc := range map[string]struct {
+		body   []byte
+		digest string
+	}{
+		"its own":          {good, sumOf(good)},
+		"not its digest's": {good[1:], sumOf(good)},
+		"another version":  {other, sumOf(other)},
+	} {
+		t.Run(name, func(t *testing.T) {
+			r := Release{Version: version, Root: Artifact{UUID: newRoot}, Verity: Artifact{UUID: newVerity},
+				UKI: Artifact{Name: ImageID + "_" + version + ".efi", SHA256: tc.digest}}
+			fetch := func(context.Context, string) (io.ReadCloser, int64, error) {
+				return io.NopCloser(bytes.NewReader(tc.body)), int64(len(tc.body)), nil
+			}
+			dir := t.TempDir()
+			err := layESP(t.Context(), dir, from, r, fetch)
+			left, rerr := os.ReadDir(filepath.Join(dir, linuxDir))
+			must(t, rerr)
+			var names []string
+			for _, e := range left {
+				names = append(names, e.Name())
+			}
+			if name == "its own" {
+				if err != nil || !slices.Equal(names, []string{r.UKI.Name}) {
+					t.Errorf("%v; %s holds %q", err, linuxDir, names)
+				}
+				return
+			}
+			if err == nil || len(names) != 0 {
+				t.Errorf("%v; %s holds %q", err, linuxDir, names)
+			}
+		})
+	}
+}
+
+// A stick without systemd-boot, or without the Secure Boot variables an installed disk enrolls
+// from, installs no ESP: the disk would boot nothing, or boot with Secure Boot left to whatever
+// keys the firmware holds.
+func TestAStickWithoutSystemdBootOrItsKeysLaysNoESP(t *testing.T) {
+	noKeys, noBoot := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(noKeys, "EFI/systemd/systemd-bootx64.efi"), "systemd-boot")
+	write(t, filepath.Join(noBoot, "loader/keys/auto/db.auth"), "db")
+	fetch := func(context.Context, string) (io.ReadCloser, int64, error) {
+		t.Error("the kernel image was fetched")
+		return nil, 0, os.ErrNotExist
+	}
+	for name, from := range map[string]string{"no Secure Boot variables": noKeys, "no systemd-boot": noBoot} {
+		dir := t.TempDir()
+		if err := layESP(t.Context(), dir, from, Release{Version: "1"}, fetch); err == nil {
+			t.Errorf("%s: an ESP was laid", name)
+		}
+		if left, _ := os.ReadDir(dir); len(left) != 0 {
+			t.Errorf("%s: the ESP holds %v", name, left)
+		}
+	}
+}

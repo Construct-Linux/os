@@ -148,3 +148,18 @@ func TestTheListIsReadUpToItsBound(t *testing.T) {
 		t.Errorf("a list past its bound read as %d bytes", len(got))
 	}
 }
+
+// A release's files are read from its directory alone: a name SHA256SUMS gives with a directory in
+// it is refused before anything is opened.
+func TestAReleaseIsReadFromItsOwnDirectoryOnly(t *testing.T) {
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "release")
+	write(t, filepath.Join(parent, "secret"), "not the release's")
+	write(t, filepath.Join(dir, "SHA256SUMS"), "")
+	for _, name := range []string{"../secret", "sub/file", "/etc/passwd"} {
+		if rc, _, err := dirFetch(dir)(t.Context(), name); err == nil {
+			_ = rc.Close()
+			t.Errorf("%q was read", name)
+		}
+	}
+}
