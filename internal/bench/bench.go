@@ -78,8 +78,8 @@ func active(root, path string) (string, string, error) {
 
 // Current is what the machine has now, for the settings of p: CONSTRUCT's own profile when the
 // machine runs CONSTRUCT, and what is put back when the bench ends.
-func Current(root string, p Profile, name string, zram bool) (Profile, error) {
-	cur := Profile{Name: name, Zram: zram}
+func Current(root string, p Profile, zram bool) (Profile, error) {
+	cur := Profile{Name: "construct", Zram: zram}
 	for _, s := range p.Settings {
 		path, v, err := active(root, s.Path)
 		if err != nil {

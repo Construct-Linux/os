@@ -35,7 +35,7 @@ func TestApplyAndRestore(t *testing.T) {
 		}
 	}
 	kernel := Kernel([]string{"nvme0n1"})
-	construct, err := Current(root, kernel, "construct", true)
+	construct, err := Current(root, kernel, true)
 	if err != nil {
 		t.Fatal(err)
 	}

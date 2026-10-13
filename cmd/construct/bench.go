@@ -39,7 +39,7 @@ func benchCmd(ctx context.Context, args []string, stdout io.Writer) error {
 	for _, d := range dropped {
 		fmt.Fprintf(stdout, "not compared: /%s, which this machine's kernel has not got\n", d)
 	}
-	construct, err := bench.Current("/", kernel, "construct", bench.ZramOn())
+	construct, err := bench.Current("/", kernel, bench.ZramOn())
 	if err != nil {
 		return err
 	}
@@ -50,7 +50,7 @@ func benchCmd(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	defer os.RemoveAll(benchDir)
 
-	results := map[string]map[string][]float64{}
+	runs := map[string][]bench.Result{}
 	order := []bench.Profile{kernel, construct}
 	for r := 0; r < *rounds; r++ {
 		for i := range order {
@@ -66,38 +66,42 @@ func benchCmd(ctx context.Context, args []string, stdout io.Writer) error {
 				return err
 			}
 			fmt.Fprintf(stdout, "round %d, %s settings...\n", r+1, p.Name)
-			m, err := bench.Run(ctx, benchDir, *seconds)
+			res, err := bench.Run(ctx, benchDir, *seconds)
 			if err != nil {
 				return err
 			}
-			if results[p.Name] == nil {
-				results[p.Name] = map[string][]float64{}
-			}
-			for k, v := range m {
-				results[p.Name][k] = append(results[p.Name][k], v)
-			}
+			runs[p.Name] = append(runs[p.Name], res)
 		}
 	}
-	fmt.Fprint(stdout, benchTable(results))
-	return saveBench(results)
+	fmt.Fprint(stdout, benchTable(runs[kernel.Name], runs[construct.Name]))
+	return saveBench(runs)
 }
 
 // The metrics, how each reads, and whether more is better.
 var benchMetrics = []struct {
-	key, label   string
+	label        string
+	of           func(bench.Result) float64
 	higherBetter bool
 }{
-	{"wakeup_p99_us", "wakeup latency p99, all CPUs busy (µs)", false},
-	{"read_p99_us", "random read latency p99 beside a large write (µs)", false},
-	{"vm_ops", "work done with 120% of RAM asked for (ops/s)", true},
-	{"oom_kills", "processes killed for memory", false},
+	{"wakeup latency p99, all CPUs busy (µs)", func(r bench.Result) float64 { return r.WakeupP99 }, false},
+	{"random read latency p99 beside a large write (µs)", func(r bench.Result) float64 { return r.ReadP99 }, false},
+	{"work done with 120% of RAM asked for (ops/s)", func(r bench.Result) float64 { return r.VMOps }, true},
+	{"processes killed for memory", func(r bench.Result) float64 { return r.OOMKills }, false},
 }
 
-func benchTable(results map[string]map[string][]float64) string {
+// benchTable compares the median of each metric over the kernel's runs and CONSTRUCT's.
+func benchTable(kernel, construct []bench.Result) string {
+	median := func(runs []bench.Result, of func(bench.Result) float64) float64 {
+		var v []float64
+		for _, r := range runs {
+			v = append(v, of(r))
+		}
+		return bench.Median(v)
+	}
 	var b strings.Builder
 	fmt.Fprintf(&b, "\n%-54s %12s %12s %8s\n", "median of each workload", "kernel", "construct", "change")
 	for _, m := range benchMetrics {
-		k, c := bench.Median(results["kernel"][m.key]), bench.Median(results["construct"][m.key])
+		k, c := median(kernel, m.of), median(construct, m.of)
 		change := "-"
 		if k != 0 {
 			pct := 100 * (c - k) / k
@@ -114,12 +118,12 @@ func benchTable(results map[string]map[string][]float64) string {
 }
 
 // saveBench keeps the run's numbers in /var/log/construct, to compare a release with the next.
-func saveBench(results map[string]map[string][]float64) error {
+func saveBench(runs map[string][]bench.Result) error {
 	dir := "/var/log/construct"
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	b, err := json.MarshalIndent(results, "", "  ")
+	b, err := json.MarshalIndent(runs, "", "  ")
 	if err != nil {
 		return err
 	}

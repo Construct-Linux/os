@@ -16,30 +16,37 @@ import (
 // What runs on the machine itself: the workloads, and a profile put in place with the zram swap
 // systemd's units own. The rest of the package decides and parses; this is the part that acts.
 
+// Result is what one run of the workloads measured.
+type Result struct {
+	WakeupP99 float64 `json:"wakeup_p99_us"` // a woken thread's wait for a CPU, every CPU busy
+	ReadP99   float64 `json:"read_p99_us"`   // a small read's, beside a large write
+	VMOps     float64 `json:"vm_ops"`        // work done with more memory asked for than there is
+	OOMKills  float64 `json:"oom_kills"`     // and what the kernel killed for it
+}
+
 // Run runs the three workloads under the settings in place - every CPU busy, a large write beside
-// small reads, more memory asked for than there is - and answers their numbers by key: wakeup_p99_us,
-// read_p99_us, vm_ops and oom_kills.
+// small reads, more memory asked for than there is - and answers their numbers.
 // dir is where the I/O workload writes, on the disk being measured.
-func Run(ctx context.Context, dir string, seconds int) (map[string]float64, error) {
-	m := map[string]float64{}
+func Run(ctx context.Context, dir string, seconds int) (Result, error) {
+	var m Result
 	// Every CPU busy, then how long a woken thread waits for one.
 	load := exec.CommandContext(ctx, "stress-ng", "--cpu", "0", "--timeout", strconv.Itoa(seconds+5)+"s", "--quiet")
 	if err := load.Start(); err != nil {
-		return nil, fmt.Errorf("stress-ng: %w", err)
+		return Result{}, fmt.Errorf("stress-ng: %w", err)
 	}
 	out := filepath.Join(dir, "schbench.json")
 	threads := strconv.Itoa(max(1, runtime.NumCPU()/2))
 	err := exec.CommandContext(ctx, "schbench", "-m", "2", "-t", threads, "-r", strconv.Itoa(seconds), "-j", out).Run()
 	_ = load.Wait()
 	if err != nil {
-		return nil, fmt.Errorf("schbench: %w", err)
+		return Result{}, fmt.Errorf("schbench: %w", err)
 	}
 	b, err := os.ReadFile(out)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
-	if m["wakeup_p99_us"], err = SchbenchWakeupP99(b); err != nil {
-		return nil, err
+	if m.WakeupP99, err = SchbenchWakeupP99(b); err != nil {
+		return Result{}, err
 	}
 
 	// A large buffered write, and small direct reads beside it: what writeback limits and the I/O
@@ -49,16 +56,16 @@ func Run(ctx context.Context, dir string, seconds int) (map[string]float64, erro
 		"--time_based", "--name=writer", "--rw=write", "--bs=1M", "--size=2G",
 		"--name=reader", "--rw=randread", "--bs=4k", "--direct=1", "--size=256M").Output()
 	if err != nil {
-		return nil, fmt.Errorf("fio: %w", err)
+		return Result{}, fmt.Errorf("fio: %w", err)
 	}
-	if m["read_p99_us"], err = FioReadP99(fio, "reader"); err != nil {
-		return nil, err
+	if m.ReadP99, err = FioReadP99(fio, "reader"); err != nil {
+		return Result{}, err
 	}
 
 	// More memory asked for than there is: work done, and what the kernel killed for it.
 	total, err := memTotalBytes()
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
 	oomBefore, _ := vmstat("oom_kill")
 	yaml := filepath.Join(dir, "stress.yaml")
@@ -67,16 +74,16 @@ func Run(ctx context.Context, dir string, seconds int) (map[string]float64, erro
 	if err := exec.CommandContext(ctx, "systemd-run", "--scope", "--quiet", "-p", "OOMPolicy=continue", "--",
 		"stress-ng", "--vm", "2", "--vm-bytes", strconv.FormatUint(total*6/10, 10), "--vm-keep",
 		"--timeout", strconv.Itoa(seconds)+"s", "--metrics-brief", "--yaml", yaml, "--quiet").Run(); err != nil {
-		return nil, fmt.Errorf("stress-ng --vm: %w", err)
+		return Result{}, fmt.Errorf("stress-ng --vm: %w", err)
 	}
 	oomAfter, _ := vmstat("oom_kill")
-	m["oom_kills"] = float64(oomAfter - oomBefore)
+	m.OOMKills = float64(oomAfter - oomBefore)
 	b, err = os.ReadFile(yaml)
 	if err != nil {
-		return nil, err
+		return Result{}, err
 	}
-	if m["vm_ops"], err = StressVMRate(b); err != nil {
-		return nil, err
+	if m.VMOps, err = StressVMRate(b); err != nil {
+		return Result{}, err
 	}
 	return m, nil
 }
