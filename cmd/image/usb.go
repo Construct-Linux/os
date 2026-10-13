@@ -206,13 +206,24 @@ func refuseKMS(b built, ref string) error {
 // construct-update partition carries.
 func releaseDir(version string) string { return filepath.Join(out, "release", version) }
 
+// currentRelease is the version of the release image usb-sign last wrote: writeRelease keeps one,
+// and more than one is a directory something else wrote, which no step should guess between.
+func currentRelease() (string, error) {
+	dir := filepath.Join(out, "release")
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 1 {
+		return "", fmt.Errorf("want the one release in %s: run image usb-sign first", dir)
+	}
+	return entries[0].Name(), nil
+}
+
 // writeRelease lays version's release: the root and its tree named with the partition UUIDs a
 // slot takes for them (the kernel image's command line names those), the kernel image, and
 // SHA256SUMS over them, which the host signs (SHA256SUMS.gpg, systemd-sysupdate's name) before the
 // stick is made. The names and the sums are internal/update's, which reads the release back.
 func writeRelease(version, esp, label string, v verity) (string, error) {
 	dir := releaseDir(version)
-	// One release at a time: every reader takes the newest (task usb signs it, usb-disk lays it,
+	// One release at a time: every reader takes it (task usb signs it, usb-disk lays it,
 	// test:lifecycle copies each version out), and at 2 GB a build, keeping them filled the disk.
 	if err := os.RemoveAll(filepath.Dir(dir)); err != nil {
 		return "", err
@@ -248,12 +259,10 @@ func usbDisk(args []string) error {
 	if len(args) > 0 {
 		return fmt.Errorf("usb-disk takes no arguments")
 	}
-	// writeRelease keeps one release: usb's.
-	entries, err := os.ReadDir(filepath.Join(out, "release"))
-	if err != nil || len(entries) != 1 {
-		return fmt.Errorf("want the one release in %s: run image usb first", filepath.Join(out, "release"))
+	version, err := currentRelease()
+	if err != nil {
+		return err
 	}
-	version := entries[0].Name()
 	rel := releaseDir(version)
 	if _, err := os.Stat(filepath.Join(rel, update.SignatureFile)); err != nil {
 		return fmt.Errorf("%s is not signed: %w", rel, err)

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/Construct-Linux/os/internal/sign"
@@ -64,17 +63,17 @@ func signRelease(args []string) error {
 	fl := flag.NewFlagSet("sign-release", flag.ExitOnError)
 	ref := fl.String("key", "", "the release key: a PEM file, or kms:<key>")
 	pubring := fl.String("pubring", "", "its public key (release.pgp)")
-	dir := fl.String("dir", "", "the release (default: the newest in _output/release)")
+	dir := fl.String("dir", "", "the release (default: the one in _output/release)")
 	_ = fl.Parse(args)
 	if *ref == "" || *pubring == "" {
 		return errors.New("sign-release: -key and -pubring are required")
 	}
 	if *dir == "" {
-		d, err := newestRelease()
+		v, err := currentRelease()
 		if err != nil {
 			return err
 		}
-		*dir = d
+		*dir = releaseDir(v)
 	}
 	if err := refuseKMSRelease(*dir, *ref); err != nil {
 		return err
@@ -139,16 +138,6 @@ func signSums(ref, pubringFile, sums string) error {
 		return fmt.Errorf("the signature over %s does not verify: %w", sums, err)
 	}
 	return os.WriteFile(sums+".gpg", sig, 0o644)
-}
-
-// newestRelease is the newest release image usb-sign wrote.
-func newestRelease() (string, error) {
-	dirs, err := filepath.Glob(filepath.Join(out, "release", "*"))
-	if err != nil || len(dirs) == 0 {
-		return "", fmt.Errorf("no release in %s: image usb-sign first", filepath.Join(out, "release"))
-	}
-	sort.Strings(dirs)
-	return dirs[len(dirs)-1], nil
 }
 
 // publicKey writes the public half of the key ref as PEM: the PCR key's, which the kernel image
