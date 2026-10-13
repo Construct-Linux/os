@@ -124,17 +124,23 @@ type lfPalette struct {
 	strs   map[string]string
 }
 
-// The tokens the checks read: a palette without one fails at once, rather than as black.
-var (
-	lfColorTokens = []string{"brand-boot", "neutral-a", "neutral-e", "neutral-f", "neutral-g", "neutral-h", "dark-border",
-		"dark-accent", "dark-accent-text", "dark-text", "dark-muted", "dark-on-accent", "light-accent", "light-accent-text",
-		"light-on-accent", "light-text", "light-muted", "light-desk", "light-shelf"}
-	lfNumTokens = []string{"tint-dark-rest", "tint-dark-hover", "tint-dark-active", "line-light-ring", "line-light-border", "shape-inset", "shape-radius-control",
-		"shape-radius-surface", "shape-radius-sheet"}
-	lfStrTokens = []string{"type-ui", "type-mono"}
-)
+// paletteTokens are the tokens of palette.json a reader needs, by kind.
+type paletteTokens struct{ colors, nums, strs []string }
 
-func parseLFPalette(b []byte) (lfPalette, error) {
+// lfTokens are the tokens the checks read.
+var lfTokens = paletteTokens{
+	colors: []string{"brand-boot", "neutral-a", "neutral-e", "neutral-f", "neutral-g", "neutral-h", "dark-border",
+		"dark-accent", "dark-accent-text", "dark-text", "dark-muted", "dark-on-accent", "light-accent", "light-accent-text",
+		"light-on-accent", "light-text", "light-muted", "light-desk", "light-shelf"},
+	nums: []string{"tint-dark-rest", "tint-dark-hover", "tint-dark-active", "line-light-ring", "line-light-border", "shape-inset", "shape-radius-control",
+		"shape-radius-surface", "shape-radius-sheet"},
+	strs: []string{"type-ui", "type-mono"},
+}
+
+// parsePalette reads palette.json, flat and mixed - colours as #hex, numbers, families, lists -
+// for the harness's checks and for Plymouth's theme alike. A palette without a token need names
+// fails at once, naming each one it lacks, rather than drawing or measuring it as black.
+func parsePalette(b []byte, need paletteTokens) (lfPalette, error) {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(b, &raw); err != nil {
 		return lfPalette{}, fmt.Errorf("%s: %w", brandPalette, err)
@@ -155,17 +161,17 @@ func parseLFPalette(b []byte) (lfPalette, error) {
 		}
 	}
 	var missing []string
-	for _, k := range lfColorTokens {
+	for _, k := range need.colors {
 		if _, ok := p.colors[k]; !ok {
 			missing = append(missing, k)
 		}
 	}
-	for _, k := range lfNumTokens {
+	for _, k := range need.nums {
 		if _, ok := p.nums[k]; !ok {
 			missing = append(missing, k)
 		}
 	}
-	for _, k := range lfStrTokens {
+	for _, k := range need.strs {
 		if _, ok := p.strs[k]; !ok {
 			missing = append(missing, k)
 		}
@@ -416,7 +422,7 @@ func newLF(r *report, v *qemu.VM, g *guest) *lf {
 		r.add("lf: palette", false, "/"+brandPalette+" is not on the guest (construct-brand installs it)"+errText(err))
 		return l
 	}
-	if l.pal, err = parseLFPalette([]byte(raw)); err != nil {
+	if l.pal, err = parsePalette([]byte(raw), lfTokens); err != nil {
 		r.add("lf: palette", false, err.Error())
 		return l
 	}

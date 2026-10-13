@@ -66,7 +66,7 @@ const tPalette = `{"brand-boot":"#000000","neutral-e":"#0B1116","neutral-f":"#11
 // palette.json is flat and mixed - colours, numbers, families, a list - and a token a check needs
 // that it lacks is named, never read as black.
 func TestParseLFPalette(t *testing.T) {
-	p, err := parseLFPalette([]byte(tPalette))
+	p, err := parsePalette([]byte(tPalette), lfTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestParseLFPalette(t *testing.T) {
 	if !p.has(color.NRGBA{0x2A, 0x38, 0x43, 0x40}) || p.has(color.NRGBA{0x28, 0x28, 0x28, 255}) {
 		t.Error("has: a palette colour at an alpha is the palette's, a grey is not")
 	}
-	_, err = parseLFPalette([]byte(strings.Replace(tPalette, `"neutral-h":"#1F2A33",`, "", 1)))
+	_, err = parsePalette([]byte(strings.Replace(tPalette, `"neutral-h":"#1F2A33",`, "", 1)), lfTokens)
 	if err == nil || !strings.Contains(err.Error(), "neutral-h") {
 		t.Errorf("a missing token: %v", err)
 	}
@@ -247,7 +247,7 @@ const tCSS = `
 // The CSS checks read St's CSS as the shell loaded it: rules, the subject a rule styles at rest,
 // and each check names what broke it.
 func TestCSSChecks(t *testing.T) {
-	p, err := parseLFPalette([]byte(tPalette))
+	p, err := parsePalette([]byte(tPalette), lfTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -296,7 +296,7 @@ func TestCSSChecks(t *testing.T) {
 // C1 as G3 reads it: the accent and white at an alpha over a surface, written opaque, are the
 // palette's; a mix of the accent and the error colour, or a grey, are not.
 func TestComposite(t *testing.T) {
-	p, err := parseLFPalette([]byte(tPalette))
+	p, err := parsePalette([]byte(tPalette), lfTokens)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -392,7 +392,7 @@ func TestFilmReportSizes(t *testing.T) {
 // testLF is an lf over a report of its own, the test palette, at scale k.
 func testLF(t *testing.T, k int) *lf {
 	t.Helper()
-	p, err := parseLFPalette([]byte(tPalette))
+	p, err := parsePalette([]byte(tPalette), lfTokens)
 	if err != nil {
 		t.Fatal(err)
 	}

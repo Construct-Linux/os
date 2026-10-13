@@ -68,7 +68,7 @@ func (r *report) plymouthPrompt(g *guest, dir string) {
 		r.add("lf: prompt plymouth", false, "/"+brandPalette+" is not on the guest"+errText(err))
 		return
 	}
-	p, err := parseLFPalette([]byte(raw))
+	p, err := parsePalette([]byte(raw), lfTokens)
 	if err != nil {
 		r.add("lf: prompt plymouth", false, err.Error())
 		return

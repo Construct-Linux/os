@@ -88,10 +88,11 @@ func plymouthTheme() error {
 	if err != nil {
 		return err
 	}
-	colors, err := paletteColors(brand.palette, "brand-boot", "neutral-g", "dark-accent", "dark-text", "dark-warning", "dark-error")
+	pal, err := parsePalette(brand.palette, paletteTokens{colors: []string{"brand-boot", "neutral-g", "dark-accent", "dark-text", "dark-warning", "dark-error"}})
 	if err != nil {
 		return err
 	}
+	colors := pal.colors
 	markAt, err := markCenter(brand.wallpaper)
 	if err != nil {
 		return fmt.Errorf("%s: %w", brandWallpaper, err)
@@ -329,32 +330,8 @@ func markCenter(b []byte) (float64, error) {
 	return float64(top+bottom+1-2*r.Min.Y) / 2 / float64(r.Dy()), nil
 }
 
-// paletteColors reads keys' colors from construct-brand's palette.json, flat, each "#RRGGBB": a
-// key it has not got is an error, never black.
-func paletteColors(b []byte, keys ...string) (map[string]color.RGBA, error) {
-	var palette map[string]json.RawMessage
-	if err := json.Unmarshal(b, &palette); err != nil {
-		return nil, fmt.Errorf("%s: %w", brandPalette, err)
-	}
-	colors := map[string]color.RGBA{}
-	for _, k := range keys {
-		var s string
-		if raw, ok := palette[k]; !ok {
-			return nil, fmt.Errorf("%s has no %s", brandPalette, k)
-		} else if err := json.Unmarshal(raw, &s); err != nil {
-			return nil, fmt.Errorf("%s's %s: %w", brandPalette, k, err)
-		}
-		c := color.RGBA{A: 0xff}
-		if _, err := fmt.Sscanf(s, "#%02x%02x%02x", &c.R, &c.G, &c.B); err != nil || len(s) != 7 {
-			return nil, fmt.Errorf("%s's %s is %q, not #RRGGBB", brandPalette, k, s)
-		}
-		colors[k] = c
-	}
-	return colors, nil
-}
-
 // scriptColor is c as a Plymouth script's red, green and blue arguments, each from 0 to 1.
-func scriptColor(c color.RGBA) string {
+func scriptColor(c color.NRGBA) string {
 	return fmt.Sprintf("%.3f, %.3f, %.3f", float64(c.R)/255, float64(c.G)/255, float64(c.B)/255)
 }
 
@@ -367,7 +344,7 @@ func scriptQuoted(w promptWords) promptWords {
 // pill is a w by h pill, its ends half circles, filled with fill inside a ringWidth px ring of ring,
 // transparent around it. Its edges are anti-aliased by each pixel's distance from them, as the
 // shell's entries are, so the curve is not a staircase on the black.
-func pill(w, h int, ringWidth float64, fill, ring color.RGBA) image.Image {
+func pill(w, h int, ringWidth float64, fill, ring color.NRGBA) image.Image {
 	img := image.NewNRGBA(image.Rect(0, 0, w, h))
 	r := float64(h) / 2
 	coverage := func(d float64) float64 { return math.Max(0, math.Min(1, 0.5-d)) }

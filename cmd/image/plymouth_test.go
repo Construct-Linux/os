@@ -98,22 +98,22 @@ func TestMarkCenter(t *testing.T) {
 	}
 }
 
-// The palette's colors are read by name, flat and #RRGGBB; one it has not got, or not a color,
-// is an error, never a black prompt.
+// The prompt's colors are read by name, flat and #RRGGBB; one the palette has not got, or not a
+// color, is an error, never a black prompt.
 func TestPaletteColors(t *testing.T) {
 	palette := []byte(`{"neutral-g":"#172028","dark-accent":"#00E5FF","shape-inset":6,"tint":"0.16"}`)
-	got, err := paletteColors(palette, "neutral-g", "dark-accent")
+	p, err := parsePalette(palette, paletteTokens{colors: []string{"neutral-g", "dark-accent"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got["neutral-g"] != (color.RGBA{0x17, 0x20, 0x28, 0xff}) || got["dark-accent"] != (color.RGBA{0x00, 0xe5, 0xff, 0xff}) {
-		t.Errorf("paletteColors = %v", got)
+	if p.colors["neutral-g"] != (color.NRGBA{0x17, 0x20, 0x28, 0xff}) || p.colors["dark-accent"] != (color.NRGBA{0x00, 0xe5, 0xff, 0xff}) {
+		t.Errorf("colors = %v", p.colors)
 	}
-	if s := scriptColor(got["dark-accent"]); s != "0.000, 0.898, 1.000" {
+	if s := scriptColor(p.colors["dark-accent"]); s != "0.000, 0.898, 1.000" {
 		t.Errorf("scriptColor = %q", s)
 	}
 	for _, key := range []string{"dark-text", "shape-inset", "tint"} {
-		if _, err := paletteColors(palette, key); err == nil {
+		if _, err := parsePalette(palette, paletteTokens{colors: []string{key}}); err == nil {
 			t.Errorf("%s: no error", key)
 		}
 	}
@@ -122,8 +122,7 @@ func TestPaletteColors(t *testing.T) {
 // The prompt's field is the shell's unlock entry: an opaque g pill with a 2 px accent ring, its
 // corners left to the black behind it and its curve anti-aliased; the dots are round, in text.
 func TestPromptImages(t *testing.T) {
-	g, accent, text := color.RGBA{0x17, 0x20, 0x28, 0xff}, color.RGBA{0x00, 0xe5, 0xff, 0xff}, color.RGBA{0xe6, 0xed, 0xf2, 0xff}
-	nrgba := func(c color.RGBA) color.NRGBA { return color.NRGBA{c.R, c.G, c.B, c.A} }
+	g, accent, text := color.NRGBA{0x17, 0x20, 0x28, 0xff}, color.NRGBA{0x00, 0xe5, 0xff, 0xff}, color.NRGBA{0xe6, 0xed, 0xf2, 0xff}
 	entry := pill(320, 36, 2, g, accent).(*image.NRGBA)
 	if b := entry.Bounds(); b.Dx() != 320 || b.Dy() != 36 {
 		t.Fatalf("entry is %v", b)
@@ -132,9 +131,9 @@ func TestPromptImages(t *testing.T) {
 		x, y int
 		want color.NRGBA
 	}{
-		{160, 0, nrgba(accent)}, {160, 1, nrgba(accent)}, {160, 2, nrgba(g)}, {160, 18, nrgba(g)},
-		{160, 34, nrgba(accent)}, {160, 35, nrgba(accent)},
-		{1, 18, nrgba(accent)}, {318, 18, nrgba(accent)}, {18, 18, nrgba(g)},
+		{160, 0, accent}, {160, 1, accent}, {160, 2, g}, {160, 18, g},
+		{160, 34, accent}, {160, 35, accent},
+		{1, 18, accent}, {318, 18, accent}, {18, 18, g},
 		{0, 0, color.NRGBA{}}, {319, 35, color.NRGBA{}},
 	} {
 		if got := entry.NRGBAAt(p.x, p.y); got != p.want {
@@ -153,8 +152,8 @@ func TestPromptImages(t *testing.T) {
 	}
 
 	bullet := pill(10, 10, 0, text, text).(*image.NRGBA)
-	if got := bullet.NRGBAAt(5, 5); got != nrgba(text) {
-		t.Errorf("bullet's centre = %v, want %v", got, nrgba(text))
+	if got := bullet.NRGBAAt(5, 5); got != text {
+		t.Errorf("bullet's centre = %v, want %v", got, text)
 	}
 	if got := bullet.NRGBAAt(0, 0); got.A != 0 {
 		t.Errorf("bullet's corner = %v, want transparent", got)
