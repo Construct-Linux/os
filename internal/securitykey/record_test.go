@@ -41,3 +41,17 @@ func TestKeysRoundTrip(t *testing.T) {
 		t.Errorf("nothing registered: %+v %v", none, err)
 	}
 }
+
+// A user is the first field of a line pam_u2f reads: one that could end the field or the line - or
+// none at all - is refused, and neither file is written.
+func TestAKeysUserThatWouldSplitTheMappingsIsRefused(t *testing.T) {
+	for _, user := range []string{"", "ada:root", "ada\nroot", "ada root", "ada,root"} {
+		etc := t.TempDir()
+		if err := Write(etc, []Key{{Name: "YubiKey", User: user, U2F: "kh,pk,es256,+presence"}}); err == nil {
+			t.Errorf("%q owned a key", user)
+		}
+		if entries, _ := os.ReadDir(etc); len(entries) != 0 {
+			t.Errorf("%q: %d files written before the refusal", user, len(entries))
+		}
+	}
+}

@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/Construct-Linux/os/internal/fsx"
 )
@@ -58,8 +59,15 @@ func Read(etc string) ([]Key, error) {
 	return f.Keys, nil
 }
 
-// Write writes the record and pam_u2f's mappings from it under etc, each whole or not at all.
+// Write writes the record and pam_u2f's mappings from it under etc, each whole or not at all. A
+// key's user is a line's first field in the mappings, which PAM reads for sudo and the lock screen:
+// one that could end the field or the line is refused before anything is written.
 func Write(etc string, keys []Key) error {
+	for _, k := range keys {
+		if k.User == "" || strings.ContainsFunc(k.User, func(r rune) bool { return r == ':' || r == ',' || unicode.IsSpace(r) || unicode.IsControl(r) }) {
+			return fmt.Errorf("securitykey: %q cannot own a key", k.User)
+		}
+	}
 	b, err := json.MarshalIndent(struct {
 		Keys []Key `json:"keys"`
 	}{keys}, "", "  ")
