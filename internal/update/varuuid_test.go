@@ -3,6 +3,7 @@ package update
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 )
 
@@ -42,5 +43,15 @@ func TestFirmwareID(t *testing.T) {
 		if err := FirmwareID(sys); (err == nil) != ok {
 			t.Errorf("FirmwareID(%q) = %v, want ok %v", uuid, err, ok)
 		}
+	}
+}
+
+// A random UUID is a version 4 one of RFC 9562's variant, in the lower case a table is read back
+// in, and another each time.
+func TestRandomUUIDIsVersion4(t *testing.T) {
+	v4 := regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
+	a, b := RandomUUID(), RandomUUID()
+	if !v4.MatchString(a) || !v4.MatchString(b) || a == b {
+		t.Errorf("RandomUUID = %s, then %s", a, b)
 	}
 }

@@ -49,10 +49,14 @@ func Names(version, root, verity string) (rootFile, verityFile, uki string) {
 // halves (the Discoverable Partitions Specification's convention): systemd finds the slot by the
 // root hash alone.
 func SlotUUIDs(rootHash string) (root, verity string) {
-	uuid := func(h string) string {
-		return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
-	}
-	return uuid(rootHash), uuid(rootHash[32:])
+	return formatUUID(rootHash), formatUUID(rootHash[32:])
+}
+
+// formatUUID is the UUID whose 32 hex digits start h, grouped as a GPT's GUIDs and systemd write
+// them. It takes the digits rather than the bytes so a root hash is halved as it is, never decoded
+// and written again.
+func formatUUID(h string) string {
+	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32]
 }
 
 // rootHash is the root hash whose halves are the partition UUIDs root and verity: SlotUUIDs undone.

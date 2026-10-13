@@ -29,8 +29,7 @@ func VarUUID(machineID string) (string, error) {
 	id := m.Sum(nil)[:16]
 	id[6] = id[6]&0x0f | 0x40
 	id[8] = id[8]&0x3f | 0x80
-	h := hex.EncodeToString(id)
-	return h[0:8] + "-" + h[8:12] + "-" + h[12:16] + "-" + h[16:20] + "-" + h[20:32], nil
+	return formatUUID(hex.EncodeToString(id)), nil
 }
 
 // FirmwareID checks that the machine has an id of its own to bind /var to: the image boots with
