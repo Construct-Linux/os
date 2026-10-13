@@ -155,6 +155,103 @@ func test(args []string) error {
 		"The desktop at login over the default dark wallpaper: both bars opaque g with their ring, the top bar a 36 px pill 6 px from the edge, its text Adwaita Sans 400, and no accent",
 		[]string{"S1", "SP2", "R1", "T2", "E2"}})
 	l.view("desktop")
+	r.systemChecks(g)
+
+	want, unknown := parseOnly(*only)
+	for _, n := range unknown {
+		r.add("-only "+n, false, "no app, panel:<name>, views, type, bench or suspend is called that")
+	}
+	for _, a := range apps {
+		if len(want) > 0 && !want[a.id] {
+			continue
+		}
+		ok, detail := g.runApp(a)
+		r.add(a.id, ok, detail)
+		// Software opens on Explore, whose banner and picks are Flathub's of the day: the view
+		// would differ from its needle every day. Its Installed page is what the image carries.
+		if a.id == "org.gnome.Software.desktop" && ok {
+			_, _ = g.run(asLive+`timeout 10 gnome-software --mode=installed`, "")
+		}
+		// A window exists before it is drawn: Software loads its catalogue, Calendar its sources,
+		// Maps its tiles. The screenshot is what a person sees a few seconds in.
+		time.Sleep(5 * time.Second)
+		r.shotLook(v, g, appView(a.id))
+		l.view(strings.TrimSuffix(a.id, ".desktop"))
+		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
+		g.quitApp(a.id)
+		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
+		// app and would cover every screenshot after it.
+		_, _ = g.eval(`Main.layoutManager.modalDialogGroup.get_children().forEach(d => d.close?.()); true`)
+		time.Sleep(2 * time.Second)
+	}
+	for _, p := range panels {
+		if len(want) > 0 && !want["panel:"+p] {
+			continue
+		}
+		ok, detail := g.runPanel(p)
+		r.add("panel:"+p, ok, detail)
+		r.shotLook(v, g, viewMeta{"panel-" + p, needle.GroupSettings,
+			"Settings' " + p + " panel, among the pages a person reaches first: a dark window's sidebar, rows and preference groups",
+			[]string{"S3", "TY4", "TY5"}})
+		l.view("panel-" + p)
+	}
+	g.quitApp("org.gnome.Settings.desktop")
+	if len(want) == 0 || want["views"] {
+		if err := g.fixClock(); err != nil {
+			r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
+		}
+		r.gtkViews(v, g, l, false)
+		r.gtkViews(v, g, l, true)
+		r.shellViews(v, g, l)
+		r.desktopViews(v, g, l, sc)
+		l.guestLook()
+	}
+	l.finish()
+	if len(want) == 0 || want["type"] {
+		r.typeMatrix(v, g, l)
+	}
+	// What the run needed, before the bench asks for more than there is.
+	r.memory(g)
+	r.console(g)
+	r.diagnose(g)
+	if len(want) == 0 || want["bench"] {
+		r.bench(g)
+	}
+	if len(want) == 0 || want["suspend"] {
+		r.suspend(v, g)
+	}
+	r.compareNeedles(*needles)
+	return r.write(g)
+}
+
+// parseOnly is the scenarios -only names, all when it names none, and those of its names nothing
+// answers to: such a name would run nothing, and pass.
+func parseOnly(only string) (want map[string]bool, unknown []string) {
+	want = map[string]bool{}
+	for _, n := range strings.Split(only, ",") {
+		if n != "" {
+			want[n] = true
+		}
+	}
+	known := map[string]bool{"views": true, "type": true, "bench": true, "suspend": true}
+	for _, a := range apps {
+		known[a.id] = true
+	}
+	for _, p := range panels {
+		known["panel:"+p] = true
+	}
+	for n := range want {
+		if !known[n] {
+			unknown = append(unknown, n)
+		}
+	}
+	slices.Sort(unknown)
+	return want, unknown
+}
+
+// systemChecks are the machine's own checks, each independent of the others and of the views:
+// its services, network, settings and tools, as the live session finds them.
+func (r *report) systemChecks(g *guest) {
 	sinks, err := g.run(asLive+`wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
 	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
@@ -171,7 +268,7 @@ func test(args []string) error {
 		r.add("dns", true, oneLine(res))
 	} else {
 		diag, _ := g.run(`ls -l /etc/resolv.conf; echo ---; cat /etc/resolv.conf; echo ---; ls -l /run/NetworkManager/ 2>&1; cat /run/NetworkManager/resolv.conf 2>&1; echo ---; systemctl is-active systemd-resolved; resolvectl status 2>&1 | head -20; echo ---; NetworkManager --print-config 2>/dev/null | grep -A3 -i '^\[main\]'; nmcli dev show 2>&1 | grep -i dns`, "")
-		_ = os.WriteFile(filepath.Join(dir, "dns.txt"), []byte(diag), 0o644)
+		_ = os.WriteFile(filepath.Join(r.dir, "dns.txt"), []byte(diag), 0o644)
 		r.add("dns", false, "no answer for dl.flathub.org; see dns.txt")
 	}
 	// What waits for a person does not start with the machine: Docker and containerd come up when
@@ -227,7 +324,7 @@ func test(args []string) error {
 		`ip netns del fwtest`, "")
 	r.add("firewall", strings.HasPrefix(fw, "1\n") && strings.Contains(fw, "local=0") && strings.Contains(fw, "network=28"), oneLine(fw))
 	dock, err := g.run(asLive+`docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
-	_ = os.WriteFile(filepath.Join(dir, "docker.txt"), []byte(dock), 0o644)
+	_ = os.WriteFile(filepath.Join(r.dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
 	// A port Docker publishes without an address is this machine's (etc/docker/daemon.json).
 	published, err := g.run(`c=$(`+asLive+`docker run -d --rm -p 8766:8080 cgr.dev/chainguard/wolfi-base sleep 30) && `+asLive+`docker port "$c"; `+asLive+`docker rm -f "$c" >/dev/null 2>&1`, "")
@@ -300,87 +397,6 @@ func test(args []string) error {
 	// The brand's wallpaper, light and dark: both files the session's background names are there.
 	wall, err := g.run(`for k in picture-uri picture-uri-dark; do u=$(`+asLive+`gsettings get org.gnome.desktop.background $k | tr -d "'"); f=${u#file://}; test -s "$f" && echo "$f"; done`, "")
 	r.add("the brand's wallpaper", err == nil && strings.Count(wall, "/usr/share/backgrounds/construct/") == 2, oneLine(wall)+errText(err))
-
-	want := map[string]bool{}
-	for _, n := range strings.Split(*only, ",") {
-		if n != "" {
-			want[n] = true
-		}
-	}
-	// A name -only gives that nothing answers to would run nothing, and pass.
-	known := map[string]bool{"views": true, "type": true, "bench": true, "suspend": true}
-	for _, a := range apps {
-		known[a.id] = true
-	}
-	for _, p := range panels {
-		known["panel:"+p] = true
-	}
-	for n := range want {
-		if !known[n] {
-			r.add("-only "+n, false, "no app, panel:<name>, views, type, bench or suspend is called that")
-		}
-	}
-	for _, a := range apps {
-		if len(want) > 0 && !want[a.id] {
-			continue
-		}
-		ok, detail := g.runApp(a)
-		r.add(a.id, ok, detail)
-		// Software opens on Explore, whose banner and picks are Flathub's of the day: the view
-		// would differ from its needle every day. Its Installed page is what the image carries.
-		if a.id == "org.gnome.Software.desktop" && ok {
-			_, _ = g.run(asLive+`timeout 10 gnome-software --mode=installed`, "")
-		}
-		// A window exists before it is drawn: Software loads its catalogue, Calendar its sources,
-		// Maps its tiles. The screenshot is what a person sees a few seconds in.
-		time.Sleep(5 * time.Second)
-		r.shotLook(v, g, appView(a.id))
-		l.view(strings.TrimSuffix(a.id, ".desktop"))
-		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
-		g.quitApp(a.id)
-		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
-		// app and would cover every screenshot after it.
-		_, _ = g.eval(`Main.layoutManager.modalDialogGroup.get_children().forEach(d => d.close?.()); true`)
-		time.Sleep(2 * time.Second)
-	}
-	for _, p := range panels {
-		if len(want) > 0 && !want["panel:"+p] {
-			continue
-		}
-		ok, detail := g.runPanel(p)
-		r.add("panel:"+p, ok, detail)
-		r.shotLook(v, g, viewMeta{"panel-" + p, needle.GroupSettings,
-			"Settings' " + p + " panel, among the pages a person reaches first: a dark window's sidebar, rows and preference groups",
-			[]string{"S3", "TY4", "TY5"}})
-		l.view("panel-" + p)
-	}
-	g.quitApp("org.gnome.Settings.desktop")
-	if len(want) == 0 || want["views"] {
-		if err := g.fixClock(); err != nil {
-			r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
-		}
-		r.gtkViews(v, g, l, false)
-		r.gtkViews(v, g, l, true)
-		r.shellViews(v, g, l)
-		r.desktopViews(v, g, l, sc)
-		l.guestLook()
-	}
-	l.finish()
-	if len(want) == 0 || want["type"] {
-		r.typeMatrix(v, g, l)
-	}
-	// What the run needed, before the bench asks for more than there is.
-	r.memory(g)
-	r.console(g)
-	r.diagnose(g)
-	if len(want) == 0 || want["bench"] {
-		r.bench(g)
-	}
-	if len(want) == 0 || want["suspend"] {
-		r.suspend(v, g)
-	}
-	r.compareNeedles(*needles)
-	return r.write(g)
 }
 
 // appView is an app's first window as a view: what its screenshot validates, by the app.

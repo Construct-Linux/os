@@ -17,3 +17,17 @@ func TestSandboxedOK(t *testing.T) {
 		}
 	}
 }
+
+// -only runs what it names; a name no scenario answers to is said, not run as nothing.
+func TestParseOnly(t *testing.T) {
+	want, unknown := parseOnly("views,,panel:wifi,firefox.desktop,panel:nope,typo")
+	if len(want) != 5 || !want["views"] || !want["panel:wifi"] || !want["firefox.desktop"] {
+		t.Errorf("want %v", want)
+	}
+	if len(unknown) != 2 || unknown[0] != "panel:nope" || unknown[1] != "typo" {
+		t.Errorf("unknown %v", unknown)
+	}
+	if want, unknown := parseOnly(""); len(want) != 0 || len(unknown) != 0 {
+		t.Errorf("all: %v %v", want, unknown)
+	}
+}
