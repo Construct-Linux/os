@@ -50,7 +50,7 @@ func (l tarLayer) walk(fn func(*tar.Header, io.Reader) error) error {
 	}
 }
 
-type dirLayer struct{ dir, prefix string }
+type dirLayer struct{ dir string }
 
 func (l dirLayer) name() string { return l.dir }
 
@@ -83,7 +83,7 @@ func (l dirLayer) walk(fn func(*tar.Header, io.Reader) error) error {
 		if h.Typeflag != tar.TypeSymlink {
 			h.Mode &^= 0o022
 		}
-		h.Name = clean(path.Join(l.prefix, filepath.ToSlash(rel)))
+		h.Name = clean(filepath.ToSlash(rel))
 		if !info.Mode().IsRegular() {
 			return fn(h, nil)
 		}
