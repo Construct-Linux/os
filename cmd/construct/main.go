@@ -220,8 +220,12 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	if err != nil {
 		return err
 	}
-	if size, err := os.ReadFile(filepath.Join("/sys/block", disk.Name, "queue", "logical_block_size")); err != nil || strings.TrimSpace(string(size)) != fmt.Sprint(gpt.Sector) {
-		return fmt.Errorf("%s has sectors of %q bytes; its table is written in %d", disk.Path(), strings.TrimSpace(string(size)), gpt.Sector)
+	size, err := os.ReadFile(filepath.Join("/sys/block", disk.Name, "queue", "logical_block_size"))
+	if err != nil {
+		return err
+	}
+	if s := strings.TrimSpace(string(size)); s != fmt.Sprint(gpt.Sector) {
+		return fmt.Errorf("%s has sectors of %s bytes; its table is written in %d", disk.Path(), s, gpt.Sector)
 	}
 	if !*yes {
 		if err := confirm(ask, out, disk); err != nil {
