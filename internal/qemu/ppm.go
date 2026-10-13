@@ -7,20 +7,10 @@ import (
 	"io"
 	"os"
 	"strconv"
-
-	"github.com/Construct-Linux/os/internal/pixels"
 )
 
-// ppmToPNG converts QEMU's screendump to PNG.
-func ppmToPNG(src, dst string) error {
-	img, err := DecodePPM(src)
-	if err != nil {
-		return err
-	}
-	return pixels.WritePNG(dst, img)
-}
-
-// DecodePPM reads QEMU's screendump (binary P6, 8-bit).
+// DecodePPM reads QEMU's screendump (binary P6, 8-bit): the boot film's frames, taken as fast as
+// QEMU writes them, uncompressed.
 func DecodePPM(p string) (*image.RGBA, error) {
 	f, err := os.Open(p)
 	if err != nil {

@@ -1,29 +1,19 @@
 package qemu
 
 import (
-	"image/png"
 	"os"
 	"path/filepath"
 	"testing"
 )
 
-// QEMU's screendump, a binary P6 PPM with a comment, becomes a PNG of the same pixels.
-func TestPPMToPNG(t *testing.T) {
-	dir := t.TempDir()
-	src, dst := filepath.Join(dir, "s.ppm"), filepath.Join(dir, "s.png")
+// QEMU's screendump, a binary P6 PPM with a comment, decodes to its pixels.
+func TestDecodePPM(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "s.ppm")
 	ppm := "P6\n# QEMU\n2 1\n255\n" + string([]byte{255, 0, 0, 0, 0, 255})
 	if err := os.WriteFile(src, []byte(ppm), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := ppmToPNG(src, dst); err != nil {
-		t.Fatal(err)
-	}
-	f, err := os.Open(dst)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer f.Close()
-	img, err := png.Decode(f)
+	img, err := DecodePPM(src)
 	if err != nil {
 		t.Fatal(err)
 	}
