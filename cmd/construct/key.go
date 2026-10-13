@@ -22,7 +22,7 @@ import (
 // person's password on standard input: it unlocks the LUKS2 header for the key's slot.
 func keyCmd(ctx context.Context, args []string, stdin io.Reader, stdout io.Writer) error {
 	if len(args) == 0 {
-		return errors.New("key: list, add or remove")
+		return errors.New("key: list, add, remove or lock-on-removal")
 	}
 	switch args[0] {
 	case "list":

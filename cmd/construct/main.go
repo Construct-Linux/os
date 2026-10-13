@@ -1,22 +1,10 @@
 // Command construct is what the desktop's own root runs besides systemd-sysupdate, which writes
-// its updates (usr/lib/sysupdate.d):
+// its updates (usr/lib/sysupdate.d): installing it on a disk, checking a boot, the person's keys,
+// the machine's channel and reports. usage, below, is the list of its commands and flags, and
+// what construct with no arguments prints.
 //
-//	construct install    [--disk DEV] [--yes]                 lay the desktop on a machine's disk
-//	construct boot-check                                     reboot a counted boot that did not come up
-//	construct pending    [--mark FILE]                       the version the next boot starts, if newer
-//	construct theme      [--themes DIR] [--home DIR] [--config DIR] the image's GTK themes, copied for a user, and Ghostty's first config
-//	construct live                                           the live user, on a root nobody is installed for
-//	construct firmware   FILE                                a laptop maker's sensor hub firmware, for this machine
-//	construct power      [--seconds N] | suspend             what the machine draws, or what each suspend cost
-//	construct bench      [--rounds N] [--seconds N]           CONSTRUCT's settings against the kernel's, measured here
-//	construct kernel-profile [--minutes N] [-o FILE]          the kernel at work, recorded for its AutoFDO profile
-//	construct report                                         what a bug report needs to know of this machine
-//	construct channel    [CHANNEL]                           the release channel this machine follows, or follow another
-//	construct key        list | add | remove                 the security keys that open the disk and sign the person in
-//	construct 1password  install | update                    1Password, downloaded and checked against its makers' key
-//
-// install's release is the construct-update partition of the stick it runs from, checked against the public key the root carries (internal/update's KeyringPath)
-// before anything is written.
+// install's release is the construct-update partition of the stick it runs from, checked against
+// the public key the root carries (internal/update's KeyringPath) before anything is written.
 package main
 
 import (
@@ -44,7 +32,7 @@ import (
 )
 
 const usage = `usage:
-  construct install    [--disk DEV] [--yes] [--locale LANG] [--keyboard LAYOUT]
+  construct install    [--disk DEV] [--yes] [--locale LANG] [--keyboard LAYOUT] [--hostname NAME]
                    [--user NAME --real-name NAME --password-file FILE|-]
                    [--security-key DEV ... --key-pin-file FILE] [--json]
   construct disks      [--json]
@@ -60,6 +48,7 @@ const usage = `usage:
   construct diagnose   [-o DIR] [--power-seconds N]
   construct channel    [CHANNEL]
   construct key        list [--json] | add --name NAME [--device DEV] [--user NAME] [--pin-file FILE|-] | remove --name NAME | lock-on-removal [on|off]
+                   | removed (udev's, when a key is unplugged)
   construct 1password  install | update`
 
 func main() {
