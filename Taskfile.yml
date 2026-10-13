@@ -57,6 +57,13 @@ tasks:
         && docker run --rm -v {{.ROOT_DIR}}:/work -w /work cgr.dev/chainguard/wolfi-base sh -c
         "mv packages/x86_64/APKINDEX.new.tar.gz packages/x86_64/APKINDEX.tar.gz && chown -R {{.UID}}:{{.UID}} packages .cache/out/{{.NAME}} .cache/logs"'
 
+  check:
+    desc: "What a pull request must pass, with no Docker and no keys: gofmt, go vet and the Go tests, which compare the recipes with origin/main."
+    cmds:
+      - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - go vet ./...
+      - go test ./internal/... ./cmd/...
+
   kernel:config:
     desc: Merge and assert the desktop kernel's configuration, without compiling it.
     cmds:

@@ -157,7 +157,7 @@ falling back from a release that does not come up.
 
 | changed | run | and look at |
 |---|---|---|
-| Go | `go vet ./... && go test ./internal/... ./cmd/...` | a test for the behaviour, not for the lines |
+| Go | `task check` (gofmt, go vet, the tests; what CI runs on a pull request) | a test for the behaviour, not for the lines |
 | a recipe | `task build -- <name>`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files and `.PKGINFO` depends/provides |
 | anything in the image or a package | `task test` (ext4 disk, kernel given directly) | the report, **and the screenshots in `_output/test`** - a PASS means a window opened, not that it looks right |
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |

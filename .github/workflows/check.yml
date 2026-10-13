@@ -1,0 +1,36 @@
+# Every pull request, and main after it, held to task check. A fork's pull request runs here with a
+# read-only token and no secret: pull_request, never pull_request_target.
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The whole history: the recipes' check compares the branch with its merge-base on origin/main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Install Task
+        run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
+
+      - name: Check
+        run: task check
