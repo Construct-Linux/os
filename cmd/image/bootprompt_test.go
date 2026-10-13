@@ -57,6 +57,27 @@ func TestACatalogTranslatesWhatItHas(t *testing.T) {
 	}
 }
 
+// A plural entry is found by its singular, as gettext finds it, and answers its first form; an
+// entry under a context is not found without it.
+func TestAPluralIsFoundByItsSingular(t *testing.T) {
+	c := mo(map[string]string{
+		"%d file\x00%d files":  "%d archivo\x00%d archivos",
+		"%d filer":             "%d archivador",
+		"menu\x04Open":         "Abrir",
+		"Password\x00Password": "",
+	})
+	for msgid, want := range map[string]string{"%d file": "%d archivo", "%d filer": "%d archivador", "menu\x04Open": "Abrir"} {
+		if s, ok := moLookup(c, msgid); !ok || s != want {
+			t.Errorf("%q -> %q, %v; want %q", msgid, s, ok, want)
+		}
+	}
+	for _, msgid := range []string{"Open", "%d files", "Password"} {
+		if s, ok := moLookup(c, msgid); ok {
+			t.Errorf("%q translated as %q", msgid, s)
+		}
+	}
+}
+
 // A language is offered when GNOME's catalogs have its words and the font draws them: Spanish
 // with the Go font, which has no Japanese.
 func TestALanguageIsOfferedWhenTheFontDrawsIt(t *testing.T) {

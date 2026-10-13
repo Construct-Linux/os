@@ -159,12 +159,19 @@ func moLookup(mo []byte, msgid string) (string, bool) {
 		}
 		return string(mo[off : off+l]), true
 	}
-	// The originals are sorted: a binary search finds msgid.
+	// A plural's original is its singular and its plural, NUL-separated, and gettext finds it by
+	// the singular: libintl compares with strcmp, which stops at the NUL. Cut there, the originals
+	// stay in the order msgfmt sorted them in, so a binary search finds msgid.
+	original := func(i uint32) (string, bool) {
+		s, ok := entry(ids, i)
+		s, _, _ = strings.Cut(s, "\x00")
+		return s, ok
+	}
 	i := sort.Search(int(n), func(i int) bool {
-		s, _ := entry(ids, uint32(i))
+		s, _ := original(uint32(i))
 		return s >= msgid
 	})
-	if s, ok := entry(ids, uint32(i)); !ok || s != msgid {
+	if s, ok := original(uint32(i)); !ok || s != msgid {
 		return "", false
 	}
 	t, ok := entry(strs, uint32(i))
