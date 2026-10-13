@@ -14,7 +14,8 @@ package update
 // letters as strings, a run of digits being newer than one of letters; '~' before a segment makes
 // it older than anything, even the end ("1~rc1" is older than "1"); '-', '^' and '.' separate
 // segments, in that order of age; and past the last segment a version with more is newer ("1.1" is
-// newer than "1", and any version than none). Any other character is skipped.
+// newer than "1", and any version than none). Any other character is skipped, but for one right
+// after a '~' at the end, which systemd compares as a signed char.
 func Compare(a, b string) int {
 	i, j := 0, 0
 	for {
@@ -32,7 +33,11 @@ func Compare(a, b string) int {
 			i, j = i+1, j+1
 		}
 		if i >= len(a) || j >= len(b) {
-			return order(len(a)-i, len(b)-j)
+			// systemd compares the two characters here as C chars, which x86-64, the only machine
+			// this desktop runs on, signs. Past a '~' nothing was skipped, so the one left may be
+			// no version character, and a byte from 0x80 up is then older than the end: "~\x80"
+			// is older than "~", where "~_" is newer.
+			return order(int(int8(at(a, i))), int(int8(at(b, j))))
 		}
 		for _, sep := range []byte{'-', '^', '.'} {
 			ca, cb = at(a, i), at(b, j)

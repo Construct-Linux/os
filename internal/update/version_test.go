@@ -101,3 +101,21 @@ func TestTheDesktopsVersionsAreOrderedByTime(t *testing.T) {
 		}
 	}
 }
+
+// Right past a '~' systemd skips nothing before it looks for the end, and compares the character
+// there as x86-64's signed char: a byte from 0x80 up is older than the end, any other newer.
+func TestPastATildeAByteAbove0x7fIsOlderThanTheEnd(t *testing.T) {
+	for _, tc := range []struct{ newer, older string }{
+		{"~", "~\x80"},
+		{"1~", "1~\xff"},
+		{"~_", "~"},
+		{"1~+", "1~"},
+	} {
+		if got := Compare(tc.newer, tc.older); got != 1 {
+			t.Errorf("Compare(%q, %q) = %d, want 1", tc.newer, tc.older, got)
+		}
+		if got := Compare(tc.older, tc.newer); got != -1 {
+			t.Errorf("Compare(%q, %q) = %d, want -1", tc.older, tc.newer, got)
+		}
+	}
+}

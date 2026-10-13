@@ -54,6 +54,7 @@ var versionCorpus = []string{
 	"1^", "1^1", "1^a", "1^^", "1^~", "1~^", "1-", "1-1", "1-a", "1--1", "1.", "1..1", "1.-1",
 	"1-.1", "1.^1", "1^.1", "1^-1", "1-^1", "-1", ".1", "^1", "1.~1", "1-~1", "1^~1",
 	"1_1", "1+1", "1+", "1 1", "1:1", "1@1", "_1", "+", "_", "1._1", "1_.1", "1+a",
+	"~_", "1~_", "1~+", "~ ",
 	"0001.0001", "0.0", "0.00.0", "00a", "a00", "a0", "0a",
 	"123", "123a", "123-a", "123.a", "123^a", "123~a", "123aa2-67.89", "123^aa2-67.89",
 	"20261013", "20261013.1", "20261013.2", "20261013.9", "20261013.10", "20261013.01",
@@ -111,6 +112,30 @@ func agreesWithSystemd(t *testing.T, versions []string) {
 func TestCompareAgreesWithSystemdOnTheCorpus(t *testing.T) {
 	requireSystemd(t)
 	agreesWithSystemd(t, versionCorpus)
+}
+
+// Past a '~' systemd skips nothing before it looks for the end, and compares what is there as a
+// signed char, so a byte from 0x80 up is older than the end and any other byte newer - FuzzCompare
+// found Compare taking every byte there for newer. Such versions are no order even for systemd
+// ("~\x80" == "~_", yet "~\x80" < "~" < "~_"), so they are checked pair by pair, against each
+// other and the versions they meet at their end.
+func TestCompareAgreesWithSystemdPastATilde(t *testing.T) {
+	requireSystemd(t)
+	versions := []string{
+		"", "~", "~~", "~a", "~1", "~_", "~\x80", "~\xff", "~\x80a", "~\x80\x80",
+		"1", "1~", "1~\x80", "1~\x80a", "1~_", "1~a", "1~1", "1~\x80~", "1~\x80~\x80",
+	}
+	for i, a := range versions {
+		for _, b := range versions[i+1:] {
+			want, ok := systemdCompare(t, a, b)
+			if !ok {
+				t.Fatalf("systemd-analyze compare-versions %q %q failed", a, b)
+			}
+			if got := Compare(a, b); got != want {
+				t.Errorf("Compare(%q, %q) = %d, systemd says %d", a, b, got, want)
+			}
+		}
+	}
 }
 
 // randomVersion is a short string of the characters a release's file names admit
