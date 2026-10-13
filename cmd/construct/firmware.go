@@ -30,18 +30,19 @@ const firmwareDir = "/var/lib/construct/firmware"
 // hub's generation (ptl): the generic ish_<gen>.bin when no machine-specific one was there.
 var ishLoaded = regexp.MustCompile(`ISH loader: load firmware: intel/ish/ish_([a-z0-9]+)(?:_[0-9a-f_]+)?\.bin`)
 
-// firmwareCmd installs firmware: construct firmware ish FILE.
+// firmwareCmd installs the sensor hub's firmware a laptop maker ships for Windows alone, the one
+// firmware a person brings: construct firmware FILE.
 func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
-	if len(args) != 2 || args[0] != "ish" {
-		return errors.New("usage: construct firmware ish ishS_SI_<version>.bin (from the laptop maker's Windows sensor driver)")
+	if len(args) != 1 {
+		return errors.New("usage: construct firmware ishS_SI_<version>.bin (the sensor hub's, from the laptop maker's Windows driver)")
 	}
-	fw, err := os.ReadFile(args[1])
+	fw, err := os.ReadFile(args[0])
 	if err != nil {
 		return err
 	}
 	// The hub's images are hundreds of kilobytes; anything else is not one.
 	if len(fw) < 64<<10 || len(fw) > 8<<20 {
-		return fmt.Errorf("%s is %d bytes: not a sensor hub firmware image", args[1], len(fw))
+		return fmt.Errorf("%s is %d bytes: not a sensor hub firmware image", args[0], len(fw))
 	}
 	var log bytes.Buffer
 	if err := cmdOut(ctx, nil, nil, &log, "journalctl", "-k", "-b", "-o", "cat", "--no-pager"); err != nil {
@@ -63,7 +64,7 @@ func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 	if err := fsx.WriteFile(dst, fw, 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "installed %s as %s: restart for the sensor hub to boot it\n", args[1], dst)
+	fmt.Fprintf(out, "installed %s as %s: restart for the sensor hub to boot it\n", args[0], dst)
 	return nil
 }
 
