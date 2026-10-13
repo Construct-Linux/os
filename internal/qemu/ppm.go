@@ -9,6 +9,9 @@ import (
 	"strconv"
 )
 
+// maxPPMSide is the widest and tallest screendump DecodePPM reads: past 8K either way.
+const maxPPMSide = 16384
+
 // DecodePPM reads QEMU's screendump (binary P6, 8-bit): the boot film's frames, taken as fast as
 // QEMU writes them, uncompressed.
 func DecodePPM(p string) (*image.RGBA, error) {
@@ -39,9 +42,19 @@ func DecodePPM(p string) (*image.RGBA, error) {
 		return nil, fmt.Errorf("%s: not an 8-bit P6", p)
 	}
 	w, h := fields[0], fields[1]
-	pix := make([]byte, w*h*3)
-	if _, err := io.ReadFull(br, pix); err != nil {
+	// A side past maxPPMSide is no screen QEMU draws, and keeps w*h*3 far from overflowing.
+	if w < 1 || h < 1 || w > maxPPMSide || h > maxPPMSide {
+		return nil, fmt.Errorf("%s: a %dx%d screen", p, w, h)
+	}
+	// Read what the file has rather than allocate what its header claims: a header is a few
+	// bytes, the pixels it promises gigabytes.
+	need := int64(w) * int64(h) * 3
+	pix, err := io.ReadAll(io.LimitReader(br, need))
+	if err != nil {
 		return nil, err
+	}
+	if int64(len(pix)) != need {
+		return nil, fmt.Errorf("%s: %d bytes of pixels for a %dx%d screen", p, len(pix), w, h)
 	}
 	img := image.NewRGBA(image.Rect(0, 0, w, h))
 	for i := range w * h {

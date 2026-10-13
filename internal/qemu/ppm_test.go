@@ -27,3 +27,24 @@ func TestDecodePPM(t *testing.T) {
 		t.Errorf("pixel 1 is not blue")
 	}
 }
+
+// A header that claims no screen, or one larger than the file's pixels or any screen, is refused
+// rather than taken for a panic or gigabytes of memory.
+func TestAPPMHeaderIsNotTrusted(t *testing.T) {
+	pixels := string([]byte{255, 0, 0, 0, 0, 255})
+	for _, ppm := range []string{
+		"P6\n-2 -1\n255\n" + pixels,
+		"P6\n0 1\n255\n" + pixels,
+		"P6\n2 2\n255\n" + pixels,
+		"P6\n100000 100000\n255\n" + pixels,
+		"P6\n4611686018427387904 2\n255\n" + pixels,
+	} {
+		p := filepath.Join(t.TempDir(), "s.ppm")
+		if err := os.WriteFile(p, []byte(ppm), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := DecodePPM(p); err == nil {
+			t.Errorf("%q decoded", ppm)
+		}
+	}
+}
