@@ -189,8 +189,9 @@ func download(ctx context.Context, url, path string) error {
 }
 
 // extractTop extracts the gzipped tarball's one top directory into dest, and answers the version
-// its name carries (1password-8.12.38.x64: 8.12.38). Nothing is written outside dest: a name or a
-// link that would leave it is refused.
+// its name carries (1password-8.12.38.x64: 8.12.38). Nothing is written outside dest: every
+// write goes through an os.Root, which refuses a name or a chain of links that resolves outside
+// it, and a link that names a place outside the tree is refused as well.
 func extractTop(tarball, dest string) (string, error) {
 	f, err := os.Open(tarball)
 	if err != nil {
@@ -201,6 +202,14 @@ func extractTop(tarball, dest string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if err := os.MkdirAll(dest, 0o755); err != nil {
+		return "", err
+	}
+	root, err := os.OpenRoot(dest)
+	if err != nil {
+		return "", err
+	}
+	defer root.Close()
 	tr := tar.NewReader(gz)
 	top := ""
 	for {
@@ -218,25 +227,26 @@ func extractTop(tarball, dest string) (string, error) {
 		if first != top {
 			return "", fmt.Errorf("%s: a second top directory, %s", filepath.Base(tarball), first)
 		}
+		rest = strings.TrimSuffix(rest, "/")
 		if rest == "" {
 			continue
 		}
-		target := filepath.Join(dest, filepath.FromSlash(rest))
-		if !inside(dest, target) {
+		name := filepath.FromSlash(rest)
+		if !filepath.IsLocal(name) {
 			return "", fmt.Errorf("%s leaves the tree", h.Name)
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := root.MkdirAll(filepath.Dir(name), 0o755); err != nil {
 			return "", err
 		}
 		switch h.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(target, 0o755); err != nil {
+			if err := root.MkdirAll(name, 0o755); err != nil {
 				return "", err
 			}
 		case tar.TypeReg:
 			// Neither setuid nor setgid from the archive: permissions sets the one bit
 			// that is wanted.
-			out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(h.Mode)&0o755)
+			out, err := root.OpenFile(name, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.FileMode(h.Mode)&0o755)
 			if err != nil {
 				return "", err
 			}
@@ -248,10 +258,10 @@ func extractTop(tarball, dest string) (string, error) {
 				return "", err
 			}
 		case tar.TypeSymlink:
-			if filepath.IsAbs(h.Linkname) || !inside(dest, filepath.Join(filepath.Dir(target), h.Linkname)) {
+			if filepath.IsAbs(h.Linkname) || !filepath.IsLocal(filepath.Join(filepath.Dir(name), h.Linkname)) {
 				return "", fmt.Errorf("%s links out of the tree, to %s", h.Name, h.Linkname)
 			}
-			if err := os.Symlink(h.Linkname, target); err != nil {
+			if err := root.Symlink(h.Linkname, name); err != nil {
 				return "", err
 			}
 		default:
@@ -262,15 +272,10 @@ func extractTop(tarball, dest string) (string, error) {
 	if top == "" || version == top {
 		return "", fmt.Errorf("%s: no 1password-<version> directory", filepath.Base(tarball))
 	}
-	if _, err := os.Stat(filepath.Join(dest, "1password")); err != nil {
+	if _, err := root.Stat("1password"); err != nil {
 		return "", fmt.Errorf("%s: no 1password in it: %w", filepath.Base(tarball), err)
 	}
 	return version, nil
-}
-
-func inside(dir, path string) bool {
-	rel, err := filepath.Rel(dir, path)
-	return err == nil && rel != ".." && !strings.HasPrefix(rel, "../")
 }
 
 // permissions does what 1Password's after-install.sh does to the tree, but for

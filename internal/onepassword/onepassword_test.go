@@ -79,6 +79,12 @@ func TestExtractTopStaysInside(t *testing.T) {
 		{{name: "1password-1.0.x64/1password", mode: 0o755}, {name: "1password-1.0.x64/lib", link: "../../etc"}},
 		{{name: "1password-1.0.x64/1password", mode: 0o755}, {name: "1password-1.0.x64/abs", link: "/etc/shadow"}},
 		{{name: "1password-1.0.x64/1password", mode: 0o755}, {name: "other/1password", mode: 0o755}},
+		// Each link stays inside on its own; through both, d is dest's parent.
+		{
+			{name: "1password-1.0.x64/1password", mode: 0o755}, {name: "1password-1.0.x64/b/", dir: true, mode: 0o755},
+			{name: "1password-1.0.x64/b/c", link: ".."}, {name: "1password-1.0.x64/d", link: "b/c/.."},
+			{name: "1password-1.0.x64/d/escape", mode: 0o644},
+		},
 	} {
 		dir := t.TempDir()
 		if _, err := extractTop(tarball(t, bad), filepath.Join(dir, "1Password")); err == nil {
