@@ -297,6 +297,10 @@ func (r *report) urlUpdate(l *lifeRun, cdn *updateCDN) bool {
 	r.add("reboot into v2", g.version() == versions["v2"], "running "+g.version())
 	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
 	r.add("kept across the update", strings.Count(kept, "kept") == 2, oneLine(kept))
+	// A map of /etc/ld.so.cache in systemd-shutdown pinned the /etc overlay and, under it, /var's
+	// ext4, and the next boot replayed its journal (bake keeps the cache in /usr/lib).
+	replayed, _ := g.run(`journalctl -b -k --no-pager | grep -c 'EXT4-fs (dm-[0-9]*): recovery complete'`, "")
+	r.add("the reboot left /var clean", strings.TrimSpace(replayed) == "0", "journal replays at this boot: "+oneLine(replayed))
 	ok, detail := g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v2 comes up", ok, detail)
 	time.Sleep(10 * time.Second) // systemd-bless-boot runs once the target is reached

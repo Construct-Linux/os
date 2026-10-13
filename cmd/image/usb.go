@@ -361,7 +361,11 @@ func bake(root, version string) error {
 		"update-desktop-database -q /usr/share/applications",
 		"fc-cache -s",
 		"for d in /usr/share/icons/*/; do [ -f \"$d/index.theme\" ] && gtk4-update-icon-cache -q -t -f \"$d\"; done; true",
-		"ldconfig",
+		// The loader's cache on the root, /etc's name for it a link: glibc maps the cache in every
+		// process and keeps it, PID 1 too - systemd-shutdown at the end - and a map through /etc
+		// pins the /etc overlay, whose upper pins /var's ext4. Neither came down at shutdown and
+		// every boot replayed /var's journal (a T14 and the VM's stick, 2026-10-13).
+		"ldconfig -C /usr/lib/ld.so.cache && ln -sf ../usr/lib/ld.so.cache /etc/ld.so.cache",
 		// The desktop's defaults (etc/dconf/db/local.d): theme, icons, accent, extensions.
 		"dconf update",
 	); err != nil {
@@ -672,7 +676,11 @@ func (v verity) cmdline(serial, splash bool, extra string) string {
 	if serial {
 		consoles = " console=ttyS0,115200n8" + consoles
 	}
-	shown := " quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles"
+	// plymouth.nolog: no /var/log/boot.log, which the journal holds anyway. The boot's plymouthd
+	// comes from the initrd marked to outlive systemd-shutdown's killing, and while it runs - GDM
+	// never took the screen - it held the log open and /var with it, its ext4 left to replay its
+	// journal at the next boot.
+	shown := " quiet loglevel=3 splash plymouth.use-simpledrm plymouth.ignore-serial-consoles plymouth.nolog"
 	if !splash {
 		shown = " plymouth.enable=0 rd.plymouth=0 systemd.show_status=1"
 	}
