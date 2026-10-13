@@ -30,7 +30,7 @@ func TestDescribePowerWithoutBattery(t *testing.T) {
 	if !strings.HasPrefix(got, "No battery") || !strings.Contains(got, "sudo construct power") {
 		t.Errorf("%q", got)
 	}
-	got = describePower(power.Snapshot{Time: now, NoPackage: true}, power.Snapshot{Time: now.Add(time.Second), NoPackage: true})
+	got = describePower(power.Snapshot{Time: now, Package: power.RAPLAbsent}, power.Snapshot{Time: now.Add(time.Second), Package: power.RAPLAbsent})
 	if !strings.Contains(got, "no RAPL counter") || strings.Contains(got, "sudo") {
 		t.Errorf("%q", got)
 	}

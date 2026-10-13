@@ -69,7 +69,7 @@ func describePower(a, b power.Snapshot) string {
 	switch w, ok := power.PackageW(a, b); {
 	case ok:
 		fmt.Fprintf(&out, "CPU package: %.1f W.\n", w)
-	case b.NoPackage:
+	case b.Package == power.RAPLAbsent:
 		fmt.Fprintln(&out, "CPU package: this machine has no RAPL counter to read.")
 	default:
 		fmt.Fprintln(&out, "CPU package: unreadable (RAPL's counter is root's: sudo construct power).")

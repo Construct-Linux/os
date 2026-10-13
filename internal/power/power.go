@@ -25,16 +25,25 @@ type Snapshot struct {
 	EnergyWh, FullWh float64
 	// DrawW is what the batteries report they deliver now, 0 when charging or unknown.
 	DrawW float64
-	// PackageJ is the CPU package's energy counter, in joules; HavePackage is whether it could be
-	// read (RAPL's counter is root's alone), NoPackage that the machine has none (a VM, a CPU
-	// without RAPL).
-	PackageJ, PackageMaxJ  float64
-	HavePackage, NoPackage bool
+	// PackageJ is the CPU package's energy counter, in joules, when Package says it was read.
+	PackageJ, PackageMaxJ float64
+	Package               RAPL
 	// HWSleep is the time the hardware has spent in its lowest power state across every suspend
 	// since boot; Suspends how many suspends succeeded.
 	HWSleep  time.Duration
 	Suspends int
 }
+
+// RAPL is what became of reading the CPU package's energy counter.
+type RAPL uint8
+
+const (
+	// RAPLUnreadable: the counter is there, and root's alone.
+	RAPLUnreadable RAPL = iota
+	RAPLRead
+	// RAPLAbsent: the machine has none - a VM, a CPU without RAPL.
+	RAPLAbsent
+)
 
 // Sysfs reads a snapshot from the kernel's files under Root ("/" on a machine).
 type Sysfs struct {
@@ -85,10 +94,12 @@ func (s Sysfs) Snapshot() (Snapshot, error) {
 	}
 	rapl := s.path("sys/class/powercap/intel-rapl:0")
 	v, err := os.ReadFile(filepath.Join(rapl, "energy_uj"))
-	snap.NoPackage = errors.Is(err, fs.ErrNotExist)
+	if errors.Is(err, fs.ErrNotExist) {
+		snap.Package = RAPLAbsent
+	}
 	if err == nil {
 		if uj, err := strconv.ParseFloat(strings.TrimSpace(string(v)), 64); err == nil {
-			snap.PackageJ, snap.HavePackage = uj/1e6, true
+			snap.PackageJ, snap.Package = uj/1e6, RAPLRead
 			snap.PackageMaxJ = micro(rapl, "max_energy_range_uj")
 		}
 	}
@@ -155,7 +166,7 @@ func (s Sysfs) Batteries() []Battery {
 // counter wraps at PackageMaxJ.
 func PackageW(a, b Snapshot) (float64, bool) {
 	dt := b.Time.Sub(a.Time).Seconds()
-	if !a.HavePackage || !b.HavePackage || dt <= 0 {
+	if a.Package != RAPLRead || b.Package != RAPLRead || dt <= 0 {
 		return 0, false
 	}
 	j := b.PackageJ - a.PackageJ

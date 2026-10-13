@@ -61,8 +61,8 @@ func TestSnapshot(t *testing.T) {
 	if !near(s.EnergyWh, 42) || !near(s.FullWh, 84) || !near(s.DrawW, 10.5) {
 		t.Errorf("energy %v of %v Wh, draw %v W", s.EnergyWh, s.FullWh, s.DrawW)
 	}
-	if !s.HavePackage || !near(s.PackageJ, 2.5) {
-		t.Errorf("package %v J (%v)", s.PackageJ, s.HavePackage)
+	if s.Package != RAPLRead || !near(s.PackageJ, 2.5) {
+		t.Errorf("package %v J (%v)", s.PackageJ, s.Package)
 	}
 	if s.HWSleep != time.Hour || s.Suspends != 2 {
 		t.Errorf("hw sleep %v, suspends %d", s.HWSleep, s.Suspends)
@@ -72,7 +72,7 @@ func TestSnapshot(t *testing.T) {
 // A desktop without a battery is on mains, whatever its supplies say.
 func TestNoBattery(t *testing.T) {
 	s, err := Sysfs{Root: t.TempDir()}.Snapshot()
-	if err != nil || s.OnBattery || s.HavePackage || !s.NoPackage {
+	if err != nil || s.OnBattery || s.Package != RAPLAbsent {
 		t.Errorf("%+v, %v", s, err)
 	}
 }
@@ -94,8 +94,8 @@ func TestSleep(t *testing.T) {
 // RAPL's counter wraps at its range: the power across a wrap is still the energy spent.
 func TestPackageWraps(t *testing.T) {
 	t0 := time.Now()
-	a := Snapshot{Time: t0, HavePackage: true, PackageJ: 99, PackageMaxJ: 100}
-	b := Snapshot{Time: t0.Add(2 * time.Second), HavePackage: true, PackageJ: 5, PackageMaxJ: 100}
+	a := Snapshot{Time: t0, Package: RAPLRead, PackageJ: 99, PackageMaxJ: 100}
+	b := Snapshot{Time: t0.Add(2 * time.Second), Package: RAPLRead, PackageJ: 5, PackageMaxJ: 100}
 	if w, ok := PackageW(a, b); !ok || !near(w, 3) {
 		t.Errorf("%v W (%v)", w, ok)
 	}
