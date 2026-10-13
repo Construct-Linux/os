@@ -1,0 +1,29 @@
+# Once a week, a pull request per ecosystem with what moved: Go's modules and the workflows' actions
+# (pinned by SHA, which Dependabot moves with the version in its comment). Grouped, so a week's
+# bumps are one review and one run of check. The pins Dependabot cannot read - build/versions.env,
+# build/host.env, the kernel - are cmd/watch's (task watch).
+version: 2
+updates:
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      go:
+        patterns: ["*"]
+    commit-message:
+      prefix: "deps"
+    labels: [update, area:build]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+    labels: [update, area:build]
