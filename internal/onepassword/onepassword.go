@@ -27,44 +27,39 @@ import (
 )
 
 const (
-	// URL is the stable channel's newest tarball; its detached signature is URL+".sig".
-	URL = "https://downloads.1password.com/linux/tar/stable/x86_64/1password-latest.tar.gz"
-	// Key is where the verified root carries 1Password's code-signing key.
-	Key = "/usr/share/construct/1password.asc"
-	// Fingerprint is that key's: a key file that is not it is refused.
-	Fingerprint = "3fef9748469adbe15da7ca80ac2d62742012ea22"
-	// Dir is where it is installed: /opt, which is /var/opt.
-	Dir = "/opt/1Password"
+	// url is the stable channel's newest tarball; its detached signature is url+".sig".
+	url = "https://downloads.1password.com/linux/tar/stable/x86_64/1password-latest.tar.gz"
+	// keyFile is where the verified root carries 1Password's code-signing key.
+	keyFile = "/usr/share/construct/1password.asc"
+	// fingerprint is that key's: a key file that is not it is refused.
+	fingerprint = "3fef9748469adbe15da7ca80ac2d62742012ea22"
+	// dir is where it is installed: /opt, which is /var/opt.
+	dir = "/opt/1Password"
 	// etagFile records the ETag of the tarball installed: an update asks for the headers alone
 	// and downloads 200 MB only when they changed.
 	etagFile = ".construct-etag"
 )
 
-// Options say where from, checked by which key, and where to.
-type Options struct {
-	URL, Key, Dir string
-}
-
-// Installed says whether 1Password is installed in dir.
-func Installed(dir string) bool {
+// Installed says whether 1Password is installed.
+func Installed() bool {
 	_, err := os.Stat(filepath.Join(dir, "1password"))
 	return err == nil
 }
 
-// Install downloads the tarball and its signature, checks them, extracts it beside o.Dir refusing
+// Install downloads the tarball and its signature, checks them, extracts it beside dir refusing
 // anything that would leave the tree, and swaps it in whole: a 1Password running from the old
-// tree keeps its open files. It answers the version installed, or "" when o.Dir already holds the
+// tree keeps its open files. It answers the version installed, or "" when dir already holds the
 // tarball the server has (its ETag).
-func Install(ctx context.Context, o Options) (string, error) {
-	keys, err := keyring(o.Key)
+func Install(ctx context.Context) (string, error) {
+	keys, err := keyring(keyFile)
 	if err != nil {
 		return "", err
 	}
-	etag, err := headETag(ctx, o.URL)
+	etag, err := headETag(ctx, url)
 	if err != nil {
 		return "", err
 	}
-	if was, _ := os.ReadFile(filepath.Join(o.Dir, etagFile)); etag != "" && string(was) == etag {
+	if was, _ := os.ReadFile(filepath.Join(dir, etagFile)); etag != "" && string(was) == etag {
 		return "", nil
 	}
 	tmp, err := os.MkdirTemp("/var/tmp", "construct-1password-")
@@ -73,16 +68,16 @@ func Install(ctx context.Context, o Options) (string, error) {
 	}
 	defer os.RemoveAll(tmp)
 	tarball, sig := filepath.Join(tmp, "1password.tar.gz"), filepath.Join(tmp, "1password.tar.gz.sig")
-	if err := download(ctx, o.URL, tarball); err != nil {
+	if err := download(ctx, url, tarball); err != nil {
 		return "", err
 	}
-	if err := download(ctx, o.URL+".sig", sig); err != nil {
+	if err := download(ctx, url+".sig", sig); err != nil {
 		return "", err
 	}
 	if err := checkDetached(keys, tarball, sig); err != nil {
 		return "", err
 	}
-	staged := o.Dir + ".new"
+	staged := dir + ".new"
 	if err := os.RemoveAll(staged); err != nil {
 		return "", err
 	}
@@ -96,12 +91,12 @@ func Install(ctx context.Context, o Options) (string, error) {
 	if err := os.WriteFile(filepath.Join(staged, etagFile), []byte(etag), 0o644); err != nil {
 		return "", err
 	}
-	old := o.Dir + ".old"
+	old := dir + ".old"
 	_ = os.RemoveAll(old)
-	if err := os.Rename(o.Dir, old); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := os.Rename(dir, old); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return "", err
 	}
-	if err := os.Rename(staged, o.Dir); err != nil {
+	if err := os.Rename(staged, dir); err != nil {
 		return "", err
 	}
 	_ = os.RemoveAll(old)
@@ -119,8 +114,8 @@ func keyring(path string) (openpgp.EntityList, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", path, err)
 	}
-	if len(keys) != 1 || hex.EncodeToString(keys[0].PrimaryKey.Fingerprint) != Fingerprint {
-		return nil, fmt.Errorf("%s is not 1Password's code-signing key %s", path, Fingerprint)
+	if len(keys) != 1 || hex.EncodeToString(keys[0].PrimaryKey.Fingerprint) != fingerprint {
+		return nil, fmt.Errorf("%s is not 1Password's code-signing key %s", path, fingerprint)
 	}
 	return keys, nil
 }

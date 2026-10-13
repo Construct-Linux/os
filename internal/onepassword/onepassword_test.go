@@ -130,7 +130,7 @@ func TestOnePasswordSignature(t *testing.T) {
 	if err := os.WriteFile(key, pub.Bytes(), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := keyring(key); err == nil || !strings.Contains(err.Error(), Fingerprint) {
+	if _, err := keyring(key); err == nil || !strings.Contains(err.Error(), fingerprint) {
 		t.Errorf("a key that is not the pinned one: %v", err)
 	}
 }

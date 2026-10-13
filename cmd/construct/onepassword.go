@@ -15,10 +15,10 @@ func onePasswordCmd(ctx context.Context, args []string, stdout io.Writer) error 
 	if len(args) != 1 || (args[0] != "install" && args[0] != "update") {
 		return errors.New("1password: install, or update (what the weekly timer runs)")
 	}
-	if args[0] == "update" && !onepassword.Installed(onepassword.Dir) {
+	if args[0] == "update" && !onepassword.Installed() {
 		return nil
 	}
-	version, err := onepassword.Install(ctx, onepassword.Options{URL: onepassword.URL, Key: onepassword.Key, Dir: onepassword.Dir})
+	version, err := onepassword.Install(ctx)
 	switch {
 	case err != nil:
 		return err
