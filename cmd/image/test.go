@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"image"
 	"os"
 	"path/filepath"
 	"slices"
@@ -536,12 +537,40 @@ func (g *guest) notifications() (bool, string) {
 // theme written for an older shell shows what it does not style. wake is input sent before the
 // screenshot: a locked session turns its display off at once, and only input brings it back.
 // settle is how long the view takes to be what is shot, when not shellSettle. about and rules are
-// what the view validates, for its needle.
+// what the view validates, for its needle; measure is its lf checks, none when it has only the
+// sweep every view has.
 type shellView struct {
-	name, open, close, wake string
-	settle                  time.Duration
-	about                   string
-	rules                   []string
+	name, open, close string
+	wake              func(v *qemu.VM, l *lf)
+	settle            time.Duration
+	about             string
+	rules             []string
+	measure           func(l *lf, name string, img image.Image)
+}
+
+// wakePointer moves the pointer, which brings a locked session's display back.
+func wakePointer(v *qemu.VM, _ *lf) {
+	_ = v.PointTo(16000, 16000)
+	_ = v.PointTo(16400, 16400)
+	time.Sleep(2 * time.Second)
+}
+
+// wakeKey wakes the display with a first key; the second lifts the curtain to the prompt, and a
+// modifier alone does not.
+func wakeKey(v *qemu.VM, _ *lf) {
+	_ = v.Key("shift")
+	time.Sleep(2 * time.Second)
+	_ = v.Key("spc")
+	time.Sleep(2 * time.Second)
+}
+
+// wakePassword types a wrong password into the prompt. PAM takes its time to refuse: the message
+// comes after its delay. GDM shows it for a while and then clears it, so the prompt is measured
+// first, before the screenshot, and judged with the view.
+func wakePassword(v *qemu.VM, l *lf) {
+	_ = v.TypeText("wrong")
+	time.Sleep(4 * time.Second)
+	l.measureLockError()
 }
 
 // shellSettle is how long a view is given: menus open in under a second; a window (Settings)
@@ -551,86 +580,86 @@ const shellSettle = 4 * time.Second
 // shellViews ends with the lock screen: its prompt is the unlock dialog the shell's AuthPrompt
 // draws, which GNOME 51 restyled, and nothing after it in the run must find the session locked.
 var shellViews = []shellView{
-	{"overview", `Main.overview.show()`, `Main.overview.hide()`, "", 0,
+	{"overview", `Main.overview.show()`, `Main.overview.hide()`, nil, 0,
 		"The overview on the boot's black, the workspace card the wallpaper drawn small, its mark where the wallpaper puts it",
-		[]string{"S4", "W1"}},
+		[]string{"S4", "W1"}, (*lf).viewOverview},
 	// The one shell view in the light scheme: the shell is dark in both, and what light changes in
 	// the overview is the wallpaper its workspace card draws small.
 	{"overview-light",
 		`new Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => { Main.overview.show(); return GLib.SOURCE_REMOVE; })`,
-		`Main.overview.hide(); new Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, "", 6 * time.Second,
+		`Main.overview.hide(); new Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, nil, 6 * time.Second,
 		"The overview in the light scheme: the shell's ground still the boot's black, the workspace card the light wallpaper drawn small",
-		[]string{"S4", "W3"}},
-	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, "", 0,
+		[]string{"S4", "W3"}, (*lf).viewOverviewLight},
+	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, nil, 0,
 		"The overview's search: the entry and the results' section on h with the ring, the section's radius concentric with its controls'",
-		[]string{"S2", "R1"}},
-	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, "", 0,
+		[]string{"S2", "R1"}, (*lf).viewSearch},
+	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, nil, 0,
 		"The app grid on the boot's black, every app's icon Tela's or a brand tile",
-		[]string{"S4", "X2"}},
+		[]string{"S4", "X2"}, (*lf).viewAppGrid},
 	// A folder of the app grid open, as a click opens it: its dialog grows from the folder's icon to
 	// the apps it holds. On a laptop it stopped at the name's row, the apps under it unseen.
 	{"app-folder",
 		`Main.overview.showApps(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1500, () => { lfAll(Main.overview._overview, lfClass('app-folder')).find(f => f.is_mapped() && f.reactive)?.emit('clicked', 1); return GLib.SOURCE_REMOVE; })`,
-		`Main.overview.hide()`, "", 5 * time.Second,
+		`Main.overview.hide()`, nil, 5 * time.Second,
 		"A folder of the app grid open: its dialog on g with the ring and its radius, its name at the top, the apps it holds in a grid under it",
-		[]string{"S3", "E3"}},
-	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, "", 0,
+		[]string{"S3", "E3"}, nil},
+	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, nil, 0,
 		"Quick settings: the menu on h with its ring and concentric radius, toggles on as the rest tint with the accent's 24 px disc and accent_text, off in text",
-		[]string{"S2", "C3", "C4", "R1"}},
+		[]string{"S2", "C3", "C4", "R1"}, (*lf).viewQuickSettings},
 	// The first quick toggle on screen with the key focus, once the menu is open: its focus ring,
 	// against the view above. Hidden toggles (no Bluetooth, no Wi-Fi) come first in the tree.
 	{"quick-settings-focus",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle')).find(t => t.is_mapped() && t.reactive)?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
-		`Main.panel.statusArea.quickSettings.menu.close()`, "", 0,
+		`Main.panel.statusArea.quickSettings.menu.close()`, nil, 0,
 		"A quick toggle with the key focus: the accent's inset 2 px ring, and nothing else on the screen changed",
-		[]string{"F1", "C8"}},
+		[]string{"F1", "C8"}, (*lf).viewQuickFocus},
 	// A toggle's menu expanded (the network's): a well in the menu, not a light slab.
 	{"quick-settings-submenu",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle-has-menu')).find(t => t.is_mapped() && t.menuEnabled)?.menu.open(true); return GLib.SOURCE_REMOVE; })`,
-		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, "", 0,
+		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, lfClass('quick-toggle-has-menu')).forEach(t => t.menu?.close(false)); m.close()`, nil, 0,
 		"A quick toggle's menu expanded: a well of g inside the menu, not a light slab",
-		[]string{"S2", "E3"}},
+		[]string{"S2", "E3"}, (*lf).viewSubmenu},
 	// A quick toggle in each step of its states, forced with St's pseudo-classes since no pointer
 	// holds three toggles at once: on at rest, under the pointer, pressed. Only the classes it
 	// added are taken off again: a toggle that is on keeps its own.
 	{"states",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle')).filter(t => t.is_mapped() && t.reactive).slice(0, 3).forEach((t, i) => { t._lfAdded = [['checked'], ['checked', 'hover'], ['checked', 'active']][i].filter(c => !t.has_style_pseudo_class(c)); t._lfAdded.forEach(c => t.add_style_pseudo_class(c)); t._lfState = ['rest', 'hover', 'active'][i]; }); return GLib.SOURCE_REMOVE; })`,
-		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, t => t._lfState !== undefined).forEach(t => { t._lfAdded.forEach(c => t.remove_style_pseudo_class(c)); delete t._lfAdded; delete t._lfState; }); m.close()`, "", 0,
+		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, t => t._lfState !== undefined).forEach(t => { t._lfAdded.forEach(c => t.remove_style_pseudo_class(c)); delete t._lfAdded; delete t._lfState; }); m.close()`, nil, 0,
 		"Quick toggles on at rest, under the pointer and pressed: each the accent's tint at its own step, the label accent_text on all three",
-		[]string{"S2", "C3"}},
-	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, "", 0,
+		[]string{"S2", "C3"}, (*lf).viewStates},
+	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, nil, 0,
 		"The date menu: the calendar on h at the quick settings' height, today accent_text at 700 with no ring, the month's days in text, the other months' muted",
-		[]string{"S2", "F1", "C2", "R1"}},
+		[]string{"S2", "F1", "C2", "R1"}, (*lf).viewCalendar},
 	// A day that is not today with the key focus: the ring is focus's alone (F1).
 	{"calendar-focus",
 		`const m = Main.panel.statusArea.dateMenu; m.menu.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { (m._calendar._buttons ?? []).find(b => b.is_mapped() && b.reactive && !b.has_style_class_name('calendar-today') && !b.has_style_class_name('calendar-other-month'))?.grab_key_focus(); return GLib.SOURCE_REMOVE; })`,
-		`Main.panel.statusArea.dateMenu.menu.close()`, "", 0,
+		`Main.panel.statusArea.dateMenu.menu.close()`, nil, 0,
 		"A day that is not today with the key focus: the accent's inset ring is focus's alone",
-		[]string{"F1", "C8"}},
+		[]string{"F1", "C8"}, (*lf).viewDayFocus},
 	// The message list dense with notifications, once their banners have gone.
 	{"notifications",
 		`[["Backup finished", "312 files were copied to the external disk; the oldest copy was removed to make room."], ["Software updates", "A new version of Construct is ready: restart to use it."], ["Disk almost full", "Only 2.1 GB is left on /var. Empty the trash or remove what you no longer need."], ["Connected", "Wired connection established."]].forEach(([t, b]) => Main.notify(t, b)); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 7000, () => { Main.panel.statusArea.dateMenu.menu.open(); return GLib.SOURCE_REMOVE; })`,
-		`Main.panel.statusArea.dateMenu.menu.close(); Main.messageTray.getSources().forEach(s => s.destroy())`, "", 10 * time.Second,
+		`Main.panel.statusArea.dateMenu.menu.close(); Main.messageTray.getSources().forEach(s => s.destroy())`, nil, 10 * time.Second,
 		"The message list dense with notifications: each on h with its ring, its title, body and time readable",
-		[]string{"S2", "C2"}},
+		[]string{"S2", "C2"}, nil},
 	// libadwaita apps must follow the light/dark switch: Settings, opened in the light scheme.
 	// Opened on Network, at the sidebar's top: Settings reopens on the panel it last showed, and
 	// after the panel loop's System the selected row was scrolled out of sight.
 	{"settings-light",
 		`new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "default"); imports.gi.GLib.spawn_command_line_async("gnome-control-center network")`,
-		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, "", 0,
+		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, nil, 0,
 		"Settings in the light scheme, the shell still dark: the window on the desk with its ring line, the sidebar the shelf, the selected row the sheet, one headerbar rule across both panes, no bright accent",
-		[]string{"S5", "S6", "C11", "E3", "C2"}},
-	{"lock-screen", `Main.screenShield.lock(false)`, ``, "pointer", 0,
+		[]string{"S5", "S6", "C11", "E3", "C2"}, (*lf).viewSettingsLight},
+	{"lock-screen", `Main.screenShield.lock(false)`, ``, wakePointer, 0,
 		"The lock screen on the boot's black, its clock regular, nothing of an extension in the panel",
-		[]string{"S4", "T2"}},
-	{"lock-prompt", `Main.screenShield.showDialog()`, ``, "key", 0,
+		[]string{"S4", "T2"}, (*lf).viewLock},
+	{"lock-prompt", `Main.screenShield.showDialog()`, ``, wakeKey, 0,
 		"The unlock prompt the shell's AuthPrompt draws: the entry, and the dialog's default its one primary action",
-		[]string{"S2", "C3"}},
+		[]string{"S2", "C3"}, nil},
 	// A wrong password typed into the prompt: its error state.
-	{"lock-error", ``, `Main.screenShield.deactivate(false)`, "password", 0,
+	{"lock-error", ``, `Main.screenShield.deactivate(false)`, wakePassword, 0,
 		"The unlock prompt after a wrong password: it says so, readable on its surface",
-		[]string{"S2", "C2"}},
+		[]string{"S2", "C2"}, (*lf).viewLockError},
 }
 
 // Each view opens and closes with lf.go's helpers at hand (find, lfAll), and its lf checks measure
@@ -644,28 +673,11 @@ func (r *report) shellViews(v *qemu.VM, g *guest, l *lf) {
 			settle = shellSettle
 		}
 		time.Sleep(settle)
-		switch s.wake {
-		case "pointer":
-			_ = v.PointTo(16000, 16000)
-			_ = v.PointTo(16400, 16400)
-			time.Sleep(2 * time.Second)
-		case "key":
-			// The first key wakes the display; the second lifts the curtain to the prompt, and a
-			// modifier alone does not.
-			_ = v.Key("shift")
-			time.Sleep(2 * time.Second)
-			_ = v.Key("spc")
-			time.Sleep(2 * time.Second)
-		case "password":
-			// PAM takes its time to refuse: the message comes after its delay. GDM shows it for a
-			// while and then clears it, so the prompt is measured first, before the screenshot, and
-			// judged with the view.
-			_ = v.TypeText("wrong")
-			time.Sleep(4 * time.Second)
-			l.measureLockError()
+		if s.wake != nil {
+			s.wake(v, l)
 		}
 		r.shotLook(v, g, viewMeta{"shell-" + s.name, needle.GroupShell, s.about, s.rules})
-		l.view("shell-" + s.name)
+		l.viewBy("shell-"+s.name, s.measure)
 		if s.name == "lock-screen" {
 			r.locked(g)
 		}

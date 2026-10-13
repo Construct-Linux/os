@@ -459,24 +459,126 @@ func (l *lf) px(r pixels.Rect) pixels.Rect {
 	return pixels.Rect{X: r.X * l.k, Y: r.Y * l.k, W: r.W * l.k, H: r.H * l.k}
 }
 
-// view runs the checks that measure the view just shot.
-func (l *lf) view(name string) {
+// drawn reads the view just shot for its checks, and sweeps it; a view it cannot read, or that
+// drew nothing, is no view to measure.
+func (l *lf) drawn(name string) (image.Image, bool) {
 	if !l.ok {
-		return
+		return nil, false
 	}
 	l.cur = name
 	img, ok := l.img(name)
 	if !ok {
-		return
+		return nil, false
 	}
 	// A screen of one colour drew nothing - a display blanked, a window not yet painted - and
-	// every check below that asks for what is not there (no accent, not Chrome's grey, the boot's
+	// every check that asks for what is not there (no accent, not Chrome's grey, the boot's
 	// black) would pass on it.
 	if c, share := pixels.ModeColor(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}); share > lfBlankShare {
 		l.check("drawn", name, false, fmt.Sprintf("%.1f%% of the screen is %s: nothing drawn to measure", share*100, pixels.Hex(c)))
-		return
+		return nil, false
 	}
 	l.sweep(name, img)
+	return img, true
+}
+
+// viewBy runs measure on the view just shot: a shell view's own checks, which its entry in
+// shellViews names.
+func (l *lf) viewBy(name string, measure func(l *lf, name string, img image.Image)) {
+	if img, ok := l.drawn(name); ok && measure != nil {
+		measure(l, name, img)
+	}
+}
+
+// The shell views' measures, each named by its view's entry in shellViews.
+
+func (l *lf) viewOverview(name string, img image.Image) {
+	l.ground(name, img)
+	if s, ok := seen[overviewSeen](l, "ground", "overview", lfOverview); ok {
+		l.overview(img, s)
+	}
+}
+
+func (l *lf) viewOverviewLight(name string, img image.Image) {
+	l.ground(name, img)
+	if s, ok := seen[overviewSeen](l, "ground", "overview-light", lfOverview); ok {
+		l.overviewLight(img, s)
+	}
+}
+
+func (l *lf) viewSearch(_ string, img image.Image) {
+	if s, ok := seen[searchSeen](l, "search", "overview", lfSearch); ok {
+		l.search(img, s)
+	}
+}
+
+func (l *lf) viewAppGrid(name string, img image.Image) {
+	l.ground(name, img)
+}
+
+func (l *lf) viewQuickSettings(_ string, img image.Image) {
+	if s, ok := seen[quickSettingsSeen](l, "quick settings", "eval", lfQuickSettingsToggles); ok {
+		l.quickSettings(img, s)
+	}
+}
+
+func (l *lf) viewQuickFocus(_ string, img image.Image) {
+	if s, ok := seen[focusSeen](l, "focus", "quick toggle", lfFocusToggle); ok {
+		l.focus(img, s)
+	}
+}
+
+func (l *lf) viewSubmenu(_ string, img image.Image) {
+	if s, ok := seen[submenuSeen](l, "submenu", "quick settings", lfSubmenu); ok {
+		l.submenu(img, s)
+	}
+}
+
+func (l *lf) viewStates(_ string, img image.Image) {
+	if s, ok := seen[[]stateSeen](l, "states", "quick toggles", lfStates); ok {
+		l.states(img, s)
+	}
+}
+
+func (l *lf) viewCalendar(_ string, img image.Image) {
+	if s, ok := seen[calendarSeen](l, "calendar", "eval", lfCalendar); ok {
+		l.calendar(img, s)
+	}
+}
+
+func (l *lf) viewDayFocus(_ string, img image.Image) {
+	if s, ok := seen[dayFocusSeen](l, "focus", "calendar day", lfDayFocus); ok {
+		l.dayFocus(img, s)
+	}
+}
+
+func (l *lf) viewSettingsLight(name string, img image.Image) {
+	if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
+		l.bars(name, img, false, s)
+	}
+	if s, ok := seen[windowSeen](l, "radius", "settings-light window", lfSettingsWindow); ok {
+		l.settingsLight(img, s)
+	}
+}
+
+func (l *lf) viewLock(_ string, img image.Image) {
+	if s, ok := seen[lockSeen](l, "lock", "eval", lfLock); ok {
+		l.lock(img, s)
+	}
+}
+
+// viewLockError judges what the wake measured before the screenshot: GDM clears the message.
+func (l *lf) viewLockError(string, image.Image) {
+	if l.lockError != nil {
+		l.lockErrorCheck(*l.lockError)
+	}
+}
+
+// view runs the checks that measure the view just shot, when it is none of shellViews.
+func (l *lf) view(name string) {
+	img, ok := l.drawn(name)
+	if !ok {
+		return
+	}
 	switch name {
 	case "desktop":
 		if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
@@ -484,57 +586,6 @@ func (l *lf) view(name string) {
 		}
 		n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
 		l.check("accent", "desktop", n == 0, fmt.Sprintf("%d px of the accent, want none", n))
-	case "shell-settings-light":
-		if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
-			l.bars(name, img, false, s)
-		}
-		if s, ok := seen[windowSeen](l, "radius", "settings-light window", lfSettingsWindow); ok {
-			l.settingsLight(img, s)
-		}
-	case "shell-quick-settings":
-		if s, ok := seen[quickSettingsSeen](l, "quick settings", "eval", lfQuickSettingsToggles); ok {
-			l.quickSettings(img, s)
-		}
-	case "shell-quick-settings-focus":
-		if s, ok := seen[focusSeen](l, "focus", "quick toggle", lfFocusToggle); ok {
-			l.focus(img, s)
-		}
-	case "shell-quick-settings-submenu":
-		if s, ok := seen[submenuSeen](l, "submenu", "quick settings", lfSubmenu); ok {
-			l.submenu(img, s)
-		}
-	case "shell-calendar":
-		if s, ok := seen[calendarSeen](l, "calendar", "eval", lfCalendar); ok {
-			l.calendar(img, s)
-		}
-	case "shell-calendar-focus":
-		if s, ok := seen[dayFocusSeen](l, "focus", "calendar day", lfDayFocus); ok {
-			l.dayFocus(img, s)
-		}
-	case "shell-overview":
-		l.ground(name, img)
-		if s, ok := seen[overviewSeen](l, "ground", "overview", lfOverview); ok {
-			l.overview(img, s)
-		}
-	case "shell-overview-light":
-		l.ground(name, img)
-		if s, ok := seen[overviewSeen](l, "ground", "overview-light", lfOverview); ok {
-			l.overviewLight(img, s)
-		}
-	case "shell-overview-search":
-		if s, ok := seen[searchSeen](l, "search", "overview", lfSearch); ok {
-			l.search(img, s)
-		}
-	case "shell-app-grid":
-		l.ground(name, img)
-	case "shell-lock-error":
-		if l.lockError != nil {
-			l.lockErrorCheck(*l.lockError)
-		}
-	case "shell-lock-screen":
-		if s, ok := seen[lockSeen](l, "lock", "eval", lfLock); ok {
-			l.lock(img, s)
-		}
 	case "installer":
 		if s, ok := seen[windowSeen](l, "window", "installer", lfFocusWindow); ok {
 			l.installer(img, s)
@@ -548,10 +599,6 @@ func (l *lf) view(name string) {
 		l.gtkLight(name, img, r)
 	case "gtk-focus", "gtk-focus-light":
 		l.gtkFocus(name, img)
-	case "shell-states":
-		if s, ok := seen[[]stateSeen](l, "states", "quick toggles", lfStates); ok {
-			l.states(img, s)
-		}
 	default:
 		// E2: both bars' edge over every wallpaper. At another scale St's extents are not the
 		// screenshot's pixels.

@@ -566,7 +566,7 @@ func TestABlankScreenIsNotMeasured(t *testing.T) {
 		t.Fatal(err)
 	}
 	l.r.results = nil
-	l.view("shell-app-grid")
+	l.viewBy("shell-app-grid", (*lf).viewAppGrid)
 	if len(l.r.results) != 1 || l.r.results[0].ok || l.r.results[0].name != "lf: drawn shell-app-grid" {
 		t.Errorf("%+v", l.r.results)
 	}
