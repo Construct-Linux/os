@@ -15,6 +15,9 @@ import (
 	"github.com/Construct-Linux/os/internal/bench"
 )
 
+// benchDir is where the I/O workload writes: on /var's disk.
+const benchDir = "/var/tmp/construct-bench"
+
 // benchCmd measures CONSTRUCT's memory, writeback, scheduler and THP settings against the kernel's
 // own defaults on this machine (internal/bench): rounds of the same three workloads under each,
 // in A B B A order, then puts the machine's settings back. Numbers from a VM are not a laptop's.
@@ -22,7 +25,6 @@ func benchCmd(ctx context.Context, args []string, stdout io.Writer) error {
 	fl := flag.NewFlagSet("bench", flag.ContinueOnError)
 	rounds := fl.Int("rounds", 3, "rounds of every workload under each profile")
 	seconds := fl.Int("seconds", 20, "how long each workload runs")
-	dir := fl.String("dir", "/var/tmp/construct-bench", "where the I/O workload writes (on /var's disk)")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
@@ -43,10 +45,10 @@ func benchCmd(ctx context.Context, args []string, stdout io.Writer) error {
 	}
 	// Whatever happens, the machine's own settings come back.
 	defer func() { _ = bench.Use(construct) }()
-	if err := os.MkdirAll(*dir, 0o755); err != nil {
+	if err := os.MkdirAll(benchDir, 0o755); err != nil {
 		return err
 	}
-	defer os.RemoveAll(*dir)
+	defer os.RemoveAll(benchDir)
 
 	results := map[string]map[string][]float64{}
 	order := []bench.Profile{kernel, construct}
@@ -64,7 +66,7 @@ func benchCmd(ctx context.Context, args []string, stdout io.Writer) error {
 				return err
 			}
 			fmt.Fprintf(stdout, "round %d, %s settings...\n", r+1, p.Name)
-			m, err := bench.Run(ctx, *dir, *seconds)
+			m, err := bench.Run(ctx, benchDir, *seconds)
 			if err != nil {
 				return err
 			}

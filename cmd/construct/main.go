@@ -1,9 +1,9 @@
 // Command construct is what the desktop's own root runs besides systemd-sysupdate, which writes
 // its updates (usr/lib/sysupdate.d):
 //
-//	construct install    [--disk DEV] [--from DIR] [--yes]   lay the desktop on a machine's disk
+//	construct install    [--disk DEV] [--yes]                 lay the desktop on a machine's disk
 //	construct boot-check                                     reboot a counted boot that did not come up
-//	construct pending    [--esp DIR] [--mark FILE]           the version the next boot starts, if newer
+//	construct pending    [--mark FILE]                       the version the next boot starts, if newer
 //	construct theme      [--themes DIR] [--home DIR] [--config DIR] the image's GTK themes, copied for a user, and Ghostty's first config
 //	construct live                                           the live user, on a root nobody is installed for
 //	construct firmware   ish FILE                            a laptop maker's sensor hub firmware, for this machine
@@ -15,8 +15,7 @@
 //	construct key        list | add | remove                 the security keys that open the disk and sign the person in
 //	construct 1password  install | update                    1Password, downloaded and checked against its makers' key
 //
-// install's release is the construct-update partition of the stick it runs from (or --from, a
-// directory), checked against the public key the root carries (internal/update's KeyringPath)
+// install's release is the construct-update partition of the stick it runs from, checked against the public key the root carries (internal/update's KeyringPath)
 // before anything is written.
 package main
 
@@ -45,12 +44,12 @@ import (
 )
 
 const usage = `usage:
-  construct install    [--disk DEV] [--from DIR] [--yes] [--keyring FILE] [--locale LANG] [--keyboard LAYOUT]
+  construct install    [--disk DEV] [--yes] [--locale LANG] [--keyboard LAYOUT]
                    [--user NAME --real-name NAME --password-file FILE|-]
                    [--security-key DEV ... --key-pin-file FILE] [--json]
   construct disks      [--json]
   construct boot-check
-  construct pending    [--esp DIR] [--mark FILE]
+  construct pending    [--mark FILE]
   construct theme      [--themes DIR] [--home DIR] [--config DIR]
   construct live
   construct firmware   ish FILE
@@ -121,9 +120,6 @@ func main() {
 	}
 }
 
-// defaultKeyring is the public key the running root trusts releases by.
-var defaultKeyring = "/" + update.KeyringPath
-
 // mountFS mounts the fstype file system at dev, with opts, on a directory of its own under
 // /run/construct, and answers it and how to unmount it.
 func mountFS(ctx context.Context, fstype, opts, dev string) (string, func() error, error) {
@@ -177,9 +173,7 @@ func mountStick(ctx context.Context, medium string) (string, func() error, error
 func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
 	fl := flag.NewFlagSet("install", flag.ExitOnError)
 	diskFlag := fl.String("disk", "", "the disk to install on: /dev/nvme0n1, or a link under /dev/disk (default: the machine's first disk that is neither removable nor USB)")
-	from := fl.String("from", "", "the release to install, a directory (default: the stick this runs from)")
 	yes := fl.Bool("yes", false, "do not ask: erase the disk")
-	keyring := fl.String("keyring", defaultKeyring, "the public key the release is checked against")
 	user := fl.String("user", "", "the login of whom the machine is for (default: asked)")
 	realName := fl.String("real-name", "", "their full name (default: asked, or the login)")
 	passwordFile := fl.String("password-file", "", "a file holding their password, - for standard input (default: asked)")
@@ -198,7 +192,8 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	}
 	ask := bufio.NewReader(in)
 
-	keys, err := update.ReadKeyring(*keyring)
+	// The release is checked against the key the running root trusts releases by.
+	keys, err := update.ReadKeyring("/" + update.KeyringPath)
 	if err != nil {
 		return err
 	}
@@ -266,14 +261,11 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	if err != nil {
 		return err
 	}
-	if *from == "" {
-		dir, unmount, err := mountStick(ctx, medium)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = unmount() }() // read-only
-		*from = dir
+	release, unmount, err := mountStick(ctx, medium)
+	if err != nil {
+		return err
 	}
+	defer func() { _ = unmount() }() // read-only
 	// systemd-boot, signed for Secure Boot, and the keys to enroll: the ESP this booted from -
 	// the stick's - which systemd mounts (gpt-auto) and bootctl finds.
 	var espPath bytes.Buffer
@@ -293,7 +285,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	}
 	var recovery string
 	_, err = update.Install(ctx, update.InstallOptions{
-		Keys: keys, Source: *from, Disk: disk, Device: dev,
+		Keys: keys, Source: release, Disk: disk, Device: dev,
 		// BLKRRPART, which every partitioning tool asks.
 		Reread: func() error { return unix.IoctlSetInt(int(dev.Fd()), unix.BLKRRPART, 0) },
 		Partition: func(n int) (string, error) {
@@ -469,17 +461,16 @@ func (systemctl) Reboot(ctx context.Context) error {
 // answer must not need the network, or the stick the update came from.
 func pendingCmd(args []string, out io.Writer) error {
 	fl := flag.NewFlagSet("pending", flag.ContinueOnError)
-	esp := fl.String("esp", "/boot", "where the ESP is mounted (systemd's gpt-auto mounts the booted one at /boot)")
 	mark := fl.String("mark", "", "write the pending version here, or remove this file when there is none")
-	osRelease := fl.String("os-release", "/usr/lib/os-release", "the running root's os-release")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
-	booted, err := update.BootedVersion(*osRelease)
+	booted, err := update.BootedVersion("/usr/lib/os-release")
 	if err != nil {
 		return fmt.Errorf("the running version: %w", err)
 	}
-	entries, err := os.ReadDir(filepath.Join(*esp, "EFI", "Linux"))
+	// systemd's gpt-auto mounts the booted ESP at /boot.
+	entries, err := os.ReadDir("/boot/EFI/Linux")
 	if err != nil {
 		return err
 	}

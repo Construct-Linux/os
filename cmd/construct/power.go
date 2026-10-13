@@ -24,7 +24,7 @@ import (
 const sleepMessageID = "8b1d2f6c3a4e4d0f9c7b5a2e1f6d3c4b"
 
 // sleepState is where the hook keeps the machine as it was before a suspend, for after it.
-var sleepState = "/run/construct/power-sleep.json"
+const sleepState = "/run/construct/power-sleep.json"
 
 // powerCmd says what the machine draws, measured over a few seconds, or with "suspend" what each
 // suspend since the journal began cost.
