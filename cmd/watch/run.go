@@ -128,13 +128,13 @@ func runCmd(ctx context.Context, args []string, out io.Writer) error {
 	fl := flag.NewFlagSet("run", flag.ContinueOnError)
 	grypeJSON := fl.String("grype", "", "Grype's JSON report of the latest release's SBOM; without it security issues are left as they are")
 	release := fl.String("release", "", "the release the Grype report is of, which the issues name")
-	versions := fl.String("versions", "build/versions.env", "the pins")
-	recipes := fl.String("recipes", "recipes", "the recipes' directory")
 	dry := fl.Bool("dry-run", false, "print the findings and what would be done, change nothing")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
-	pins, err := readEnv(*versions)
+	// Run from the repository's root, as task watch and the workflow do.
+	const recipes = "recipes"
+	pins, err := readEnv("build/versions.env")
 	if err != nil {
 		return err
 	}
@@ -145,11 +145,11 @@ func runCmd(ctx context.Context, args []string, out io.Writer) error {
 	src := sources{client: &http.Client{Timeout: time.Minute}, kernel: kernelReleases, gnome: gnomeShellCache, github: githubAPI}
 	checks := []check{
 		src.kernelCheck(pins["KERNEL_VERSION"]),
-		src.gnomeCheck(*recipes),
+		src.gnomeCheck(recipes),
 		src.microcodeCheck(pins["INTEL_MICROCODE_VERSION"]),
 	}
 	if *grypeJSON != "" {
-		checks = append([]check{securityCheck(*grypeJSON, *release, *recipes)}, checks...)
+		checks = append([]check{securityCheck(*grypeJSON, *release, recipes)}, checks...)
 	} else {
 		fmt.Fprintln(out, "security: no Grype report given: its issues are left as they are")
 	}

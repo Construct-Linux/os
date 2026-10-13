@@ -85,12 +85,11 @@ func applyLabels(ctx context.Context, gh GitHub, want []Label) error {
 
 func labelsCmd(ctx context.Context, args []string, out io.Writer) error {
 	fl := flag.NewFlagSet("labels", flag.ContinueOnError)
-	file := fl.String("file", ".github/labels.json", "the labels, by group")
 	dry := fl.Bool("dry-run", false, "print what would change, change nothing")
 	if err := fl.Parse(args); err != nil {
 		return err
 	}
-	want, err := readLabels(*file)
+	want, err := readLabels(".github/labels.json")
 	if err != nil {
 		return err
 	}

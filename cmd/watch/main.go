@@ -22,8 +22,8 @@ import (
 )
 
 const usage = `usage:
-  watch labels [-file FILE] [-dry-run]
-  watch run    [-grype FILE] [-release TAG] [-versions FILE] [-recipes DIR] [-dry-run]`
+  watch labels [-dry-run]
+  watch run    [-grype FILE] [-release TAG] [-dry-run]`
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
