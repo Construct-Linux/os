@@ -52,11 +52,14 @@ func personFrom(in *bufio.Reader, out io.Writer, name, realName, passwordFile st
 			}
 			pw = string(b)
 		}
-		if err := account.ValidName(name); err != nil {
+		if err := account.Free(factoryEtc, name); err != nil {
 			return person{}, err
 		}
 		if realName == "" {
 			realName = name
+		}
+		if err := account.ValidRealName(realName); err != nil {
+			return person{}, err
 		}
 		pw = strings.TrimRight(pw, "\r\n")
 		if pw == "" {
@@ -76,12 +79,22 @@ func newPerson(name, realName, password string) person {
 
 // askPerson asks for a name, a login and a password typed twice, unechoed.
 func askPerson(in *bufio.Reader, out io.Writer) (person, error) {
-	fmt.Fprint(out, "\nWho is this machine for?\n\n  Full name: ")
-	realName, err := readLine(in)
-	if err != nil {
-		return person{}, err
+	fmt.Fprint(out, "\nWho is this machine for?\n\n")
+	var realName string
+	for {
+		fmt.Fprint(out, "  Full name: ")
+		var err error
+		if realName, err = readLine(in); err != nil {
+			return person{}, err
+		}
+		if err := account.ValidRealName(realName); err != nil {
+			fmt.Fprintln(out, "  ", err)
+			continue
+		}
+		break
 	}
 	var name string
+	var err error
 	for {
 		suggested := suggestLogin(realName)
 		fmt.Fprintf(out, "  Login [%s]: ", suggested)
@@ -91,7 +104,7 @@ func askPerson(in *bufio.Reader, out io.Writer) (person, error) {
 		if name == "" {
 			name = suggested
 		}
-		if err := account.ValidName(name); err != nil {
+		if err := account.Free(factoryEtc, name); err != nil {
 			fmt.Fprintln(out, "  ", err)
 			continue
 		}

@@ -166,7 +166,10 @@ class Installer(Adw.ApplicationWindow):
 
     def check_person(self, *args):
         hint = ""
-        if not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", self.login.get_text()):
+        # What construct install refuses in a full name: passwd's separators (account.ValidRealName).
+        if re.search(r"[:,\x00-\x1f\x7f-\x9f]", self.name.get_text()):
+            hint = _("A full name has no colon or comma.")
+        elif not re.fullmatch(r"[a-z_][a-z0-9_-]{0,30}", self.login.get_text()):
             hint = _("A login name is lowercase letters, digits, - and _, starting with a letter.")
         elif not self.password.get_text():
             hint = _("Choose a password.")

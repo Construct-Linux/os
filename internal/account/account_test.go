@@ -111,3 +111,51 @@ func TestValidName(t *testing.T) {
 		}
 	}
 }
+
+// A name a system user or group has - not on ValidName's list, as most of the image's are not -
+// is refused before any file is written, and so is a group the image lacks; Free says the same
+// from the image's files alone.
+func TestWriteRefusesTheSystemsNames(t *testing.T) {
+	fac := factory(t)
+	for db, line := range map[string]string{"passwd": "tss:x:59:59:TPM2 software stack:/:/sbin/nologin\n", "group": "tss:x:59:\nkvm:x:78:\n"} {
+		f, err := os.OpenFile(filepath.Join(fac, db), os.O_APPEND|os.O_WRONLY, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, _ = f.WriteString(line)
+		f.Close()
+	}
+	for _, u := range []User{
+		{Name: "tss", RealName: "x", UID: FirstUID},
+		{Name: "kvm", RealName: "x", UID: FirstUID},
+		{Name: "ada", RealName: "x", UID: FirstUID, Groups: []string{"lpadmin"}},
+	} {
+		etc := t.TempDir()
+		if err := Write(etc, fac, u); err == nil {
+			t.Errorf("%+v written", u)
+		}
+		if entries, _ := os.ReadDir(etc); len(entries) != 0 {
+			t.Errorf("%+v: %d files written before the refusal", u, len(entries))
+		}
+	}
+	if err := Free(fac, "tss"); err == nil {
+		t.Error("Free took tss")
+	}
+	if err := Free(fac, "ada"); err != nil {
+		t.Errorf("Free refused ada: %v", err)
+	}
+}
+
+// passwd's separators cannot come in through a full name: a colon would move the home and the
+// shell, a newline would add a user.
+func TestWriteRefusesARealNameThatSplitsPasswd(t *testing.T) {
+	fac := factory(t)
+	for _, name := range []string{"Ada:0:0", "Ada\nroot2::0:0::/root:/bin/bash", "Ada, Room 2"} {
+		if err := Write(t.TempDir(), fac, User{Name: "ada", RealName: name, UID: FirstUID}); err == nil {
+			t.Errorf("%q written", name)
+		}
+	}
+	if err := ValidRealName("Ada Lovelace-Byron"); err != nil {
+		t.Error(err)
+	}
+}

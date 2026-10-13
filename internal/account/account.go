@@ -22,6 +22,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/Construct-Linux/os/internal/fsx"
 )
@@ -69,6 +70,48 @@ func ValidName(name string) error {
 	return nil
 }
 
+// Free says why name cannot be a person's login on a machine whose image's account files are
+// in factory, or nil: a valid name that no user or group of the image has. An installer asks
+// it before anything is written to the disk; Write refuses the same names.
+func Free(factory, name string) error {
+	if err := ValidName(name); err != nil {
+		return err
+	}
+	for _, db := range []string{"passwd", "group"} {
+		b, err := os.ReadFile(filepath.Join(factory, db))
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if _, ok := idOf(strings.Split(string(b), "\n"), name); ok {
+			return fmt.Errorf("%q is taken by the system", name)
+		}
+	}
+	return nil
+}
+
+// ValidRealName says why s cannot be a person's full name, or nil: passwd's fields are split at
+// colons and its records at newlines, so a name with either would write other fields, or lines.
+func ValidRealName(s string) error {
+	if strings.ContainsFunc(s, func(r rune) bool { return r == ':' || r == ',' || unicode.IsControl(r) }) {
+		return fmt.Errorf("%q: a full name has no colon, comma or control character", s)
+	}
+	return nil
+}
+
+// idOf is the id an account file's line for name carries - a user's uid, a group's gid - and
+// whether there is one.
+func idOf(lines []string, name string) (string, bool) {
+	for _, line := range lines {
+		if f := strings.Split(line, ":"); len(f) > 2 && f[0] == name {
+			return f[2], true
+		}
+	}
+	return "", false
+}
+
 // Shell is a person's login shell.
 const Shell = "/bin/bash"
 
@@ -81,9 +124,13 @@ var databases = []string{"passwd", "group", "shadow", "gshadow"}
 // Write adds u to the account files under etc (an /etc, or its overlay's upper layer) - taking
 // each from factory, the image's untouched copies, where etc has none yet - with their own
 // group, a member of u.Groups, and with SudoNoPassword their sudoers line. A user already there
-// is written again.
+// is written again; a name the system's users or groups have is refused, before any file is
+// written.
 func Write(etc, factory string, u User) error {
 	if err := ValidName(u.Name); err != nil && u.Name != Live.Name {
+		return err
+	}
+	if err := ValidRealName(u.RealName); err != nil {
 		return err
 	}
 	uid := strconv.Itoa(u.UID)
@@ -94,29 +141,43 @@ func Write(etc, factory string, u User) error {
 		"shadow":  strings.Join([]string{u.Name, u.HashedPassword, days, "0", "99999", "7", "", "", ""}, ":"),
 		"gshadow": u.Name + ":!::",
 	}
+	type file struct {
+		lines []string
+		mode  fs.FileMode
+	}
+	files := map[string]file{}
 	for _, db := range databases {
 		src := filepath.Join(etc, db)
-		if _, err := os.Stat(src); errors.Is(err, fs.ErrNotExist) {
+		fi, err := os.Stat(src)
+		if errors.Is(err, fs.ErrNotExist) {
 			src = filepath.Join(factory, db)
+			fi, err = os.Stat(src)
+		}
+		if err != nil {
+			return err
 		}
 		b, err := os.ReadFile(src)
 		if err != nil {
 			return err
 		}
-		fi, err := os.Stat(src)
-		if err != nil {
-			return err
+		files[db] = file{strings.Split(strings.TrimRight(string(b), "\n"), "\n"), fi.Mode().Perm()}
+	}
+	// Their own line is replaced; anyone else's - a system user or group of the same name, with
+	// another id - would be lost with it.
+	for _, db := range []string{"passwd", "group"} {
+		if id, ok := idOf(files[db].lines, u.Name); ok && id != uid {
+			return fmt.Errorf("%q is taken by the system", u.Name)
 		}
-		out, joined := withUser(strings.Split(strings.TrimRight(string(b), "\n"), "\n"), u.Name, db == "group" || db == "gshadow", u.Groups)
-		if db == "group" {
-			for _, g := range u.Groups {
-				if !joined[g] {
-					return fmt.Errorf("account: the image has no group %s", g)
-				}
-			}
+	}
+	for _, g := range u.Groups {
+		if _, ok := idOf(files["group"].lines, g); !ok {
+			return fmt.Errorf("account: the image has no group %s", g)
 		}
+	}
+	for _, db := range databases {
+		out := withUser(files[db].lines, u.Name, db == "group" || db == "gshadow", u.Groups)
 		out = append(out, own[db])
-		if err := fsx.WriteFile(filepath.Join(etc, db), []byte(strings.Join(out, "\n")+"\n"), fi.Mode().Perm()); err != nil {
+		if err := fsx.WriteFile(filepath.Join(etc, db), []byte(strings.Join(out, "\n")+"\n"), files[db].mode); err != nil {
 			return err
 		}
 	}
@@ -130,11 +191,9 @@ func Write(etc, factory string, u User) error {
 }
 
 // withUser is an account file's lines without name's own line, and - in a group file, where a
-// group's members are its last field - with name added to each of groups; it says which of
-// groups it found.
-func withUser(lines []string, name string, isGroups bool, groups []string) ([]string, map[string]bool) {
+// group's members are its last field - with name added to each of groups.
+func withUser(lines []string, name string, isGroups bool, groups []string) []string {
 	var out []string
-	joined := map[string]bool{}
 	for _, line := range lines {
 		f := strings.Split(line, ":")
 		if line == "" || f[0] == name {
@@ -147,11 +206,10 @@ func withUser(lines []string, name string, isGroups bool, groups []string) ([]st
 			}
 			f[len(f)-1] = strings.Join(members, ",")
 			line = strings.Join(f, ":")
-			joined[f[0]] = true
 		}
 		out = append(out, line)
 	}
-	return out, joined
+	return out
 }
 
 // Autologin makes GDM log name in at boot: the live user, which has nothing of anyone's to
