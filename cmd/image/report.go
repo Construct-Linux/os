@@ -202,10 +202,6 @@ func errText(err error) string {
 	return " (" + err.Error() + ")"
 }
 
-// withoutBenchOOM is the journal's errors (short-monotonic) without the kernel's lines while
-// construct bench ran: its memory test asks for more than there is, and the kernel's report of
-// the stress-ng worker it kills for that is the measurement, not a fault. Any other error then -
-// a unit's, a service's - stays.
 // aroundErrors is journal's lines from before seconds ahead of each of errs' lines to after
 // seconds past it, by their monotonic stamps, a "--" between windows apart.
 func aroundErrors(journal, errs string, before, after float64) string {
@@ -241,6 +237,10 @@ func monotonic(line string) (float64, bool) {
 	return t, err == nil
 }
 
+// withoutBenchOOM is the journal's errors (short-monotonic) without the kernel's lines while
+// construct bench ran: its memory test asks for more than there is, and the kernel's report of
+// the stress-ng worker it kills for that is the measurement, not a fault. Any other error then -
+// a unit's, a service's - stays.
 func withoutBenchOOM(errs string, window [2]float64) string {
 	if window[1] == 0 {
 		return errs
