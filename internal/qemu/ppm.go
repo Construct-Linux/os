@@ -4,10 +4,11 @@ import (
 	"bufio"
 	"fmt"
 	"image"
-	"image/png"
 	"io"
 	"os"
 	"strconv"
+
+	"github.com/Construct-Linux/os/internal/pixels"
 )
 
 // ppmToPNG converts QEMU's screendump to PNG.
@@ -16,15 +17,7 @@ func ppmToPNG(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	o, err := os.Create(dst)
-	if err != nil {
-		return err
-	}
-	if err := png.Encode(o, img); err != nil {
-		o.Close()
-		return err
-	}
-	return o.Close()
+	return pixels.WritePNG(dst, img)
 }
 
 // DecodePPM reads QEMU's screendump (binary P6, 8-bit).
