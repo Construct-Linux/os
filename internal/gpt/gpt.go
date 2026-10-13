@@ -67,8 +67,8 @@ func (t Table) Named(name string) (Partition, error) {
 	return Partition{}, fmt.Errorf("gpt: no partition %q", name)
 }
 
-// FirstUsable is the first sector a partition may start at, after the primary table.
-const FirstUsable = 2 + tableSectors
+// firstUsable is the first sector a partition may start at, after the primary table.
+const firstUsable = 2 + tableSectors
 
 // LastUsable is the last sector a partition may end at on a disk of size bytes, before the backup
 // table.
@@ -77,7 +77,7 @@ func LastUsable(size int64) int64 { return size/Sector - 2 - tableSectors }
 // Write puts t on w, a disk of size bytes: a protective MBR, the primary table after it and the
 // backup at the end. A partition outside the usable sectors, or two that overlap, is refused.
 func Write(w io.WriterAt, size int64, t Table) error {
-	if size%Sector != 0 || size/Sector < 2*(FirstUsable) {
+	if size%Sector != 0 || size/Sector < 2*(firstUsable) {
 		return fmt.Errorf("gpt: a disk of %d bytes has no room for a table", size)
 	}
 	if len(t.Partitions) > entries {
@@ -132,8 +132,8 @@ func Write(w io.WriterAt, size int64, t Table) error {
 // overlaps one of before.
 func (p Partition) check(size int64, before []Partition) error {
 	switch {
-	case p.First < FirstUsable || p.Last > LastUsable(size) || p.First > p.Last:
-		return fmt.Errorf("gpt: %q runs from sector %d to %d, outside %d to %d", p.Name, p.First, p.Last, FirstUsable, LastUsable(size))
+	case p.First < firstUsable || p.Last > LastUsable(size) || p.First > p.Last:
+		return fmt.Errorf("gpt: %q runs from sector %d to %d, outside %d to %d", p.Name, p.First, p.Last, firstUsable, LastUsable(size))
 	case len(utf16.Encode([]rune(p.Name))) > nameUnits:
 		return fmt.Errorf("gpt: %q is longer than a partition's name may be", p.Name)
 	}
@@ -155,7 +155,7 @@ func header(disk string, at, alternate, entriesAt, size int64, table []byte) ([]
 	le.PutUint32(h[12:], headerSize)
 	le.PutUint64(h[24:], uint64(at))
 	le.PutUint64(h[32:], uint64(alternate))
-	le.PutUint64(h[40:], FirstUsable)
+	le.PutUint64(h[40:], firstUsable)
 	le.PutUint64(h[48:], uint64(LastUsable(size)))
 	if err := putGUID(h[56:], disk); err != nil {
 		return nil, err

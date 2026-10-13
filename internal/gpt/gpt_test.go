@@ -109,7 +109,7 @@ func TestBothTablesAndTheMBRAreWhereFirmwareLooks(t *testing.T) {
 	if (backup != tableHeader{revision: 0x10000, my: last, alternate: 1, first: 34, last: last - 33, from: last - 32, crcOK: true}) {
 		t.Errorf("the backup header is %+v", backup)
 	}
-	if !bytes.Equal(primaryEntries, backupEntries) || LastUsable(size) != last-33 || FirstUsable != 34 {
+	if !bytes.Equal(primaryEntries, backupEntries) || LastUsable(size) != last-33 || firstUsable != 34 {
 		t.Error("the two tables differ, or the usable sectors are not the headers'")
 	}
 	mbr := make([]byte, 16)
@@ -131,7 +131,7 @@ func TestBothTablesAndTheMBRAreWhereFirmwareLooks(t *testing.T) {
 // The smallest disk a table fits is two tables' worth of sectors; one smaller, or one that is not
 // whole sectors, has none.
 func TestATableNeedsRoomForBothCopies(t *testing.T) {
-	const smallest = 2 * FirstUsable * 512
+	const smallest = 2 * firstUsable * 512
 	if err := Write(disk(t, smallest), smallest, Table{Disk: "0b6d8f0e-1b1a-4f55-9d6c-9f1e5c7b3a21"}); err != nil {
 		t.Errorf("the smallest disk took no table: %v", err)
 	}
@@ -217,7 +217,7 @@ func TestATableThatCannotBeIsRefused(t *testing.T) {
 	const size = 64 << 20
 	ok := Partition{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "a"}
 	for name, parts := range map[string][]Partition{
-		"over the primary table":  {{Type: ok.Type, UUID: ok.UUID, First: FirstUsable - 1, Last: 100}},
+		"over the primary table":  {{Type: ok.Type, UUID: ok.UUID, First: firstUsable - 1, Last: 100}},
 		"over the backup table":   {{Type: ok.Type, UUID: ok.UUID, First: 2048, Last: LastUsable(size) + 1}},
 		"ending before it starts": {{Type: ok.Type, UUID: ok.UUID, First: 4096, Last: 2048}},
 		"overlapping":             {ok, {Type: ok.Type, UUID: ok.UUID, First: 4095, Last: 5000, Name: "b"}},
