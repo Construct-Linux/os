@@ -254,3 +254,42 @@ func TestAChangedTableIsNotRead(t *testing.T) {
 		t.Error("an empty disk has a table")
 	}
 }
+
+// What Write refuses it refuses before writing a byte: more partitions than the table has
+// entries, a partition's or the disk's GUID that is no GUID - of the right length, too - leave the
+// disk as it was, not half a table.
+func TestARefusedTableWritesNothing(t *testing.T) {
+	const size = 4 << 20
+	ok := Partition{Type: TypeLinuxData, UUID: "7b351e62-42e9-a0a8-d4f5-ac74b3c38dd9", First: 2048, Last: 4095, Name: "a"}
+	many := make([]Partition, entries+1)
+	for i := range many {
+		many[i] = Partition{Type: ok.Type, UUID: ok.UUID, First: int64(2048 + 8*i), Last: int64(2048 + 8*i + 7)}
+	}
+	notAGUID := "7b351e62-42e9-a0a8-d4f5-ac74b3c38dzz"
+	for name, tb := range map[string]Table{
+		"of 129 partitions":           {Disk: ok.UUID, Partitions: many},
+		"with a partition's bad UUID": {Disk: ok.UUID, Partitions: []Partition{{Type: ok.Type, UUID: "a", First: 2048, Last: 4095}}},
+		"with a GUID's length of hex": {Disk: ok.UUID, Partitions: []Partition{{Type: notAGUID, UUID: ok.UUID, First: 2048, Last: 4095}}},
+		"with the disk's bad GUID":    {Disk: notAGUID, Partitions: []Partition{ok}},
+	} {
+		f := disk(t, size)
+		if err := Write(f, size, tb); err == nil {
+			t.Errorf("a table %s was written", name)
+		}
+		if b, err := os.ReadFile(f.Name()); err != nil || len(bytes.Trim(b, "\x00")) != 0 {
+			t.Errorf("a table %s was refused, and the disk written: %v", name, err)
+		}
+	}
+}
+
+// A disk too short for the header, or a header whose entries lie past the disk's end, is refused,
+// though the header's checksum is right: the header is the disk's word, not the truth.
+func TestATableThatIsNotOnTheDiskIsNotRead(t *testing.T) {
+	if tb, err := Read(disk(t, 600)); err == nil || !strings.Contains(err.Error(), "reading the header") {
+		t.Errorf("a disk short of its header read as %+v, %v", tb, err)
+	}
+	f := patched(t, func(h, _ []byte) { binary.LittleEndian.PutUint64(h[72:], 1<<40) })
+	if tb, err := Read(f); err == nil || !strings.Contains(err.Error(), "reading the entries") {
+		t.Errorf("entries past the disk read as %+v, %v", tb, err)
+	}
+}
