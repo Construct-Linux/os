@@ -208,6 +208,10 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 - A VM stopped by QMP `quit` is a power cut: files written without fsync are empty afterwards.
   The lifecycle powers machines off; anything that writes a file a boot depends on syncs it.
 - A oneshot that already ended is unloaded: look for it in the journal, not in `list-units`.
+- **Anything held open on `/etc` or `/var` at shutdown leaves `/var`'s journal to replay**: the
+  `/etc` overlay's upper is on `/var`, so a file mapped through `/etc` (glibc's `ld.so.cache`, now
+  in `/usr/lib`) or one an `@` process keeps open (plymouth's boot log, off) pins both.
+  `image run -usb -poweroff` then the stick's superblock says whether a shutdown left it clean.
 - `recipes/systemd` is Wolfi's systemd recipe with TPM2 and sysupdate turned on. Wolfi's own
   build has neither. Bump it whenever Wolfi bumps systemd, starting again from Wolfi's file.
 - The kernel image on the ESP must stay writable (0644): systemd-boot counts a try by renaming it.
