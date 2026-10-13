@@ -23,7 +23,7 @@
 //	image cache pull|push                       the release builder's packages/, kernel, firmware and QEMU in S3 (cmd/image/cache.go)
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
-//	image run   [-usb] [-wait 30s] -- <script>   boot, run script as root over vsock, stop
+//	image run   [-usb] [-wait 30s] [-poweroff] -- <script>   boot, run script as root over vsock, stop (or power off)
 //	image play  [-fresh] [-stick=false]          the stick in a window on the host, with a disk to install on
 //	image type-dev                              the type specimen and its rendering matrix, in dev-up's machine (cmd/image/typespec.go)
 //	image forge                                 the forged sticks the lifecycle must refuse
