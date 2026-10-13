@@ -3,7 +3,7 @@ package main
 import (
 	"bufio"
 	"cmp"
-	"flag"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -251,15 +251,15 @@ func apkCompare(a, b string) int {
 	return 0
 }
 
-// packagesCmd answers what packages/ lacks (-missing: recipe names, a wave a line) or takes out
-// what newer builds replaced (-prune: the files it removed, for the index to be made again).
+// packagesCmd is image packages missing, which prints the recipes whose package packages/ lacks,
+// a line per wave that builds side by side, or image packages prune, which removes every
+// package's builds but its newest and prints the files it removed, for the index to be made
+// again.
 func packagesCmd(args []string) error {
-	fl := flag.NewFlagSet("packages", flag.ExitOnError)
-	missing := fl.Bool("missing", false, "print the recipes whose package packages/ lacks, a line per wave that builds side by side")
-	prune := fl.Bool("prune", false, "remove every package's builds but its newest")
-	// The packages.
+	if len(args) != 1 || (args[0] != "missing" && args[0] != "prune") {
+		return errors.New("packages missing|prune")
+	}
 	dir := filepath.Join("packages", "x86_64")
-	_ = fl.Parse(args)
 	entries, err := os.ReadDir(dir)
 	if err != nil && !os.IsNotExist(err) {
 		return err
@@ -270,8 +270,7 @@ func packagesCmd(args []string) error {
 		files = append(files, e.Name())
 		have[e.Name()] = true
 	}
-	switch {
-	case *missing:
+	if args[0] == "missing" {
 		paths, err := filepath.Glob(filepath.Join("recipes", "*.yaml"))
 		if err != nil {
 			return err
@@ -288,15 +287,13 @@ func packagesCmd(args []string) error {
 		for _, w := range missingInWaves(recipes, have) {
 			fmt.Println(strings.Join(w, " "))
 		}
-	case *prune:
-		for _, f := range superseded(files) {
-			if err := os.Remove(filepath.Join(dir, f)); err != nil {
-				return err
-			}
-			fmt.Println(f)
+		return nil
+	}
+	for _, f := range superseded(files) {
+		if err := os.Remove(filepath.Join(dir, f)); err != nil {
+			return err
 		}
-	default:
-		return fmt.Errorf("packages: -missing or -prune")
+		fmt.Println(f)
 	}
 	return nil
 }

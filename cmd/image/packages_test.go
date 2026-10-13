@@ -84,7 +84,7 @@ func TestSuperseded(t *testing.T) {
 }
 
 // A recipe changed since the branch left origin/main makes a new package only with a new version
-// or epoch: the builder's cache (cache -pull, packages -missing) knows a package by its apk's
+// or epoch: the builder's cache (cache pull, packages missing) knows a package by its apk's
 // name alone, so a changed recipe under the same name is a hit on the old build, and the release
 // ships it. Without git or origin/main there is nothing to compare, and the test says so.
 func TestChangedRecipesBumpVersionOrEpoch(t *testing.T) {

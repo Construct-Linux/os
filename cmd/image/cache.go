@@ -3,7 +3,6 @@ package main
 import (
 	"crypto/sha256"
 	"errors"
-	"flag"
 	"fmt"
 	"os"
 	"os/exec"
@@ -58,18 +57,17 @@ func cacheKey(c cached) (string, error) {
 	return fmt.Sprintf("%x", sha256.Sum256(out))[:16], nil
 }
 
+// cacheCmd is image cache pull, which fetches packages/ and every cached output there is, or
+// image cache push, which stores packages/ and the outputs the cache lacks, in the bucket
+// CONSTRUCT_PACKAGES_BUCKET names.
 func cacheCmd(args []string) error {
-	fl := flag.NewFlagSet("cache", flag.ExitOnError)
-	pull := fl.Bool("pull", false, "fetch packages/ and every cached output there is")
-	push := fl.Bool("push", false, "store packages/ and the outputs the cache lacks")
-	// The cache's bucket (CONSTRUCT_PACKAGES_BUCKET).
 	bucket := os.Getenv("CONSTRUCT_PACKAGES_BUCKET")
-	_ = fl.Parse(args)
-	if bucket == "" || *pull == *push {
-		return errors.New("cache: -pull or -push, and CONSTRUCT_PACKAGES_BUCKET set")
+	if len(args) != 1 || (args[0] != "pull" && args[0] != "push") || bucket == "" {
+		return errors.New("cache pull|push, with CONSTRUCT_PACKAGES_BUCKET set")
 	}
+	pull := args[0] == "pull"
 	s3 := "s3://" + bucket
-	if *pull {
+	if pull {
 		if err := run("aws", "s3", "sync", "--only-show-errors", "--delete", s3+"/packages/", "packages/"); err != nil {
 			return err
 		}
@@ -100,7 +98,7 @@ func cacheCmd(args []string) error {
 		if err := os.MkdirAll(filepath.Dir(local), 0o755); err != nil {
 			return err
 		}
-		if *pull {
+		if pull {
 			if run("aws", "s3", "cp", "--only-show-errors", obj, local) != nil {
 				fmt.Printf("cache: %s %s: a miss, to build\n", c.name, key)
 				continue

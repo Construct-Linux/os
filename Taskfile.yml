@@ -381,9 +381,9 @@ tasks:
       - echo "release {{.VERSION}} of $(git rev-parse --short HEAD)"
       - aws secretsmanager get-secret-value --secret-id construct/melange-key --query SecretString --output text > melange.rsa
       - chmod 600 melange.rsa
-      - go run ./cmd/image cache -pull
+      - go run ./cmd/image cache pull
       # The cache goes back however the job ends: what a failed release built is not built again.
-      - defer: go run ./cmd/image cache -push
+      - defer: go run ./cmd/image cache push
       - task: release:inputs
       - task: rootfs
       - task: initrd
@@ -397,13 +397,13 @@ tasks:
         vars: {VERSION: '{{.VERSION}}', NEW: '{{.NEW}}'}
       # Every package's builds but its newest go, and the index is made again before the cache
       # takes packages/ back (the deferred push).
-      - go run ./cmd/image packages -prune
+      - go run ./cmd/image packages prune
       - >-
         docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}}
         index --signing-key melange.rsa -o packages/x86_64/APKINDEX.tar.gz packages/x86_64/*.apk
 
   release:inputs:
-    desc: "What the cache lacked, side by side: the packages, the kernel, the firmware and the harness's QEMU, none of which needs another. On the builder, after cache -pull."
+    desc: "What the cache lacked, side by side: the packages, the kernel, the firmware and the harness's QEMU, none of which needs another. On the builder, after cache pull."
     internal: true
     deps: [release:packages, release:kernel, release:firmware, release:harness-qemu]
 
@@ -416,7 +416,7 @@ tasks:
       JOBS: '{{.JOBS | default 4}}'
     cmds:
       - mkdir -p .cache
-      - go run ./cmd/image packages -missing > .cache/waves.txt
+      - go run ./cmd/image packages missing > .cache/waves.txt
       - >-
         while read -r wave; do
         echo "packages: $wave";
@@ -540,4 +540,4 @@ tasks:
     desc: "Once, from a machine that has built everything: put its packages/, kernel, firmware and QEMU in the builder's cache (CONSTRUCT_PACKAGES_BUCKET, infra output buckets.packages), so the first release does not build them all."
     requires: {vars: [CONSTRUCT_PACKAGES_BUCKET]}
     cmds:
-      - go run ./cmd/image cache -push
+      - go run ./cmd/image cache push
