@@ -3,6 +3,7 @@ package securitykey
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/x509"
@@ -40,6 +41,44 @@ func TestCredentialLine(t *testing.T) {
 	}
 	if _, err := credentialLine([]byte(id + "\n")); err == nil {
 		t.Error("no public key passed")
+	}
+}
+
+// What is no es256 credential never becomes a line of pam_u2f's mappings, which sudo, polkit and
+// the lock screen take a touch by: no id, an id that is not base64, a key that is not ECDSA, or
+// one on a curve other than P-256.
+func TestWhatIsNoES256CredentialIsRefused(t *testing.T) {
+	publicPEM := func(pub any) string {
+		der, err := x509.MarshalPKIXPublicKey(pub)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))
+	}
+	p256, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	p384, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edPub, _, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := base64.StdEncoding.EncodeToString([]byte("credential-id"))
+	for name, out := range map[string]string{
+		"no id":            "\n" + publicPEM(&p256.PublicKey),
+		"no line at all":   id,
+		"an id not base64": "credential id!\n" + publicPEM(&p256.PublicKey),
+		"a key of junk":    id + "\n" + string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: []byte("der")})),
+		"an Ed25519 key":   id + "\n" + publicPEM(edPub),
+		"a P-384 key":      id + "\n" + publicPEM(&p384.PublicKey),
+	} {
+		if line, err := credentialLine([]byte(out)); err == nil {
+			t.Errorf("%s became %q", name, line)
+		}
 	}
 }
 

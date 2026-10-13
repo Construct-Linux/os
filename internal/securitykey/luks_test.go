@@ -28,6 +28,15 @@ func TestSlots(t *testing.T) {
 	}
 }
 
+// A security key's token naming a keyslot that is no number is an error, not a slot passed over:
+// the slot a key is removed by must be the one it opens.
+func TestATokenOfNoKeyslotNumberIsRefused(t *testing.T) {
+	h := Header{Tokens: map[string]Token{"0": {Type: "systemd-fido2", Keyslots: []string{"one"}}}}
+	if slots, err := h.FIDO2Slots(); err == nil {
+		t.Errorf("slots %v", slots)
+	}
+}
+
 // fakeCryptsetup puts first on PATH a cryptsetup whose luksDump --dump-json-metadata prints
 // header, and which fails asked anything else.
 func fakeCryptsetup(t *testing.T, header string) {
