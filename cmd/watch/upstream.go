@@ -31,6 +31,8 @@ type sources struct {
 	kernel string
 	gnome  string
 	github string
+	goDL   string
+	gitlab string
 }
 
 // getJSON decodes the JSON at url into out.

@@ -192,8 +192,9 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
   goes to `testing`; `task release:promote` offers it to `stable`; `task release:withdraw` takes a
   bad one out before machines take it.
 - **Issues are where problems go**: `.github/labels.json` (`task labels`), the issue forms ask for
-  `construct report`, and the weekly `watch` workflow files security fixes and big dependency
-  changes, nothing routine (cmd/watch).
+  `construct report`, and the weekly `watch` workflow files security fixes, big dependency
+  changes and the pins in build/ behind upstream, nothing a release picks up by itself
+  (cmd/watch); Dependabot opens the Go modules' and the actions' bumps as pull requests.
 
 ## Traps already fallen into
 

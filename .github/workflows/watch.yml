@@ -1,6 +1,8 @@
 # Once a week, the issues a person must act on: a Critical or High vulnerability a version fixes in
-# the latest release, a new kernel series, a new GNOME major, a new Intel microcode (cmd/watch).
-# Routine updates are not issues. It holds no secret but the job's own token.
+# the latest release, a new kernel series or point release, a new GNOME major, a new Intel
+# microcode, and the pins in build/ behind upstream (cmd/watch). What a release picks up by itself
+# is not an issue; Go's modules and the actions are Dependabot's. It holds no secret but the job's
+# own token.
 name: watch
 
 on:

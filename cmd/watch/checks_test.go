@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"maps"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -24,7 +25,8 @@ func serve(t *testing.T, bodies map[string]string) sources {
 		_, _ = w.Write([]byte(b))
 	}))
 	t.Cleanup(srv.Close)
-	return sources{client: srv.Client(), kernel: srv.URL + "/releases.json", gnome: srv.URL + "/cache.json", github: srv.URL}
+	return sources{client: srv.Client(), kernel: srv.URL + "/releases.json", gnome: srv.URL + "/cache.json", github: srv.URL,
+		goDL: srv.URL + "/dl/?mode=json", gitlab: srv.URL}
 }
 
 func TestSecurityFindings(t *testing.T) {
@@ -191,5 +193,43 @@ func TestReadEnv(t *testing.T) {
 	env, err := readEnv(p)
 	if err != nil || env["KERNEL_VERSION"] != "7.2.8" || env["GRYPE_IMAGE"] != "anchore/grype:latest@sha256:8c=" {
 		t.Errorf("%v, %v", env, err)
+	}
+}
+
+// upstream answers each pin's source: Go's downloads, GitHub's latest releases, GitLab's tags.
+var upstream = map[string]string{
+	"/dl/":                                `[{"version": "go1.27.3", "stable": true}, {"version": "go1.28rc1", "stable": false}, {"version": "go1.26.10", "stable": true}]`,
+	"/repos/go-task/task/releases/latest": `{"tag_name": "v3.54.0"}`,
+	"/repos/cli/cli/releases/latest":      `{"tag_name": "v2.102.0"}`,
+	"/projects/kernel-firmware/linux-firmware/repository/tags": `[{"name": "20260916"}, {"name": "20261010"}]`,
+	"/projects/qemu-project/qemu/repository/tags":              `[{"name": "v11.0.5"}, {"name": "v11.2.0-rc1"}, {"name": "v11.1.2"}, {"name": "v10.2.4"}]`,
+}
+
+// One issue lists the pins behind - a release candidate is no release - and none behind is none.
+func TestPinsCheck(t *testing.T) {
+	src := serve(t, upstream)
+	current := map[string]string{"GO_VERSION": "1.27.3", "TASK_VERSION": "3.54.0", "GH_VERSION": "2.102.0", "LINUX_FIRMWARE_VERSION": "20261010", "QEMU_VERSION": "11.1.2"}
+	if fs, err := src.pinsCheck(current).find(t.Context()); err != nil || len(fs) != 0 {
+		t.Fatalf("every pin current: %+v %v", fs, err)
+	}
+	behind := maps.Clone(current)
+	behind["GH_VERSION"], behind["QEMU_VERSION"] = "2.46.0", "10.2.4"
+	fs, err := src.pinsCheck(behind).find(t.Context())
+	if err != nil || len(fs) != 1 {
+		t.Fatalf("%+v %v", fs, err)
+	}
+	f := fs[0]
+	if f.key != "pins" || f.title != "update: 2 pin(s) behind upstream" || strings.Join(f.labels, ",") != "update,area:build" ||
+		!strings.Contains(f.body, "| 2.46.0 | 2.102.0 |") || !strings.Contains(f.body, "| 10.2.4 | 11.1.2 |") || strings.Contains(f.body, "rc") {
+		t.Errorf("gh and QEMU behind:\n%+v", f)
+	}
+}
+
+// An upstream that does not answer fails the check, which leaves its issue as it is.
+func TestPinsCheckUpstreamDown(t *testing.T) {
+	down := maps.Clone(upstream)
+	delete(down, "/repos/cli/cli/releases/latest")
+	if _, err := serve(t, down).pinsCheck(map[string]string{}).find(t.Context()); err == nil || !strings.Contains(err.Error(), "gh") {
+		t.Errorf("gh's release unanswered: %v", err)
 	}
 }

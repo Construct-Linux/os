@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"regexp"
 	"slices"
@@ -135,19 +136,26 @@ func runCmd(ctx context.Context, args []string, out io.Writer) error {
 	}
 	// Run from the repository's root, as task watch and the workflow do.
 	const recipes = "recipes"
-	pins, err := readEnv("build/versions.env")
+	pinned, err := readEnv("build/versions.env")
 	if err != nil {
 		return err
 	}
+	host, err := readEnv("build/host.env")
+	if err != nil {
+		return err
+	}
+	maps.Copy(pinned, host)
 	gh, err := repository(*dry, out)
 	if err != nil {
 		return err
 	}
-	src := sources{client: &http.Client{Timeout: time.Minute}, kernel: kernelReleases, gnome: gnomeShellCache, github: githubAPI}
+	src := sources{client: &http.Client{Timeout: time.Minute}, kernel: kernelReleases, gnome: gnomeShellCache, github: githubAPI,
+		goDL: goReleases, gitlab: gitlabAPI}
 	checks := []check{
-		src.kernelCheck(pins["KERNEL_VERSION"]),
+		src.kernelCheck(pinned["KERNEL_VERSION"]),
 		src.gnomeCheck(recipes),
-		src.microcodeCheck(pins["INTEL_MICROCODE_VERSION"]),
+		src.microcodeCheck(pinned["INTEL_MICROCODE_VERSION"]),
+		src.pinsCheck(pinned),
 	}
 	if *grypeJSON != "" {
 		checks = append([]check{securityCheck(*grypeJSON, *release, recipes)}, checks...)
