@@ -215,9 +215,9 @@ func (r *report) lookViewOf(name string) lookView {
 	return v
 }
 
-// compareNeedles compares every screenshot in dir that has a needle in needles, writes each
+// compareNeedles compares every view the run shot that has a needle in needles, writes each
 // difference to dir/diff/<name>.png and the side by side to dir/look.html, and reports a check
-// per view. Screenshots without a needle are listed as new. Every view's spec is written first,
+// per view. Views without a needle are listed as new. Every view's spec is written first,
 // with what lf said of it: it is the run's record of the view, needles or not.
 func (r *report) compareNeedles(needles string) {
 	r.writeViews()
@@ -225,20 +225,25 @@ func (r *report) compareNeedles(needles string) {
 		r.skip("look", "no needles: NEEDLES names a checkout of github.com/Construct-Linux/needles")
 		return
 	}
-	shots, err := filepath.Glob(filepath.Join(r.dir, "*.png"))
-	if err != nil || len(shots) == 0 {
-		r.add("look", false, "no screenshots in "+r.dir)
+	// The run's views, not every PNG in dir: the report also keeps pictures that are no view
+	// (the installer's pages), which have no group and would stop needles-propose.
+	names := slices.Sorted(maps.Keys(r.views))
+	if len(names) == 0 {
+		r.add("look", false, "no views shot in "+r.dir)
 		return
 	}
-	sort.Strings(shots)
 	if err := os.MkdirAll(filepath.Join(r.dir, "diff"), 0o755); err != nil {
 		r.add("look", false, err.Error())
 		return
 	}
 	var results []lookResult
 	var unmatched []string
-	for _, shot := range shots {
-		name := strings.TrimSuffix(filepath.Base(shot), ".png")
+	for _, name := range names {
+		shot := filepath.Join(r.dir, name+".png")
+		// A view whose shot failed was reported by shot; there is nothing to compare.
+		if _, err := os.Stat(shot); err != nil {
+			continue
+		}
 		ref := filepath.Join(needles, name+".png")
 		if _, err := os.Stat(ref); errors.Is(err, fs.ErrNotExist) {
 			unmatched = append(unmatched, name)

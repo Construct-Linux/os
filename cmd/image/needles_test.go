@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"image"
 	"image/color"
@@ -172,5 +173,31 @@ func TestProposalBatches(t *testing.T) {
 	b := proposalBatches(many)
 	if len(b) != 2 || b[0].group != needle.GroupShell || len(b[0].views) != 5 || b[1].group != needle.GroupApp || len(b[1].views) != 20 {
 		t.Errorf("many: %d batches %+v", len(b), b)
+	}
+}
+
+// Only the run's views are compared: a picture the report keeps beside them (an installer's page)
+// is no view, and listing it as a new one would stop needles-propose on its missing group.
+func TestCompareNeedlesViewsOnly(t *testing.T) {
+	dir, needles := t.TempDir(), t.TempDir()
+	for _, f := range []string{"shell-x.png", "installer-done.png"} {
+		if err := pixels.WritePNG(filepath.Join(dir, f), solid(10, 10, tInk)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	s := tSpec(false, nil, nil)
+	// shell-gone's shot failed: it is in the run, with no picture to compare.
+	r := &report{dir: dir, views: map[string]*needle.Spec{"shell-x": &s, "shell-gone": &s}}
+	r.compareNeedles(needles)
+	raw, err := os.ReadFile(filepath.Join(dir, "look.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var l look
+	if err := json.Unmarshal(raw, &l); err != nil {
+		t.Fatal(err)
+	}
+	if len(l.Views) != 1 || l.Views[0].Name != "shell-x" || !l.Views[0].New || l.Views[0].Group != needle.GroupShell {
+		t.Errorf("views %+v", l.Views)
 	}
 }
