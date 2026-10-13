@@ -12,6 +12,9 @@ dotenv: [build/versions.env, .env]
 vars:
   MELANGE: cgr.dev/chainguard/melange@sha256:3285b57ff3d6f241993f181c1cb154a590ec3ade8c3f6d987686b42693d27afe
   APKO: cgr.dev/chainguard/apko@sha256:730ae486fc77b0cc7326cdd66fb2bb3e093f9fd14b101af603fe714786752ab3
+  # The version APKO's digest is (docker run --rm <APKO> version): tools/apkorder orders packages
+  # with the same apko, which TestApkorderIsTheImagesApko holds - move all three together.
+  APKO_VERSION: v1.4.6
   WOLFI: --repository-append https://packages.wolfi.dev/os --keyring-append https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
   LOCAL: --repository-append /work/packages --keyring-append /work/melange.rsa.pub
   # The kernel's banner dates it by the last commit, so the same sources make the same kernel.

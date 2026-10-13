@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"cmp"
 	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -68,5 +69,23 @@ func TestAPKCompareMatchesApko(t *testing.T) {
 			}
 		}
 		t.Fatalf("apkCompare's order has %d lines, apko's %d", len(gl), len(wl))
+	}
+}
+
+// prune orders packages as the apko that builds the image does: tools/apkorder, whose order
+// testdata/apk-order.golden is, requires the apko Taskfile.yml's APKO image is.
+func TestApkorderIsTheImagesApko(t *testing.T) {
+	taskfile, err := os.ReadFile("../../Taskfile.yml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mod, err := os.ReadFile("../../tools/apkorder/go.mod")
+	if err != nil {
+		t.Fatal(err)
+	}
+	image := regexp.MustCompile(`(?m)^  APKO_VERSION: (v\S+)$`).FindSubmatch(taskfile)
+	tool := regexp.MustCompile(`(?m)^\s*(?:require\s+)?chainguard\.dev/apko (v\S+)$`).FindSubmatch(mod)
+	if image == nil || tool == nil || string(image[1]) != string(tool[1]) {
+		t.Errorf("Taskfile.yml's APKO_VERSION %q, tools/apkorder's apko %q: want one version", image, tool)
 	}
 }
