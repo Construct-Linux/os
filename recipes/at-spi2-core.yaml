@@ -1,7 +1,7 @@
 package:
   name: at-spi2-core
-  version: "2.62.0.1"
-  # Replaces Wolfi's at-spi2-core 2.62.0.1 (epoch 0), which deletes the systemd user units;
+  version: "2.62.1"
+  # Replaces Wolfi's at-spi2-core 2.62.1 (epoch 0), which deletes the systemd user units;
   # gnome-shell activates at-spi-dbus-bus.service.
   epoch: 1
   description: Protocol definitions and daemon for D-Bus at-spi
@@ -28,7 +28,7 @@ pipeline:
     with:
       repository: https://gitlab.gnome.org/GNOME/at-spi2-core
       tag: ${{package.version}}
-      expected-commit: b33ff15213c4c09dfc0a5b261875c65c7cffd91d
+      expected-commit: 3a214cddffbf345b8c0d0b17e458abbc5ed851b1
 
   # The image runs dbus-daemon, not dbus-broker, so the a11y bus launches with it.
   - uses: meson/configure
