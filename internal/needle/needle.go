@@ -92,36 +92,33 @@ func NoiseOf(img image.Image, palette []color.NRGBA, tol int) Noise {
 	if w == 0 || h == 0 {
 		return Noise{}
 	}
-	px := func(x, y int) []uint8 { i := y*n.Stride + x*4; return n.Pix[i : i+3] }
-	delta := func(a, c []uint8) int {
-		d := 0
-		for i := range 3 {
-			d = max(d, int(a[i])-int(c[i]), int(c[i])-int(a[i]))
-		}
-		return d
+	// A colour is its RGB alone, as pixels.ChannelDelta compares it: every pixel is counted opaque.
+	px := func(x, y int) color.NRGBA {
+		i := y*n.Stride + x*4
+		return color.NRGBA{n.Pix[i], n.Pix[i+1], n.Pix[i+2], 255}
 	}
 	edges := 0
-	hist := map[[3]uint8]int{}
+	hist := map[color.NRGBA]int{}
 	for y := range h {
 		for x := range w {
 			p := px(x, y)
-			hist[[3]uint8(p)]++
-			if (x+1 < w && delta(p, px(x+1, y)) > ChannelDelta) || (y+1 < h && delta(p, px(x, y+1)) > ChannelDelta) {
+			hist[p]++
+			if (x+1 < w && pixels.ChannelDelta(p, px(x+1, y)) > ChannelDelta) || (y+1 < h && pixels.ChannelDelta(p, px(x, y+1)) > ChannelDelta) {
 				edges++
 			}
 		}
 	}
 	out := Noise{Edges: float64(edges) / float64(w*h)}
-	seen := map[[3]uint8]bool{}
+	seen := map[color.NRGBA]bool{}
 	for _, c := range palette {
-		rgb := [3]uint8{c.R, c.G, c.B}
+		rgb := color.NRGBA{c.R, c.G, c.B, 255}
 		if seen[rgb] {
 			continue
 		}
 		seen[rgb] = true
 		covered := 0
 		for k, v := range hist {
-			if delta(k[:], rgb[:]) <= tol {
+			if pixels.ChannelDelta(k, rgb) <= tol {
 				covered += v
 			}
 		}
@@ -371,7 +368,7 @@ func Compare(ref, shot, specPath, diff string) (float64, error) {
 	compared, differ := 0, 0
 	for y := rb.Min.Y; y < rb.Max.Y; y++ {
 		for x := rb.Min.X; x < rb.Max.X; x++ {
-			ca := color.NRGBAModel.Convert(a.At(x, y)).(color.NRGBA)
+			ca := pixels.At(a, x, y)
 			skipped := false
 			for _, r := range ignore {
 				if x >= r.X && x < r.X+r.W && y >= r.Y && y < r.Y+r.H {
@@ -387,7 +384,7 @@ func Compare(ref, shot, specPath, diff string) (float64, error) {
 				continue
 			}
 			compared++
-			cb := color.NRGBAModel.Convert(b.At(x, y)).(color.NRGBA)
+			cb := pixels.At(b, x, y)
 			if pixels.ChannelDelta(ca, cb) > ChannelDelta {
 				differ++
 				dim = color.NRGBA{255, 40, 40, 255}
