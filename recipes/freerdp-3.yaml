@@ -1,10 +1,10 @@
 package:
   name: freerdp-3
-  version: "3.32.1"
-  # Replaces Wolfi's freerdp-3 3.32.1, whose libraries pull X11, Wayland, CUPS, ALSA,
+  version: "3.32.2"
+  # Replaces Wolfi's freerdp-3 3.32.2 (epoch 0), whose libraries pull X11, Wayland, CUPS, ALSA,
   # FUSE, libusb and FFmpeg's swscale into the image. gtk-frdp only needs the client libraries:
   # it draws the session itself and opens no audio, printer, drive or USB redirection.
-  epoch: 2
+  epoch: 1
   description: FreeRDP client libraries
   copyright:
     - license: Apache-2.0
@@ -31,7 +31,7 @@ pipeline:
     with:
       repository: https://github.com/FreeRDP/FreeRDP
       tag: ${{package.version}}
-      expected-commit: bf217a504e54cc719880c228e82353382cd7d4fa
+      expected-commit: 97eff6ddfbbfaa8e42a126d362686bd001ff8bdc
 
   # No client binaries (SDL, X11, Wayland), server, shadow or proxy: gtk-frdp embeds the client
   # libraries. FFmpeg and swscale off: cairo (already in the image for GTK) scales surfaces a
