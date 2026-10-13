@@ -40,11 +40,10 @@ func personFrom(in *bufio.Reader, out io.Writer, name, realName, passwordFile st
 		if passwordFile == "-" {
 			// The graphical installer's pipe: a password never on a command line. Its first line:
 			// the security keys' PINs may follow (--key-pin-file -).
-			line, err := in.ReadString('\n')
-			if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+			var err error
+			if pw, err = readSecret(in); err != nil {
 				return person{}, err
 			}
-			pw = line
 		} else {
 			b, err := os.ReadFile(passwordFile)
 			if err != nil {
@@ -157,6 +156,17 @@ func readLine(in *bufio.Reader) (string, error) {
 	return strings.TrimSpace(line), nil
 }
 
+// readSecret reads a password or a PIN, a line from a pipe, as it was typed: only the line's end
+// goes, as everything that reads one does (install, the PIN files), or a secret with a space at
+// either end would be another secret here than where it was set.
+func readSecret(in *bufio.Reader) (string, error) {
+	line, err := in.ReadString('\n')
+	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
+		return "", err
+	}
+	return strings.TrimRight(line, "\r\n"), nil
+}
+
 // readPassword reads a line unechoed from a terminal, or as it comes from anything else.
 func readPassword(in *bufio.Reader, out io.Writer, prompt string) (string, error) {
 	fmt.Fprint(out, prompt)
@@ -165,7 +175,7 @@ func readPassword(in *bufio.Reader, out io.Writer, prompt string) (string, error
 		fmt.Fprintln(out)
 		return string(b), err
 	}
-	return readLine(in)
+	return readSecret(in)
 }
 
 // prepareVar lays p on the new /var at dev: their record, GNOME logging them in, their home.

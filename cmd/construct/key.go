@@ -266,7 +266,7 @@ func keyPIN(file string, in *bufio.Reader) (string, error) {
 	case "":
 		return "", nil
 	case "-":
-		pin, err := readLine(in)
+		pin, err := readSecret(in)
 		if err != nil {
 			return "", fmt.Errorf("key add: the PIN, on standard input: %w", err)
 		}

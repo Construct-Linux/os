@@ -64,3 +64,20 @@ func TestOfferInstaller(t *testing.T) {
 		}
 	}
 }
+
+// A secret from a pipe is read as typed, spaces included, the same by install - which sets the
+// password and the PINs - as by key add and key remove, which must give them back.
+func TestSecretsFromAPipeKeepTheirSpaces(t *testing.T) {
+	p, err := personFrom(bufio.NewReader(strings.NewReader(" pass word \n")), io.Discard, "ada", "", "-")
+	if err != nil || p.password != " pass word " {
+		t.Fatalf("install: %q %v", p.password, err)
+	}
+	pin, err := keyPIN("-", bufio.NewReader(strings.NewReader(" 1234 \r\n")))
+	if err != nil || pin != " 1234 " {
+		t.Fatalf("key add's PIN: %q %v", pin, err)
+	}
+	pw, err := readSecret(bufio.NewReader(strings.NewReader(" pass word ")))
+	if err != nil || pw != " pass word " {
+		t.Fatalf("a last line without its end: %q %v", pw, err)
+	}
+}
