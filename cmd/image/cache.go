@@ -14,7 +14,9 @@ import (
 // The release builder's cache (infra's packages bucket): an EC2 machine that starts empty would
 // build every recipe, the kernel with ThinLTO and the harness's QEMU on each release, far past its
 // two hours. packages/ is synced as it is; the others are tarballs named by a hash of what they
-// are built from, so a change to their inputs is a miss and a rebuild, never a stale hit.
+// are built from, so a change to their inputs is a miss and a rebuild, never a stale hit. It goes
+// through the AWS CLI, with the credentials and region a person's or the builder's environment
+// gives it.
 
 // cached is a build output the cache keeps: what it is built from (paths git tracks), and what it
 // is - directories under the repository, with the file its build writes when it is whole, or a
@@ -68,7 +70,7 @@ func cacheCmd(args []string) error {
 	}
 	s3 := "s3://" + bucket
 	if *pull {
-		if err := aws("s3", "sync", "--only-show-errors", "--delete", s3+"/packages/", "packages/"); err != nil {
+		if err := run("aws", "s3", "sync", "--only-show-errors", "--delete", s3+"/packages/", "packages/"); err != nil {
 			return err
 		}
 	} else {
@@ -84,7 +86,7 @@ func cacheCmd(args []string) error {
 				return fmt.Errorf("cache: %s's inputs have changes git has not committed, which its key would not say:\n%s", c.name, dirty)
 			}
 		}
-		if err := aws("s3", "sync", "--only-show-errors", "--delete", "packages/", s3+"/packages/"); err != nil {
+		if err := run("aws", "s3", "sync", "--only-show-errors", "--delete", "packages/", s3+"/packages/"); err != nil {
 			return err
 		}
 	}
@@ -99,7 +101,7 @@ func cacheCmd(args []string) error {
 			return err
 		}
 		if *pull {
-			if aws("s3", "cp", "--only-show-errors", obj, local) != nil {
+			if run("aws", "s3", "cp", "--only-show-errors", obj, local) != nil {
 				fmt.Printf("cache: %s %s: a miss, to build\n", c.name, key)
 				continue
 			}
@@ -113,14 +115,14 @@ func cacheCmd(args []string) error {
 			fmt.Printf("cache: %s %s: not built, not stored\n", c.name, key)
 			continue
 		}
-		// A miss is head-object's 404, said on stderr: awsOut keeps it out of the log.
-		if _, err := awsOut("s3api", "head-object", "--bucket", bucket, "--key", strings.TrimPrefix(obj, s3+"/")); err == nil {
+		// A miss is head-object's 404, said on stderr: output keeps it out of the log.
+		if _, err := output(exec.Command("aws", "s3api", "head-object", "--bucket", bucket, "--key", strings.TrimPrefix(obj, s3+"/"))); err == nil {
 			continue
 		}
 		if err := packCached(c, local); err != nil {
 			return err
 		}
-		if err := aws("s3", "cp", "--only-show-errors", local, obj); err != nil {
+		if err := run("aws", "s3", "cp", "--only-show-errors", local, obj); err != nil {
 			return err
 		}
 		fmt.Printf("cache: %s %s: stored\n", c.name, key)

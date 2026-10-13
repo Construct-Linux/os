@@ -6,6 +6,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -35,7 +36,7 @@ func releaseLog(args []string) error {
 	if err != nil {
 		return err
 	}
-	account, err := awsOut("sts", "get-caller-identity", "--query", "Account", "--output", "text")
+	account, err := output(exec.Command("aws", "sts", "get-caller-identity", "--query", "Account", "--output", "text"))
 	if err != nil {
 		return err
 	}
@@ -55,8 +56,8 @@ func releaseLog(args []string) error {
 	var offset int64
 	// printNew prints what was written since the last read: a range past the end is no new bytes.
 	printNew := func() error {
-		if _, err := awsOut("s3api", "get-object", "--bucket", bucket, "--key", prefix+*file,
-			"--range", fmt.Sprintf("bytes=%d-", offset), part); err != nil {
+		if _, err := output(exec.Command("aws", "s3api", "get-object", "--bucket", bucket, "--key", prefix+*file,
+			"--range", fmt.Sprintf("bytes=%d-", offset), part)); err != nil {
 			return nil
 		}
 		b, err := os.ReadFile(part)
@@ -75,7 +76,7 @@ func releaseLog(args []string) error {
 			return nil
 		}
 		// The job's exit status is the last thing a builder writes: once it is there, so is the log.
-		if rc, err := awsOut("s3", "cp", "--quiet", "s3://"+bucket+"/"+prefix+"rc", "-"); err == nil {
+		if rc, err := output(exec.Command("aws", "s3", "cp", "--quiet", "s3://"+bucket+"/"+prefix+"rc", "-")); err == nil {
 			if err := printNew(); err != nil {
 				return err
 			}
@@ -98,7 +99,7 @@ func findBuilder(id string) (builderRun, error) {
 	} else {
 		q = append(q, "--filters", "Name=tag:construct:role,Values=builder")
 	}
-	out, err := awsOut(q...)
+	out, err := output(exec.Command("aws", q...))
 	if err != nil {
 		return builderRun{}, err
 	}
@@ -118,8 +119,8 @@ func findBuilder(id string) (builderRun, error) {
 func buildPrefix(bucket string, run builderRun) (string, error) {
 	for _, day := range []time.Time{run.Launched, run.Launched.Add(24 * time.Hour)} {
 		p := day.UTC().Format("20060102") + "-" + run.ID + "/"
-		if out, err := awsOut("s3api", "list-objects-v2", "--bucket", bucket, "--prefix", p, "--max-keys", "1",
-			"--query", "KeyCount", "--output", "text"); err == nil && strings.TrimSpace(out) != "0" {
+		if out, err := output(exec.Command("aws", "s3api", "list-objects-v2", "--bucket", bucket, "--prefix", p, "--max-keys", "1",
+			"--query", "KeyCount", "--output", "text")); err == nil && strings.TrimSpace(out) != "0" {
 			return p, nil
 		}
 	}

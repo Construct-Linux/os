@@ -69,16 +69,12 @@ func releaseVersion(args []string) error {
 	remote := "origin"
 	_ = fl.Parse(args)
 	day := time.Now().UTC()
-	out, err := exec.Command("git", "ls-remote", "--tags", remote, "refs/tags/v"+day.Format("20060102")+".*").Output()
+	out, err := output(exec.Command("git", "ls-remote", "--tags", remote, "refs/tags/v"+day.Format("20060102")+".*"))
 	if err != nil {
-		// git says why on stderr - a remote it cannot authenticate to is exit status 128 alone.
-		if ee, ok := err.(*exec.ExitError); ok {
-			return fmt.Errorf("git ls-remote %s: %w: %s", remote, err, strings.TrimSpace(string(ee.Stderr)))
-		}
-		return fmt.Errorf("git ls-remote %s: %w", remote, err)
+		return err
 	}
 	var tags []string
-	for _, line := range strings.Split(string(out), "\n") {
+	for _, line := range strings.Split(out, "\n") {
 		if f := strings.Fields(line); len(f) == 2 {
 			tags = append(tags, f[1])
 		}

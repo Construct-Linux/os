@@ -943,6 +943,17 @@ func run(name string, args ...string) error {
 	return nil
 }
 
+// output runs cmd and answers what it printed, trimmed, or its error with what it said on
+// stderr: an exit status alone - git's 128, aws's 255 - does not say why.
+func output(cmd *exec.Cmd) (string, error) {
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &stdout, &stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("%s: %w: %s", strings.Join(cmd.Args[:min(len(cmd.Args), 2)], " "), err, strings.TrimSpace(stderr.String()))
+	}
+	return strings.TrimSpace(stdout.String()), nil
+}
+
 // appendFlag collects -append's options, one per flag: a value with spaces does not survive the
 // quoting task usb passes it through.
 type appendFlag []string

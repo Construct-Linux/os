@@ -90,11 +90,7 @@ func flipIn(img, name, work string, at int64) error {
 func mtools(name string, args ...string) (string, error) {
 	cmd := exec.Command(name, args...)
 	cmd.Env = append(os.Environ(), "MTOOLS_SKIP_CHECK=1")
-	b, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", fmt.Errorf("%s: %w: %s", name, err, b)
-	}
-	return string(b), nil
+	return output(cmd)
 }
 
 // partitionOffset is the byte offset of the partition named name in the disk image img.
