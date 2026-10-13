@@ -102,12 +102,8 @@ func ReadHeader(ctx context.Context, partition string) (Header, error) {
 	if err := run(ctx, nil, &out, "cryptsetup", "luksDump", "--dump-json-metadata", partition); err != nil {
 		return Header{}, err
 	}
-	return parseHeader(out.Bytes())
-}
-
-func parseHeader(b []byte) (Header, error) {
 	var h Header
-	err := json.Unmarshal(b, &h)
+	err := json.Unmarshal(out.Bytes(), &h)
 	return h, err
 }
 
