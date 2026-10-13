@@ -22,17 +22,16 @@ const loaderPath = `\EFI\systemd\systemd-bootx64.efi`
 // entryTitle is what the firmware's boot menu calls the entry.
 const entryTitle = "Construct"
 
-// bootEntry makes the firmware whose variables are vars start systemd-boot from the ESP esp of the
-// disk whose table is disk: a Boot#### entry, first in BootOrder. An entry of the same title and
-// ESP - a machine installed again - is replaced rather than added to. It answers the entry's
-// number: what efibootmgr writes, without needing it.
-func bootEntry(vars Vars, disk gpt.Table, esp gpt.Partition) (uint16, error) {
-	i := slices.Index(disk.Partitions, esp)
-	if i < 0 || esp.Type != gpt.TypeESP {
+// bootEntry makes the firmware whose variables are vars start systemd-boot from the ESP esp, at
+// the number its disk's table gives it: a Boot#### entry, first in BootOrder. An entry of the same
+// title and ESP - a machine installed again - is replaced rather than added to. It answers the
+// entry's number: what efibootmgr writes, without needing it.
+func bootEntry(vars Vars, esp gpt.Partition) (uint16, error) {
+	// A partition no table numbered would be partition 0, which no firmware finds.
+	if esp.Type != gpt.TypeESP || esp.Number < 1 {
 		return 0, fmt.Errorf("install: %q is not an ESP of the disk", esp.Name)
 	}
-	// Partitions are numbered from one, in the order of their entries.
-	option, err := loadOption(uint32(i+1), esp)
+	option, err := loadOption(uint32(esp.Number), esp)
 	if err != nil {
 		return 0, err
 	}

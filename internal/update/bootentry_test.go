@@ -11,8 +11,8 @@ import (
 
 // installed is the table of a disk the installer laid out, its ESP first.
 func installed() (gpt.Table, gpt.Partition) {
-	esp := gpt.Partition{Type: gpt.TypeESP, UUID: "e81bff23-fae0-4d2e-b30b-ac31735f53ab", First: 2048, Last: 2048 + 0x100000 - 1, Name: "esp"}
-	return gpt.Table{Partitions: []gpt.Partition{esp, {Type: typeRoot, UUID: "00000000-0000-0000-0000-000000000002", First: 0x100800, Last: 0x200000, Name: "root"}}}, esp
+	esp := gpt.Partition{Type: gpt.TypeESP, UUID: "e81bff23-fae0-4d2e-b30b-ac31735f53ab", First: 2048, Last: 2048 + 0x100000 - 1, Name: "esp", Number: 1}
+	return gpt.Table{Partitions: []gpt.Partition{esp, {Type: typeRoot, UUID: "00000000-0000-0000-0000-000000000002", First: 0x100800, Last: 0x200000, Name: "root", Number: 2}}}, esp
 }
 
 func bootOrder(t *testing.T, vars Vars) []uint16 {
@@ -34,8 +34,8 @@ func TestTheBootEntryStartsTheInstalledSystemdBootFirst(t *testing.T) {
 		must(t, vars.Write(n, Global, nvBootRuntime, []byte("the firmware's")))
 	}
 	must(t, vars.Write("BootOrder", Global, nvBootRuntime, []byte{1, 0, 0, 0}))
-	table, esp := installed()
-	n, err := bootEntry(vars, table, esp)
+	_, esp := installed()
+	n, err := bootEntry(vars, esp)
 	if err != nil || n != 2 {
 		t.Fatalf("the entry is Boot%04X, %v", n, err)
 	}
@@ -48,7 +48,7 @@ func TestTheBootEntryStartsTheInstalledSystemdBootFirst(t *testing.T) {
 	if got := bootOrder(t, vars); len(got) != 3 || got[0] != 2 || got[1] != 1 || got[2] != 0 {
 		t.Errorf("BootOrder is %v", got)
 	}
-	again, err := bootEntry(vars, table, esp)
+	again, err := bootEntry(vars, esp)
 	if err != nil || again != 2 {
 		t.Errorf("installing again made Boot%04X, %v", again, err)
 	}
@@ -91,22 +91,38 @@ func TestABootEntryTakesNoOneElsesNumber(t *testing.T) {
 	for n := range 17 {
 		must(t, vars.Write(fmt.Sprintf("Boot%04X", n), Global, nvBootRuntime, []byte("the firmware's")))
 	}
-	table, esp := installed()
-	if n, err := bootEntry(vars, table, esp); err != nil || n != 0x11 {
+	_, esp := installed()
+	if n, err := bootEntry(vars, esp); err != nil || n != 0x11 {
 		t.Errorf("the entry is Boot%04X, %v", n, err)
 	}
 }
 
-// Only a disk's own ESP is booted: a partition of another disk, or one that is no ESP, is refused.
+// The entry names the ESP by the number its table gives it, wherever the ESP is in the table.
+func TestTheBootEntryNamesTheESPsNumber(t *testing.T) {
+	vars := Vars(t.TempDir())
+	_, esp := installed()
+	esp.Number = 3
+	n, err := bootEntry(vars, esp)
+	must(t, err)
+	raw, err := vars.Read(fmt.Sprintf("Boot%04X", n), Global)
+	must(t, err)
+	// The hard drive node, first in the path: type, subtype and length, then the partition number.
+	node := raw[6+len(efiString(entryTitle)):]
+	if got := binary.LittleEndian.Uint32(node[4:]); got != 3 {
+		t.Errorf("the entry boots partition %d, not the ESP's 3", got)
+	}
+}
+
+// Only a disk's own ESP is booted: a partition no table numbered, or one that is no ESP, is refused.
 func TestOnlyTheDisksESPIsBooted(t *testing.T) {
 	table, esp := installed()
 	vars := Vars(t.TempDir())
-	other := esp
-	other.UUID = "11111111-1111-1111-1111-111111111111"
-	if _, err := bootEntry(vars, table, other); err == nil {
-		t.Error("another disk's ESP was booted")
+	unnumbered := esp
+	unnumbered.Number = 0
+	if _, err := bootEntry(vars, unnumbered); err == nil {
+		t.Error("an ESP no table numbered was booted")
 	}
-	if _, err := bootEntry(vars, table, table.Partitions[1]); err == nil {
+	if _, err := bootEntry(vars, table.Partitions[1]); err == nil {
 		t.Error("a root partition was booted as an ESP")
 	}
 	if got, err := vars.Read("BootOrder", Global); err == nil {

@@ -37,43 +37,53 @@ const (
 	varName = "var"
 )
 
+// installDisk is the table an install writes and the partitions of it the install itself writes
+// or makes, each with its number in the table.
+type installDisk struct {
+	table                      gpt.Table
+	esp, root, verity, varPart gpt.Partition
+}
+
 // layout is the table the installer writes on a disk of size bytes for r: the ESP, slot A holding
 // r - labelled with its version and given the UUIDs its files name, which its kernel image's
 // command line names - slot B Empty for the first update, and /var, with varUUID (VarUUID: the
 // one its installation's machine id gives it). uuid makes every other GUID.
-func layout(r Release, size int64, varUUID string, uuid func() string) (gpt.Table, error) {
-	at := int64(firstSector)
-	next := func(sectors int64) (int64, int64) {
-		first := at
-		at += sectors
-		return first, at - 1
-	}
-	label := ImageID + "_" + r.Version
+func layout(r Release, size int64, varUUID string, uuid func() string) (installDisk, error) {
+	var d installDisk
 	var parts []gpt.Partition
+	add := func(into *gpt.Partition, p gpt.Partition) {
+		// Each entry's number is its place: what the kernel calls the partition once it reads the
+		// table, and the firmware's boot entry the ESP.
+		p.Number = len(parts) + 1
+		parts = append(parts, p)
+		if into != nil {
+			*into = p
+		}
+	}
+	at := int64(firstSector)
+	label := ImageID + "_" + r.Version
 	for _, p := range []struct {
+		into            *gpt.Partition
 		typ, uuid, name string
 		sectors         int64
 	}{
-		{gpt.TypeESP, uuid(), espName, espSectors},
-		{typeRoot, r.Root.UUID, label, rootSectors},
-		{typeRootVerity, r.Verity.UUID, label, veritySectors},
-		{typeRoot, uuid(), Empty, rootSectors},
-		{typeRootVerity, uuid(), Empty, veritySectors},
+		{&d.esp, gpt.TypeESP, uuid(), espName, espSectors},
+		{&d.root, typeRoot, r.Root.UUID, label, rootSectors},
+		{&d.verity, typeRootVerity, r.Verity.UUID, label, veritySectors},
+		{nil, typeRoot, uuid(), Empty, rootSectors},
+		{nil, typeRootVerity, uuid(), Empty, veritySectors},
 	} {
-		first, last := next(p.sectors)
-		parts = append(parts, gpt.Partition{Type: p.typ, UUID: p.uuid, First: first, Last: last, Name: p.name})
+		add(p.into, gpt.Partition{Type: p.typ, UUID: p.uuid, First: at, Last: at + p.sectors - 1, Name: p.name})
+		at += p.sectors
 	}
 	last := gpt.LastUsable(size)
 	if (last-at+1)*gpt.Sector < minVar {
-		return gpt.Table{}, fmt.Errorf("install: the disk is %s, and the desktop needs %s at least",
+		return installDisk{}, fmt.Errorf("install: the disk is %s, and the desktop needs %s at least",
 			humanSize(size), humanSize((at+int64(minVar/gpt.Sector)+40)*gpt.Sector))
 	}
-	parts = append(parts, gpt.Partition{Type: typeVar, UUID: varUUID, First: at, Last: last, Name: varName})
-	// Each entry's number is its place: what the kernel calls the partition once it reads the table.
-	for i := range parts {
-		parts[i].Number = i + 1
-	}
-	return gpt.Table{Disk: uuid(), Partitions: parts}, nil
+	add(&d.varPart, gpt.Partition{Type: typeVar, UUID: varUUID, First: at, Last: last, Name: varName})
+	d.table = gpt.Table{Disk: uuid(), Partitions: parts}
+	return d, nil
 }
 
 // InstallOptions is what an install reads, writes and asks of the machine.
@@ -123,18 +133,19 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	table, err := layout(r, o.Disk.Size, o.VarUUID, o.UUID)
+	lay, err := layout(r, o.Disk.Size, o.VarUUID, o.UUID)
 	if err != nil {
 		return gpt.Table{}, err
 	}
+	table := lay.table
 	log := o.Log.With("disk", o.Disk.Path(), "version", r.Version)
 	d := o.Device
 	// Slot A is Empty until what it holds is checked: a copy cut off or refused leaves a disk with
 	// nothing that boots, not a slot a label vouches for.
 	writing := table
 	writing.Partitions = slices.Clone(table.Partitions)
-	for _, i := range []int{1, 2} {
-		writing.Partitions[i].Name = Empty
+	for _, p := range []gpt.Partition{lay.root, lay.verity} {
+		writing.Partitions[p.Number-1].Name = Empty
 	}
 	log.Info("writing the partition table")
 	if err := gpt.Write(d, o.Disk.Size, writing); err != nil {
@@ -146,7 +157,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	for _, w := range []struct {
 		part gpt.Partition
 		file Artifact
-	}{{table.Partitions[1], r.Root}, {table.Partitions[2], r.Verity}} {
+	}{{lay.root, r.Root}, {lay.verity, r.Verity}} {
 		log.Info("writing slot A", "file", w.file.Name)
 		if err := writePartition(ctx, d, w.part, w.file, fetch, o.Progress); err != nil {
 			return gpt.Table{}, err
@@ -165,11 +176,11 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err := o.Reread(); err != nil {
 		return gpt.Table{}, fmt.Errorf("install: the kernel reading the new table: %w", err)
 	}
-	esp, err := o.Partition(1)
+	esp, err := o.Partition(lay.esp.Number)
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	vardev, err := o.Partition(6)
+	vardev, err := o.Partition(lay.varPart.Number)
 	if err != nil {
 		return gpt.Table{}, err
 	}
@@ -195,7 +206,7 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	if err != nil {
 		return gpt.Table{}, err
 	}
-	n, err := bootEntry(o.Vars, table, table.Partitions[0])
+	n, err := bootEntry(o.Vars, lay.esp)
 	if err != nil {
 		return gpt.Table{}, err
 	}
