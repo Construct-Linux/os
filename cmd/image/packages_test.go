@@ -76,10 +76,17 @@ func TestMissingInWaves(t *testing.T) {
 
 // Of a package's builds, every one but the newest is superseded, by version then epoch.
 func TestSuperseded(t *testing.T) {
-	got := superseded([]string{"APKINDEX.tar.gz", "gdm-51.0-r2.apk", "gdm-51.0-r3.apk", "gdm-dev-51.0-r3.apk",
+	got, err := superseded([]string{"APKINDEX.tar.gz", "gdm-51.0-r2.apk", "gdm-51.0-r3.apk", "gdm-dev-51.0-r3.apk",
 		"orchis-theme-20260914-r9.apk", "orchis-theme-20260914-r12.apk", "mesa-26.2.10-r0.apk", "mesa-26.2.9-r4.apk"})
-	if strings.Join(got, " ") != "gdm-51.0-r2.apk mesa-26.2.9-r4.apk orchis-theme-20260914-r9.apk" {
-		t.Errorf("superseded %v", got)
+	if err != nil || strings.Join(got, " ") != "gdm-51.0-r2.apk mesa-26.2.9-r4.apk orchis-theme-20260914-r9.apk" {
+		t.Errorf("superseded %v %v", got, err)
+	}
+}
+
+// A version prune cannot order stops it before it names a file to delete.
+func TestSupersededRefusesWhatItCannotOrder(t *testing.T) {
+	if got, err := superseded([]string{"gdm-51.0-r2.apk", "gdm-51.x-r3.apk"}); err == nil {
+		t.Errorf("51.x ordered: %v", got)
 	}
 }
 
@@ -185,21 +192,25 @@ func TestAPKCompare(t *testing.T) {
 	ordered := []string{"1.0_rc1", "1.0_rc2", "1.0", "1.0_p1", "1.0.1", "1.9", "1.10", "18.0_rc20260919", "18.0", "18.0_git20260101", "18.0_p2"}
 	for i, older := range ordered {
 		for _, newer := range ordered[i+1:] {
-			if apkCompare(older, newer) != -1 || apkCompare(newer, older) != 1 {
-				t.Errorf("%s is not older than %s", older, newer)
+			if c, err := apkCompare(older, newer); c != -1 || err != nil {
+				t.Errorf("%s is not older than %s: %d %v", older, newer, c, err)
+			}
+			if c, _ := apkCompare(newer, older); c != 1 {
+				t.Errorf("%s is not newer than %s", newer, older)
 			}
 		}
 	}
-	// A letter after none: 1.0 before 1.0a. Against a suffix apk orders by the tokens' kinds, which
-	// no Wolfi version this repository builds has, and which this does not try.
-	if apkCompare("1.0", "1.0a") != -1 {
+	if c, _ := apkCompare("1.0", "1.0a"); c != -1 {
 		t.Error("1.0 is not older than 1.0a")
 	}
-	if apkCompare("1.9.17_p2", "1.9.17_p2") != 0 {
+	if c, err := apkCompare("1.9.17_p2", "1.9.17_p2"); c != 0 || err != nil {
 		t.Error("a version is not equal to itself")
 	}
 	// The epoch orders two builds of one version.
-	if !versionLess("18.0", 1, "18.0", 2) || versionLess("18.0", 2, "18.0_rc1", 9) {
+	if l, _ := versionLess("18.0", 1, "18.0", 2); !l {
 		t.Error("epochs")
+	}
+	if l, _ := versionLess("18.0", 2, "18.0_rc1", 9); l {
+		t.Error("an epoch outranked the version")
 	}
 }

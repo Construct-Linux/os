@@ -147,8 +147,9 @@ func missingInWaves(recipes []recipe, have map[string]bool) [][]string {
 var apkName = regexp.MustCompile(`^(.+)-([^-]+)-r([0-9]+)\.apk$`)
 
 // superseded are the APKs in files that a newer build of the same package replaces: a package's
-// every version but its newest, by version and then epoch.
-func superseded(files []string) []string {
+// every version but its newest, by version and then epoch. A version it cannot order stops it:
+// what it answers is deleted.
+func superseded(files []string) ([]string, error) {
 	type build struct {
 		file, version string
 		epoch         int
@@ -166,89 +167,107 @@ func superseded(files []string) []string {
 		switch {
 		case !ok:
 			newest[m[1]] = b
-		case versionLess(cur.version, cur.epoch, b.version, b.epoch):
-			old = append(old, cur.file)
-			newest[m[1]] = b
 		default:
-			old = append(old, b.file)
+			less, err := versionLess(cur.version, cur.epoch, b.version, b.epoch)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", f, err)
+			}
+			if less {
+				old = append(old, cur.file)
+				newest[m[1]] = b
+			} else {
+				old = append(old, b.file)
+			}
 		}
 	}
 	sort.Strings(old)
-	return old
+	return old, nil
 }
 
-// versionLess is whether build a (version and epoch) is older than b, as apk orders them.
-func versionLess(a string, ea int, b string, eb int) bool {
-	if c := apkCompare(a, b); c != 0 {
-		return c < 0
+// versionLess is whether build a (version and epoch) is older than b, as apko orders them.
+func versionLess(a string, ea int, b string, eb int) (bool, error) {
+	c, err := apkCompare(a, b)
+	if c != 0 || err != nil {
+		return c < 0, err
 	}
-	return ea < eb
+	return ea < eb, nil
 }
 
-// apkSuffix orders apk's version suffixes against none, which is 0: a release candidate comes
-// before the release, a patch level after it.
-var apkSuffix = map[string]int{"alpha": -4, "beta": -3, "pre": -2, "rc": -1, "cvs": 1, "svn": 2, "git": 3, "hg": 4, "p": 5}
+// apkVersionRE is the versions apko takes (chainguard.dev/apko's ParseVersion) - and apko picks
+// the build of each package the image gets, so prune keeps the one apko would: numbers by dots, a
+// letter, at most one pre-release suffix and then at most one post-release one, each with an
+// optional number. A version outside it is refused rather than ordered by a guess.
+var apkVersionRE = regexp.MustCompile(`^([0-9]+)((?:\.[0-9]+)*)([a-z]?)(?:_(alpha|beta|pre|rc)([0-9]*))?(?:_(cvs|svn|git|hg|p)([0-9]*))?$`)
 
-// apkVersion is a version apk's way: its numbers, an optional letter after the last, and its
-// suffixes, each a rank and a number (18.0_rc20260919: [18 0], no letter, [rc 20260919]).
+// apkPre and apkPost rank the suffixes: a pre-release before none, which is last of them (1.0_rc1
+// before 1.0), and none before a post-release (1.0 before 1.0_p1).
+var (
+	apkPre  = map[string]int{"alpha": 1, "beta": 2, "pre": 3, "rc": 4, "": 5}
+	apkPost = map[string]int{"": 0, "cvs": 1, "svn": 2, "git": 3, "hg": 4, "p": 5}
+)
+
+// apkVersion is a version as apko orders it: its numbers as numbers, then its letter, its
+// pre-release suffix and number, and its post-release suffix and number.
 type apkVersion struct {
-	nums     []int
-	letter   byte
-	suffixes [][2]int
+	nums                       []int
+	letter                     byte
+	pre, preNum, post, postNum int
 }
 
-func parseAPKVersion(v string) apkVersion {
-	var p apkVersion
-	main, rest, _ := strings.Cut(v, "_")
-	if n := len(main); n > 0 && main[n-1] >= 'a' && main[n-1] <= 'z' {
-		p.letter, main = main[n-1], main[:n-1]
+func parseAPKVersion(v string) (apkVersion, error) {
+	m := apkVersionRE.FindStringSubmatch(v)
+	if m == nil {
+		return apkVersion{}, fmt.Errorf("%q is no version apko orders", v)
 	}
-	for _, f := range strings.Split(main, ".") {
-		n, _ := strconv.Atoi(f)
+	var p apkVersion
+	for _, f := range strings.Split(m[1]+m[2], ".") {
+		n, err := strconv.Atoi(f)
+		if err != nil {
+			return apkVersion{}, fmt.Errorf("%q: %w", v, err)
+		}
 		p.nums = append(p.nums, n)
 	}
-	if rest == "" {
-		return p
+	if m[3] != "" {
+		p.letter = m[3][0]
 	}
-	for _, suf := range strings.Split(rest, "_") {
-		name := strings.TrimRight(suf, "0123456789")
-		n, _ := strconv.Atoi(suf[len(name):])
-		p.suffixes = append(p.suffixes, [2]int{apkSuffix[name], n})
+	p.pre, p.post = apkPre[m[4]], apkPost[m[6]]
+	for _, n := range []struct {
+		s  string
+		to *int
+	}{{m[5], &p.preNum}, {m[7], &p.postNum}} {
+		if n.s == "" {
+			continue
+		}
+		var err error
+		if *n.to, err = strconv.Atoi(n.s); err != nil {
+			return apkVersion{}, fmt.Errorf("%q: %w", v, err)
+		}
 	}
-	return p
+	return p, nil
 }
 
-// apkCompare orders two versions as apk-tools does for what Wolfi's carry: numbers as numbers, a
-// shorter one older when the rest is equal (1.0 before 1.0.1), then a letter after none, then the
-// suffixes, where none sits between a release candidate and a patch level (18.0_rc1 before 18.0
-// before 18.0_p1). A letter against a suffix apk orders by the tokens' kinds, which no version
-// built here has.
-func apkCompare(a, b string) int {
-	pa, pb := parseAPKVersion(a), parseAPKVersion(b)
+// apkCompare orders a and b as apko does, or says why it cannot. TestAPKCompareMatchesApko holds it
+// to apko itself (tools/apkorder).
+func apkCompare(a, b string) (int, error) {
+	pa, err := parseAPKVersion(a)
+	if err != nil {
+		return 0, err
+	}
+	pb, err := parseAPKVersion(b)
+	if err != nil {
+		return 0, err
+	}
 	for i := 0; i < len(pa.nums) && i < len(pb.nums); i++ {
 		if c := cmp.Compare(pa.nums[i], pb.nums[i]); c != 0 {
-			return c
+			return c, nil
 		}
 	}
-	if c := cmp.Compare(len(pa.nums), len(pb.nums)); c != 0 {
-		return c
-	}
-	if c := cmp.Compare(pa.letter, pb.letter); c != 0 {
-		return c
-	}
-	for i := 0; i < max(len(pa.suffixes), len(pb.suffixes)); i++ {
-		var x, y [2]int
-		if i < len(pa.suffixes) {
-			x = pa.suffixes[i]
-		}
-		if i < len(pb.suffixes) {
-			y = pb.suffixes[i]
-		}
-		if c := cmp.Or(cmp.Compare(x[0], y[0]), cmp.Compare(x[1], y[1])); c != 0 {
-			return c
-		}
-	}
-	return 0
+	return cmp.Or(
+		cmp.Compare(len(pa.nums), len(pb.nums)),
+		cmp.Compare(pa.letter, pb.letter),
+		cmp.Compare(pa.pre, pb.pre), cmp.Compare(pa.preNum, pb.preNum),
+		cmp.Compare(pa.post, pb.post), cmp.Compare(pa.postNum, pb.postNum),
+	), nil
 }
 
 // packagesCmd is image packages missing, which prints the recipes whose package packages/ lacks,
@@ -289,7 +308,11 @@ func packagesCmd(args []string) error {
 		}
 		return nil
 	}
-	for _, f := range superseded(files) {
+	old, err := superseded(files)
+	if err != nil {
+		return err
+	}
+	for _, f := range old {
 		if err := os.Remove(filepath.Join(dir, f)); err != nil {
 			return err
 		}

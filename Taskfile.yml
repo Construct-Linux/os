@@ -63,6 +63,9 @@ tasks:
       - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - go vet ./...
       - go test ./internal/... ./cmd/...
+      # apkCompare is held to testdata/apk-order.golden; this holds the golden to apko itself
+      # (tools/apkorder, a module of its own so apko stays out of the binaries).
+      - cd tools/apkorder && go vet . && go run . < ../../cmd/image/testdata/apk-versions.txt | diff -u ../../cmd/image/testdata/apk-order.golden -
 
   kernel:config:
     desc: Merge and assert the desktop kernel's configuration, without compiling it.
