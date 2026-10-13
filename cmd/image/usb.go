@@ -234,20 +234,14 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 	// The root and its tree compressed - what is downloaded, and what GitHub takes (2 GB a file
 	// at most); systemd-import and construct install decompress them as they write.
 	rootFile, verityFile, uki := update.Names(version, v.rootUUID, v.vUUID)
-	files := map[string]string{
-		rootFile:   v.rootImg,
-		verityFile: v.treeImg,
-		uki:        filepath.Join(esp, "EFI", "Linux", label+".efi"),
-	}
-	for name, src := range files {
-		dst := filepath.Join(dir, name)
-		if strings.HasSuffix(name, ".xz") {
-			if err := pipeline("", dst, nil, []string{"xz", "-T0", "-6", "-c", src}); err != nil {
-				return "", err
-			}
-		} else if err := os.Link(src, dst); err != nil {
+	for name, src := range map[string]string{rootFile: v.rootImg, verityFile: v.treeImg} {
+		if err := pipeline("", filepath.Join(dir, name), nil, []string{"xz", "-T0", "-6", "-c", src}); err != nil {
 			return "", err
 		}
+	}
+	// The kernel image goes as it is: its transfer (transfers.go) writes it to the ESP whole.
+	if err := os.Link(filepath.Join(esp, "EFI", "Linux", label+".efi"), filepath.Join(dir, uki)); err != nil {
+		return "", err
 	}
 	return dir, update.WriteSums(dir)
 }
