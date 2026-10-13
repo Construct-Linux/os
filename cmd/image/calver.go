@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os/exec"
 	"regexp"
@@ -64,10 +63,11 @@ func nextVersion(day time.Time, tags []string) string {
 // releaseVersion prints the next version, from the tags the remote has: the builder asks it once,
 // before it builds, and tags what it built with it.
 func releaseVersion(args []string) error {
-	fl := flag.NewFlagSet("release-version", flag.ExitOnError)
-	// The remote whose tags count.
-	remote := "origin"
-	_ = fl.Parse(args)
+	if len(args) > 0 {
+		return fmt.Errorf("release-version takes no arguments")
+	}
+	// The builder's checkout is a clone of the repository whose tags are the releases'.
+	const remote = "origin"
 	day := time.Now().UTC()
 	out, err := output(exec.Command("git", "ls-remote", "--tags", remote, "refs/tags/v"+day.Format("20060102")+".*"))
 	if err != nil {

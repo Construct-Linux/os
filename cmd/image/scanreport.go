@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -22,14 +21,12 @@ var severities = []string{"Critical", "High", "Medium", "Low", "Negligible", "Un
 // has fixed yet, which Grype keeps under ignoredMatches. Each says whether the package is Wolfi's,
 // fixed by rebuilding the root, or one of recipes/, fixed by updating its recipe.
 func scanReport(args []string) error {
-	fl := flag.NewFlagSet("scan-report", flag.ExitOnError)
-	// Grype's JSON report.
+	if len(args) > 0 {
+		return fmt.Errorf("scan-report takes no arguments")
+	}
+	// Where task scan leaves Grype's JSON, and the Markdown beside it.
 	in := filepath.Join(out, "scan", "grype.json")
-	// The Markdown report to write.
 	to := filepath.Join(out, "scan", "report.md")
-	// The recipes' directory.
-	recipes := "recipes"
-	_ = fl.Parse(args)
 	b, err := os.ReadFile(in)
 	if err != nil {
 		return err
@@ -38,7 +35,7 @@ func scanReport(args []string) error {
 	if err := json.Unmarshal(b, &g); err != nil {
 		return fmt.Errorf("%s: %w", in, err)
 	}
-	ours, err := grype.RecipePackages(recipes)
+	ours, err := grype.RecipePackages("recipes")
 	if err != nil {
 		return err
 	}

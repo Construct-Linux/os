@@ -90,6 +90,9 @@ func (idx index) String() string {
 	return b.String()
 }
 
+// indexVersions is how many versions an index keeps (index.keep).
+const indexVersions = 3
+
 // keep drops all but the newest n versions: what a machine might still need, a release to take
 // and the one before it to go back to, and no more for systemd-sysupdate to consider. It returns
 // the files of the versions it dropped.
@@ -108,7 +111,7 @@ func (idx index) keep(n int) (dropped []string) {
 
 // channelIndex writes a channel's index: the current one (-current, or -new for a channel's first)
 // with a release added (-add, a release's SHA256SUMS or another channel's index, with -version) or a
-// version withdrawn (-withdraw), and the newest -keep versions kept. task release:publish and
+// version withdrawn (-withdraw), and the newest indexVersions kept. task release:publish and
 // release:promote sign it (image sign-release) and upload it. -kind dl is the same for the sticks
 // at dl.<domain>: its "dropped" lists the sticks the index no longer names, which the task deletes
 // only after the new index is up.
@@ -120,8 +123,6 @@ func channelIndex(args []string) error {
 	add := fl.String("add", "", "a SHA256SUMS whose -version lines to add: a release's own, or another channel's index")
 	version := fl.String("version", "", "the version -add brings, or -withdraw takes out")
 	withdraw := fl.Bool("withdraw", false, "take -version out instead of adding it")
-	// How many versions the index keeps.
-	keep := 3
 	to := fl.String("o", "", "where the new index goes (a directory: its SHA256SUMS)")
 	_ = fl.Parse(args)
 	if *version == "" || *to == "" || (*add == "") == !*withdraw {
@@ -167,11 +168,11 @@ func channelIndex(args []string) error {
 			return fmt.Errorf("%s lists %d files of %s, want its %d", *add, len(lines), *version, kind.files)
 		}
 		idx[*version] = lines
-		dropped = idx.keep(keep)
+		dropped = idx.keep(indexVersions)
 		// Older than every version kept, it was dropped at once: the index is the one already up,
 		// and signing and uploading it again would say the release was offered.
 		if _, ok := idx[*version]; !ok {
-			return fmt.Errorf("%s is older than the %d versions the index keeps", *version, keep)
+			return fmt.Errorf("%s is older than the %d versions the index keeps", *version, indexVersions)
 		}
 	}
 	if err := os.MkdirAll(*to, 0o755); err != nil {

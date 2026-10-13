@@ -108,8 +108,9 @@ const builtFile = "built.json"
 // usbJoin joins the PCR policy's signature, which the host made, to the last usb's kernel image,
 // in the stage: still without its Secure Boot signature, which image usb-sign adds.
 func usbJoin(args []string) error {
-	fl := flag.NewFlagSet("usb-join", flag.ExitOnError)
-	_ = fl.Parse(args)
+	if len(args) > 0 {
+		return fmt.Errorf("usb-join takes no arguments")
+	}
 	stage := filepath.Join(out, "usb")
 	if _, err := os.Stat(filepath.Join(stage, pcrSignature)); err != nil {
 		return fmt.Errorf("the PCR policy is not signed (image sign-pcr): %w", err)
@@ -244,8 +245,9 @@ func writeRelease(version, esp, label string, v verity) (string, error) {
 // the root and its tree, and construct-update, a FAT partition holding the release - what a machine
 // installs from, and updates from when the stick is plugged into one already installed.
 func usbDisk(args []string) error {
-	fl := flag.NewFlagSet("usb-disk", flag.ExitOnError)
-	_ = fl.Parse(args)
+	if len(args) > 0 {
+		return fmt.Errorf("usb-disk takes no arguments")
+	}
 	// writeRelease keeps one release: usb's.
 	entries, err := os.ReadDir(filepath.Join(out, "release"))
 	if err != nil || len(entries) != 1 {

@@ -131,9 +131,9 @@ func rootLayers(test bool) []layer {
 }
 
 func disk(args []string) error {
-	fl := flag.NewFlagSet("disk", flag.ExitOnError)
 	// The ext4 image's size.
-	size := "12G"
+	const size = "12G"
+	fl := flag.NewFlagSet("disk", flag.ExitOnError)
 	test := fl.Bool("test", false, "add image/test/rootfs: what lets cmd/image test drive the session")
 	_ = fl.Parse(args)
 

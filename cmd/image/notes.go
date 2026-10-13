@@ -47,10 +47,6 @@ func releaseNotes(args []string) error {
 	prev := fl.String("prev", "", "the previous release's tag (empty: the first release)")
 	packages := fl.String("packages", "", "this release's packages.txt")
 	prevPackages := fl.String("prev-packages", "", "the previous release's packages.txt")
-	// Grype's JSON report of the release's root.
-	grypeFile := filepath.Join(out, "scan", "grype.json")
-	// The harness's reports, comma-separated.
-	tests := filepath.Join(out, "test", "report.txt") + "," + filepath.Join(out, "lifecycle", "report.txt")
 	dl := fl.String("dl-url", os.Getenv("CONSTRUCT_DL_URL"), "where the USB sticks are (dl.<domain>)")
 	to := fl.String("o", filepath.Join(out, "release-notes", "notes.md"), "the notes to write")
 	_ = fl.Parse(args)
@@ -70,6 +66,9 @@ func releaseNotes(args []string) error {
 			return err
 		}
 	}
+	// Grype's report of the release's root, and the harness's, where task scan and the tests left
+	// them on the builder.
+	grypeFile := filepath.Join(out, "scan", "grype.json")
 	if b, err := os.ReadFile(grypeFile); err == nil {
 		var g grype.Report
 		if err := json.Unmarshal(b, &g); err != nil {
@@ -77,7 +76,7 @@ func releaseNotes(args []string) error {
 		}
 		in.Grype = &g
 	}
-	for _, f := range strings.Split(tests, ",") {
+	for _, f := range []string{filepath.Join(out, "test", "report.txt"), filepath.Join(out, "lifecycle", "report.txt")} {
 		if r, err := readTestRun(f); err == nil {
 			in.Tests = append(in.Tests, r)
 		}
