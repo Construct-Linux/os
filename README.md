@@ -134,3 +134,9 @@ rolls back from a broken release. `AGENTS.md` says what each change needs.
 | `image/rootfs/usr/bin/construct-installer` | the graphical installer: a libadwaita front-end to `construct install --json` |
 | `internal/` | GPT, and installing a signed release |
 | `cmd/gap` | how far Wolfi is from a desktop profile, in recipes to own |
+
+## License
+
+Apache License 2.0 (`LICENSE`), but for `kernel/patches/`: patches to Linux, GPL-2.0 as Linux
+is, each with its author in its header. The packages the recipes build and the image ships keep
+their own licenses, which each recipe names. Security issues go privately, as `SECURITY.md` says.
