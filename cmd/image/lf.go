@@ -455,7 +455,7 @@ func (l *lf) px(r pixels.Rect) pixels.Rect {
 
 // view runs the checks that measure the view just shot.
 func (l *lf) view(name string) {
-	if l == nil || !l.ok {
+	if !l.ok {
 		return
 	}
 	l.cur = name
@@ -1343,7 +1343,7 @@ type lockErrorSeen struct {
 // message for a while and then clears it, so it is read before the view's screenshot, and judged
 // once the view is shot (lockErrorCheck, from view), where its checks count towards it.
 func (l *lf) measureLockError() {
-	if l == nil || !l.ok {
+	if !l.ok {
 		return
 	}
 	var s lockErrorSeen
@@ -1392,7 +1392,7 @@ func (l *lf) gtkFocus(name string, img image.Image) {
 // button a step before: the step reads - another colour - and is a colour C1 allows, the
 // palette's or an ink over one.
 func (l *lf) buttonState(name, ref string, btn pixels.Rect) {
-	if l == nil || !l.ok {
+	if !l.ok {
 		return
 	}
 	img, ok := l.img(name)
@@ -1483,7 +1483,7 @@ func (l *lf) appWindow(id string) (pixels.Rect, error) {
 // app checks the apps outside GTK that take the desktop's surfaces: Ghostty and VS Code on g and
 // f, Chrome off its own dark grey. Firefox's form controls are checked on a page of their own.
 func (l *lf) app(id, shot string) {
-	if l == nil || !l.ok {
+	if !l.ok {
 		return
 	}
 	switch id {
@@ -1603,7 +1603,7 @@ func (l *lf) firefoxAccent(img image.Image, win pixels.Rect) {
 
 // finish checks what spans views: the boot's mark where the overview's card puts it.
 func (l *lf) finish() {
-	if l == nil || !l.ok || l.bootMark == nil || l.cardMark == nil {
+	if !l.ok || l.bootMark == nil || l.cardMark == nil {
 		return
 	}
 	l.cur = ""
@@ -1618,7 +1618,7 @@ func (l *lf) finish() {
 // maximized is S3's last clause on a window that fills the work area: it keeps neither its corner's
 // radius nor the outer ring.
 func (l *lf) maximized(id, shot string) {
-	if l == nil || !l.ok {
+	if !l.ok {
 		return
 	}
 	l.cur = shot
@@ -1647,7 +1647,7 @@ func (l *lf) square(img image.Image, r pixels.Rect) {
 // guestLook is the checks on the guest itself: the shell's CSS as the running shell loaded it,
 // the theme's resources, the fonts and settings, and the files other parts install.
 func (l *lf) guestLook() {
-	if l == nil || !l.ok {
+	if !l.ok {
 		return
 	}
 	l.cur = ""
