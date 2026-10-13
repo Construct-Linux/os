@@ -330,7 +330,7 @@ tasks:
       - go run ./cmd/image lifecycle
 
   gap:
-    desc: How far Wolfi is from each desktop profile.
+    desc: How far Wolfi is from GNOME's desktop, in recipes CONSTRUCT would own.
     cmds:
       - go run ./cmd/gap
 

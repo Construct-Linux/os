@@ -133,7 +133,7 @@ rolls back from a broken release. `AGENTS.md` says what each change needs.
 | `cmd/construct` | `install`, `disks` and `boot-check` on the machine |
 | `image/rootfs/usr/bin/construct-installer` | the graphical installer: a libadwaita front-end to `construct install --json` |
 | `internal/` | GPT, and installing a signed release |
-| `cmd/gap` | how far Wolfi is from a desktop profile, in recipes to own |
+| `cmd/gap` | how far Wolfi is from GNOME's desktop, in recipes to own |
 
 ## License
 

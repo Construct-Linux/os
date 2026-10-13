@@ -1,5 +1,5 @@
-// Command gap measures how far Wolfi is from a desktop: it takes the runtime dependency closure
-// of each desktop profile from Alpine edge (whose packaging is the closest to Wolfi's), and
+// Command gap measures how far Wolfi is from CONSTRUCT's desktop: it takes the runtime dependency
+// closure of GNOME's desktop from Alpine edge (whose packaging is the closest to Wolfi's), and
 // reports, per source package, what Wolfi publishes today, what it publishes but stopped
 // building, and what it lacks. A missing source package is a melange recipe we would own.
 package main
@@ -26,7 +26,7 @@ const (
 	alpineComm = "https://dl-cdn.alpinelinux.org/alpine/edge/community/x86_64/APKINDEX.tar.gz"
 )
 
-// plumbing is what any desktop on this machine needs below the session: graphics, input,
+// plumbing is what a desktop on this machine needs below the session: graphics, input,
 // audio, network, bluetooth, apps from Flathub, firmware updates, power.
 var plumbing = []string{
 	"mesa-dri-gallium", "mesa-vulkan-intel", "intel-media-driver", "libinput", "xwayland",
@@ -36,25 +36,12 @@ var plumbing = []string{
 	"font-noto", "font-noto-emoji",
 }
 
-var profiles = map[string][]string{
-	"plumbing": plumbing,
-	"gnome": append([]string{
-		"gdm", "gnome-shell", "gnome-session", "gnome-settings-daemon", "gnome-control-center",
-		"nautilus", "ptyxis", "xdg-desktop-portal-gnome", "gnome-keyring", "gvfs",
-	}, plumbing...),
-	"sway": append([]string{
-		"sway", "swaybg", "swayidle", "swaylock", "waybar", "foot", "fuzzel", "mako",
-		"greetd", "greetd-tuigreet", "xdg-desktop-portal-wlr", "xdg-desktop-portal-gtk",
-	}, plumbing...),
-	"niri": append([]string{
-		"niri", "swaybg", "swayidle", "swaylock", "waybar", "foot", "fuzzel", "mako",
-		"greetd", "greetd-tuigreet", "xdg-desktop-portal-gnome", "xdg-desktop-portal-gtk",
-	}, plumbing...),
-	"plasma": append([]string{
-		"plasma-desktop", "plasma-workspace", "kwin", "sddm", "konsole", "dolphin",
-		"xdg-desktop-portal-kde", "plasma-nm", "plasma-pa", "powerdevil", "bluedevil",
-	}, plumbing...),
-}
+// desktop is what CONSTRUCT's desktop asks of a distribution: GNOME's session and core, over the
+// plumbing.
+var desktop = append([]string{
+	"gdm", "gnome-shell", "gnome-session", "gnome-settings-daemon", "gnome-control-center",
+	"nautilus", "ptyxis", "xdg-desktop-portal-gnome", "gnome-keyring", "gvfs",
+}, plumbing...)
 
 // replaced are Alpine packages Wolfi answers with another: Alpine runs OpenRC and elogind
 // on musl, Wolfi systemd on glibc.
@@ -93,8 +80,11 @@ func load(urls ...string) (*index, error) {
 	return ix, nil
 }
 
+// client gives up on an index that stalls: a CDN that stops answering would hang task gap.
+var client = &http.Client{Timeout: 2 * time.Minute}
+
 func (ix *index) read(url string) error {
-	resp, err := http.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		return err
 	}
@@ -249,7 +239,6 @@ func (w wolfi) find(p pkg) (pkg, bool) {
 
 func main() {
 	stale := flag.Duration("stale", 180*24*time.Hour, "a Wolfi package not rebuilt for this long counts as abandoned")
-	only := flag.String("profile", "", "report one profile (default: all)")
 	flag.Parse()
 
 	alp, err := load(alpineMain, alpineComm)
@@ -271,54 +260,45 @@ func main() {
 		}
 	}
 
-	names := make([]string, 0, len(profiles))
-	for n := range profiles {
-		if *only == "" || n == *only {
-			names = append(names, n)
-		}
-	}
-	slices.Sort(names)
 	now := time.Now()
-	for _, n := range names {
-		set, unresolved := alp.closure(profiles[n])
-		// One row per Alpine origin: a source package is one recipe, however many subpackages.
-		type row struct {
-			origin string
-			wolfi  pkg
-			found  bool
-		}
-		rows := map[string]*row{}
-		for _, p := range set {
-			r, ok := rows[p.origin]
-			if !ok {
-				r = &row{origin: p.origin}
-				rows[p.origin] = r
-			}
-			if q, ok := w.find(p); ok && (!r.found || q.built.After(r.wolfi.built)) {
-				r.wolfi, r.found = q, true
-			}
-		}
-		var have, old, missing []string
-		for _, r := range rows {
-			switch {
-			case !r.found:
-				missing = append(missing, r.origin)
-			case now.Sub(r.wolfi.built) > *stale:
-				old = append(old, fmt.Sprintf("%s(%s %s)", r.origin, r.wolfi.version, r.wolfi.built.Format("2006-01")))
-			default:
-				have = append(have, r.origin)
-			}
-		}
-		slices.Sort(missing)
-		slices.Sort(old)
-		slices.Sort(unresolved)
-		fmt.Printf("== %s: %d packages from %d source packages\n", n, len(set), len(rows))
-		fmt.Printf("   in Wolfi and maintained: %d\n", len(have))
-		fmt.Printf("   in Wolfi, not rebuilt for %v: %d\n     %s\n", *stale, len(old), strings.Join(old, " "))
-		fmt.Printf("   not in Wolfi (recipes to own): %d\n     %s\n", len(missing), strings.Join(missing, " "))
-		if len(unresolved) > 0 {
-			fmt.Printf("   unresolved in Alpine: %s\n", strings.Join(slices.Compact(unresolved), " "))
-		}
-		fmt.Println()
+	set, unresolved := alp.closure(desktop)
+	// One row per Alpine origin: a source package is one recipe, however many subpackages.
+	type row struct {
+		origin string
+		wolfi  pkg
+		found  bool
 	}
+	rows := map[string]*row{}
+	for _, p := range set {
+		r, ok := rows[p.origin]
+		if !ok {
+			r = &row{origin: p.origin}
+			rows[p.origin] = r
+		}
+		if q, ok := w.find(p); ok && (!r.found || q.built.After(r.wolfi.built)) {
+			r.wolfi, r.found = q, true
+		}
+	}
+	var have, old, missing []string
+	for _, r := range rows {
+		switch {
+		case !r.found:
+			missing = append(missing, r.origin)
+		case now.Sub(r.wolfi.built) > *stale:
+			old = append(old, fmt.Sprintf("%s(%s %s)", r.origin, r.wolfi.version, r.wolfi.built.Format("2006-01")))
+		default:
+			have = append(have, r.origin)
+		}
+	}
+	slices.Sort(missing)
+	slices.Sort(old)
+	slices.Sort(unresolved)
+	fmt.Printf("== GNOME: %d packages from %d source packages\n", len(set), len(rows))
+	fmt.Printf("   in Wolfi and maintained: %d\n", len(have))
+	fmt.Printf("   in Wolfi, not rebuilt for %v: %d\n     %s\n", *stale, len(old), strings.Join(old, " "))
+	fmt.Printf("   not in Wolfi (recipes to own): %d\n     %s\n", len(missing), strings.Join(missing, " "))
+	if len(unresolved) > 0 {
+		fmt.Printf("   unresolved in Alpine: %s\n", strings.Join(slices.Compact(unresolved), " "))
+	}
+	fmt.Println()
 }
