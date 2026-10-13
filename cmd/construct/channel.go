@@ -9,6 +9,8 @@ import (
 	"slices"
 	"sort"
 	"strings"
+
+	"github.com/Construct-Linux/os/internal/fsx"
 )
 
 // A machine follows a channel: stable, the default sysupdate component (usr/lib/sysupdate.d), or
@@ -46,12 +48,11 @@ func channelCmd(args []string, w io.Writer, root string) error {
 			return err
 		}
 	} else {
-		if err := os.MkdirAll(filepath.Dir(file), 0o755); err != nil {
-			return err
-		}
+		// construct-update.service reads it at every check: one cut short by a power cut would
+		// have the machine follow stable without a word.
 		body := "# Written by construct channel: the channel construct-update.service follows.\n" +
 			"SYSUPDATE_COMPONENT=--component=" + ch + "\n"
-		if err := os.WriteFile(file, []byte(body), 0o644); err != nil {
+		if err := fsx.WriteFile(file, []byte(body), 0o644); err != nil {
 			return err
 		}
 	}
