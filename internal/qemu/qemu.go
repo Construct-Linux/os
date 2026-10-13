@@ -158,12 +158,13 @@ func (m Machine) Start() (*VM, error) {
 		args = append(args, "-smbios", "type=11,value=io.systemd.stub.kernel-cmdline-extra="+strings.Join(m.Cmdline, " "))
 	}
 	inContainer := harnessBuilt(m.Window)
+	stopTPM := func() {}
 	if m.TPM != "" {
 		// The harness's QEMU starts swtpm beside it (build/qemu/qemu.sh); the host's needs one here.
 		sock := filepath.Join(m.TPM, "swtpm.sock")
 		if !inContainer {
 			var err error
-			if sock, err = startTPM(m.TPM); err != nil {
+			if sock, stopTPM, err = startTPM(m.TPM); err != nil {
 				return nil, err
 			}
 		}
@@ -173,6 +174,8 @@ func (m Machine) Start() (*VM, error) {
 	cmd := command(inContainer, m.TPM, args...)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
+		// swtpm ends with the QEMU that connects to it (--terminate), and none will.
+		stopTPM()
 		return nil, err
 	}
 	return &VM{cmd: cmd, QMP: qmp, CID: cid}, nil
@@ -189,27 +192,34 @@ func (m Machine) gpu() string {
 }
 
 // startTPM starts swtpm, a TPM 2.0 keeping its state in dir, and answers the socket QEMU connects
-// to; it ends when QEMU does (--terminate).
-func startTPM(dir string) (string, error) {
+// to and how to stop it. It ends when QEMU does (--terminate), so only a QEMU that never connects
+// needs stop: swtpm would otherwise wait for it until the harness exits.
+func startTPM(dir string) (sock string, stop func(), err error) {
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return "", err
+		return "", nil, err
 	}
-	sock := filepath.Join(dir, "swtpm.sock")
+	sock = filepath.Join(dir, "swtpm.sock")
 	_ = os.Remove(sock)
 	cmd := exec.Command("swtpm", "socket", "--tpm2", "--tpmstate", "dir="+dir,
 		"--ctrl", "type=unixio,path="+sock, "--terminate")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 	if err := cmd.Start(); err != nil {
-		return "", fmt.Errorf("swtpm: %w", err)
+		return "", nil, fmt.Errorf("swtpm: %w", err)
 	}
-	go func() { _ = cmd.Wait() }()
+	done := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(done) }()
+	stop = func() {
+		_ = cmd.Process.Kill() // fails only when it already ended
+		<-done
+	}
 	for range 100 {
 		if _, err := os.Stat(sock); err == nil {
-			return sock, nil
+			return sock, stop, nil
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
-	return "", fmt.Errorf("swtpm made no socket at %s", sock)
+	stop()
+	return "", nil, fmt.Errorf("swtpm made no socket at %s", sock)
 }
 
 // FreshVars writes a variable store as the firmware ships it at vars: no boot entries.
