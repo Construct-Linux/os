@@ -10,6 +10,7 @@ require (
 	github.com/foxboron/go-uefi v0.0.0-20261004203234-c7f1f57bdc6e
 	github.com/openwall/yescrypt-go v1.0.0
 	github.com/ulikunitz/xz v0.5.17
+	go.uber.org/goleak v1.3.0
 	golang.org/x/crypto v0.57.0
 	golang.org/x/image v0.46.0
 	golang.org/x/sys v0.48.0
