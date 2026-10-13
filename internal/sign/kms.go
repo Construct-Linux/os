@@ -29,9 +29,9 @@ type kmsSigner struct {
 	pub crypto.PublicKey
 }
 
-// OpenKMS is the signer for the KMS key id (a key ID, ARN or alias/...), with the credentials and
+// openKMS is the signer for the KMS key id (a key ID, ARN or alias/...), with the credentials and
 // region the environment gives (on the builder, its instance role and AWS_REGION).
-func OpenKMS(ctx context.Context, id string) (crypto.Signer, error) {
+func openKMS(ctx context.Context, id string) (crypto.Signer, error) {
 	cfg, err := config.LoadDefaultConfig(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("sign: AWS configuration: %w", err)
@@ -51,7 +51,7 @@ func newKMSSigner(ctx context.Context, api kmsAPI, id string) (*kmsSigner, error
 	if err != nil {
 		return nil, fmt.Errorf("sign: the public key of %s: %w", id, err)
 	}
-	if err := Allowed(pub); err != nil {
+	if err := allowed(pub); err != nil {
 		return nil, fmt.Errorf("%w (%s)", err, id)
 	}
 	return &kmsSigner{ctx: ctx, api: api, id: id, pub: pub}, nil

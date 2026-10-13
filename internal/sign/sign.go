@@ -25,16 +25,16 @@ const kmsPrefix = "kms:"
 // Open is the signer ref names.
 func Open(ctx context.Context, ref string) (crypto.Signer, error) {
 	if id, ok := strings.CutPrefix(ref, kmsPrefix); ok {
-		return OpenKMS(ctx, id)
+		return openKMS(ctx, id)
 	}
-	return OpenFile(ref)
+	return openFile(ref)
 }
 
 // IsKMS is whether ref names a KMS key.
 func IsKMS(ref string) bool { return strings.HasPrefix(ref, kmsPrefix) }
 
-// OpenFile is the private key in a PEM file: PKCS #8, or PKCS #1 for RSA (openssl's older form).
-func OpenFile(path string) (crypto.Signer, error) {
+// openFile is the private key in a PEM file: PKCS #8, or PKCS #1 for RSA (openssl's older form).
+func openFile(path string) (crypto.Signer, error) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -59,12 +59,12 @@ func OpenFile(path string) (crypto.Signer, error) {
 	if !ok {
 		return nil, fmt.Errorf("sign: %s: a %T cannot sign", path, key)
 	}
-	return s, Allowed(s.Public())
+	return s, allowed(s.Public())
 }
 
-// Allowed refuses a key of a kind the repository does not sign with: Ed25519, and RSA of 2048
+// allowed refuses a key of a kind the repository does not sign with: Ed25519, and RSA of 2048
 // bits, the one size a TPM and UEFI firmware both verify.
-func Allowed(pub crypto.PublicKey) error {
+func allowed(pub crypto.PublicKey) error {
 	switch k := pub.(type) {
 	case ed25519.PublicKey:
 		return nil
