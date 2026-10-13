@@ -127,15 +127,15 @@ type InstallOptions struct {
 // its digests, labelled with its version only once both are; slot B is left Empty for
 // systemd-sysupdate's first update, the ESP gets systemd-boot and the
 // release's kernel image, blessed - a fresh install is known good, there is nothing to fall back
-// to - /var is made by o.MakeVar, and the firmware boots the disk first. It answers the table written.
-func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
+// to - /var is made by o.MakeVar, and the firmware boots the disk first.
+func Install(ctx context.Context, o InstallOptions) error {
 	r, fetch, err := newest(ctx, o.Source, o.Keys)
 	if err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	lay, err := layout(r, o.Disk.Size, o.VarUUID, o.UUID)
 	if err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	table := lay.table
 	log := o.Log.With("disk", o.Disk.Path(), "version", r.Version)
@@ -149,10 +149,10 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	}
 	log.Info("writing the partition table")
 	if err := gpt.Write(d, o.Disk.Size, writing); err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	if err := d.Sync(); err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	for _, w := range []struct {
 		part gpt.Partition
@@ -160,41 +160,41 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 	}{{lay.root, r.Root}, {lay.verity, r.Verity}} {
 		log.Info("writing slot A", "file", w.file.Name)
 		if err := writePartition(ctx, d, w.part, w.file, fetch, o.Progress); err != nil {
-			return gpt.Table{}, err
+			return err
 		}
 	}
 	if err := d.Sync(); err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	// Slot A is checked: the table again, now with its labels.
 	if err := gpt.Write(d, o.Disk.Size, table); err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	if err := d.Sync(); err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	if err := o.Reread(); err != nil {
-		return gpt.Table{}, fmt.Errorf("install: the kernel reading the new table: %w", err)
+		return fmt.Errorf("install: the kernel reading the new table: %w", err)
 	}
 	esp, err := o.Partition(lay.esp.Number)
 	if err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	vardev, err := o.Partition(lay.varPart.Number)
 	if err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	log.Info("making the ESP")
 	if err := o.Run(ctx, "mkfs.vfat", "-F", "32", "-n", "ESP", esp); err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	log.Info("making /var")
 	if err := o.MakeVar(ctx, vardev); err != nil {
-		return gpt.Table{}, fmt.Errorf("install: making /var: %w", err)
+		return fmt.Errorf("install: making /var: %w", err)
 	}
 	dir, unmount, err := o.MountESP(ctx, esp)
 	if err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	err = layESP(ctx, dir, o.BootFrom, r, fetch)
 	if err == nil {
@@ -204,14 +204,14 @@ func Install(ctx context.Context, o InstallOptions) (gpt.Table, error) {
 		err = uerr
 	}
 	if err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	n, err := bootEntry(o.Vars, lay.esp)
 	if err != nil {
-		return gpt.Table{}, err
+		return err
 	}
 	log.Info("installed: the firmware boots the disk first", "entry", fmt.Sprintf("Boot%04X", n))
-	return table, nil
+	return nil
 }
 
 // loaderConf is systemd-boot's configuration on the installed ESP: three seconds to choose another

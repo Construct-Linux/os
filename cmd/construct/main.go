@@ -273,7 +273,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		return err
 	}
 	var recovery string
-	_, err = update.Install(ctx, update.InstallOptions{
+	err = update.Install(ctx, update.InstallOptions{
 		Keys: keys, Source: release, Disk: disk, Device: dev,
 		// BLKRRPART, which every partitioning tool asks.
 		Reread: func() error { return unix.IoctlSetInt(int(dev.Fd()), unix.BLKRRPART, 0) },

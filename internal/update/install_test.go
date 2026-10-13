@@ -78,14 +78,19 @@ func (in *installer) options(t *testing.T, source string, size int64) InstallOpt
 func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 	in := newInstaller(t, installSize)
 	dir, body := release(t, "20261001.134321", newRoot, newVerity, signer(), 0xb)
-	table, err := Install(t.Context(), in.options(t, dir, installSize))
-	if err != nil {
+	o := in.options(t, dir, installSize)
+	if err := Install(t.Context(), o); err != nil {
 		t.Fatal(err)
 	}
+	// The layout of the same release with the same GUIDs, numbered: what the disk must hold now.
+	r, _, err := newest(t.Context(), dir, o.Keys)
+	must(t, err)
+	laid, err := layout(r, installSize, testVarUUID, in.options(t, dir, installSize).UUID)
+	must(t, err)
 	read, err := gpt.Read(in.disk)
 	must(t, err)
-	if !reflect.DeepEqual(read, table) {
-		t.Errorf("the disk's table is %+v, not the one written", read)
+	if !reflect.DeepEqual(read, laid.table) {
+		t.Errorf("the disk's table is %+v, not the layout's %+v", read, laid.table)
 	}
 	label := ImageID + "_20261001.134321"
 	var got []string
@@ -131,7 +136,7 @@ func TestASmallDiskIsRefused(t *testing.T) {
 	const small = 20 << 30
 	in := newInstaller(t, small)
 	dir, _ := release(t, "20261001.134321", newRoot, newVerity, signer(), 0xb)
-	if _, err := Install(t.Context(), in.options(t, dir, small)); err == nil || !strings.Contains(err.Error(), "needs") {
+	if err := Install(t.Context(), in.options(t, dir, small)); err == nil || !strings.Contains(err.Error(), "needs") {
 		t.Fatalf("err = %v", err)
 	}
 	head := make([]byte, 1<<20)
@@ -146,7 +151,7 @@ func TestASmallDiskIsRefused(t *testing.T) {
 func TestAnInstallOfAnotherKeysReleaseWritesNothing(t *testing.T) {
 	in := newInstaller(t, installSize)
 	dir, _ := release(t, "20261001.134321", newRoot, newVerity, otherKey(), 0xb)
-	if _, err := Install(t.Context(), in.options(t, dir, installSize)); err == nil {
+	if err := Install(t.Context(), in.options(t, dir, installSize)); err == nil {
 		t.Fatal("another key's release was installed")
 	}
 	head := make([]byte, 1<<20)
@@ -168,7 +173,7 @@ func TestAnInstallOfAChangedRootLeavesSlotAEmpty(t *testing.T) {
 	_, err = f.WriteAt([]byte{0xff}, 100)
 	must(t, err)
 	must(t, f.Close())
-	if _, err := Install(t.Context(), in.options(t, dir, installSize)); err == nil {
+	if err := Install(t.Context(), in.options(t, dir, installSize)); err == nil {
 		t.Fatal("a changed root was installed")
 	}
 	read, err := gpt.Read(in.disk)
