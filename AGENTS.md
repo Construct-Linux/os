@@ -213,7 +213,7 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 
 ## Where to look next
 
-AutoFDO/Propeller profiles recorded on the NucBox; boot time measured on the NucBox itself
+AutoFDO/Propeller profiles recorded on real hardware; boot time measured on real hardware
 (every report's `boot.txt` has the VM's: an installed disk 8.0 s, of it the initrd 1.6 s; the
 stick 13.1 s, most of it GDM's first frame over emulated USB); the initrd's size (31 MB
 compressed, after its PAM and NSS modules, network daemons, LVM and OpenSSL 3 went; Wolfi's lvm2

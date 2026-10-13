@@ -51,8 +51,8 @@ pipeline:
 
   # mtp (Android phones, recipes/libmtp) and gphoto2 (cameras) show what
   # is plugged in by USB in Files. afc (iPhones) needs libimobiledevice,
-  # cdda, nfs and bluray need libraries Wolfi has not, and the NucBox has
-  # no optical drive; onedrive needs msgraph, not in Wolfi. The private
+  # cdda, nfs and bluray need libraries Wolfi has not, and few PCs still
+  # have an optical drive; onedrive needs msgraph, not in Wolfi. The private
   # libexecdir keeps the many gvfsd-* helpers out of /usr/libexec. wsdd
   # (Windows machines in Files' Network) runs the wsdd daemon, which the
   # image does not have, and its WS-Discovery answers come to port 3702

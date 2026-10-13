@@ -1,5 +1,5 @@
 # VA-API for Intel GPUs from Broadwell on: the iHD driver libva loads to decode and encode video
-# on the GPU. Without it the NucBox's Iris Xe decodes H.264, HEVC, VP9 and AV1 on the CPU cores
+# on the GPU. Without it an Iris Xe decodes H.264, HEVC, VP9 and AV1 on the CPU cores
 # (mesa's VA drivers are AMD's and virtio's). Wolfi has no recipe. Built as upstream ships it, its
 # shader kernels included (Arch's choice; Fedora's "free" build drops encoders that need them).
 package:

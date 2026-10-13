@@ -1,7 +1,7 @@
 # Wolfi's bluez, with systemd. Wolfi builds it --disable-systemd: no bluetooth.service and no
 # org.bluez D-Bus activation file, so nothing could start bluetoothd - not bluetooth.target, not
-# the bus - and the desktop had no Bluetooth (the NucBox's AX201 has it). Wolfi's test blocks are
-# dropped (their pipelines are Wolfi CI's); the rest is Wolfi's recipe as it is.
+# the bus - and the desktop had no Bluetooth (Intel's AX201, common in PCs, has it). Wolfi's test
+# blocks are dropped (their pipelines are Wolfi CI's); the rest is Wolfi's recipe as it is.
 # Generated from https://git.alpinelinux.org/aports/plain/main/bluez/APKBUILD
 package:
   name: bluez

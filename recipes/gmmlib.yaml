@@ -1,5 +1,5 @@
 # Intel's graphics memory management library, which the media driver lays out surfaces with.
-# Wolfi has neither; both are what VA-API needs on the NucBox's Iris Xe (recipes/intel-media-driver).
+# Wolfi has neither; both are what VA-API needs on Intel's Iris Xe (recipes/intel-media-driver).
 package:
   name: gmmlib
   version: 22.10.2
