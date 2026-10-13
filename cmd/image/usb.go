@@ -386,6 +386,9 @@ func bake(root, version string) error {
 	if err := rootLocked(root); err != nil {
 		return err
 	}
+	if err := exitrd(root); err != nil {
+		return err
+	}
 	// The image's account files as they are, which an install starts a person's /etc from
 	// (internal/account): the /etc it writes into has none of its own yet.
 	factory := filepath.Join(root, "usr/share/factory/etc")

@@ -40,6 +40,9 @@ contents:
     # gpg it checks a release's SHA256SUMS.gpg with.
     - systemd-sysupdate
     - gpg
+    # The exitrd's shutdown (cmd/image exitrd.go, tmpfiles.d/construct-exitrd.conf): systemd-shutdown
+    # with libsystemd-shared built in, so it runs from /run/initramfs once the root is gone.
+    - systemd-shutdown-standalone
     # The TPM2 stack (libtss2-*), which systemd (recipes/systemd, built with TPM2) loads at run time,
     # so nothing depends on it: construct install enrolls /var's key with systemd-cryptenroll.
     - tpm2-tss

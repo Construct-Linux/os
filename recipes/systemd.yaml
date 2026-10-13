@@ -8,12 +8,15 @@
 # - FIDO2: Wolfi builds without libfido2, so systemd-cryptenroll cannot enrol a security key and
 #   systemd-cryptsetup has no token to open /var with one (touch and the key's PIN). libfido2 is
 #   opened at run time: the root and the initrd install it themselves.
+# - systemd-shutdown-standalone keeps upstream's name, systemd-shutdown.standalone, beside the
+#   shared systemd-shutdown (Wolfi puts it in its place, so the two cannot be installed together):
+#   the root copies it into /run/initramfs as the exitrd's shutdown (tmpfiles.d/construct-exitrd.conf).
 # Everything else is Wolfi's, but for the aarch64-only patch (we build x86_64) and the package
 # tests, which use Wolfi's own test pipelines and which melange build does not run.
 package:
   name: systemd
   version: "261.3"
-  epoch: 6
+  epoch: 7
   description: The systemd System and Service Manager
   copyright:
     - license: LGPL-2.1-or-later AND GPL-2.0-or-later
@@ -216,7 +219,7 @@ subpackages:
     pipeline:
       - runs: |
           mkdir -p ${{targets.subpkgdir}}/usr/lib/systemd
-          mv ${{targets.destdir}}/usr/lib/systemd/systemd-shutdown.standalone ${{targets.subpkgdir}}/usr/lib/systemd/systemd-shutdown
+          mv ${{targets.destdir}}/usr/lib/systemd/systemd-shutdown.standalone ${{targets.subpkgdir}}/usr/lib/systemd/systemd-shutdown.standalone
     dependencies:
       runtime:
         - merged-lib
