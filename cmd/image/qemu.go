@@ -17,18 +17,13 @@ func boot(args []string) error {
 	mem := fl.String("m", "4G", "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk by UEFI from a stick, as a machine does")
 	shots := fl.Int("shots", 0, "take this many screenshots, one a second from the start, into _output/boot/, then stop")
-	scale := fl.Int("scale", 2, "2: the X9-15's 2880x1800 panel; 1: 1280x800")
 	_ = fl.Parse(args)
 
-	sc, err := screenFor(*scale)
-	if err != nil {
-		return err
-	}
 	m, err := testMachine(*mem, "", *stick)
 	if err != nil {
 		return err
 	}
-	m.Width, m.Height = sc.W, sc.H
+	m.Width, m.Height = screenX9.W, screenX9.H
 	v, err := m.Start()
 	if err != nil {
 		return err

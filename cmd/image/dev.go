@@ -48,12 +48,8 @@ const devCID = qemu.DefaultCID + 1
 func devUp(args []string) error {
 	fl := flag.NewFlagSet("dev-up", flag.ExitOnError)
 	mem := fl.String("m", vmMemory, "memory")
-	scale := fl.Int("scale", 2, "2: the X9-15's 2880x1800 panel at 200%; 1: 1280x800 at 100%")
 	_ = fl.Parse(args)
-	sc, err := screenFor(*scale)
-	if err != nil {
-		return err
-	}
+	sc := screenX9
 	_, pub, err := testKey()
 	if err != nil {
 		return err

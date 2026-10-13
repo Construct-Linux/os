@@ -11,25 +11,10 @@ import (
 // screen is the harness's display: its panel in physical pixels and the session's scale on it.
 // The machine Construct is drawn for is the ThinkPad X9-15, a 2880x1800 panel at 15.3" (about
 // 222 dpi), which GNOME runs at 200%, 1440x900 logical, as a MacBook Pro runs its Retina panel:
-// at 1x every view is soft whatever the theme does, and a review on a 2x screen sees it. 1x is
-// QEMU's virtio-vga default, kept for a run that wants the old geometry.
+// at 1x every view is soft whatever the theme does, and a review on a 2x screen sees it.
 type screen struct{ W, H, Scale int }
 
-var (
-	screenX9 = screen{2880, 1800, 2}
-	screen1x = screen{1280, 800, 1}
-)
-
-// screenFor is the screen a -scale flag asks for.
-func screenFor(scale int) (screen, error) {
-	switch scale {
-	case 2:
-		return screenX9, nil
-	case 1:
-		return screen1x, nil
-	}
-	return screen{}, fmt.Errorf("-scale %d: 2 (the X9-15's 2880x1800 at 200%%) or 1 (1280x800)", scale)
-}
+var screenX9 = screen{2880, 1800, 2}
 
 // logical is the session's stage: the panel over its scale.
 func (s screen) logical() (int, int) { return s.W / s.Scale, s.H / s.Scale }

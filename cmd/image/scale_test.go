@@ -6,21 +6,10 @@ import (
 	"github.com/Construct-Linux/os/internal/needle"
 )
 
-// The X9-15's panel at 200% is 1440x900 logical, and QEMU is asked for exactly that panel; 1x is
-// 1280x800, and nothing else is a screen.
-func TestScreenFor(t *testing.T) {
-	s, err := screenFor(2)
-	if err != nil || s != screenX9 {
-		t.Fatalf("2: %+v %v", s, err)
-	}
-	if w, h := s.logical(); w != 1440 || h != 900 {
+// The X9-15's panel at 200% is 1440x900 logical.
+func TestScreen(t *testing.T) {
+	if w, h := screenX9.logical(); w != 1440 || h != 900 {
 		t.Errorf("logical %dx%d", w, h)
-	}
-	if s, err := screenFor(1); err != nil || s != screen1x {
-		t.Errorf("1: %+v %v", s, err)
-	}
-	if _, err := screenFor(3); err == nil {
-		t.Error("-scale 3 accepted")
 	}
 }
 

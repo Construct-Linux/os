@@ -70,12 +70,8 @@ func test(args []string) error {
 	mem := fl.String("m", vmMemory, "memory")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	needles := fl.String("needles", "", "a checkout of github.com/Construct-Linux/needles: every screenshot is compared with its needle")
-	scale := fl.Int("scale", 2, "2: the X9-15's 2880x1800 panel at 200%; 1: 1280x800 at 100%")
 	_ = fl.Parse(args)
-	sc, err := screenFor(*scale)
-	if err != nil {
-		return err
-	}
+	sc := screenX9
 
 	dir := filepath.Join(out, "test")
 	_ = os.RemoveAll(dir)
