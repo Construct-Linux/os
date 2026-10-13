@@ -877,7 +877,13 @@ func pipeline(dir, dst string, stdin []byte, cmds ...[]string) error {
 	defer out.Close()
 	procs := make([]*exec.Cmd, len(cmds))
 	var in io.Reader = bytes.NewReader(stdin)
+	// Once the children hold the pipes, ours would keep a reader waiting for an end that never came.
 	var closeAfterStart []*os.File
+	closePipes := func() {
+		for _, f := range closeAfterStart {
+			_ = f.Close()
+		}
+	}
 	for i, c := range cmds {
 		cmd := exec.Command(c[0], c[1:]...)
 		cmd.Dir, cmd.Stdin, cmd.Stderr = dir, in, os.Stderr
@@ -886,6 +892,7 @@ func pipeline(dir, dst string, stdin []byte, cmds ...[]string) error {
 		} else {
 			r, w, err := os.Pipe()
 			if err != nil {
+				closePipes()
 				return err
 			}
 			cmd.Stdout, in = w, r
@@ -893,15 +900,18 @@ func pipeline(dir, dst string, stdin []byte, cmds ...[]string) error {
 		}
 		procs[i] = cmd
 	}
-	for _, cmd := range procs {
+	for i, cmd := range procs {
 		if err := cmd.Start(); err != nil {
+			// Those already started see their pipes end and stop: waited for, none is left running
+			// on a release's files after pipeline has failed.
+			closePipes()
+			for _, started := range procs[:i] {
+				_ = started.Wait()
+			}
 			return fmt.Errorf("%s: %w", cmd.Args[0], err)
 		}
 	}
-	// The children hold the pipes now; ours would keep a reader waiting for an end that never came.
-	for _, f := range closeAfterStart {
-		_ = f.Close()
-	}
+	closePipes()
 	var errs []error
 	for _, cmd := range procs {
 		if err := cmd.Wait(); err != nil {
