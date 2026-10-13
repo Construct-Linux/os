@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -131,9 +132,50 @@ func TestChangedRecipesBumpVersionOrEpoch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if was.apk() == now.apk() {
+		text, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if was.apk() == now.apk() && withoutComments(old) != withoutComments(string(text)) {
 			t.Errorf("recipes/%s changed since %.12s but still makes %s: raise its epoch", name, base, now.apk())
 		}
+	}
+}
+
+// withoutComments is a recipe without its blank lines and the lines that are only a comment, so
+// a recipe whose comments alone changed builds what it built. A # inside a block scalar (a
+// pipeline's runs: |) is the block's own text, which may land in a package, and stays.
+func withoutComments(recipe string) string {
+	var out []string
+	block := -1 // the indent of the line that opened a block scalar, or -1 outside one
+	for _, line := range strings.Split(recipe, "\n") {
+		trimmed := strings.TrimSpace(line)
+		indent := len(line) - len(strings.TrimLeft(line, " "))
+		if block >= 0 && (trimmed == "" || indent > block) {
+			out = append(out, line)
+			continue
+		}
+		block = -1
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if blockScalar.MatchString(trimmed) {
+			block = indent
+		}
+		out = append(out, line)
+	}
+	return strings.Join(out, "\n")
+}
+
+var blockScalar = regexp.MustCompile(`(^-|:)\s*[|>][-+0-9]*$`)
+
+func TestWithoutComments(t *testing.T) {
+	was := "# old header\npackage:\n  name: x\n  # old\npipeline:\n  - runs: |\n      # kept\n      make\n"
+	if got := withoutComments("# new header\n\npackage:\n  name: x\npipeline:\n  - runs: |\n      # kept\n      make\n"); got != withoutComments(was) {
+		t.Errorf("only the comments outside block scalars changed, yet %q differs from %q", got, withoutComments(was))
+	}
+	if withoutComments(strings.Replace(was, "# kept", "# changed", 1)) == withoutComments(was) {
+		t.Error("a # line inside a block scalar is the block's text, and a change to it is a change")
 	}
 }
 
