@@ -13,8 +13,9 @@ import (
 	"time"
 )
 
-// finding is something worth an issue: a security fix, or a big upstream change. Routine updates
-// are never findings - Wolfi's rebuilds and point releases are what a release picks up anyway.
+// finding is something worth an issue: a security fix, a big upstream change, or a newer version
+// of something the repository pins. What a release picks up by itself - Wolfi's rebuilds, its
+// packages' point releases - is never one.
 type finding struct {
 	// key names the finding across runs: the issue carries it as a hidden marker, so a later run
 	// finds the issue again. Its first part is the check's: security:openssl, kernel.

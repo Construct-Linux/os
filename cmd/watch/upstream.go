@@ -97,13 +97,13 @@ func (s series) newer(o series) bool {
 	return s.major > o.major || (s.major == o.major && s.minor > o.minor)
 }
 
-// kernelCheck compares the pinned kernel's series with kernel.org's: a newer stable or longterm
-// series, or the pinned one at its end of life, is an issue; a point release of the pinned series
-// is routine and is not.
+// kernelCheck compares the pinned kernel with kernel.org's: a newer stable or longterm series, or
+// the pinned one at its end of life, is an issue; so is a point release of the pinned series, which
+// carries the stable team's fixes - security ones among them - and no new features.
 func (s sources) kernelCheck(pinned string) check {
 	return check{
 		scope: "kernel",
-		gone:  "build/versions.env's kernel series is kernel.org's newest and supported again: closing.",
+		gone:  "build/versions.env pins kernel.org's newest release of a supported series: closing.",
 		find: func(ctx context.Context) ([]finding, error) {
 			var r struct {
 				Releases []struct {
@@ -122,7 +122,7 @@ func (s sources) kernelCheck(pinned string) check {
 			// kernel.org lists only the series it maintains: one it no longer lists is at its end.
 			eol, listed := false, false
 			var newest series
-			newestVersion, newestMoniker := "", ""
+			newestVersion, newestMoniker, point := "", "", ""
 			for _, rel := range r.Releases {
 				if rel.Moniker != "stable" && rel.Moniker != "longterm" {
 					continue
@@ -133,14 +133,25 @@ func (s sources) kernelCheck(pinned string) check {
 				}
 				if ser == pin {
 					listed, eol = true, eol || rel.EOL
+					if update.Compare(rel.Version, pinned) > 0 {
+						point = rel.Version
+					}
 				}
 				if !rel.EOL && ser.newer(pin) && ser.newer(newest) {
 					newest, newestVersion, newestMoniker = ser, rel.Version, rel.Moniker
 				}
 			}
 			eol = eol || !listed
+			var found []finding
+			if point != "" {
+				found = append(found, finding{key: "kernel:point", title: fmt.Sprintf("update: kernel %s -> %s", pinned, point),
+					labels: []string{"update", "area:kernel"}, body: fmt.Sprintf("build/versions.env pins the kernel at %s; kernel.org released %s, "+
+						"the stable team's fixes to the same series (https://cdn.kernel.org/pub/linux/kernel/v%d.x/ChangeLog-%s).\n\n"+
+						"Bump KERNEL_VERSION and KERNEL_SHA256 in build/versions.env, and Arch's base config in kernel/Dockerfile to the same version "+
+						"(its tag and checksum); check that kernel/patches/ still apply and the fragments hold (`task kernel:config`).\n", pinned, point, pin.major, point)})
+			}
 			if newestVersion == "" && !eol {
-				return nil, nil
+				return found, nil
 			}
 			title := fmt.Sprintf("update: kernel %s -> %s", pin, newest)
 			var b strings.Builder
@@ -154,7 +165,7 @@ func (s sources) kernelCheck(pinned string) check {
 				fmt.Fprintf(&b, " A newer series is out: %s (%s).", newestVersion, newestMoniker)
 			}
 			fmt.Fprint(&b, "\n\nBump KERNEL_VERSION and KERNEL_SHA256 in build/versions.env, and Arch's base config in kernel/Dockerfile to the same version; a new series can fail the fragments' assertions (`task kernel:config`).\n")
-			return []finding{{key: "kernel", title: title, labels: []string{"update", "area:kernel"}, body: b.String()}}, nil
+			return append(found, finding{key: "kernel", title: title, labels: []string{"update", "area:kernel"}, body: b.String()}), nil
 		},
 	}
 }

@@ -81,20 +81,34 @@ func kernelFindings(t *testing.T, eol, pinned string) []finding {
 	return fs
 }
 
-// A point release of the pinned series is routine; a newer series, or the pinned one's end, is
-// an issue; a release candidate is neither.
+// A point release of the pinned series is an issue of its own, as is a newer series or the pinned
+// one's end; a release candidate is neither.
 func TestKernelCheck(t *testing.T) {
-	if fs := kernelFindings(t, "false", "7.3.1"); len(fs) != 0 {
-		t.Errorf("7.3.2 over 7.3.1 (and 7.4-rc5) is routine: %+v", fs)
+	byKey := func(fs []finding) map[string]finding {
+		m := map[string]finding{}
+		for _, f := range fs {
+			m[f.key] = f
+		}
+		return m
 	}
-	fs := kernelFindings(t, "false", "7.2.8")
-	if len(fs) != 1 || fs[0].title != "update: kernel 7.2 -> 7.3" || strings.Join(fs[0].labels, ",") != "update,area:kernel" || strings.Contains(fs[0].body, "ended") {
-		t.Errorf("7.2 under 7.3: %+v", fs)
+	if fs := kernelFindings(t, "false", "7.3.2"); len(fs) != 0 {
+		t.Errorf("7.3.2, the newest (7.4-rc5 is no release): %+v", fs)
 	}
-	if fs := kernelFindings(t, "true", "7.2.8"); len(fs) != 1 || !strings.Contains(fs[0].body, "ended the 7.2 series") {
+	fs := byKey(kernelFindings(t, "false", "7.3.1"))
+	if p, ok := fs["kernel:point"]; len(fs) != 1 || !ok || p.title != "update: kernel 7.3.1 -> 7.3.2" || !strings.Contains(p.body, "ChangeLog-7.3.2") {
+		t.Errorf("7.3.2 over 7.3.1: %+v", fs)
+	}
+	fs = byKey(kernelFindings(t, "false", "7.2.8"))
+	if k := fs["kernel"]; len(fs) != 2 || k.title != "update: kernel 7.2 -> 7.3" || strings.Join(k.labels, ",") != "update,area:kernel" || strings.Contains(k.body, "ended") {
+		t.Errorf("7.2.8 under 7.2.9 and 7.3: %+v", fs)
+	}
+	if fs["kernel:point"].title != "update: kernel 7.2.8 -> 7.2.9" {
+		t.Errorf("7.2.8 under 7.2.9: %+v", fs)
+	}
+	if fs := byKey(kernelFindings(t, "true", "7.2.9")); len(fs) != 1 || !strings.Contains(fs["kernel"].body, "ended the 7.2 series") {
 		t.Errorf("7.2 at its end: %+v", fs)
 	}
-	if fs := kernelFindings(t, "false", "7.1.5"); len(fs) != 1 || !strings.Contains(fs[0].body, "ended the 7.1 series") || fs[0].title != "update: kernel 7.1 -> 7.3" {
+	if fs := byKey(kernelFindings(t, "false", "7.1.5")); len(fs) != 1 || !strings.Contains(fs["kernel"].body, "ended the 7.1 series") || fs["kernel"].title != "update: kernel 7.1 -> 7.3" {
 		t.Errorf("7.1, which kernel.org no longer lists: %+v", fs)
 	}
 }
