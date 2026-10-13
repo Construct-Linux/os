@@ -78,6 +78,15 @@ func TestAPluralIsFoundByItsSingular(t *testing.T) {
 	}
 }
 
+// A translation whose first form is empty is no translation, whatever the forms after it say: the
+// prompt shows the English word, not an empty one.
+func TestAnEmptyFirstFormIsUntranslated(t *testing.T) {
+	c := mo(map[string]string{"Password": "\x00Contraseñas"})
+	if s, ok := moLookup(c, "Password"); ok {
+		t.Errorf("Password translated as %q", s)
+	}
+}
+
 // A language is offered when GNOME's catalogs have its words and the font draws them: Spanish
 // with the Go font, which has no Japanese.
 func TestALanguageIsOfferedWhenTheFontDrawsIt(t *testing.T) {

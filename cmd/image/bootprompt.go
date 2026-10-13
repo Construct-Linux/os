@@ -175,10 +175,11 @@ func moLookup(mo []byte, msgid string) (string, bool) {
 		return "", false
 	}
 	t, ok := entry(strs, uint32(i))
+	// A plural's forms are NUL-separated: the first is the singular. An empty one is untranslated,
+	// as gettext takes it, whatever the forms after it say.
+	t, _, _ = strings.Cut(t, "\x00")
 	if !ok || t == "" {
 		return "", false
 	}
-	// A plural's forms are NUL-separated: the first is the singular.
-	t, _, _ = strings.Cut(t, "\x00")
 	return t, true
 }
