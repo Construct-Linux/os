@@ -332,7 +332,7 @@ func (v *VM) PNG(path string) error {
 	// QMP's answer is not taken as the file being whole: a screen read short would fail to
 	// decode, or be measured as something it is not.
 	time.Sleep(500 * time.Millisecond)
-	return PPMToPNG(ppm, path)
+	return ppmToPNG(ppm, path)
 }
 
 // PointTo moves the USB tablet's pointer to (x, y) on QEMU's absolute scale, 0-32767 each way:

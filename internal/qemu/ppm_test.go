@@ -15,7 +15,7 @@ func TestPPMToPNG(t *testing.T) {
 	if err := os.WriteFile(src, []byte(ppm), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := PPMToPNG(src, dst); err != nil {
+	if err := ppmToPNG(src, dst); err != nil {
 		t.Fatal(err)
 	}
 	f, err := os.Open(dst)

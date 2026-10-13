@@ -10,8 +10,8 @@ import (
 	"strconv"
 )
 
-// PPMToPNG converts QEMU's screendump to PNG.
-func PPMToPNG(src, dst string) error {
+// ppmToPNG converts QEMU's screendump to PNG.
+func ppmToPNG(src, dst string) error {
 	img, err := DecodePPM(src)
 	if err != nil {
 		return err
