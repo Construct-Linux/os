@@ -9,16 +9,9 @@ import (
 // transfersDir holds the systemd-sysupdate transfers writeTransfers makes, laid into the root.
 var transfersDir = filepath.Join(out, "sysupdate")
 
-// updatesURL is where machines check for updates: the update CDN (infra updates.tf), each
-// channel's index at <url>/<channel>/. A release is built with CONSTRUCT_UPDATE_URL, the builder's
-// (image usb refuses a release without it); another build points nowhere (.invalid), since only
-// a release is ever offered to machines.
-func updatesURL() string {
-	if u := os.Getenv("CONSTRUCT_UPDATE_URL"); u != "" {
-		return u
-	}
-	return "https://updates.construct.invalid"
-}
+// noUpdates is where a build that is not a release checks for updates: nowhere (.invalid), since
+// only a release is ever offered to machines.
+const noUpdates = "https://updates.construct.invalid"
 
 // writeTransfers makes a set of transfers per channel, and the stick's, which differ in their
 // source alone: the first channel's are the default sysupdate component, each other channel's its
@@ -27,15 +20,16 @@ func updatesURL() string {
 // construct-update@ names, not a component, which systemd-sysupdated would check while no stick is
 // there. All are url-file sources: only those make systemd-sysupdate (through systemd-pull) check
 // SHA256SUMS.gpg against import-pubring.pgp and each file against SHA256SUMS as it copies it - a
-// regular-file source is taken unchecked.
-func writeTransfers() error {
+// regular-file source is taken unchecked. updates is where machines check for updates: the update
+// CDN (infra updates.tf), each channel's index at <updates>/<channel>/, or noUpdates.
+func writeTransfers(updates string) error {
 	sets := map[string]string{"usr/lib/construct/sysupdate-stick": "file:///run/construct/update"}
 	for i, ch := range channels {
 		dir := "usr/lib/sysupdate." + ch + ".d"
 		if i == 0 {
 			dir = "usr/lib/sysupdate.d"
 		}
-		sets[dir] = updatesURL() + "/" + ch
+		sets[dir] = updates + "/" + ch
 	}
 	for dir, url := range sets {
 		full := filepath.Join(transfersDir, dir)

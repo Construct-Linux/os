@@ -139,7 +139,8 @@ func disk(args []string) error {
 
 	stage := filepath.Join(out, "disk")
 	root := filepath.Join(stage, "root")
-	if _, err := bakedRoot(stage, root, rootLayers(*test), ""); err != nil {
+	// The test disk is never offered an update.
+	if _, err := bakedRoot(stage, root, rootLayers(*test), "", noUpdates); err != nil {
 		return err
 	}
 	img := filepath.Join(out, "disk.raw")

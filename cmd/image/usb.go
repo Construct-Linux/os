@@ -45,8 +45,13 @@ func usb(args []string) error {
 	if *release != "" && !calver.MatchString(*release) {
 		return fmt.Errorf("usb: -version %q is not YYYYMMDD.N", *release)
 	}
-	if *release != "" && os.Getenv("CONSTRUCT_UPDATE_URL") == "" {
-		return fmt.Errorf("usb: a release (-version) checks for updates where CONSTRUCT_UPDATE_URL says, and it is not set")
+	// A release checks for updates at the builder's CONSTRUCT_UPDATE_URL, the update CDN.
+	updates := os.Getenv("CONSTRUCT_UPDATE_URL")
+	if updates == "" {
+		if *release != "" {
+			return fmt.Errorf("usb: a release (-version) checks for updates where CONSTRUCT_UPDATE_URL says, and it is not set")
+		}
+		updates = noUpdates
 	}
 
 	stage := filepath.Join(out, "usb")
@@ -55,7 +60,7 @@ func usb(args []string) error {
 	if *broken {
 		layers = append(layers, dirLayer{dir: "image/test/broken"})
 	}
-	version, err := bakedRoot(stage, root, layers, *release)
+	version, err := bakedRoot(stage, root, layers, *release, updates)
 	if err != nil {
 		return err
 	}
@@ -280,8 +285,9 @@ func usbDisk(args []string) error {
 
 // bakedRoot lays the root a disk is made of in root, under a fresh stage: the layers merged,
 // unpacked, and baked. The USB disk and the ext4 test disk are made from the same tree, so what
-// the harness boots is what a machine boots. It answers the version it is baked as.
-func bakedRoot(stage, root string, layers []layer, version string) (string, error) {
+// the harness boots is what a machine boots. It answers the version it is baked as. updates is
+// where its transfers check for updates (writeTransfers).
+func bakedRoot(stage, root string, layers []layer, version, updates string) (string, error) {
 	if err := os.RemoveAll(stage); err != nil {
 		return "", err
 	}
@@ -291,7 +297,7 @@ func bakedRoot(stage, root string, layers []layer, version string) (string, erro
 	if err := plymouthTheme(); err != nil {
 		return "", err
 	}
-	if err := writeTransfers(); err != nil {
+	if err := writeTransfers(updates); err != nil {
 		return "", err
 	}
 	// Built on the host by task tools: this container has no Go.
