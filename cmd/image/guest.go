@@ -257,6 +257,7 @@ func runIn(args []string) error {
 	sticks := fl.String("sticks", "", "comma-separated stick images to plug in")
 	tpm := fl.String("tpm", "", "with -vars: the swtpm state directory to give the machine (the lifecycle's)")
 	key := fl.String("key", "", "plug in a FIDO2 security key, QEMU's CanoKey, its state in this file (made when missing)")
+	poweroff := fl.Bool("poweroff", false, "end with systemctl poweroff, as a person does, instead of cutting the power: the disks afterwards are what a shutdown left")
 	var creds appendFlag
 	fl.Var(&creds, "cred", "a systemd credential for the boot, name=value; repeatable")
 	var extra appendFlag
@@ -284,10 +285,14 @@ func runIn(args []string) error {
 	if err != nil {
 		return err
 	}
-	defer v.Stop()
 	time.Sleep(*wait)
 	outs, err := g.run(strings.Join(fl.Args(), " "), "")
 	fmt.Print(outs)
+	if *poweroff {
+		powerOff(v, g)
+	} else {
+		_ = v.Stop()
+	}
 	return err
 }
 
