@@ -134,13 +134,3 @@ func download(ctx context.Context, fetch Fetch, a Artifact, path string) error {
 	}
 	return err
 }
-
-// syncDir makes what was renamed and removed in dir stay so across a power cut.
-func syncDir(dir string) error {
-	d, err := os.Open(dir)
-	if err != nil { // mutate-exempt: a directory synced or not holds the same files until a power cut
-		return err
-	}
-	defer func() { _ = d.Close() }() // read-only
-	return d.Sync()
-}

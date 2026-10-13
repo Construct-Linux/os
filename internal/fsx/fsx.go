@@ -37,10 +37,16 @@ func WriteFile(path string, b []byte, mode os.FileMode) error {
 	if err := os.Rename(tmp.Name(), path); err != nil {
 		return err
 	}
+	return SyncDir(dir)
+}
+
+// SyncDir makes what was created, renamed and removed in dir stay so across a power cut: a
+// file's own sync keeps its bytes, not its name.
+func SyncDir(dir string) error {
 	d, err := os.Open(dir)
-	if err != nil {
+	if err != nil { // mutate-exempt: a directory synced or not holds the same files until a power cut
 		return err
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }() // read-only
 	return d.Sync()
 }

@@ -11,6 +11,7 @@ import (
 
 	"github.com/ProtonMail/go-crypto/openpgp"
 
+	"github.com/Construct-Linux/os/internal/fsx"
 	"github.com/Construct-Linux/os/internal/gpt"
 )
 
@@ -276,7 +277,7 @@ func layESP(ctx context.Context, dir, from string, r Release, fetch Fetch) error
 	if err := os.Rename(partial, filepath.Join(linux, ImageID+"_"+r.Version+".efi")); err != nil {
 		return err
 	}
-	return syncDir(linux)
+	return fsx.SyncDir(linux)
 }
 
 // writeCredentials puts creds on the ESP mounted at dir, where systemd-stub reads the ones every
@@ -291,7 +292,7 @@ func writeCredentials(dir string, creds map[string][]byte) error {
 			return err
 		}
 	}
-	return syncDir(d)
+	return fsx.SyncDir(d)
 }
 
 // RandomUUID is a random (version 4) UUID, as a GPT's GUIDs are made.
