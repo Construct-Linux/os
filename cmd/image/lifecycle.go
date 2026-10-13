@@ -51,43 +51,99 @@ func lifecycle(args []string) error {
 	if err := qemu.FreshVars(vars); err != nil {
 		return err
 	}
-	// A stick is a 32 GB copy of a release's image, one per boot that plugs it in: removed once
-	// that boot is over, or the copies fill the host's disk.
-	stick := func(v string) (string, error) {
-		s := filepath.Join(dir, v+".stick")
-		return s, qemu.StickCopy(filepath.Join(dir, v+".raw"), s)
-	}
 	r := &report{dir: dir}
 	// The machine has a TPM, and every boot after the first of its disk is handed the person's
 	// password as the TPM's PIN, as if typed: systemd-cryptsetup asks for it through libcryptsetup's
 	// token plugin, which reads cryptsetup.luks2-pin. No passphrase credential: a TPM that refuses
 	// leaves the boot waiting, and the check fails.
-	m := qemu.Machine{Memory: vmMemory, PubKey: pub, Vars: vars, NVMe: nvme, TPM: tpm, Dir: out,
-		Credentials: []string{"cryptsetup.luks2-pin=" + lifecyclePassword}}
-	boot := func(sticks ...string) (*qemu.VM, *guest, error) {
-		m := m
-		m.Sticks = sticks
-		return bootGuest(m, 5*time.Minute)
-	}
+	l := &lifeRun{dir: dir, versions: versions,
+		m: qemu.Machine{Memory: vmMemory, PubKey: pub, Vars: vars, NVMe: nvme, TPM: tpm, Dir: out,
+			Credentials: []string{"cryptsetup.luks2-pin=" + lifecyclePassword}}}
+	l.first = l.m
+	l.first.Credentials = nil
 
-	// 1. The live stick installs onto the NVMe disk.
-	s1, err := stick("v1")
+	if ok, err := r.install(l); err != nil {
+		return err
+	} else if !ok {
+		return r.write(nil)
+	}
+	if ok, err := r.firstBoot(l); err != nil {
+		return err
+	} else if !ok {
+		return r.write(nil)
+	}
+	if !r.securityKey(l.m, l.first, dir) {
+		return r.write(nil)
+	}
+	if ok, err := r.refuseForged(l); err != nil {
+		return err
+	} else if !ok {
+		return r.write(nil)
+	}
+	cdn, err := newUpdateCDN(dir, versions, filepath.Join(keys, "release.pem"), filepath.Join(keys, "release.pgp"))
 	if err != nil {
 		return err
 	}
-	v, g, err := boot(s1)
+	defer cdn.srv.Close()
+	if !r.urlUpdate(l, cdn) {
+		return r.write(nil)
+	}
+	v, g, s3, err := r.rollback(l)
 	if err != nil {
 		return err
+	}
+	if v == nil {
+		return r.write(nil)
+	}
+	r.factoryReset(l, g)
+	err = r.write(g)
+	powerOff(v, g)
+	_ = os.Remove(s3)
+	return err
+}
+
+// lifeRun is what a lifecycle's steps share: where its files are, the releases' versions, and the
+// installed machine, m handed the person's password and first without it, as a person boots it.
+type lifeRun struct {
+	dir      string
+	versions map[string]string
+	m, first qemu.Machine
+}
+
+// stick is a 32 GB copy of a release's image, one per boot that plugs it in: removed once that
+// boot is over, or the copies fill the host's disk.
+func (l *lifeRun) stick(v string) (string, error) {
+	s := filepath.Join(l.dir, v+".stick")
+	return s, qemu.StickCopy(filepath.Join(l.dir, v+".raw"), s)
+}
+
+// boot boots the installed machine, its password handed over, with sticks plugged in.
+func (l *lifeRun) boot(sticks ...string) (*qemu.VM, *guest, error) {
+	m := l.m
+	m.Sticks = sticks
+	return bootGuest(m, 5*time.Minute)
+}
+
+// install is step 1: the live stick installs onto the NVMe disk. It reports whether the install
+// ended, for the steps after it.
+func (r *report) install(l *lifeRun) (bool, error) {
+	s1, err := l.stick("v1")
+	if err != nil {
+		return false, err
+	}
+	v, g, err := l.boot(s1)
+	if err != nil {
+		return false, err
 	}
 	start := time.Now()
 	// As a person installs: the graphical installer's command, from the live session it runs in
 	// - pkexec, which the session's polkit rule lets through, construct install --json, the password
 	// on standard input - read from the stick it runs from.
 	outs, err := g.installAsTheInstaller()
-	_ = os.WriteFile(filepath.Join(dir, "install.txt"), []byte(outs), 0o644)
+	_ = os.WriteFile(filepath.Join(l.dir, "install.txt"), []byte(outs), 0o644)
 	if err != nil {
 		// The live session's screen when the install did not end: a password asked, a dialog.
-		_ = v.PNG(filepath.Join(dir, "install.png"))
+		_ = v.PNG(filepath.Join(l.dir, "install.png"))
 	}
 	if err == nil && (!strings.Contains(outs, `"percent":100`) || !strings.Contains(outs, `"msg":"done"`)) {
 		err = fmt.Errorf("no 100%% or done record")
@@ -103,18 +159,19 @@ func lifecycle(args []string) error {
 	r.add("a recovery key is shown", strings.Contains(said, `"recovery_key":"`) && !strings.Contains(said, `"recovery_key":""`), "")
 	powerOff(v, g)
 	_ = os.Remove(s1)
-	if err != nil {
-		return r.write(nil)
-	}
+	return err == nil, nil
+}
 
-	// 2. The machine boots its disk: the boot waits for the person's password, typed at the
-	// prompt - the TPM's PIN - then v1, /var on the NVMe and encrypted, and what the person keeps.
-	first := m
-	first.Credentials = nil
-	if v, err = first.Start(); err != nil {
-		return err
+// firstBoot is step 2: the machine boots its disk. The boot waits for the person's password, typed
+// at the prompt - the TPM's PIN - then v1, /var on the NVMe and encrypted, and what the person
+// keeps. It reports whether the password opened the disk.
+func (r *report) firstBoot(l *lifeRun) (bool, error) {
+	dir, versions := l.dir, l.versions
+	v, err := l.first.Start()
+	if err != nil {
+		return false, err
 	}
-	g = &guest{cid: v.CID}
+	g := &guest{cid: v.CID}
 	asked := g.wait(45*time.Second) != nil
 	_ = v.PNG(filepath.Join(dir, "password.png"))
 	r.add("the disk asks for the password", asked, "screen: password.png")
@@ -131,7 +188,7 @@ func lifecycle(args []string) error {
 	r.add("the password opens the disk", err == nil, errText(err))
 	if err != nil {
 		_ = v.Stop()
-		return r.write(nil)
+		return false, nil
 	}
 	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
 	r.plymouthPrompt(g, dir)
@@ -154,47 +211,46 @@ func lifecycle(args []string) error {
 	r.add("v1 comes up", ok, detail)
 	r.noSplash(v, g, dir, "construct_"+versions["v1"]+".efi")
 	powerOff(v, g)
+	return true, nil
+}
 
-	// 2b. A security key, enrolled beside the password with its PIN and a touch, opens the disk:
-	// the boot asks for the key's PIN, not the password. Without the key the password still does,
-	// and nothing about the key is an error.
-	if !r.securityKey(m, first, dir) {
-		return r.write(nil)
-	}
-
-	// 3. Sticks that are not a release its key signed are refused, and change nothing.
+// refuseForged is step 3: sticks that are not a release its key signed are refused, and change
+// nothing. It reports whether each forged stick's machine booted.
+func (r *report) refuseForged(l *lifeRun) (bool, error) {
 	for _, bad := range []string{"unsigned", "badsig", "sums", "uki"} {
-		s, err := stick("v2-" + bad)
+		s, err := l.stick("v2-" + bad)
 		if err != nil {
-			return err
+			return false, err
 		}
-		if v, g, err = boot(s); err != nil {
+		v, g, err := l.boot(s)
+		if err != nil {
 			r.add("refuse "+bad, false, err.Error())
-			return r.write(nil)
+			return false, nil
 		}
 		u := g.waitUpdate(15 * time.Minute)
 		esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 		// Refused by systemd-sysupdate itself: a unit that never ran, or failed before sysupdate
 		// read the stick (its mount), refused nothing.
-		refused := u.ended && !u.ok && u.sysupdate != "" && !strings.Contains(esp, versions["v2"]) && g.version() == versions["v1"]
+		refused := u.ended && !u.ok && u.sysupdate != "" && !strings.Contains(esp, l.versions["v2"]) && g.version() == l.versions["v1"]
 		r.add("refuse a stick: "+bad, refused, u.detail()+"; ESP: "+oneLine(esp))
 		powerOff(v, g)
 		_ = os.Remove(s)
 	}
+	return true, nil
+}
 
-	// 4. v2 comes from its channel - the update CDN, played by an HTTP server on this host, which
-	// the channels' transfers are pointed at - by the daily timer's service. stable lists v1 alone,
-	// so the machine finds nothing newer there; following testing, it takes v2, each file through a
-	// redirect as from the CDN to GitHub.
-	cdn, err := newUpdateCDN(dir, versions, filepath.Join(keys, "release.pem"), filepath.Join(keys, "release.pgp"))
-	if err != nil {
-		return err
-	}
-	defer cdn.srv.Close()
+// urlUpdate is step 4: v2 comes from its channel - the update CDN, played by an HTTP server on
+// this host, which the channels' transfers are pointed at - by the daily timer's service. stable
+// lists v1 alone, so the machine finds nothing newer there; following testing, it takes v2, each
+// file through a redirect as from the CDN to GitHub. It reports whether the machine booted and
+// came back from the reboot into v2.
+func (r *report) urlUpdate(l *lifeRun, cdn *updateCDN) bool {
+	dir, versions := l.dir, l.versions
 	url := cdn.url
-	if v, g, err = boot(); err != nil {
+	v, g, err := l.boot()
+	if err != nil {
 		r.add("boot for the URL update", false, err.Error())
-		return r.write(nil)
+		return false
 	}
 	_, err = g.run(`for ch in stable testing; do d=/usr/lib/sysupdate.$ch.d; e=/etc/sysupdate.$ch.d; `+
 		`[ $ch = stable ] && d=/usr/lib/sysupdate.d && e=/etc/sysupdate.d; mkdir -p $e && for f in $d/*.transfer; do `+
@@ -203,7 +259,7 @@ func lifecycle(args []string) error {
 	_, err = g.run(`systemctl start construct-update.service`, "")
 	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("stable has nothing newer", err == nil && !strings.Contains(esp, versions["v2"]), oneLine(esp)+errText(err))
-	outs, err = g.run(`construct channel testing && construct channel`, "")
+	outs, err := g.run(`construct channel testing && construct channel`, "")
 	r.add("follow testing", err == nil && strings.HasPrefix(outs, "following testing") && strings.Contains(outs, "\ntesting (of"), oneLine(outs)+errText(err))
 	_, err = g.run(`systemctl start construct-update.service`, "")
 	outs, _ = g.run(`journalctl -b --no-pager -o cat -u construct-update.service | tail -3`, "")
@@ -236,26 +292,33 @@ func lifecycle(args []string) error {
 		_ = v.PNG(filepath.Join(dir, "reboot-v2.png"))
 		r.add("reboot into v2", false, err.Error()+"; screen: reboot-v2.png")
 		_ = v.Stop()
-		return r.write(nil)
+		return false
 	}
 	r.add("reboot into v2", g.version() == versions["v2"], "running "+g.version())
 	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
 	r.add("kept across the update", strings.Count(kept, "kept") == 2, oneLine(kept))
-	ok, detail = g.waitUnit2Active("boot-complete.target", 5*time.Minute)
+	ok, detail := g.waitUnit2Active("boot-complete.target", 5*time.Minute)
 	r.add("v2 comes up", ok, detail)
 	time.Sleep(10 * time.Second) // systemd-bless-boot runs once the target is reached
 	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v2 is blessed", strings.Contains(esp, "construct_"+versions["v2"]+".efi"), oneLine(esp))
 	powerOff(v, g)
+	return true
+}
 
-	// 5. v3's desktop never comes up: three tries, then systemd-boot falls back to v2 by itself.
-	s3, err := stick("v3")
+// rollback is step 5: v3's desktop never comes up: three tries, then systemd-boot falls back to v2
+// by itself. It leaves the machine running for the factory reset, with v3's stick still plugged
+// in, and answers no machine when the boot with the stick failed.
+func (r *report) rollback(l *lifeRun) (*qemu.VM, *guest, string, error) {
+	dir, versions := l.dir, l.versions
+	s3, err := l.stick("v3")
 	if err != nil {
-		return err
+		return nil, nil, "", err
 	}
-	if v, g, err = boot(s3); err != nil {
+	v, g, err := l.boot(s3)
+	if err != nil {
 		r.add("boot with v3's stick", false, err.Error())
-		return r.write(nil)
+		return nil, nil, "", nil
 	}
 	u := g.waitUpdate(15 * time.Minute)
 	r.add("v3's stick updates", u.ok, u.detail())
@@ -275,26 +338,25 @@ func lifecycle(args []string) error {
 		time.Sleep(10 * time.Second)
 	}
 	r.add("v3 rolls back to v2", g.version() == versions["v2"], "running "+g.version())
-	esp, _ = g.run(`ls /boot/EFI/Linux/`, "")
+	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v3 is marked bad", strings.Contains(esp, "construct_"+versions["v3"]+"+0-3"), oneLine(esp))
-	kept, _ = g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
+	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
 	r.add("kept across the rollback", strings.Count(kept, "kept") == 2, oneLine(kept))
+	return v, g, s3, nil
+}
 
-	// 7. A factory reset, as systemd asks for one: the machine reboots, its /var made anew in the
-	// initrd - the release kept, the person and what they kept gone - and GDM opens GNOME's
-	// Initial Setup for the machine's new person.
+// factoryReset is step 7: a factory reset, as systemd asks for one: the machine reboots, its /var
+// made anew in the initrd - the release kept, the person and what they kept gone - and GDM opens
+// GNOME's Initial Setup for the machine's new person.
+func (r *report) factoryReset(l *lifeRun, g *guest) {
 	_, _ = g.run(`systemctl start --no-block factory-reset.target`, "")
 	g.waitGone(3 * time.Minute)
-	err = g.wait(10 * time.Minute)
-	r.add("factory reset reboots", err == nil && g.version() == versions["v2"], "running "+g.version()+errText(err))
+	err := g.wait(10 * time.Minute)
+	r.add("factory reset reboots", err == nil && g.version() == l.versions["v2"], "running "+g.version()+errText(err))
 	gone, _ := g.run(`ls /var/home/; getent passwd `+lifecycleUser+`; cat /etc/construct-marker 2>&1`, "")
 	r.add("factory reset forgets the person", !strings.Contains(gone, lifecycleUser) && !strings.Contains(gone, "kept"), oneLine(gone))
 	setup, _ := g.run(`for i in $(seq 60); do loginctl list-sessions --no-legend | grep -q gnome-initial-setup && break; sleep 2; done; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")
 	r.add("initial setup for the new person", strings.Contains(setup, "gnome-initial-setup"), "sessions: "+setup)
-	err = r.write(g)
-	powerOff(v, g)
-	_ = os.Remove(s3)
-	return err
 }
 
 // lifecycleKeyPIN is the security key's PIN: another secret than the person's password, as a
