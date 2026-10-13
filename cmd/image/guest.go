@@ -260,13 +260,18 @@ func runIn(args []string) error {
 	var creds appendFlag
 	fl.Var(&creds, "cred", "a systemd credential for the boot, name=value; repeatable")
 	var extra appendFlag
-	fl.Var(&extra, "append", "with -vars: a kernel option for this boot, which systemd-stub takes from the firmware without Secure Boot (systemd.log_level=debug); repeatable")
+	fl.Var(&extra, "append", "with -vars or -usb: a kernel option for this boot, which systemd-stub takes from the firmware without Secure Boot (systemd.log_level=debug); repeatable")
 	_ = fl.Parse(args)
+	// The ext4 test disk's kernel is given to QEMU directly, with no systemd-stub to read an
+	// option from the firmware: it would be dropped without a word.
+	if len(extra) > 0 && *vars == "" && !*stick {
+		return errors.New("run: -append needs a boot through the firmware: -vars or -usb")
+	}
 	_, pub, err := testKey()
 	if err != nil {
 		return err
 	}
-	m := qemu.Machine{Memory: vmMemory, PubKey: pub, Vars: *vars, NVMe: *nvme, TPM: *tpm, Credentials: creds, Cmdline: extra, Dir: out}
+	m := qemu.Machine{Memory: vmMemory, PubKey: pub, Vars: *vars, NVMe: *nvme, TPM: *tpm, Dir: out}
 	if *vars == "" {
 		if m, err = testMachine(vmMemory, pub, *stick); err != nil {
 			return err
@@ -274,7 +279,7 @@ func runIn(args []string) error {
 	} else if *sticks != "" {
 		m.Sticks = strings.Split(*sticks, ",")
 	}
-	m.SecurityKey = *key
+	m.Credentials, m.Cmdline, m.SecurityKey = creds, extra, *key
 	v, g, err := bootGuest(m, 4*time.Minute)
 	if err != nil {
 		return err
