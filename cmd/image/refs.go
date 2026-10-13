@@ -177,15 +177,10 @@ func (r *refChecker) pam() {
 				continue
 			}
 			rel := d + "/" + e.Name()
-			f, err := os.Open(r.resolve(rel))
-			if err != nil {
-				continue
-			}
-			sc := bufio.NewScanner(f)
-			for sc.Scan() {
-				w := strings.Fields(strings.SplitN(sc.Text(), "#", 2)[0])
+			eachLine(r.resolve(rel), func(line string) {
+				w := strings.Fields(strings.SplitN(line, "#", 2)[0])
 				if len(w) < 3 || strings.HasPrefix(w[0], "-") {
-					continue
+					return
 				}
 				switch {
 				case w[1] == "include" || w[1] == "substack":
@@ -201,8 +196,7 @@ func (r *refChecker) pam() {
 						r.fail("%s: needs %s, which is not in the root", rel, w[2])
 					}
 				}
-			}
-			_ = f.Close()
+			})
 		}
 	}
 }
