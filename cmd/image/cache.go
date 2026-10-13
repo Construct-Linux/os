@@ -66,7 +66,7 @@ func cacheCmd(args []string) error {
 	bucket := os.Getenv("CONSTRUCT_PACKAGES_BUCKET")
 	_ = fl.Parse(args)
 	if bucket == "" || *pull == *push {
-		return errors.New("cache: -pull or -push, and -bucket (CONSTRUCT_PACKAGES_BUCKET)")
+		return errors.New("cache: -pull or -push, and CONSTRUCT_PACKAGES_BUCKET set")
 	}
 	s3 := "s3://" + bucket
 	if *pull {
@@ -132,14 +132,15 @@ func cacheCmd(args []string) error {
 
 func packCached(c cached, local string) error {
 	if c.image != "" {
-		return shell(fmt.Sprintf("docker save %s | zstd -q -T0 -o %s", c.image, local))
+		return pipeline("", local, nil, []string{"docker", "save", c.image}, []string{"zstd", "-q", "-T0", "-c"})
 	}
 	return run("tar", append([]string{"-I", "zstd -T0", "-cf", local}, c.dirs...)...)
 }
 
 func unpackCached(c cached, local string) error {
 	if c.image != "" {
-		return shell(fmt.Sprintf("zstd -dc %s | docker load -q", local))
+		// docker load decompresses a zstd archive itself.
+		return run("docker", "load", "-q", "-i", local)
 	}
 	for _, d := range c.dirs {
 		if err := os.RemoveAll(d); err != nil {
@@ -147,10 +148,4 @@ func unpackCached(c cached, local string) error {
 		}
 	}
 	return run("tar", "-I", "zstd", "-xf", local)
-}
-
-func shell(script string) error {
-	cmd := exec.Command("bash", "-c", "set -o pipefail; "+script)
-	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	return cmd.Run()
 }
