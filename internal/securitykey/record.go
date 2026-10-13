@@ -19,12 +19,12 @@ import (
 )
 
 const (
-	// RecordFile, under /etc, is the record: what construct key lists.
-	RecordFile = "construct/security-keys.json"
-	// MappingsFile, under /etc, is pam_u2f's central file (etc/pam.d/construct-key): one, written
+	// recordFile, under /etc, is the record: what construct key lists.
+	recordFile = "construct/security-keys.json"
+	// mappingsFile, under /etc, is pam_u2f's central file (etc/pam.d/construct-key): one, written
 	// by root alone - a key a session could register for itself would be a password anything in
 	// that session could set.
-	MappingsFile = "u2f_mappings"
+	mappingsFile = "u2f_mappings"
 	// lockFile, under /etc, exists while unplugging a key is to lock the screen.
 	lockFile = "construct/lock-on-key-removal"
 )
@@ -42,7 +42,7 @@ type Key struct {
 
 // Read reads the keys recorded under etc: none when nothing was ever recorded.
 func Read(etc string) ([]Key, error) {
-	b, err := os.ReadFile(filepath.Join(etc, RecordFile))
+	b, err := os.ReadFile(filepath.Join(etc, recordFile))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, nil
 	}
@@ -53,7 +53,7 @@ func Read(etc string) ([]Key, error) {
 		Keys []Key `json:"keys"`
 	}
 	if err := json.Unmarshal(b, &f); err != nil {
-		return nil, fmt.Errorf("%s: %w", RecordFile, err)
+		return nil, fmt.Errorf("%s: %w", recordFile, err)
 	}
 	return f.Keys, nil
 }
@@ -66,14 +66,14 @@ func Write(etc string, keys []Key) error {
 	if err != nil {
 		return err
 	}
-	if err := fsx.WriteFile(filepath.Join(etc, RecordFile), append(b, '\n'), 0o644); err != nil {
+	if err := fsx.WriteFile(filepath.Join(etc, recordFile), append(b, '\n'), 0o644); err != nil {
 		return err
 	}
-	return fsx.WriteFile(filepath.Join(etc, MappingsFile), []byte(Mappings(keys)), 0o644)
+	return fsx.WriteFile(filepath.Join(etc, mappingsFile), []byte(mappings(keys)), 0o644)
 }
 
-// Mappings is pam_u2f's central file: a line an account, its credentials after its name.
-func Mappings(keys []Key) string {
+// mappings is pam_u2f's central file: a line an account, its credentials after its name.
+func mappings(keys []Key) string {
 	byUser := map[string][]string{}
 	for _, k := range keys {
 		if k.U2F != "" {

@@ -38,7 +38,7 @@ func Enroll(ctx context.Context, partition, password, device, pin string) (int, 
 	if err := ensurePIN(ctx, device, pin); err != nil {
 		return 0, err
 	}
-	before, err := Slots(ctx, partition)
+	before, err := tokenSlots(ctx, partition)
 	if err != nil {
 		return 0, err
 	}
@@ -58,7 +58,7 @@ func Enroll(ctx context.Context, partition, password, device, pin string) (int, 
 		"--fido2-with-user-presence=yes", partition); err != nil {
 		return 0, notTouched(err)
 	}
-	after, err := Slots(ctx, partition)
+	after, err := tokenSlots(ctx, partition)
 	if err != nil {
 		return 0, err
 	}
@@ -68,7 +68,7 @@ func Enroll(ctx context.Context, partition, password, device, pin string) (int, 
 // Wipe removes slot from partition's header, only when a security key's token opens it: a slot
 // the record names is never the password's.
 func Wipe(ctx context.Context, partition, password string, slot int) error {
-	slots, err := Slots(ctx, partition)
+	slots, err := tokenSlots(ctx, partition)
 	if err != nil {
 		return err
 	}
@@ -111,8 +111,8 @@ func parseHeader(b []byte) (Header, error) {
 	return h, err
 }
 
-// Slots are the LUKS2 keyslots of partition that a systemd-fido2 token opens.
-func Slots(ctx context.Context, partition string) ([]int, error) {
+// tokenSlots are the LUKS2 keyslots of partition that a systemd-fido2 token opens.
+func tokenSlots(ctx context.Context, partition string) ([]int, error) {
 	h, err := ReadHeader(ctx, partition)
 	if err != nil {
 		return nil, err

@@ -8,7 +8,7 @@ import (
 
 // pam_u2f's file has a line an account, its credentials in the order they were added.
 func TestMappingsOf(t *testing.T) {
-	got := Mappings([]Key{
+	got := mappings([]Key{
 		{Name: "YubiKey", User: "ada", U2F: "a1"},
 		{Name: "Backup", User: "ada", U2F: "a2"},
 		{Name: "Theirs", User: "ben", U2F: "b1"},
@@ -30,11 +30,11 @@ func TestKeysRoundTrip(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0] != keys[0] {
 		t.Fatalf("%+v %v", got, err)
 	}
-	m, err := os.ReadFile(filepath.Join(etc, MappingsFile))
+	m, err := os.ReadFile(filepath.Join(etc, mappingsFile))
 	if err != nil || string(m) != "ada:kh,pk,es256,+presence\n" {
 		t.Errorf("%q %v", m, err)
 	}
-	if fi, err := os.Stat(filepath.Join(etc, MappingsFile)); err != nil || fi.Mode().Perm() != 0o644 {
+	if fi, err := os.Stat(filepath.Join(etc, mappingsFile)); err != nil || fi.Mode().Perm() != 0o644 {
 		t.Errorf("%v %v", fi.Mode(), err)
 	}
 	if none, err := Read(t.TempDir()); err != nil || none != nil {

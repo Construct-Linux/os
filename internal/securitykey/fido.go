@@ -17,9 +17,9 @@ import (
 	"strings"
 )
 
-// Origin is pam_u2f's origin and appid (etc/pam.d/construct-key): fixed, so renaming the machine
+// origin is pam_u2f's origin and appid (etc/pam.d/construct-key): fixed, so renaming the machine
 // does not orphan its keys.
-const Origin = "pam://construct"
+const origin = "pam://construct"
 
 // Devices are the hidraw nodes of the FIDO2 keys plugged in, as fido2-token lists them.
 func Devices(ctx context.Context) ([]string, error) {
@@ -55,7 +55,7 @@ func Credential(ctx context.Context, device, user, pin string) (string, error) {
 	}
 	in, made, verified := filepath.Join(dir, "in"), filepath.Join(dir, "made"), filepath.Join(dir, "verified")
 	b64 := base64.StdEncoding.EncodeToString
-	if err := os.WriteFile(in, []byte(b64(cdh)+"\n"+Origin+"\n"+user+"\n"+b64(uid)+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(in, []byte(b64(cdh)+"\n"+origin+"\n"+user+"\n"+b64(uid)+"\n"), 0o600); err != nil {
 		return "", err
 	}
 	if err := withPIN(ctx, pin, "fido2-cred", "-M", "-i", in, "-o", made, device); err != nil {
