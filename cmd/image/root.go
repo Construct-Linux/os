@@ -31,7 +31,9 @@ func (l tarLayer) walk(fn func(*tar.Header, io.Reader) error) error {
 		return err
 	}
 	defer f.Close()
-	tr := tar.NewReader(bufio.NewReaderSize(f, 1<<20))
+	// The file itself, not buffered: archive/tar seeks past the body of a file that is not read,
+	// so a walk that reads names reads headers, 512 bytes each, and not the root.
+	tr := tar.NewReader(f)
 	for {
 		h, err := tr.Next()
 		if errors.Is(err, io.EOF) {

@@ -92,8 +92,6 @@ func indexPackages(src string, names map[string]bool) error {
 	if err != nil {
 		return err
 	}
-	// The index is a gzip stream of the signature's tar and then the index's: read them as one.
-	gz.Multistream(true)
 	tr := tar.NewReader(gz)
 	for {
 		h, err := tr.Next()
