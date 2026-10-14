@@ -134,8 +134,11 @@ func diagnoseProbes(person string, measure time.Duration) []diagnose.Probe {
 // - the password's, the TPM's, each security key's.
 func luksKinds(ctx context.Context) ([]byte, error) {
 	part, err := securitykey.VarPartition(ctx)
-	if err != nil || part == "" {
-		return []byte("/var is not encrypted\n"), err
+	if err != nil {
+		return nil, err
+	}
+	if part == "" {
+		return []byte("/var is not encrypted\n"), nil
 	}
 	h, err := securitykey.ReadHeader(ctx, part)
 	if err != nil {

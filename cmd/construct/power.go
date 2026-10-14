@@ -45,6 +45,15 @@ func powerCmd(ctx context.Context, args []string, stdout io.Writer) error {
 	return nil
 }
 
+// percent is the batteries' charge as a share of what they hold full, or "?" when they do not say
+// what they hold (no energy_full, or a voltage of 0 to derive it from): never NaN.
+func percent(s power.Snapshot) string {
+	if s.FullWh <= 0 {
+		return "?"
+	}
+	return fmt.Sprintf("%.0f", 100*s.EnergyWh/s.FullWh)
+}
+
 // describePower is the person-readable account of what the machine drew between a and b.
 func describePower(a, b power.Snapshot) string {
 	var out bytes.Buffer
@@ -52,7 +61,7 @@ func describePower(a, b power.Snapshot) string {
 	case b.Batteries == 0:
 		fmt.Fprintln(&out, "No battery: on mains power.")
 	case !b.OnBattery:
-		fmt.Fprintf(&out, "On mains power, battery at %.0f%% (%.1f of %.1f Wh).\n", 100*b.EnergyWh/b.FullWh, b.EnergyWh, b.FullWh)
+		fmt.Fprintf(&out, "On mains power, battery at %s%% (%.1f of %.1f Wh).\n", percent(b), b.EnergyWh, b.FullWh)
 	default:
 		// The batteries' own reading moves in steps; what they lost over the interval is steadier
 		// once it moved at all.
@@ -64,7 +73,7 @@ func describePower(a, b power.Snapshot) string {
 		if w > 0 {
 			left = fmt.Sprintf(", %s left", (time.Duration(b.EnergyWh / w * float64(time.Hour))).Round(time.Minute))
 		}
-		fmt.Fprintf(&out, "On battery at %.0f%% (%.1f of %.1f Wh), drawing %.1f W%s.\n", 100*b.EnergyWh/b.FullWh, b.EnergyWh, b.FullWh, w, left)
+		fmt.Fprintf(&out, "On battery at %s%% (%.1f of %.1f Wh), drawing %.1f W%s.\n", percent(b), b.EnergyWh, b.FullWh, w, left)
 	}
 	switch w, ok := power.PackageW(a, b); {
 	case ok:

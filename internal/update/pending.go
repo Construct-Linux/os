@@ -2,6 +2,7 @@ package update
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"regexp"
 	"strconv"
@@ -51,5 +52,5 @@ func BootedVersion(path string) (string, error) {
 	if err := sc.Err(); err != nil {
 		return "", err
 	}
-	return "", os.ErrNotExist
+	return "", fmt.Errorf("%s names no IMAGE_VERSION", path)
 }
