@@ -20,15 +20,23 @@ closed, where the session frees it and where the client closed it.
 
 --- a/daemon/gdm-session.c
 +++ b/daemon/gdm-session.c
-@@ -1950,6 +1950,33 @@
+@@ -1950,6 +1950,37 @@
  }
  
  static void
++unexport_from_connection (GDBusInterfaceSkeleton *interface,
++                          GDBusConnection        *connection)
++{
++        if (interface != NULL && g_dbus_interface_skeleton_has_connection (interface, connection))
++                g_dbus_interface_skeleton_unexport_from_connection (interface, connection);
++}
++
++static void
 +unexport_extension_from_connection (const char             *name,
 +                                    GDBusInterfaceSkeleton *extension,
 +                                    GDBusConnection        *connection)
 +{
-+        g_dbus_interface_skeleton_unexport_from_connection (extension, connection);
++        unexport_from_connection (extension, connection);
 +}
 +
 +/* What the session exported on an outside connection holds the connection, and the connection
@@ -38,23 +46,19 @@ closed, where the session frees it and where the client closed it.
 +unexport_from_outside_connection (GdmSession      *self,
 +                                  GDBusConnection *connection)
 +{
-+        if (self->user_verifier_interface != NULL)
-+                g_dbus_interface_skeleton_unexport_from_connection (G_DBUS_INTERFACE_SKELETON (self->user_verifier_interface),
-+                                                                    connection);
++        unexport_from_connection (G_DBUS_INTERFACE_SKELETON (self->user_verifier_interface), connection);
 +        if (self->user_verifier_extensions != NULL)
 +                g_hash_table_foreach (self->user_verifier_extensions,
 +                                      (GHFunc) unexport_extension_from_connection,
 +                                      connection);
-+        if (self->greeter_interface != NULL)
-+                g_dbus_interface_skeleton_unexport_from_connection (G_DBUS_INTERFACE_SKELETON (self->greeter_interface),
-+                                                                    connection);
++        unexport_from_connection (G_DBUS_INTERFACE_SKELETON (self->greeter_interface), connection);
 +}
 +
 +static void
  on_outside_connection_closed (GDBusConnection *connection,
                                gboolean         remote_peer_vanished,
                                GError          *error,
-@@ -1963,6 +1990,8 @@
+@@ -1963,6 +1994,8 @@
          self->outside_connections = g_list_remove (self->outside_connections,
                                                     connection);
  
@@ -63,7 +67,18 @@ closed, where the session frees it and where the client closed it.
          credentials = g_dbus_connection_get_peer_credentials (connection);
          pid_of_client = g_credentials_get_unix_pid (credentials, NULL);
  
-@@ -3161,6 +3190,9 @@
+@@ -2251,7 +2284,9 @@
+ static void
+ unexport_and_free_user_verifier_extension (GDBusInterfaceSkeleton *interface)
+ {
+-        g_dbus_interface_skeleton_unexport (interface);
++        /* Unexported from its connection already when the connection went. */
++        if (g_dbus_interface_skeleton_get_connection (interface) != NULL)
++                g_dbus_interface_skeleton_unexport (interface);
+ 
+         g_object_run_dispose (G_OBJECT (interface));
+         g_object_unref (interface);
+@@ -3161,6 +3196,9 @@
                                                G_CALLBACK (on_outside_connection_closed),
                                                self);
  
