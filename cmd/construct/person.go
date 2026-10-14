@@ -148,12 +148,10 @@ func suggestLogin(realName string) string {
 	return "user"
 }
 
+// readLine is an answer typed at a prompt, without the space around it.
 func readLine(in *bufio.Reader) (string, error) {
-	line, err := in.ReadString('\n')
-	if err != nil && !(errors.Is(err, io.EOF) && line != "") {
-		return "", err
-	}
-	return strings.TrimSpace(line), nil
+	line, err := readSecret(in)
+	return strings.TrimSpace(line), err
 }
 
 // readSecret reads a password or a PIN, a line from a pipe, as it was typed: only the line's end

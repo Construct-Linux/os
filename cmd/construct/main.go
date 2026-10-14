@@ -162,7 +162,7 @@ func mountStick(ctx context.Context, medium string) (string, func() error, error
 }
 
 func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer) error {
-	fl := flag.NewFlagSet("install", flag.ExitOnError)
+	fl := flag.NewFlagSet("install", flag.ContinueOnError)
 	diskFlag := fl.String("disk", "", "the disk to install on: /dev/nvme0n1, or a link under /dev/disk (default: the machine's first disk that is neither removable nor USB)")
 	yes := fl.Bool("yes", false, "do not ask: erase the disk")
 	user := fl.String("user", "", "the login of whom the machine is for (default: asked)")
@@ -175,7 +175,9 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	fl.Var(&keyDevices, "security-key", "a FIDO2 key's hidraw node that opens the disk too, with its PIN and a touch; twice for a backup key")
 	keyPINFile := fl.String("key-pin-file", "", "the security keys' PINs, one a line in --security-key's order: a file, or - for the lines after the password on standard input (pkexec passes no other descriptor)")
 	jsonOut := fl.Bool("json", false, "tell what is done as JSON lines on standard output, progress included: what the graphical installer reads")
-	_ = fl.Parse(args)
+	if err := fl.Parse(args); err != nil {
+		return err
+	}
 	log, progress := journal(), func(string, int64, int64) {}
 	if *jsonOut {
 		log = slog.New(slog.NewJSONHandler(out, &slog.HandlerOptions{ReplaceAttr: dropTime}))
@@ -323,9 +325,11 @@ func percents(log *slog.Logger) func(file string, done, total int64) {
 // disksCmd lists the disks construct install can install on - never the stick it runs from - and
 // the one it picks by itself, as text or, for the graphical installer, JSON.
 func disksCmd(args []string, out io.Writer) error {
-	fl := flag.NewFlagSet("disks", flag.ExitOnError)
+	fl := flag.NewFlagSet("disks", flag.ContinueOnError)
 	jsonOut := fl.Bool("json", false, "JSON: a list of {path, model, size, serial, removable, usb, default}")
-	_ = fl.Parse(args)
+	if err := fl.Parse(args); err != nil {
+		return err
+	}
 	medium, err := update.MediumDisk("/sys")
 	if err != nil {
 		return err
