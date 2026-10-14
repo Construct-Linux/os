@@ -478,37 +478,35 @@ tasks:
       # first release, starts it as it starts the testing channel.
       - xz -T0 -6 -c _output/usb/disk.raw > _output/construct_{{.VERSION}}.raw.xz
       - aws s3 cp --only-show-errors _output/construct_{{.VERSION}}.raw.xz {{.DIST}}/dl/
-      - rm -rf _output/dl && mkdir -p _output/dl
-      - cmd: aws s3 cp --only-show-errors {{.DIST}}/dl/SHA256SUMS _output/dl/current
-        if: '[ "{{.NEW}}" != true ]'
-      - (cd _output && sha256sum construct_{{.VERSION}}.raw.xz) > _output/dl/stick.sums
-      - go run ./cmd/image channel-index -kind dl {{if eq .NEW "true"}}-new{{else}}-current _output/dl/current{{end}} -add _output/dl/stick.sums -version {{.VERSION}} -o _output/dl
-      - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE}} -pubring keys/release.pgp -dir _output/dl
-      - aws s3 cp --only-show-errors _output/dl/SHA256SUMS {{.DIST}}/dl/SHA256SUMS
-      - aws s3 cp --only-show-errors _output/dl/SHA256SUMS.gpg {{.DIST}}/dl/SHA256SUMS.gpg
+      - (cd _output && sha256sum construct_{{.VERSION}}.raw.xz) > _output/stick.sums
+      - task: release:index
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: dl, ADD: _output/stick.sums, NEW: '{{.NEW}}'}
       # Only once the signed index no longer names them: before, a download of one would fail.
-      - for old in $(cat _output/dl/dropped); do aws s3 rm --only-show-errors {{.DIST}}/dl/$old || exit 1; done
+      - for old in $(cat _output/channel/dl/dropped); do aws s3 rm --only-show-errors {{.DIST}}/dl/$old || exit 1; done
       # The public keys at keys.<domain>, whose addresses do not move: the same files every release.
       - aws s3 sync --only-show-errors keys/ {{.DIST}}/keys/
       - aws s3 cp --only-show-errors _output/release-key/pcr-public.pem {{.DIST}}/keys/pcr-public.pem
-      - task: release:offer
-        vars: {VERSION: '{{.VERSION}}', CHANNEL: testing, FROM: '{{.REL}}/SHA256SUMS', NEW: '{{.NEW}}'}
+      - task: release:index
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: testing, ADD: '{{.REL}}/SHA256SUMS', NEW: '{{.NEW}}'}
 
-  release:offer:
+  release:index:
     internal: true
-    desc: Add VERSION, from the SHA256SUMS FROM, to CHANNEL's index, sign the index with the release key and upload it. NEW=true starts a channel that has no index yet; otherwise an index that cannot be fetched stops it.
-    requires: {vars: [VERSION, CHANNEL, FROM]}
+    desc: "CHANNEL's signed index with VERSION added from the SHA256SUMS ADD, or taken out (WITHDRAW=true): the current index fetched, the new one made, signed with the release key and uploaded. CHANNEL is a channel under updates/, or dl, the sticks'. NEW=true starts an index that is not there yet; otherwise one that cannot be fetched stops it."
+    requires: {vars: [VERSION, CHANNEL]}
     vars:
       OUT: _output/channel/{{.CHANNEL}}
       DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
+      AT: '{{if eq .CHANNEL "dl"}}dl{{else}}updates/{{.CHANNEL}}{{end}}'
     cmds:
       - rm -rf {{.OUT}} && mkdir -p {{.OUT}}
-      - cmd: aws s3 cp --only-show-errors {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current
+      - cmd: aws s3 cp --only-show-errors {{.DIST}}/{{.AT}}/SHA256SUMS {{.OUT}}/current
         if: '[ "{{.NEW}}" != true ]'
-      - go run ./cmd/image channel-index {{if eq .NEW "true"}}-new{{else}}-current {{.OUT}}/current{{end}} -add {{.FROM}} -version {{.VERSION}} -o {{.OUT}}
+      - >-
+        go run ./cmd/image channel-index {{if eq .CHANNEL "dl"}}-kind dl {{end}}{{if eq .NEW "true"}}-new{{else}}-current {{.OUT}}/current{{end}}
+        {{if eq .WITHDRAW "true"}}-withdraw{{else}}-add {{.ADD}}{{end}} -version {{.VERSION}} -o {{.OUT}}
       - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE | default "alias/construct-release"}} -pubring keys/release.pgp -dir {{.OUT}}
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS.gpg
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/{{.AT}}/SHA256SUMS
+      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/{{.AT}}/SHA256SUMS.gpg
 
   release:promote:
     desc: "Offer a release testing proved to the next channel: task release:promote VERSION=20261004.1 [FROM=testing] [TO=stable] [NEW=true, the first time TO gets a release]. Signs with the KMS release key: AWS credentials that may, and CONSTRUCT_DIST_BUCKET (infra output buckets.dist)."
@@ -519,22 +517,15 @@ tasks:
     cmds:
       - mkdir -p _output/channel
       - aws s3 cp --only-show-errors s3://{{.CONSTRUCT_DIST_BUCKET}}/updates/{{.FROM}}/SHA256SUMS _output/channel/{{.FROM}}.from
-      - task: release:offer
-        vars: {VERSION: '{{.VERSION}}', CHANNEL: '{{.TO}}', FROM: '_output/channel/{{.FROM}}.from', NEW: '{{.NEW}}'}
+      - task: release:index
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: '{{.TO}}', ADD: '_output/channel/{{.FROM}}.from', NEW: '{{.NEW}}'}
 
   release:withdraw:
     desc: "Take a release out of a channel, so machines that have not taken it never will: task release:withdraw VERSION=20261004.1 CHANNEL=stable. Signs with the KMS release key; CONSTRUCT_DIST_BUCKET."
     requires: {vars: [VERSION, CHANNEL, CONSTRUCT_DIST_BUCKET]}
-    vars:
-      OUT: _output/channel/{{.CHANNEL}}
-      DIST: s3://{{.CONSTRUCT_DIST_BUCKET}}
     cmds:
-      - rm -rf {{.OUT}} && mkdir -p {{.OUT}}
-      - aws s3 cp --only-show-errors {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS {{.OUT}}/current
-      - go run ./cmd/image channel-index -current {{.OUT}}/current -withdraw -version {{.VERSION}} -o {{.OUT}}
-      - go run ./cmd/image sign-release -key kms:{{.CONSTRUCT_KMS_RELEASE | default "alias/construct-release"}} -pubring keys/release.pgp -dir {{.OUT}}
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS
-      - aws s3 cp --only-show-errors {{.OUT}}/SHA256SUMS.gpg {{.DIST}}/updates/{{.CHANNEL}}/SHA256SUMS.gpg
+      - task: release:index
+        vars: {VERSION: '{{.VERSION}}', CHANNEL: '{{.CHANNEL}}', WITHDRAW: 'true'}
 
   cache:seed:
     desc: "Once, from a machine that has built everything: put its packages/, kernel, firmware and QEMU in the builder's cache (CONSTRUCT_PACKAGES_BUCKET, infra output buckets.packages), so the first release does not build them all."
