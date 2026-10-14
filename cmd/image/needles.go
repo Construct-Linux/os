@@ -384,8 +384,13 @@ func needlesPropose(args []string) error {
 	if err := git("fetch", "-q", "origin"); err != nil {
 		return err
 	}
-	// Back on main whatever happens: the checkout is where the next run compares from.
-	defer func() { _ = git("checkout", "-q", "main") }()
+	// Back on main whatever happens: the checkout is where the next run compares from, and one
+	// left on the branch, dirty, is said.
+	defer func() {
+		if err := git("checkout", "-q", "main"); err != nil {
+			fmt.Fprintln(os.Stderr, "needles-propose:", err)
+		}
+	}()
 	for i, b := range proposalBatches(changed) {
 		branch, title := "look/"+l.Version, fmt.Sprintf("Look of %s: %d view(s)", l.Version, len(b.views))
 		if b.group != "" {

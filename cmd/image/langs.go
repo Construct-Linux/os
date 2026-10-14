@@ -9,6 +9,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"time"
 )
 
 // wolfiIndex is the index of the Wolfi repository image/apko.yaml builds from.
@@ -71,7 +72,8 @@ func installedPackages(rootTar string) (map[string]bool, error) {
 func indexPackages(src string, names map[string]bool) error {
 	var r io.ReadCloser
 	if strings.HasPrefix(src, "https://") {
-		resp, err := http.Get(src)
+		// A CDN that stops answering would hang task rootfs, as it would task gap.
+		resp, err := (&http.Client{Timeout: 2 * time.Minute}).Get(src)
 		if err != nil {
 			return err
 		}
