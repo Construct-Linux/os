@@ -63,6 +63,7 @@ func WriteArchive(path, dir string, files map[string][]byte) (err error) {
 	}
 	defer func() {
 		if err != nil {
+			_ = f.Close()
 			_ = os.Remove(path)
 		}
 	}()
@@ -72,22 +73,18 @@ func WriteArchive(path, dir string, files map[string][]byte) (err error) {
 	for _, name := range slices.Sorted(maps.Keys(files)) {
 		body := files[name]
 		if err := tw.WriteHeader(&tar.Header{Name: dir + "/" + name, Mode: 0o644, Size: int64(len(body)), ModTime: now}); err != nil {
-			f.Close()
 			return err
 		}
 		if _, err := tw.Write(body); err != nil {
-			f.Close()
 			return err
 		}
 	}
 	for _, c := range []io.Closer{tw, zw} {
 		if err := c.Close(); err != nil {
-			f.Close()
 			return err
 		}
 	}
 	if err := f.Sync(); err != nil {
-		f.Close()
 		return err
 	}
 	return f.Close()

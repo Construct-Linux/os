@@ -10,9 +10,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"unicode"
 
@@ -88,11 +89,7 @@ func mappings(keys []Key) string {
 			byUser[k.User] = append(byUser[k.User], k.U2F)
 		}
 	}
-	users := make([]string, 0, len(byUser))
-	for u := range byUser {
-		users = append(users, u)
-	}
-	sort.Strings(users)
+	users := slices.Sorted(maps.Keys(byUser))
 	var b strings.Builder
 	for _, u := range users {
 		b.WriteString(u + ":" + strings.Join(byUser[u], ":") + "\n")
