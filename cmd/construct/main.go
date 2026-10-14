@@ -8,6 +8,8 @@
 package main
 
 import (
+	"github.com/Construct-Linux/os/internal/program"
+
 	"bufio"
 	"bytes"
 	"context"
@@ -119,12 +121,12 @@ func mountFS(ctx context.Context, fstype, opts, dev string) (string, func() erro
 	if err != nil {
 		return "", nil, err
 	}
-	if err := run(ctx, "mount", "-t", fstype, "-o", opts, dev, dir); err != nil {
+	if err := program.Run(ctx, "mount", "-t", fstype, "-o", opts, dev, dir); err != nil {
 		_ = os.Remove(dir)
 		return "", nil, err
 	}
 	return dir, func() error {
-		if err := run(context.Background(), "umount", dir); err != nil {
+		if err := program.Run(context.Background(), "umount", dir); err != nil {
 			return err
 		}
 		return os.Remove(dir)
@@ -258,7 +260,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 	// systemd-boot, signed for Secure Boot, and the keys to enroll: the ESP this booted from -
 	// the stick's - which systemd mounts (gpt-auto) and bootctl finds.
 	var espPath bytes.Buffer
-	if err := cmdOut(ctx, nil, nil, &espPath, "bootctl", "--print-esp-path"); err != nil {
+	if err := (program.With{Stdout: &espPath}).Run(ctx, "bootctl", "--print-esp-path"); err != nil {
 		return err
 	}
 	esp := strings.TrimSpace(espPath.String())
@@ -280,7 +282,7 @@ func installCmd(ctx context.Context, args []string, in io.Reader, out io.Writer)
 		Partition: func(n int) (string, error) {
 			return waitPartition(ctx, disk.Name, n)
 		},
-		Run:      run,
+		Run:      program.Run,
 		MountESP: mountVFAT,
 		MakeVar: func(ctx context.Context, partition string) (err error) {
 			recovery, err = makeVar(ctx, log, partition, who, tpm)
@@ -406,11 +408,6 @@ func waitPartition(ctx context.Context, disk string, n int) (string, error) {
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-}
-
-// run runs a program, its output on construct's standard error, and says what failed.
-func run(ctx context.Context, name string, args ...string) error {
-	return cmd(ctx, nil, nil, name, args...)
 }
 
 // journal is a logger for a unit's output, which journald stamps and names.

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/Construct-Linux/os/internal/program"
+
 	"bytes"
 	"context"
 	"errors"
@@ -45,7 +47,7 @@ func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 		return fmt.Errorf("%s is %d bytes: not a sensor hub firmware image", args[0], len(fw))
 	}
 	var log bytes.Buffer
-	if err := cmdOut(ctx, nil, nil, &log, "journalctl", "-k", "-b", "-o", "cat", "--no-pager"); err != nil {
+	if err := (program.With{Stdout: &log}).Run(ctx, "journalctl", "-k", "-b", "-o", "cat", "--no-pager"); err != nil {
 		return err
 	}
 	gen, err := ishGeneration(log.String())

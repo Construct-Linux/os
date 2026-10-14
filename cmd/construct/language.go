@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/Construct-Linux/os/internal/program"
+
 	"bytes"
 	"context"
 	"fmt"
@@ -129,7 +131,7 @@ func bootCredentials(ctx context.Context, l language, tpm bool) (map[string][]by
 	for name, body := range map[string][]byte{"construct.vconsole": l.vconsole(), "construct.plymouth": conf} {
 		var enc bytes.Buffer
 		args := append([]string{"encrypt", "--name=" + name}, key...)
-		if err := cmdOut(ctx, body, nil, &enc, "systemd-creds", append(args, "-", "-")...); err != nil {
+		if err := (program.With{Stdin: body, Stdout: &enc}).Run(ctx, "systemd-creds", append(args, "-", "-")...); err != nil {
 			return nil, err
 		}
 		creds[name] = enc.Bytes()

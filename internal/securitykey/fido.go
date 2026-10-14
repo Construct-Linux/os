@@ -1,6 +1,8 @@
 package securitykey
 
 import (
+	"github.com/Construct-Linux/os/internal/program"
+
 	"bytes"
 	"context"
 	"crypto/ecdsa"
@@ -24,7 +26,7 @@ const origin = "pam://construct"
 // Devices are the hidraw nodes of the FIDO2 keys plugged in, as fido2-token lists them.
 func Devices(ctx context.Context) ([]string, error) {
 	var out bytes.Buffer
-	if err := run(ctx, nil, &out, "fido2-token", "-L"); err != nil {
+	if err := (program.With{Stdout: &out}).Run(ctx, "fido2-token", "-L"); err != nil {
 		return nil, err
 	}
 	var devs []string
@@ -61,7 +63,7 @@ func Credential(ctx context.Context, device, user, pin string) (string, error) {
 	if err := withPIN(ctx, pin, "fido2-cred", "-M", "-i", in, "-o", made, device); err != nil {
 		return "", notTouched(err)
 	}
-	if err := run(ctx, nil, nil, "fido2-cred", "-V", "-i", made, "-o", verified); err != nil {
+	if err := program.Run(ctx, "fido2-cred", "-V", "-i", made, "-o", verified); err != nil {
 		return "", err
 	}
 	out, err := os.ReadFile(verified)
@@ -110,7 +112,7 @@ func credentialLine(verified []byte) (string, error) {
 // as it would fail at boot.
 func ensurePIN(ctx context.Context, device, pin string) error {
 	var out bytes.Buffer
-	if err := run(ctx, nil, &out, "fido2-token", "-I", device); err != nil {
+	if err := (program.With{Stdout: &out}).Run(ctx, "fido2-token", "-I", device); err != nil {
 		return err
 	}
 	if !noClientPIN(out.String()) {
@@ -177,27 +179,6 @@ func withPIN(ctx context.Context, pin, name string, args ...string) error {
 	_ = stdin.Close()
 	if err := c.Wait(); err != nil {
 		return fmt.Errorf("%s: %w: %s", name, err, strings.TrimSpace(strings.ReplaceAll(said.String(), pin, "")))
-	}
-	return nil
-}
-
-// run runs a program, its output into out when given (else construct's standard error), env added
-// to the environment, and says what failed with the last line it wrote to standard error - never
-// env, which holds the password.
-func run(ctx context.Context, env []string, out *bytes.Buffer, name string, args ...string) error {
-	c := exec.CommandContext(ctx, name, args...)
-	c.Env = append(os.Environ(), env...)
-	var said bytes.Buffer
-	c.Stdout, c.Stderr = os.Stderr, io.MultiWriter(os.Stderr, &said)
-	if out != nil {
-		c.Stdout = out
-	}
-	if err := c.Run(); err != nil {
-		err = fmt.Errorf("%s %s: %w", name, strings.Join(args, " "), err)
-		if said := strings.TrimSpace(said.String()); said != "" {
-			err = fmt.Errorf("%w: %s", err, said[strings.LastIndex(said, "\n")+1:])
-		}
-		return err
 	}
 	return nil
 }

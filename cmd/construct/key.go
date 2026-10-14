@@ -1,6 +1,8 @@
 package main
 
 import (
+	"github.com/Construct-Linux/os/internal/program"
+
 	"bufio"
 	"context"
 	"encoding/json"
@@ -216,7 +218,7 @@ func keyRemoved(ctx context.Context, etc string) error {
 	if err != nil || !on {
 		return err
 	}
-	return cmd(ctx, nil, nil, "loginctl", "lock-sessions")
+	return program.Run(ctx, "loginctl", "lock-sessions")
 }
 
 // keyUser is the account a key signs in: the one named, or the one pkexec ran construct for.

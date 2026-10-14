@@ -1,6 +1,8 @@
 package securitykey
 
 import (
+	"github.com/Construct-Linux/os/internal/program"
+
 	"bytes"
 	"context"
 	"encoding/json"
@@ -20,7 +22,7 @@ func VarPartition(ctx context.Context) (string, error) {
 		return "", nil
 	}
 	var out bytes.Buffer
-	if err := run(ctx, nil, &out, "cryptsetup", "status", "var"); err != nil {
+	if err := (program.With{Stdout: &out}).Run(ctx, "cryptsetup", "status", "var"); err != nil {
 		return "", err
 	}
 	for _, line := range strings.Split(out.String(), "\n") {
@@ -53,7 +55,7 @@ func Enroll(ctx context.Context, partition, password, device, pin string) (int, 
 	if err := os.WriteFile(filepath.Join(creds, "cryptenroll.fido2-pin"), []byte(pin), 0o600); err != nil {
 		return 0, err
 	}
-	if err := run(ctx, []string{"PASSWORD=" + password, "CREDENTIALS_DIRECTORY=" + creds}, nil,
+	if err := (program.With{Env: []string{"PASSWORD=" + password, "CREDENTIALS_DIRECTORY=" + creds}}).Run(ctx,
 		"systemd-cryptenroll", "--fido2-device="+device, "--fido2-with-client-pin=yes",
 		"--fido2-with-user-presence=yes", partition); err != nil {
 		return 0, notTouched(err)
@@ -75,7 +77,7 @@ func Wipe(ctx context.Context, partition, password string, slot int) error {
 	if !slices.Contains(slots, slot) {
 		return nil
 	}
-	return run(ctx, []string{"PASSWORD=" + password}, nil, "systemd-cryptenroll", "--wipe-slot="+strconv.Itoa(slot), partition)
+	return (program.With{Env: []string{"PASSWORD=" + password}}).Run(ctx, "systemd-cryptenroll", "--wipe-slot="+strconv.Itoa(slot), partition)
 }
 
 // Header is a LUKS2 header by kinds: its keyslots, its tokens and the slots each token opens.
@@ -99,7 +101,7 @@ type Token struct {
 // ReadHeader reads partition's LUKS2 header.
 func ReadHeader(ctx context.Context, partition string) (Header, error) {
 	var out bytes.Buffer
-	if err := run(ctx, nil, &out, "cryptsetup", "luksDump", "--dump-json-metadata", partition); err != nil {
+	if err := (program.With{Stdout: &out}).Run(ctx, "cryptsetup", "luksDump", "--dump-json-metadata", partition); err != nil {
 		return Header{}, err
 	}
 	var h Header
