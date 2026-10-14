@@ -148,10 +148,9 @@ func test(args []string) error {
 	if *stick {
 		r.secureBoot(g)
 	}
-	r.shotLook(v, g, viewMeta{"desktop", needle.GroupDesktop,
+	l.shot(viewMeta{"desktop", needle.GroupDesktop,
 		"The desktop at login over the default dark wallpaper: both bars opaque g with their ring, the top bar a 36 px pill 6 px from the edge, its text Adwaita Sans 400, and no accent",
-		[]string{"S1", "SP2", "R1", "T2", "E2"}})
-	l.view("desktop")
+		[]string{"S1", "SP2", "R1", "T2", "E2"}}, (*lf).viewDesktop)
 	r.systemChecks(g)
 
 	want, unknown := parseOnly(*only)
@@ -172,8 +171,7 @@ func test(args []string) error {
 		// A window exists before it is drawn: Software loads its catalogue, Calendar its sources,
 		// Maps its tiles. The screenshot is what a person sees a few seconds in.
 		time.Sleep(5 * time.Second)
-		r.shotLook(v, g, appView(a.id))
-		l.view(strings.TrimSuffix(a.id, ".desktop"))
+		l.shot(appView(a.id), nil)
 		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
 		g.quitApp(a.id)
 		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
@@ -187,10 +185,9 @@ func test(args []string) error {
 		}
 		ok, detail := g.runPanel(p)
 		r.add("panel:"+p, ok, detail)
-		r.shotLook(v, g, viewMeta{"panel-" + p, needle.GroupSettings,
+		l.shot(viewMeta{"panel-" + p, needle.GroupSettings,
 			"Settings' " + p + " panel, among the pages a person reaches first: a dark window's sidebar, rows and preference groups",
-			[]string{"S3", "TY4", "TY5"}})
-		l.view("panel-" + p)
+			[]string{"S3", "TY4", "TY5"}}, nil)
 	}
 	g.quitApp(settingsApp)
 	if len(want) == 0 || want["views"] {
@@ -662,8 +659,7 @@ func (r *report) shellViews(v *qemu.VM, g *guest, l *lf) {
 		if s.wake != nil {
 			s.wake(v, l)
 		}
-		r.shotLook(v, g, viewMeta{"shell-" + s.name, needle.GroupShell, s.about, s.rules})
-		l.viewBy("shell-"+s.name, s.measure)
+		l.shot(viewMeta{"shell-" + s.name, needle.GroupShell, s.about, s.rules}, s.measure)
 		if s.name == "lock-screen" {
 			r.locked(g)
 		}
@@ -704,8 +700,7 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 		if strings.HasSuffix(wall, "light") {
 			about += "; a light wallpaper under the shell, which is dark in both schemes"
 		}
-		r.shotLook(v, g, viewMeta{name, needle.GroupDesktop, about, []string{"E2", "S1"}})
-		l.view(name)
+		l.shot(viewMeta{name, needle.GroupDesktop, about, []string{"E2", "S1"}}, (*lf).viewDesktopGround)
 	}
 	// No wallpaper at all: a flat colour, as a person who picks one has. Mid grey is neither the
 	// brand's ink nor its light desk, so the bars' edge is held over a ground the wallpapers never
@@ -715,10 +710,9 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 		asLive+`gsettings set org.gnome.desktop.background primary-color '`+plainDesktop+`'`, "")
 	r.add("view:desktop-plain", err == nil, plainDesktop+errText(err))
 	time.Sleep(3 * time.Second)
-	r.shotLook(v, g, viewMeta{"desktop-plain", needle.GroupDesktop,
+	l.shot(viewMeta{"desktop-plain", needle.GroupDesktop,
 		"Both bars over no wallpaper, a flat mid grey: their edge shows without the brand's ground under it",
-		[]string{"E2", "S1"}})
-	l.view("desktop-plain")
+		[]string{"E2", "S1"}}, (*lf).viewDesktopGround)
 	for _, k := range []string{"picture-uri", "picture-uri-dark", "picture-options", "color-shading-type", "primary-color"} {
 		_, _ = g.run(asLive+`gsettings reset org.gnome.desktop.background `+k, "")
 	}
@@ -733,10 +727,10 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 	} else {
 		time.Sleep(4 * time.Second)
 		r.add("view:"+lfScaledDesktop, true, "Scale: 1.5")
-		r.shotLook(v, g, viewMeta{lfScaledDesktop, needle.GroupDesktop,
+		// At 150% St's extents are not the screenshot's pixels: its needle is its check.
+		l.shot(viewMeta{lfScaledDesktop, needle.GroupDesktop,
 			"The desktop at 150%, a fractional scale: the bars, their ring and their text drawn on physical pixels a stage pixel does not divide",
-			[]string{"S1", "SP2"}})
-		l.view(lfScaledDesktop)
+			[]string{"S1", "SP2"}}, nil)
 		w, h := sc.logical()
 		_, err := g.setSessionScale(float64(sc.Scale), w, h)
 		r.add("view:"+lfScaledDesktop+" restored", err == nil, fmt.Sprintf("scale %d again%s", sc.Scale, errText(err)))
@@ -758,10 +752,9 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 	})
 	time.Sleep(3 * time.Second)
 	r.add("view:panel-power-es", title != "", "window "+title)
-	r.shotLook(v, g, viewMeta{"panel-power-es", needle.GroupSettings,
+	l.shot(viewMeta{"panel-power-es", needle.GroupSettings,
 		"Settings' Power panel in Spanish, whose strings run longer than English's: rows and groups that still fit",
-		[]string{"S3", "TY4", "TY5"}})
-	l.view("panel-power-es")
+		[]string{"S3", "TY4", "TY5"}}, nil)
 	g.quitApp(settingsApp)
 	time.Sleep(2 * time.Second)
 }
@@ -832,10 +825,9 @@ func (r *report) installer(v *qemu.VM, g *guest, l *lf, stick bool) {
 	}
 	if stick && n == 1 {
 		time.Sleep(2 * time.Second)
-		r.shotLook(v, g, viewMeta{"installer", needle.GroupInstaller,
+		l.shot(viewMeta{"installer", needle.GroupInstaller,
 			"The graphical installer as a stick's live session offers it: its body f, its headerbar g with one rule under it, the ring outside it",
-			[]string{"S3", "E3", "C3"}})
-		l.view("installer")
+			[]string{"S3", "E3", "C3"}}, (*lf).viewInstaller)
 		_, _ = g.eval(installerWindows + `.forEach(w => w.delete(global.get_current_time())); true`)
 		time.Sleep(time.Second)
 	}
@@ -913,6 +905,9 @@ func (r *report) bench(g *guest) {
 }
 
 // gtkViewAbout is what each of gtkViews validates, for its needle.
+// gtkLightMeasured are the GTK views gtkLight measures in the light scheme.
+var gtkLightMeasured = []string{"gtk-popover", "gtk-tooltip", "gtk-dialog", "gtk-maximized", "gtk-banner", "gtk-destructive"}
+
 var gtkViewAbout = map[string]struct {
 	about string
 	rules []string
@@ -961,8 +956,16 @@ func (r *report) gtkViews(v *qemu.VM, g *guest, l *lf, light bool) {
 				rules = append(rules, "S5")
 			}
 		}
-		r.shotLook(v, g, viewMeta{base + suffix, needle.GroupGTK, about, rules})
-		l.view(base + suffix)
+		// The focus ring is measured in both schemes; the light window's surfaces in the light
+		// one, for the views whose window gtkLight knows.
+		var measure func(*lf, string, image.Image)
+		switch {
+		case base == "gtk-focus":
+			measure = (*lf).gtkFocus
+		case light && slices.Contains(gtkLightMeasured, base):
+			measure = (*lf).viewGTKLight
+		}
+		l.shot(viewMeta{base + suffix, needle.GroupGTK, about, rules}, measure)
 	}
 	windows := func() int {
 		n, _ := g.eval(`global.get_window_actors().length`)

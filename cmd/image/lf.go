@@ -573,41 +573,43 @@ func (l *lf) viewLockError(string, image.Image) {
 	}
 }
 
-// view runs the checks that measure the view just shot, when it is none of shellViews.
-func (l *lf) view(name string) {
-	img, ok := l.drawn(name)
-	if !ok {
+// shot keeps the view m as the run drew it - its screenshot and its needle's spec (shotLook) -
+// and, once something is seen drawn on it, runs measure on it: the view's own checks, nil for a
+// view its needle alone judges. What a view measures is said where it is shot.
+func (l *lf) shot(m viewMeta, measure func(*lf, string, image.Image)) {
+	l.r.shotLook(l.v, l.g, m)
+	l.viewBy(m.name, measure)
+}
+
+// The desktop at login: the bars as the desktop's own, and no accent anywhere on it.
+func (l *lf) viewDesktop(name string, img image.Image) {
+	if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
+		l.bars(name, img, true, s)
+	}
+	n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
+	l.check("accent", "desktop", n == 0, fmt.Sprintf("%d px of the accent, want none", n))
+}
+
+// E2: both bars' edge over another ground - a wallpaper, a flat colour.
+func (l *lf) viewDesktopGround(name string, img image.Image) {
+	if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
+		l.bars(name, img, false, s)
+	}
+}
+
+func (l *lf) viewInstaller(_ string, img image.Image) {
+	if s, ok := seen[windowSeen](l, "window", "installer", lfFocusWindow); ok {
+		l.installer(img, s)
+	}
+}
+
+func (l *lf) viewGTKLight(name string, img image.Image) {
+	r, err := l.appWindow("org.gnome.TextEditor.desktop")
+	if err != nil {
+		l.check("window", name, false, err.Error())
 		return
 	}
-	switch name {
-	case "desktop":
-		if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
-			l.bars(name, img, true, s)
-		}
-		n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
-		l.check("accent", "desktop", n == 0, fmt.Sprintf("%d px of the accent, want none", n))
-	case "installer":
-		if s, ok := seen[windowSeen](l, "window", "installer", lfFocusWindow); ok {
-			l.installer(img, s)
-		}
-	case "gtk-popover-light", "gtk-tooltip-light", "gtk-dialog-light", "gtk-maximized-light", "gtk-banner-light", "gtk-destructive-light":
-		r, err := l.appWindow("org.gnome.TextEditor.desktop")
-		if err != nil {
-			l.check("window", name, false, err.Error())
-			return
-		}
-		l.gtkLight(name, img, r)
-	case "gtk-focus", "gtk-focus-light":
-		l.gtkFocus(name, img)
-	default:
-		// E2: both bars' edge over every wallpaper. At another scale St's extents are not the
-		// screenshot's pixels.
-		if strings.HasPrefix(name, "desktop-") && name != lfScaledDesktop {
-			if s, ok := seen[barsSeen](l, "bars", name, lfBars); ok {
-				l.bars(name, img, false, s)
-			}
-		}
-	}
+	l.gtkLight(name, img, r)
 }
 
 // lfScaledDesktop is the desktop at 150%, whose screenshot is in physical pixels and St's extents
@@ -1551,10 +1553,9 @@ func (l *lf) app(id, shot string) {
 		_ = l.v.Key("esc")
 		time.Sleep(2 * time.Second)
 		shot = "code-workbench"
-		l.r.shotLook(l.v, l.g, viewMeta{shot, needle.GroupApp,
+		l.shot(viewMeta{shot, needle.GroupApp,
 			"VS Code's workbench once its onboarding is dismissed: the title bar and the editor on g, the side and status bars on f, from the palette's construct-theme",
-			[]string{"X1", "S3"}})
-		l.view(shot)
+			[]string{"X1", "S3"}}, nil)
 	}
 	l.cur = shot
 	img, ok := l.img(shot)
