@@ -34,6 +34,20 @@ var cacheable = []cached{
 	{name: "qemu", inputs: []string{"build/qemu", "build/versions.env"}, image: "construct-qemu"},
 }
 
+// inBucket is whether key is in bucket: head-object's 404, said on stderr (output keeps it out of
+// the log), is a miss. Anything else - credentials gone, the wrong region - is an error, not a miss
+// that builds the kernel again inside the builder's two hours.
+func inBucket(bucket, key string) (bool, error) {
+	_, err := output(exec.Command("aws", "s3api", "head-object", "--bucket", bucket, "--key", key))
+	switch {
+	case err == nil:
+		return true, nil
+	case strings.Contains(err.Error(), "(404)"):
+		return false, nil
+	}
+	return false, err
+}
+
 // isBuilt is whether c's output is here to store: a push after a failed release stores what was
 // built before it failed, and nothing that was not.
 func isBuilt(c cached) bool {
@@ -98,10 +112,17 @@ func cacheCmd(args []string) error {
 		if err := os.MkdirAll(filepath.Dir(local), 0o755); err != nil {
 			return err
 		}
+		stored, err := inBucket(bucket, strings.TrimPrefix(obj, s3+"/"))
+		if err != nil {
+			return err
+		}
 		if pull {
-			if run("aws", "s3", "cp", "--only-show-errors", obj, local) != nil {
+			if !stored {
 				fmt.Printf("cache: %s %s: a miss, to build\n", c.name, key)
 				continue
+			}
+			if err := run("aws", "s3", "cp", "--only-show-errors", obj, local); err != nil {
+				return err
 			}
 			if err := unpackCached(c, local); err != nil {
 				return err
@@ -113,8 +134,7 @@ func cacheCmd(args []string) error {
 			fmt.Printf("cache: %s %s: not built, not stored\n", c.name, key)
 			continue
 		}
-		// A miss is head-object's 404, said on stderr: output keeps it out of the log.
-		if _, err := output(exec.Command("aws", "s3api", "head-object", "--bucket", bucket, "--key", strings.TrimPrefix(obj, s3+"/"))); err == nil {
+		if stored {
 			continue
 		}
 		if err := packCached(c, local); err != nil {

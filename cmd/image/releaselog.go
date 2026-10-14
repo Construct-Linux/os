@@ -54,11 +54,16 @@ func releaseLog(args []string) error {
 	defer os.RemoveAll(tmp)
 	part := filepath.Join(tmp, "part")
 	var offset int64
-	// printNew prints what was written since the last read: a range past the end is no new bytes.
+	// printNew prints what was written since the last read: a range past the end is no new bytes,
+	// and a file not there yet none either. Anything else - a wrong -file, credentials gone - is
+	// said, not waited out.
 	printNew := func() error {
 		if _, err := output(exec.Command("aws", "s3api", "get-object", "--bucket", bucket, "--key", prefix+*file,
 			"--range", fmt.Sprintf("bytes=%d-", offset), part)); err != nil {
-			return nil
+			if strings.Contains(err.Error(), "(InvalidRange)") || (offset == 0 && strings.Contains(err.Error(), "(NoSuchKey)")) {
+				return nil
+			}
+			return err
 		}
 		b, err := os.ReadFile(part)
 		if err != nil {
