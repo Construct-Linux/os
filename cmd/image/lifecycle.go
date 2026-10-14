@@ -495,7 +495,9 @@ func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string
 	if err := os.RemoveAll(root); err != nil {
 		return nil, err
 	}
-	byVersion := map[string]string{}
+	// What is served is what the indexes list and nothing else, each file by the name a request
+	// gives, to a path made here from the index's line: a request's text never reaches the disk.
+	slots, files := map[string]string{}, map[string]string{}
 	for ch, vs := range map[string][]string{"stable": {"v1"}, "testing": {"v1", "v2"}} {
 		idx := index{}
 		for _, v := range vs {
@@ -508,7 +510,11 @@ func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string
 				return nil, err
 			}
 			idx[versions[v]] = rel[versions[v]]
-			byVersion[versions[v]] = v
+			for _, line := range rel[versions[v]] {
+				name := strings.Fields(line)[1]
+				slots[name] = v
+				files[name] = filepath.Join(dir, v+".release", name)
+			}
 		}
 		sums := filepath.Join(root, ch, "SHA256SUMS")
 		if err := os.MkdirAll(filepath.Dir(sums), 0o755); err != nil {
@@ -522,23 +528,21 @@ func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string
 		}
 	}
 	c := &updateCDN{}
-	files := http.FileServer(http.Dir(root))
+	indexes := http.FileServer(http.Dir(root))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
-		if len(parts) == 2 {
-			if m := releaseFile.FindStringSubmatch(parts[1]); m != nil {
-				if v, ok := byVersion[m[1]]; ok && parts[0] != "assets" {
-					c.redirects.Add(1)
-					http.Redirect(w, r, "/assets/"+v+"/"+parts[1], http.StatusFound)
-					return
-				}
+		if len(parts) == 2 && parts[0] != "assets" {
+			if slot, ok := slots[parts[1]]; ok {
+				c.redirects.Add(1)
+				http.Redirect(w, r, "/assets/"+slot+"/"+parts[1], http.StatusFound)
+				return
 			}
 		}
-		if len(parts) == 3 && parts[0] == "assets" && releaseFile.MatchString(parts[2]) && (parts[1] == "v1" || parts[1] == "v2") {
-			http.ServeFile(w, r, filepath.Join(dir, parts[1]+".release", parts[2]))
+		if len(parts) == 3 && parts[0] == "assets" && slots[parts[2]] == parts[1] {
+			http.ServeFile(w, r, files[parts[2]])
 			return
 		}
-		files.ServeHTTP(w, r)
+		indexes.ServeHTTP(w, r)
 	})
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {

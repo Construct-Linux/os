@@ -76,4 +76,19 @@ func TestUpdateCDN(t *testing.T) {
 	if got := get("/testing/construct_20261004.2.efi"); got != "kernel 20261004.2" || c.redirects.Load() != 1 {
 		t.Errorf("the kernel image through the redirect: %q, %d redirects", got, c.redirects.Load())
 	}
+	// Only what an index lists is a file: a version no release has, a file in another release's
+	// slot, a release directory's other files, and a path out of it are all nothing.
+	for _, p := range []string{"/testing/construct_20261004.3.efi", "/assets/v1/construct_20261004.2.efi", "/assets/v2/SHA256SUMS", "/assets/v2/../release.pem"} {
+		resp, err := http.Get(base + p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != http.StatusNotFound {
+			t.Errorf("%s: %s, not 404", p, resp.Status)
+		}
+	}
+	if c.redirects.Load() != 1 {
+		t.Errorf("%d redirects after the refused requests, not 1", c.redirects.Load())
+	}
 }
