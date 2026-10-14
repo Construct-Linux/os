@@ -64,7 +64,7 @@ var apps = []app{
 // panels are Settings' pages a person reaches first; each is opened by name and screenshotted.
 var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power", "keyboard", "users", "system"}
 
-func test(args []string) error {
+func test(args []string) (err error) {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
 	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, type, bench, suspend); all by default")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
@@ -77,6 +77,8 @@ func test(args []string) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	// However the run ends, what it covered is on record for task release (image tested).
+	defer func() { recordTested(dir, *stick, *only == "", err) }()
 	_, pub, err := testKey()
 	if err != nil {
 		return err
@@ -999,12 +1001,12 @@ func (r *report) gtkViews(v *qemu.VM, g *guest, l *lf, light bool) {
 	_ = v.PointTo(absPoint(cx-6, cy, sw, sh))
 	time.Sleep(300 * time.Millisecond)
 	err := v.PointTo(absPoint(cx, cy, sw, sh))
-	time.Sleep(time.Second)
+	l.awaitButton(v, "gtk-popover"+suffix, maxBtn)
 	r.add("view:gtk-hover"+suffix, err == nil, fmt.Sprintf("the pointer over the maximize button at (%d, %d)%s", cx, cy, errText(err)))
 	shot("gtk-hover")
 	l.buttonState("gtk-hover"+suffix, "gtk-popover"+suffix, maxBtn)
 	err = v.Button(true)
-	time.Sleep(500 * time.Millisecond)
+	l.awaitButton(v, "gtk-hover"+suffix, maxBtn)
 	r.add("view:gtk-pressed"+suffix, err == nil, "the maximize button held down"+errText(err))
 	shot("gtk-pressed")
 	l.buttonState("gtk-pressed"+suffix, "gtk-hover"+suffix, maxBtn)

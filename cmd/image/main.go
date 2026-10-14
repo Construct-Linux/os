@@ -6,6 +6,7 @@
 //	image disk  [-test]                         the baked root as an ext4 test disk, booted with the kernel given directly
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
+//	image tested [-usb]                         whether the harness's last run was of HEAD, whole, and passed (cmd/image/tested.go)
 //	image usb   -pcr-public pem -secureboot dir [-test] [-append opt]  the stick's verified root and kernel image, in build/tools as root
 //	image sign-pcr -key ref                     on the host: sign the kernel image's PCR 11 policy (cmd/image/pcrsig.go)
 //	image usb-join                              the kernel image with its signed policy, in build/tools
@@ -61,6 +62,8 @@ func main() {
 		err = boot(os.Args[2:])
 	case "test":
 		err = test(os.Args[2:])
+	case "tested":
+		err = testedCheck(os.Args[2:])
 	case "usb":
 		err = usb(os.Args[2:])
 	case "sign-pcr":

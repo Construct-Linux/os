@@ -192,7 +192,10 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
   launches an EC2 instance for the pushed commit (infra repository, Construct-Linux/infra), which
   runs `task release:build` - the cache, the harness on a test build of the same commit
   (`test:usb`, `test:lifecycle`), the release signed with KMS, `task scan` - and terminates, at
-  two hours at the latest. A check that fails stops the release.
+  two hours at the latest. A check that fails stops the release. **`task release` refuses a commit
+  `task test:usb` has not passed on this machine** (`image tested`, from the harness's
+  `_output/test/tested.json`): the builder runs the same harness, and finds a failure two hours
+  and a machine later.
 - **A test build is never signed with a release's keys**: `image usb` records the test layer in
   `built.json` and `sign-pcr`/`usb-sign` refuse a KMS key for it.
 - **Versions are CalVer**, `vYYYYMMDD.N` (`image release-version`); files carry them without the v.

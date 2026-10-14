@@ -372,6 +372,10 @@ tasks:
         msg: commit first - the builder builds the commit, not this checkout
       - sh: test -n "$(git branch -r --contains {{.COMMIT}})"
         msg: push first - the builder clones the commit from GitHub
+      # The builder runs the same harness, two hours and a machine later: a commit it would fail
+      # on is found here first.
+      - sh: go run ./cmd/image tested -usb
+        msg: "task test:usb must have passed on this commit, on this machine (_output/test/tested.json)"
     cmds:
       - >-
         aws ec2 run-instances --launch-template LaunchTemplateName=construct-builder
