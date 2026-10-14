@@ -6,7 +6,7 @@
 package:
   name: code
   version: 1.140.0
-  epoch: 2
+  epoch: 3
   description: Visual Studio Code, Microsoft's build
   copyright:
     - license: LicenseRef-Microsoft-VSCode
@@ -38,6 +38,12 @@ pipeline:
       mkdir -p ${{targets.destdir}}/usr/share/code ${{targets.destdir}}/usr/bin
       tar -xzf stable -C ${{targets.destdir}}/usr/share/code --strip-components=1
       chmod 0755 ${{targets.destdir}}/usr/share/code/chrome-sandbox
+      # No updater of its own: /usr is read-only and each release carries its version. Without
+      # updateUrl Code's updater is disabled and it asks for nothing; the edit must match.
+      product=${{targets.destdir}}/usr/share/code/resources/app/product.json
+      grep -q '^[[:space:]]*"updateUrl": "[^"]*",$' $product
+      sed -i '/^[[:space:]]*"updateUrl": "[^"]*",$/d' $product
+      ! grep -q updateUrl $product
       # The Microsoft account broker's runtime, which links WebKitGTK 4.1 and needs Microsoft's
       # identity broker (Intune), neither here, and its Node module; the extension signs in through
       # the browser.
