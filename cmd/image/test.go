@@ -768,13 +768,15 @@ var lockScreenRoles = []string{"activities", "quickSettings", "dateMenu", "a11y"
 // enabled there (session-modes unlock-dialog), so a lock does not tear them down and build them
 // again, and each hides what it puts in the panel; nothing of an extension may show on it.
 func (r *report) locked(g *guest) {
-	state, err := g.eval(`String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.state)`)
+	var state string
+	err := g.evalJSON(`return String(Main.extensionManager.lookup("tilingshell@ferrarodomenico.com")?.state);`, &state)
 	// ExtensionState.ACTIVE
-	r.add("locked: tilingshell stays enabled", err == nil && strings.Trim(state, `"`) == "1", "state "+state+errText(err))
+	r.add("locked: tilingshell stays enabled", err == nil && state == "1", "state "+state+errText(err))
 	roles, _ := json.Marshal(lockScreenRoles)
-	shown, err := g.eval(`JSON.stringify(Object.entries(Main.panel.statusArea).filter(([role, i]) => !` + string(roles) +
-		`.includes(role) && i.container.visible && i.visible).map(([role]) => role))`)
-	r.add("locked: no extension in the panel", err == nil && strings.Trim(shown, `"`) == "[]", "shown: "+shown+errText(err))
+	var shown []string
+	err = g.evalJSON(`return Object.entries(Main.panel.statusArea).filter(([role, i]) => !`+string(roles)+
+		`.includes(role) && i.container.visible && i.visible).map(([role]) => role);`, &shown)
+	r.add("locked: no extension in the panel", err == nil && len(shown) == 0, fmt.Sprintf("shown: %v", shown)+errText(err))
 }
 
 // keyringRoundTrip is a shell command that keeps a secret in user's login keyring and reads it
