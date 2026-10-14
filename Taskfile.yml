@@ -407,12 +407,18 @@ tasks:
       - task: scan
       - task: release:publish
         vars: {VERSION: '{{.VERSION}}', NEW: '{{.NEW}}'}
-      # Every build no recipe makes goes, and the index is made again before the cache takes
-      # packages/ back (the deferred push).
+      # Every build no recipe makes goes before the cache takes packages/ back (the deferred push).
+      - task: packages:prune
+
+  packages:prune:
+    desc: "Remove every apk in packages/ that no recipe makes now, and index again: old versions, and a build of a recipe never committed, which apko would take over the recipe's own."
+    deps: [keygen]
+    cmds:
       - go run ./cmd/image packages prune
       - >-
         docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}}
         index --signing-key melange.rsa -o packages/x86_64/APKINDEX.tar.gz packages/x86_64/*.apk
+      - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/packages/x86_64/APKINDEX.tar.gz
 
   release:inputs:
     desc: "What the cache lacked, side by side: the packages, the kernel, the firmware and the harness's QEMU, none of which needs another. On the builder, after cache pull."
