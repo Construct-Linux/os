@@ -46,7 +46,6 @@ const devCID = qemu.DefaultCID + 1
 // SIGTERM or task dev:down.
 func devUp(args []string) error {
 	fl := flag.NewFlagSet("dev-up", flag.ExitOnError)
-	mem := fl.String("m", vmMemory, "memory")
 	_ = fl.Parse(args)
 	sc := screenX9
 	_, pub, err := testKey()
@@ -56,7 +55,7 @@ func devUp(args []string) error {
 	if err := os.MkdirAll(devDir, 0o755); err != nil {
 		return err
 	}
-	m, err := withStick(qemu.Machine{Memory: *mem, PubKey: pub, Dir: devDir, CID: devCID, Width: sc.W, Height: sc.H}, devDir)
+	m, err := withStick(qemu.Machine{Memory: vmMemory, PubKey: pub, Dir: devDir, CID: devCID, Width: sc.W, Height: sc.H}, devDir)
 	if err != nil {
 		return err
 	}

@@ -45,7 +45,7 @@ func lifecycle(args []string) error {
 	if err := os.RemoveAll(tpm); err != nil {
 		return err
 	}
-	if err := qemu.Blank(nvme, "64G"); err != nil {
+	if err := qemu.Blank(nvme); err != nil {
 		return err
 	}
 	if err := qemu.FreshVars(vars); err != nil {

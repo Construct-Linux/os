@@ -17,8 +17,7 @@ type Match struct {
 			Versions []string `json:"versions"`
 		} `json:"fix"`
 		EPSS []struct {
-			EPSS       float64 `json:"epss"`
-			Percentile float64 `json:"percentile"`
+			EPSS float64 `json:"epss"`
 		} `json:"epss"`
 	} `json:"vulnerability"`
 	Artifact struct {

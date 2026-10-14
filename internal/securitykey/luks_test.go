@@ -16,7 +16,7 @@ func TestSlots(t *testing.T) {
 		"2": {Type: "systemd-fido2", Keyslots: []string{"4"}},
 		"3": {Type: "systemd-fido2", Keyslots: []string{"3"}},
 	}}
-	slots, err := h.FIDO2Slots()
+	slots, err := h.fido2Slots()
 	if err != nil || len(slots) != 2 || slots[0] != 3 || slots[1] != 4 {
 		t.Errorf("%v %v", slots, err)
 	}
@@ -32,7 +32,7 @@ func TestSlots(t *testing.T) {
 // the slot a key is removed by must be the one it opens.
 func TestATokenOfNoKeyslotNumberIsRefused(t *testing.T) {
 	h := Header{Tokens: map[string]Token{"0": {Type: "systemd-fido2", Keyslots: []string{"one"}}}}
-	if slots, err := h.FIDO2Slots(); err == nil {
+	if slots, err := h.fido2Slots(); err == nil {
 		t.Errorf("slots %v", slots)
 	}
 }

@@ -115,11 +115,11 @@ func tokenSlots(ctx context.Context, partition string) ([]int, error) {
 	if err != nil {
 		return nil, err
 	}
-	return h.FIDO2Slots()
+	return h.fido2Slots()
 }
 
-// FIDO2Slots are the keyslots a systemd-fido2 token opens, in order.
-func (h Header) FIDO2Slots() ([]int, error) {
+// fido2Slots are the keyslots a systemd-fido2 token opens, in order.
+func (h Header) fido2Slots() ([]int, error) {
 	var slots []int
 	for _, t := range h.Tokens {
 		if t.Type != "systemd-fido2" {

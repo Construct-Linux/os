@@ -112,7 +112,7 @@ func play(args []string) error {
 		}
 	}
 	if _, err := os.Stat(nvme); err != nil {
-		if err := qemu.Blank(nvme, "64G"); err != nil {
+		if err := qemu.Blank(nvme); err != nil {
 			return err
 		}
 	}

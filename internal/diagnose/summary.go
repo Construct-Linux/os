@@ -143,8 +143,8 @@ func AuthFailures(journal []byte, n int) []string {
 
 // Displays are the DRM connectors under root, connected or not, with their modes: a panel the
 // GPU's driver does not see is not in Settings either.
-func Displays(root string) []byte {
-	conns, _ := filepath.Glob(filepath.Join(root, "sys/class/drm/card*-*"))
+func Displays() []byte {
+	conns, _ := filepath.Glob("/sys/class/drm/card*-*")
 	var b bytes.Buffer
 	for _, c := range conns {
 		modes := strings.Fields(text(filepath.Join(c, "modes")))

@@ -85,7 +85,7 @@ func diagnoseProbes(person string, measure time.Duration) []diagnose.Probe {
 		cmd("hardware/fwupd.txt", "fwupdmgr", "get-devices", "--no-unreported-check"),
 		cmd("hardware/modules.txt", "cat", "/proc/modules"),
 		cmd("hardware/sound.txt", "cat", "/proc/asound/cards"),
-		{File: "hardware/displays.txt", Run: func(context.Context) ([]byte, error) { return diagnose.Displays("/"), nil }},
+		{File: "hardware/displays.txt", Run: func(context.Context) ([]byte, error) { return diagnose.Displays(), nil }},
 		cmd("boot/cmdline.txt", "cat", "/proc/cmdline"),
 		cmd("boot/time.txt", "systemd-analyze", "time"),
 		cmd("boot/blame.txt", "systemd-analyze", "blame", "--no-pager"),

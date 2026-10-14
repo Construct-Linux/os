@@ -242,9 +242,17 @@ func StickCopy(img, stick string) error {
 	return run("truncate", "-s", "32G", stick)
 }
 
-// Blank writes an empty disk of size at path, sparse: one to install on.
-func Blank(path, size string) error {
-	return run("truncate", "-s", size, path)
+// Blank writes an empty disk of 64 GB at path, sparse: one to install on.
+func Blank(path string) error {
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	if err := f.Truncate(64 << 30); err != nil {
+		_ = f.Close()
+		return err
+	}
+	return f.Close()
 }
 
 func run(name string, args ...string) error {
