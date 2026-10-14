@@ -72,6 +72,11 @@ type Machine struct {
 // VM is a running QEMU, or one Attach found running.
 type VM struct {
 	cmd *exec.Cmd
+	// stopTPM ends the swtpm this process started for its QEMU, once QEMU has ended: swtpm ends
+	// by itself with the QEMU that connected to it (--terminate), and this is for one that never
+	// did - a QEMU that refused a later argument - which would otherwise wait until the harness
+	// exits.
+	stopTPM func()
 	// QMP is its QMP socket.
 	QMP string
 	// CID is its guest's vsock address.
@@ -179,7 +184,7 @@ func (m Machine) Start() (*VM, error) {
 		stopTPM()
 		return nil, err
 	}
-	return &VM{cmd: cmd, QMP: qmp, CID: cid}, nil
+	return &VM{cmd: cmd, stopTPM: stopTPM, QMP: qmp, CID: cid}, nil
 }
 
 // gpu is QEMU's display device for the panel: virtio-vga's xres and yres are what the virtio GPU
@@ -291,9 +296,14 @@ func HasCanoKey() bool {
 	return err == nil && strings.Contains(string(out), `"canokey"`)
 }
 
-// Wait waits for QEMU to end.
+// Wait waits for QEMU to end. A VM Attach found is another process's to wait for.
 func (v *VM) Wait() error {
-	return v.cmd.Wait()
+	if v.cmd == nil {
+		return errors.New("qemu: a VM found by Attach is not this process's to wait for")
+	}
+	err := v.cmd.Wait()
+	v.ended()
+	return err
 }
 
 // Stop ends QEMU at once, a power cut: what the guest had not synced is lost. It waits for a QEMU
@@ -303,6 +313,7 @@ func (v *VM) Stop() error {
 	err := qmp(v.QMP, map[string]any{"execute": "quit"})
 	if v.cmd != nil {
 		_ = v.cmd.Wait()
+		v.ended()
 	}
 	return err
 }
@@ -310,6 +321,10 @@ func (v *VM) Stop() error {
 // Shutdown waits up to d for QEMU to end - the guest asked to power off - and then ends it: a
 // quit, and a kill when even that is not taken, or the caller would wait on it for good.
 func (v *VM) Shutdown(d time.Duration) {
+	if v.cmd == nil {
+		_ = v.Stop()
+		return
+	}
 	done := make(chan struct{})
 	go func() { _ = v.cmd.Wait(); close(done) }()
 	select {
@@ -323,6 +338,14 @@ func (v *VM) Shutdown(d time.Duration) {
 			_ = v.cmd.Process.Kill()
 			<-done
 		}
+	}
+	v.ended()
+}
+
+// ended is what follows QEMU's end: the swtpm started for it, if it never took it, goes too.
+func (v *VM) ended() {
+	if v.stopTPM != nil {
+		v.stopTPM()
 	}
 }
 
