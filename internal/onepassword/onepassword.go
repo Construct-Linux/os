@@ -97,6 +97,8 @@ func Install(ctx context.Context) (string, error) {
 		return "", err
 	}
 	if err := os.Rename(staged, dir); err != nil {
+		// The installed app back where it was: a failed update is no update, not no 1Password.
+		_ = os.Rename(old, dir)
 		return "", err
 	}
 	_ = os.RemoveAll(old)
