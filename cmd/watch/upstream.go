@@ -28,6 +28,8 @@ const (
 // sources are the upstream endpoints the checks read: the real ones, or a test's servers.
 type sources struct {
 	client *http.Client
+	// token is GITHUB_TOKEN, for GitHub's API: anonymous calls share a runner's address's 60 an hour.
+	token  string
 	kernel string
 	gnome  string
 	github string
@@ -41,11 +43,10 @@ func (s sources) getJSON(ctx context.Context, url string, out any) error {
 	if err != nil {
 		return err
 	}
-	// Anonymous calls to GitHub's API share a runner's address's 60 an hour.
 	if strings.HasPrefix(url, s.github+"/") {
 		req.Header.Set("Accept", "application/vnd.github+json")
-		if t := os.Getenv("GITHUB_TOKEN"); t != "" {
-			req.Header.Set("Authorization", "Bearer "+t)
+		if s.token != "" {
+			req.Header.Set("Authorization", "Bearer "+s.token)
 		}
 	}
 	resp, err := s.client.Do(req)

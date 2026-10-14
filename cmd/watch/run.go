@@ -8,6 +8,7 @@ import (
 	"io"
 	"maps"
 	"net/http"
+	"os"
 	"regexp"
 	"slices"
 	"strings"
@@ -149,7 +150,7 @@ func runCmd(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	src := sources{client: &http.Client{Timeout: time.Minute}, kernel: kernelReleases, gnome: gnomeShellCache, github: githubAPI,
+	src := sources{client: &http.Client{Timeout: time.Minute}, token: os.Getenv("GITHUB_TOKEN"), kernel: kernelReleases, gnome: gnomeShellCache, github: githubAPI,
 		goDL: goReleases, gitlab: gitlabAPI}
 	checks := []check{
 		src.kernelCheck(pinned["KERNEL_VERSION"]),
