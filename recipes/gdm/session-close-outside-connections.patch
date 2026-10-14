@@ -1,0 +1,75 @@
+From: Construct <release@constructlinux.org>
+Subject: session: Unexport and close the outside connections a session frees
+
+Every unlock of the screen opens a reauthentication channel: the
+session worker of the logged-in session makes a GdmSession with two
+private D-Bus servers, and gnome-shell connects to the outside one.
+When the session is disposed, free_outside_connection() only dropped
+the session's reference to that connection: the user verifier and
+greeter interfaces exported on it hold the connection, which holds them,
+so the connection, its socket and the server's listening socket stayed
+open. Measured on a session worker: 5 file descriptors more per unlock
+(2 listening, 2 established, a pidfd), and at the soft limit of 1024 -
+some 200 unlocks, days of a laptop's suspends - the worker cannot make
+the servers ("Unable to create socket: Too many open files") and the
+lock screen never shows a prompt again: no password, no fingerprint,
+no security key, until a reboot.
+
+The interfaces are unexported from the connection and the connection is
+closed, where the session frees it and where the client closed it.
+
+--- a/daemon/gdm-session.c
++++ b/daemon/gdm-session.c
+@@ -1950,6 +1950,33 @@
+ }
+ 
+ static void
++unexport_extension_from_connection (const char             *name,
++                                    GDBusInterfaceSkeleton *extension,
++                                    GDBusConnection        *connection)
++{
++        g_dbus_interface_skeleton_unexport_from_connection (extension, connection);
++}
++
++/* What the session exported on an outside connection holds the connection, and the connection
++ * holds it: unexported, and closed, the connection goes with the session, or the socket of every
++ * reauthentication the session worker ever served stays open until it can open no more. */
++static void
++unexport_from_outside_connection (GdmSession      *self,
++                                  GDBusConnection *connection)
++{
++        if (self->user_verifier_interface != NULL)
++                g_dbus_interface_skeleton_unexport_from_connection (G_DBUS_INTERFACE_SKELETON (self->user_verifier_interface),
++                                                                    connection);
++        if (self->user_verifier_extensions != NULL)
++                g_hash_table_foreach (self->user_verifier_extensions,
++                                      (GHFunc) unexport_extension_from_connection,
++                                      connection);
++        if (self->greeter_interface != NULL)
++                g_dbus_interface_skeleton_unexport_from_connection (G_DBUS_INTERFACE_SKELETON (self->greeter_interface),
++                                                                    connection);
++}
++
++static void
+ on_outside_connection_closed (GDBusConnection *connection,
+                               gboolean         remote_peer_vanished,
+                               GError          *error,
+@@ -1963,6 +1990,8 @@
+         self->outside_connections = g_list_remove (self->outside_connections,
+                                                    connection);
+ 
++        unexport_from_outside_connection (self, connection);
++
+         credentials = g_dbus_connection_get_peer_credentials (connection);
+         pid_of_client = g_credentials_get_unix_pid (credentials, NULL);
+ 
+@@ -3161,6 +3190,9 @@
+                                               G_CALLBACK (on_outside_connection_closed),
+                                               self);
+ 
++        unexport_from_outside_connection (self, connection);
++        g_dbus_connection_close_sync (connection, NULL, NULL);
++
+         g_object_unref (connection);
+ }
+ 

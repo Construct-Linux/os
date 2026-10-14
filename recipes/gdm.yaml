@@ -1,7 +1,7 @@
 package:
   name: gdm
   version: "51.0"
-  epoch: 3
+  epoch: 4
   description: GNOME display manager
   copyright:
     - license: GPL-2.0-or-later
@@ -59,6 +59,13 @@ pipeline:
   - uses: patch
     with:
       patches: gdm/plymouth-timeout-retain-splash.patch
+
+  # Each unlock's reauthentication left its D-Bus connection and server open in the session
+  # worker (the interfaces exported on the connection and the connection hold each other): 5
+  # file descriptors per unlock, and at 1024 the lock screen shows no prompt until a reboot.
+  - uses: patch
+    with:
+      patches: gdm/session-close-outside-connections.patch
 
   # x11-support off: gnome-shell 51 runs only as a Wayland compositor. selinux off: it is not in
   # the image. Plymouth on: GDM takes the screen over from the boot splash without a flash.
