@@ -1446,6 +1446,32 @@ func (l *lf) gtkFocus(name string, img image.Image) {
 // buttonState is S2 on a GTK button at btn, a stage rectangle, in view name against ref, the same
 // button a step before: the step reads - another colour - and is a colour C1 allows, the
 // palette's or an ink over one.
+// awaitButton waits for GTK to draw btn in a colour other than the one it has in the ref shot,
+// up to a limit: a state's frame comes when GTK draws it, not after a fixed wait, and on a loaded
+// machine a fixed wait fell short of it (a held-down button shot in its hover colour). The shot
+// that follows is judged as ever; a button that never changes fails there.
+func (l *lf) awaitButton(v *qemu.VM, ref string, btn pixels.Rect) {
+	before, ok := l.img(ref)
+	if !ok {
+		return
+	}
+	was, _ := pixels.ModeColor(before, l.px(btn))
+	tmp := filepath.Join(l.r.dir, "await.png")
+	defer os.Remove(tmp)
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); time.Sleep(200 * time.Millisecond) {
+		if v.PNG(tmp) != nil {
+			continue
+		}
+		img, err := pixels.ReadPNG(tmp)
+		if err != nil {
+			continue
+		}
+		if now, _ := pixels.ModeColor(img, l.px(btn)); !pixels.Near(now, was, lfSurfaceTol) {
+			return
+		}
+	}
+}
+
 func (l *lf) buttonState(name, ref string, btn pixels.Rect) {
 	if !l.ok {
 		return
