@@ -63,6 +63,11 @@ func writePartition(ctx context.Context, disk Disk, p gpt.Partition, a Artifact,
 		_ = xz.Process.Kill()
 	}
 	xzErr := xz.Wait()
+	// A cancelled context kills xz, and Wait answers the kill, not the cancellation: said as it
+	// is, not as a root that does not decompress.
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
 	switch {
 	case copyErr != nil:
 		return fmt.Errorf("update: writing %s: %w", a.Name, copyErr)

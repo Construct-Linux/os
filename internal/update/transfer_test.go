@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -113,6 +114,38 @@ func TestAPartitionIsWrittenDecompressedAndHeldToItsDigestAndRoom(t *testing.T) 
 			t.Errorf("%s: %v, want an error saying %q", name, err, tc.says)
 		}
 	}
+}
+
+// An install cancelled while a partition is written says it was cancelled, not that the release's
+// file is not xz: the context kills xz, and the kill is not the file's fault.
+func TestACancelledWriteSaysSo(t *testing.T) {
+	body := bytes.Repeat([]byte{7}, 64<<10)
+	good := xzOf(t, body)
+	ctx, cancel := context.WithCancel(t.Context())
+	// The first read of the file cancels, as a person closing the installer mid-write would.
+	fetch := func(context.Context, string) (io.ReadCloser, int64, error) {
+		return io.NopCloser(&cancelling{r: bytes.NewReader(good), cancel: cancel}), int64(len(good)), nil
+	}
+	disk, err := os.Create(filepath.Join(t.TempDir(), "disk"))
+	must(t, err)
+	defer disk.Close()
+	must(t, disk.Truncate(1<<20))
+	p := gpt.Partition{First: 8, Last: 8 + int64(len(body))/gpt.Sector - 1}
+	err = writePartition(ctx, disk, p, Artifact{Name: "root", SHA256: sumOf(good)}, fetch, nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("a cancelled write: %v, want %v", err, context.Canceled)
+	}
+}
+
+// cancelling is a reader that cancels on its first read and then reads on.
+type cancelling struct {
+	r      io.Reader
+	cancel context.CancelFunc
+}
+
+func (c *cancelling) Read(p []byte) (int, error) {
+	c.cancel()
+	return c.r.Read(p)
 }
 
 // What is copied from a release is held to its digest and to the room it has: a file of exactly
