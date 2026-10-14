@@ -244,11 +244,12 @@ func monotonic(line string) (float64, bool) {
 	return t, err == nil
 }
 
-// withoutCastFormats is the journal's errors (short-monotonic) without PipeWire's format
-// negotiation while the screen was recorded: the recorder asks the screen's stream for DMA-BUF
-// formats first, which a VM without a GPU cannot give, and PipeWire logs the refused format, a
-// screenful of it, before the stream falls back to one it can (the recording is checked by its
-// file). Any other error then stays, PipeWire's own included.
+// withoutCastFormats is the journal's errors (short-monotonic) without PipeWire's lines while the
+// screen was recorded: the recorder asks the screen's stream for DMA-BUF formats first, which a
+// VM without a GPU cannot give, and PipeWire logs the refused format - its context a screenful
+// of it, its link, core and client node a line each - before the stream falls back to one it can
+// (the recording is checked by its file). Any other error then stays, and PipeWire's at any other
+// time.
 func withoutCastFormats(errs string, window [2]float64) string {
 	if window[1] == 0 {
 		return errs
@@ -256,7 +257,7 @@ func withoutCastFormats(errs string, window [2]float64) string {
 	var kept []string
 	for _, line := range strings.Split(errs, "\n") {
 		if at, ok := monotonic(line); ok && at >= window[0] && at <= window[1] &&
-			strings.Contains(line, " pipewire[") && strings.Contains(line, "]: pw.context: ") {
+			strings.Contains(line, " pipewire[") {
 			continue
 		}
 		kept = append(kept, line)

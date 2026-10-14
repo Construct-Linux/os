@@ -24,19 +24,20 @@ func TestWithoutBenchOOM(t *testing.T) {
 	}
 }
 
-// PipeWire's format lines while the screen was recorded go; its other errors, and the same lines
-// at another time, stay.
+// PipeWire's lines while the screen was recorded go; its lines at another time, and anything
+// else's then, stay.
 func TestWithoutCastFormats(t *testing.T) {
 	errs := strings.Join([]string{
 		"[   60.000000] construct pipewire[988]: pw.context: params Spa:Enum:ParamId:EnumFormat: 0:0 Invalid argument (input format (no more input formats))",
 		"[   79.940162] construct pipewire[988]: pw.context: params Spa:Enum:ParamId:EnumFormat: 0:0 Invalid argument (input format (no more input formats))",
 		"[   79.940193] construct pipewire[988]: pw.context: Object: size 272, type Spa:Pod:Object:Param:Format (262147), id Spa:Enum:ParamId:EnumFormat (3)",
 		"[   79.940205] construct pipewire[988]: pw.context:   Prop: key Spa:Pod:Object:Param:Format:mediaType (1), flags 00000000",
-		"[   80.000000] construct pipewire[988]: mod.rt: could not make thread realtime",
+		"[   80.000000] construct pipewire[988]: pw.link: (67.0.0 -> 64.0.0) negotiating -> error no more input formats (-22)",
 		"[   80.100000] construct gnome-shell[665]: JS ERROR: TypeError: x is null",
+		"[   90.000000] construct pipewire[988]: mod.rt: could not make thread realtime",
 	}, "\n")
 	got := withoutCastFormats(errs, [2]float64{79, 83})
-	if strings.Contains(got, "79.94") || !strings.Contains(got, "60.000000") || !strings.Contains(got, "mod.rt") || !strings.Contains(got, "JS ERROR") {
+	if strings.Contains(got, "79.94") || strings.Contains(got, "pw.link") || !strings.Contains(got, "60.000000") || !strings.Contains(got, "mod.rt") || !strings.Contains(got, "JS ERROR") {
 		t.Errorf("kept:\n%s", got)
 	}
 	if withoutCastFormats(errs, [2]float64{}) != errs {
