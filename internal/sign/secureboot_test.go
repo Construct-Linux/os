@@ -19,71 +19,88 @@ import (
 	"github.com/foxboron/go-uefi/pkcs7"
 )
 
-// testKeySet is a key set from three throwaway RSA-2048 keys, and db's key.
-func testKeySet(t *testing.T) (map[string][]byte, *rsa.PrivateKey, *x509.Certificate) {
+// testKeys are three throwaway RSA-2048 keys with their certificates: PK, KEK and db.
+func testKeys(t *testing.T) (pk, kek, db SecureBootKey) {
 	t.Helper()
-	var keys [3]*rsa.PrivateKey
-	for i := range keys {
+	keys := []*SecureBootKey{&pk, &kek, &db}
+	for i, name := range []string{"Construct PK", "Construct KEK", "Construct db"} {
 		k, err := rsa.GenerateKey(rand.Reader, 2048)
 		if err != nil {
 			t.Fatal(err)
 		}
-		keys[i] = k
+		c, err := SecureBootCertificate(name, k)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*keys[i] = SecureBootKey{Key: k, Cert: c}
 	}
-	vars, cert, err := SecureBootKeySet(keys[0], keys[1], keys[2])
+	return pk, kek, db
+}
+
+// testKeySet is a key set from three throwaway keys, and db's key with its certificate.
+func testKeySet(t *testing.T) (map[string][]byte, *rsa.PrivateKey, *x509.Certificate) {
+	t.Helper()
+	pk, kek, db := testKeys(t)
+	vars, err := SecureBootKeySet(pk, kek, db)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return vars, keys[2], cert
+	return vars, db.Key.(*rsa.PrivateKey), db.Cert
 }
 
 // Each variable is signed as the firmware checks it: PK by itself, KEK by PK, db by KEK - KEK
 // holds Construct's certificate and Microsoft's two KEK CAs, db Construct's and Microsoft's two
-// option ROM CAs, Construct's first in each.
+// option ROM CAs, Construct's first in each. Signed again, the set is the same set: the
+// certificates machines hold, so a machine that enrolled one enrolls the next. Under another
+// key's certificate nothing is signed.
 func TestTheKeySetEnrollsAsTheFirmwareChecksIt(t *testing.T) {
-	vars, _, dbCertificate := testKeySet(t)
-	certs := map[string][]*x509.Certificate{}
-	for _, name := range SecureBootVariables() {
+	pk, kek, db := testKeys(t)
+	vars, err := SecureBootKeySet(pk, kek, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifySecureBootKeySet(vars, pk.Cert, kek.Cert, db.Cert); err != nil {
+		t.Error(err)
+	}
+	names := func(name string) (n []string) {
 		b := bytes.NewBuffer(vars[name])
-		auth, err := signature.ReadEFIVariableAuthencation2(b)
-		if err != nil {
-			t.Fatalf("%s: %v", name, err)
+		if _, err := signature.ReadEFIVariableAuthencation2(b); err != nil {
+			t.Fatal(err)
 		}
-		db, err := signature.ReadSignatureDatabase(b)
+		sd, err := signature.ReadSignatureDatabase(b)
 		if err != nil {
-			t.Fatalf("%s's list: %v", name, err)
+			t.Fatal(err)
 		}
-		for _, l := range db {
+		for _, l := range sd {
 			for _, s := range l.Signatures {
 				c, err := x509.ParseCertificate(s.Data)
 				if err != nil {
-					t.Fatalf("%s: %v", name, err)
+					t.Fatal(err)
 				}
-				certs[name] = append(certs[name], c)
+				n = append(n, c.Subject.CommonName)
 			}
-		}
-		signer := map[string]string{"PK.auth": "PK.auth", "KEK.auth": "PK.auth", "db.auth": "KEK.auth"}[name]
-		if len(certs[signer]) == 0 {
-			t.Fatalf("%s's signer %s has no certificate yet", name, signer)
-		}
-		if ok, err := auth.Verify(certs[signer][0]); !ok || err != nil {
-			t.Errorf("%s is not signed by %s: %v", name, signer, err)
-		}
-	}
-	if len(certs["db.auth"]) != 3 || !certs["db.auth"][0].Equal(dbCertificate) {
-		t.Errorf("db holds %d certificates, Construct's first: %v", len(certs["db.auth"]), certs["db.auth"])
-	}
-	names := func(cs []*x509.Certificate) (n []string) {
-		for _, c := range cs {
-			n = append(n, c.Subject.CommonName)
 		}
 		return n
 	}
-	if got := names(certs["KEK.auth"]); !slices.Equal(got, []string{"Construct KEK", "Microsoft Corporation KEK CA 2011", "Microsoft Corporation KEK 2K CA 2023"}) {
+	if got := names("KEK.auth"); !slices.Equal(got, []string{"Construct KEK", "Microsoft Corporation KEK CA 2011", "Microsoft Corporation KEK 2K CA 2023"}) {
 		t.Errorf("KEK holds %v", got)
 	}
-	if got := names(certs["db.auth"]); !slices.Equal(got, []string{"Construct db", "Microsoft Corporation UEFI CA 2011", "Microsoft Option ROM UEFI CA 2023"}) {
+	if got := names("db.auth"); !slices.Equal(got, []string{"Construct db", "Microsoft Corporation UEFI CA 2011", "Microsoft Option ROM UEFI CA 2023"}) {
 		t.Errorf("db holds %v", got)
+	}
+	again, err := SecureBootKeySet(pk, kek, db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := VerifySecureBootKeySet(again, pk.Cert, kek.Cert, db.Cert); err != nil {
+		t.Errorf("signed again: %v", err)
+	}
+	_, _, other := testKeys(t)
+	if err := VerifySecureBootKeySet(vars, pk.Cert, kek.Cert, other.Cert); err == nil {
+		t.Error("a db of another certificate verified")
+	}
+	if _, err := SecureBootKeySet(pk, kek, SecureBootKey{Key: db.Key, Cert: other.Cert}); err == nil {
+		t.Error("db's key under another's certificate: no error")
 	}
 }
 

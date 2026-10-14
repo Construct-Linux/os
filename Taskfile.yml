@@ -177,17 +177,16 @@ tasks:
         vars: {SIGNING_HOME: .cache/test-keys}
 
   keygen:secureboot:
-    desc: "The Secure Boot keys as files, {{.SIGNING_HOME}}/secureboot: db's key, which signs systemd-boot and the kernel images, its certificate, and the PK, KEK and db variables systemd-boot enrolls (cmd/image/secureboot.go). RSA-2048: UEFI verifies nothing else."
+    desc: "The Secure Boot keys as files, {{.SIGNING_HOME}}/secureboot: PK's, KEK's and db's keys and certificates - db's signs systemd-boot and the kernel images - and the PK, KEK and db variables systemd-boot enrolls (cmd/image/secureboot.go). RSA-2048: UEFI verifies nothing else. Once; --force signs the variables again, under the same certificates, when what they hold changes."
     status: ['test -f {{.SIGNING_HOME}}/secureboot/db.crt']
     vars:
       SB: '{{.SIGNING_HOME}}/secureboot'
     cmds:
       - mkdir -p -m 700 {{.SB}}
-      - for k in PK KEK db; do openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out {{.SB}}/$k.pem; done
+      # A key that has one is kept: its certificate is what the machines that enrolled it hold.
+      - for k in PK KEK db; do test -f {{.SB}}/$k.pem || openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out {{.SB}}/$k.pem; done
       - chmod 600 {{.SB}}/*.pem
       - go run ./cmd/image secureboot-keys -dir {{.SB}} -pk {{.SB}}/PK.pem -kek {{.SB}}/KEK.pem -db {{.SB}}/db.pem
-      # PK and KEK have signed what they sign: a change to db is a new key set.
-      - rm {{.SB}}/PK.pem {{.SB}}/KEK.pem
 
   keygen:pcr:
     desc: "The PCR key, {{.SIGNING_HOME}}/pcr.pem, beside the release key: it signs each kernel image's PCR 11 policy, which an installed machine's TPM releases /var's key to (cmd/image/pcrsig.go). RSA-2048, the one kind of key besides Ed25519: a TPM cannot verify Ed25519, and systemd verifies PCR policies as RSA."
@@ -210,16 +209,15 @@ tasks:
       - go run ./cmd/image release-key -key {{.SIGNING_HOME}}/release.pem -uid "{{.UID_NAME}}" -o {{.SIGNING_HOME}}/release.pgp
 
   keys:kms:
-    desc: "Once: the public half of a release's KMS keys into keys/ - release.pgp and the Secure Boot key set (PK, KEK and db sign their variables here, the only time PK and KEK sign) - to commit. Needs AWS credentials that may sign with all five keys (infra kms.tf)."
-    status: ['test -f keys/release.pgp && test -f keys/secureboot/db.crt']
+    desc: "The public half of a release's KMS keys into keys/, to commit: release.pgp and the Secure Boot key set - each key's certificate, once, and the PK, KEK and db variables, which PK and KEK sign here and nowhere else. Once; --force signs the variables again, under the same certificates, when what they hold changes (go test ./cmd/image says when). Needs AWS credentials that may sign with all five keys (infra kms.tf)."
+    status: ['test -f keys/release.pgp && test -f keys/secureboot/db.crt && test -f keys/secureboot/db.auth']
     cmds:
-      # Each half on its own: the Secure Boot set is made again when what the variables hold
-      # changes (rm -r keys/secureboot), and the release key's creation time, part of its
-      # fingerprint, stays.
+      # The release key's creation time is part of its fingerprint, so release.pgp is made once
+      # and kept; the certificates are what machines hold, so secureboot-keys keeps each one it
+      # finds and signs the variables under it.
       - test -f keys/release.pgp || go run ./cmd/image release-key -key kms:alias/construct-release -uid "CONSTRUCT release <release@constructlinux.org>" -o keys/release.pgp
       - >-
-        test -f keys/secureboot/db.crt
-        || go run ./cmd/image secureboot-keys -dir keys/secureboot -pk kms:alias/construct-secureboot-pk
+        go run ./cmd/image secureboot-keys -dir keys/secureboot -pk kms:alias/construct-secureboot-pk
         -kek kms:alias/construct-secureboot-kek -db kms:alias/construct-secureboot-db
 
   usb:

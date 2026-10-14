@@ -11,7 +11,7 @@
 //	image usb-join                              the kernel image with its signed policy, in build/tools
 //	image usb-sign -key ref -cert db.crt        on the host: Secure Boot signatures, and the release (cmd/image/secureboot.go)
 //	image sign-release -key ref -pubring pgp    on the host: the release's SHA256SUMS.gpg (cmd/image/keys.go)
-//	image secureboot-keys -dir dir -pk -kek -db  PK's, KEK's and db's certificates and variables, once
+//	image secureboot-keys -dir dir -pk -kek -db  PK's, KEK's and db's certificates, once, and their variables, signed again
 //	image release-key -key ref -o release.pgp   the release key's OpenPGP public key, once
 //	image public-key -key ref -o pem            a key's public half
 //	image packages-list -o packages.txt         the baked root's packages, a release asset

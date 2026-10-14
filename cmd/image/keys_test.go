@@ -8,7 +8,9 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -186,9 +188,11 @@ func TestSignPCRTakesAnRSAKeyOnly(t *testing.T) {
 	}
 }
 
-// secureboot-keys makes the key set once, of RSA keys: a directory that holds one already is left
-// as it is, and an Ed25519 key is refused before anything is written.
-func TestSecureBootKeysAreMadeOnceOfRSAKeys(t *testing.T) {
+// secureboot-keys makes each key's certificate once, of RSA keys, and signs the variables each
+// time under them: a second run keeps the certificates byte for byte, and the set it signs is the
+// set the certificates' holders enroll. An Ed25519 key is refused before anything is written, and
+// so is a certificate that is not its key's: a new certificate would be a set no machine holds.
+func TestSecureBootKeysKeepTheCertificatesAndSignTheVariablesAgain(t *testing.T) {
 	rsaRef, edRef := keyFile(t, newRSA(t)), keyFile(t, newEd25519(t))
 	dir := filepath.Join(t.TempDir(), "keys")
 	if err := secureBootKeys([]string{"-dir", dir, "-pk", rsaRef, "-kek", rsaRef, "-db", edRef}); !refusedFor(err, "RSA") {
@@ -197,15 +201,104 @@ func TestSecureBootKeysAreMadeOnceOfRSAKeys(t *testing.T) {
 	if got := filesUnder(t, dir); len(got) != 0 {
 		t.Errorf("wrote %q", got)
 	}
-	writeFile(t, filepath.Join(dir, dbCert), []byte("db's certificate"))
-	if err := secureBootKeys([]string{"-dir", dir, "-pk", rsaRef, "-kek", rsaRef, "-db", rsaRef}); !refusedFor(err, "holds a key set already") {
-		t.Errorf("a second key set: %v", err)
+	pkRef, kekRef, dbRef := keyFile(t, newRSA(t)), keyFile(t, newRSA(t)), keyFile(t, newRSA(t))
+	run := func() {
+		t.Helper()
+		if err := secureBootKeys([]string{"-dir", dir, "-pk", pkRef, "-kek", kekRef, "-db", dbRef}); err != nil {
+			t.Fatal(err)
+		}
 	}
-	if got := filesUnder(t, dir); !slices.Equal(got, []string{filepath.Join(dir, dbCert)}) {
-		t.Errorf("wrote %q", got)
+	run()
+	first := dirContents(t, dir)
+	run()
+	second := dirContents(t, dir)
+	for _, c := range secureBootCerts {
+		if !bytes.Equal(first[c], second[c]) {
+			t.Errorf("%s made again", c)
+		}
 	}
-	if b, _ := os.ReadFile(filepath.Join(dir, dbCert)); string(b) != "db's certificate" {
-		t.Errorf("db's certificate is now %q", b)
+	if err := verifyKeySet(dir, second); err != nil {
+		t.Error(err)
+	}
+	other, err := sign.SecureBootCertificate("Construct db", newRSA(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(dir, dbCert), pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: other.Raw}))
+	if err := secureBootKeys([]string{"-dir", dir, "-pk", pkRef, "-kek", kekRef, "-db", dbRef}); !refusedFor(err, "not its certificate's") {
+		t.Errorf("another key's certificate as db's: %v", err)
+	}
+	for name, b := range dirContents(t, dir) {
+		if name != dbCert && !bytes.Equal(b, second[name]) {
+			t.Errorf("%s written for a refused set", name)
+		}
+	}
+}
+
+// dirContents are the files directly under dir, by name.
+func dirContents(t *testing.T, dir string) map[string][]byte {
+	t.Helper()
+	got := map[string][]byte{}
+	for _, p := range filesUnder(t, dir) {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got[filepath.Base(p)] = b
+	}
+	return got
+}
+
+// verifyKeySet checks the signed variables in files against the certificates in dir, as the
+// firmware checks them when it enrolls them (sign.VerifySecureBootKeySet).
+func verifyKeySet(dir string, files map[string][]byte) error {
+	var certs [3]*x509.Certificate
+	for i, c := range secureBootCerts {
+		block, _ := pem.Decode(files[c])
+		if block == nil {
+			return fmt.Errorf("%s: no PEM certificate", filepath.Join(dir, c))
+		}
+		cert, err := x509.ParseCertificate(block.Bytes)
+		if err != nil {
+			return fmt.Errorf("%s: %w", c, err)
+		}
+		certs[i] = cert
+	}
+	return sign.VerifySecureBootKeySet(files, certs[0], certs[1], certs[2])
+}
+
+// The committed key set, keys/secureboot, is the one machines hold: its certificates (and
+// release.pgp) never change from what origin/main has - a certificate made again for the same
+// key is a stranger to every machine that enrolled the first, as release 20261014.1 was - and
+// its variables hold what internal/sign puts in them, signed under those certificates, so a
+// machine that enrolled the set enrolls them again when they change (task keys:kms --force).
+func TestTheCommittedKeySetIsTheOneMachinesHold(t *testing.T) {
+	root, err := filepath.Abs("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := filepath.Join(root, "keys", "secureboot")
+	if err := verifyKeySet(dir, dirContents(t, dir)); err != nil {
+		t.Errorf("%s: %v (task keys:kms --force signs the variables again under the certificates)", dir, err)
+	}
+	git := func(args ...string) (string, error) {
+		out, err := exec.Command("git", append([]string{"-C", root}, args...)...).Output()
+		return string(out), err
+	}
+	base, err := git("merge-base", "HEAD", "origin/main")
+	if err != nil {
+		t.Skipf("no merge-base with origin/main to compare the keys with: %v", err)
+	}
+	held := []string{"keys/release.pgp"}
+	for _, c := range secureBootCerts {
+		held = append(held, "keys/secureboot/"+c)
+	}
+	changed, err := git(append([]string{"diff", "--name-only", strings.TrimSpace(base), "--"}, held...)...)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, p := range strings.Fields(changed) {
+		t.Errorf("%s changed since origin/main: it is what machines hold, and what they hold signs for them alone", p)
 	}
 }
 

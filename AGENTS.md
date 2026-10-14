@@ -65,11 +65,16 @@ falling back from a release that does not come up.
   `image usb-join` joins the signature), Secure Boot's db over systemd-boot and the kernel image
   (`image usb-sign`), and `SHA256SUMS` (`image sign-release`, OpenPGP written in internal/sign over
   the signer, checked with go-crypto before it is written). The keys' public halves - the
-  release's `release.pgp`, db's certificate and the signed Secure Boot variables - are in `keys/`
-  for KMS (`task keys:kms`, once) and beside the files otherwise. Tests use throwaway keys in
-  `.cache/test-keys`. The KEK holds Microsoft's KEK CAs beside Construct's so that Microsoft's
-  dbx revocations apply (fwupd's `uefi_dbx`); db holds its option ROM CAs and never the CAs for
-  Windows or for others' boot loaders (internal/sign/secureboot.go says why each).
+  release's `release.pgp`, the three Secure Boot certificates and the signed variables - are in
+  `keys/` for KMS (`task keys:kms`) and beside the files otherwise. **A certificate is made once
+  and never again**: firmware holds the certificate, not the key, and refuses a signature under a
+  new certificate for the same key; a KEK or db that must hold something new is signed again under
+  the same certificates (`task keys:kms --force`), and `go test ./cmd/image` fails a certificate
+  changed since origin/main, or variables that do not hold what internal/sign puts in them. Tests
+  use throwaway keys in `.cache/test-keys`. The KEK holds Microsoft's KEK CAs beside Construct's
+  so that Microsoft's dbx revocations apply (fwupd's `uefi_dbx`); db holds its option ROM CAs and
+  never the CAs for Windows or for others' boot loaders (internal/sign/secureboot.go says why
+  each).
 - **An installed machine's `/var` is LUKS2** (cmd/construct `makeVar`). The person's password opens
   it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
   the passphrase when it has none. A recovery key is shown once at
