@@ -89,7 +89,7 @@ func powerOff(v *qemu.VM, g *guest) {
 func play(args []string) error {
 	fl := flag.NewFlagSet("play", flag.ExitOnError)
 	fresh := fl.Bool("fresh", false, "start over: a new stick from _output/usb/disk.raw, an empty disk, no boot entries")
-	withStick := fl.Bool("stick", true, "plug the stick in; without it the machine boots what is installed on its disk")
+	plugged := fl.Bool("stick", true, "plug the stick in; without it the machine boots what is installed on its disk")
 	mem := fl.String("m", "8G", "memory")
 	_ = fl.Parse(args)
 	dir := filepath.Join(out, "play")
@@ -123,7 +123,7 @@ func play(args []string) error {
 	}
 	// With a TPM, as a laptop has: the install seals /var's key in it.
 	m := qemu.Machine{Memory: *mem, Vars: vars, NVMe: nvme, Window: true, TPM: filepath.Join(dir, "tpm"), Dir: dir}
-	if *withStick {
+	if *plugged {
 		m.Sticks = []string{stick}
 	}
 	v, err := m.Start()
