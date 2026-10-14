@@ -518,7 +518,7 @@ func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string
 		}
 	}
 	c := &updateCDN{}
-	index := http.FileServer(http.Dir(root))
+	files := http.FileServer(http.Dir(root))
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")
 		if len(parts) == 2 {
@@ -534,7 +534,7 @@ func newUpdateCDN(dir string, versions map[string]string, keyRef, pubring string
 			http.ServeFile(w, r, filepath.Join(dir, parts[1]+".release", parts[2]))
 			return
 		}
-		index.ServeHTTP(w, r)
+		files.ServeHTTP(w, r)
 	})
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -572,13 +572,13 @@ func (r *report) person(g *guest) {
 	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")
 	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
 	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")
-	r.add("sudo takes the password", strings.Contains(withPw, "0\nrc=0") || strings.HasPrefix(strings.TrimSpace(withPw), "0"), oneLine(withPw))
+	r.add("sudo takes the password", strings.HasPrefix(strings.TrimSpace(withPw), "0") && strings.Contains(withPw, "rc=0"), oneLine(withPw))
 	// The person changes their own password, where Settings and passwd change it (pam_unix,
 	// /etc/shadow), and sudo then takes the new one.
 	changed, err := g.run(`printf '%s\n%s\n%s\n' '`+lifecyclePassword+`' '`+lifecycleNewPassword+`' '`+lifecycleNewPassword+`' | runuser -u `+lifecycleUser+` -- passwd 2>&1; echo rc=$?`, "")
 	r.add("the person changes their password", err == nil && strings.Contains(changed, "rc=0"), oneLine(changed))
 	newPw, _ := g.run(`printf '%s\n' '`+lifecycleNewPassword+`' | sudo -u `+lifecycleUser+` sudo -k -S -p '' id -u 2>&1; echo rc=$?`, "")
-	r.add("sudo takes the new password", strings.HasPrefix(strings.TrimSpace(newPw), "0"), oneLine(newPw))
+	r.add("sudo takes the new password", strings.HasPrefix(strings.TrimSpace(newPw), "0") && strings.Contains(newPw, "rc=0"), oneLine(newPw))
 	root, _ := g.run(`getent shadow root | cut -d: -f2`, "")
 	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
 }
