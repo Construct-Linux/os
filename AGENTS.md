@@ -67,7 +67,9 @@ falling back from a release that does not come up.
   the signer, checked with go-crypto before it is written). The keys' public halves - the
   release's `release.pgp`, db's certificate and the signed Secure Boot variables - are in `keys/`
   for KMS (`task keys:kms`, once) and beside the files otherwise. Tests use throwaway keys in
-  `.cache/test-keys`.
+  `.cache/test-keys`. The KEK holds Microsoft's KEK CAs beside Construct's so that Microsoft's
+  dbx revocations apply (fwupd's `uefi_dbx`); db holds its option ROM CAs and never the CAs for
+  Windows or for others' boot loaders (internal/sign/secureboot.go says why each).
 - **An installed machine's `/var` is LUKS2** (cmd/construct `makeVar`). The person's password opens
   it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
   the passphrase when it has none. A recovery key is shown once at

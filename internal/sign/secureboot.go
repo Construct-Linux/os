@@ -12,7 +12,6 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"io/fs"
 	"math/big"
 	"time"
 
@@ -28,11 +27,42 @@ import (
 // db holds Microsoft's two CAs for option ROMs beside Construct's key: a graphics card's or
 // network card's firmware is signed by Microsoft (the 2011 UEFI CA, and since 2023 its Option ROM
 // CA), and a db without them leaves such a machine without a screen, or without a boot. Not the
-// Windows CAs, nor 2023's for others' boot loaders. From github.com/microsoft/secureboot_objects
-// (PreSignedObjects/DB/Certificates, fcbc3fdc); firmware does not read a db certificate's dates.
+// Windows CAs, nor 2023's for others' boot loaders.
+//
+// KEK holds Microsoft's two KEK CAs beside Construct's key, for dbx: the 2011 UEFI CA in db also
+// signs every distribution's shim, so a boot loader Microsoft has revoked (BootHole's) boots here
+// until its revocation is in dbx, and Microsoft's dbx updates are signed under its KEK CAs - the
+// 2011 one so far, its 2023 successor next. fwupd applies them (uefi_dbx). The same CAs sign
+// Microsoft's db additions, which fwupd is told not to apply (image/rootfs/etc/fwupd/fwupd.conf):
+// what they would add, root could enroll with any shim of today's db already.
+//
+// From github.com/microsoft/secureboot_objects (PreSignedObjects/{DB,KEK}/Certificates,
+// fcbc3fdc); firmware does not read a certificate's dates.
 //
 //go:embed secureboot/*.der
 var microsoftCAs embed.FS
+
+var (
+	microsoftKEKCAs = []string{"microsoft-kek-ca-2011.der", "microsoft-kek-2k-ca-2023.der"}
+	microsoftDBCAs  = []string{"microsoft-uefi-ca-2011.der", "microsoft-option-rom-uefi-ca-2023.der"}
+)
+
+// microsoftCerts are the named embedded certificates, in their order.
+func microsoftCerts(names []string) ([]*x509.Certificate, error) {
+	var certs []*x509.Certificate
+	for _, n := range names {
+		raw, err := microsoftCAs.ReadFile("secureboot/" + n)
+		if err != nil {
+			return nil, err
+		}
+		c, err := x509.ParseCertificate(raw)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", n, err)
+		}
+		certs = append(certs, c)
+	}
+	return certs, nil
+}
 
 // SecureBootVariables are the signed variables SecureBootKeySet makes, by file name, in the order
 // they are enrolled. A function, so no caller can reorder or drop one for every other caller.
@@ -43,8 +73,9 @@ var owner = *util.StringToGUID("0239b3ac-9f59-4d16-84ae-cdd4977061a5")
 
 // SecureBootKeySet makes Secure Boot's key set from its three keys, PK, KEK and db: the three
 // signed variables to enroll, by file name (PK.auth, KEK.auth, db.auth), and db's certificate.
-// PK signs itself and KEK, KEK signs db, and db holds Construct's certificate and Microsoft's
-// option ROM CAs.
+// PK signs itself and KEK; KEK holds Construct's certificate and Microsoft's KEK CAs, and signs
+// db, which holds Construct's certificate and Microsoft's option ROM CAs. Construct's comes first
+// in each.
 func SecureBootKeySet(pk, kek, db crypto.Signer) (map[string][]byte, *x509.Certificate, error) {
 	pkCert, err := newCert("Construct PK", pk)
 	if err != nil {
@@ -58,22 +89,16 @@ func SecureBootKeySet(pk, kek, db crypto.Signer) (map[string][]byte, *x509.Certi
 	if err != nil {
 		return nil, nil, err
 	}
-	dbList := []*x509.Certificate{dbCertificate}
-	cas, err := fs.Glob(microsoftCAs, "secureboot/*.der")
-	if err != nil || len(cas) != 2 {
-		return nil, nil, fmt.Errorf("sign: Microsoft's option ROM CAs: %v %v", cas, err)
+	kekCAs, err := microsoftCerts(microsoftKEKCAs)
+	if err != nil {
+		return nil, nil, err
 	}
-	for _, f := range cas {
-		raw, err := microsoftCAs.ReadFile(f)
-		if err != nil {
-			return nil, nil, err
-		}
-		c, err := x509.ParseCertificate(raw)
-		if err != nil {
-			return nil, nil, fmt.Errorf("%s: %w", f, err)
-		}
-		dbList = append(dbList, c)
+	dbCAs, err := microsoftCerts(microsoftDBCAs)
+	if err != nil {
+		return nil, nil, err
 	}
+	kekList := append([]*x509.Certificate{kekCert}, kekCAs...)
+	dbList := append([]*x509.Certificate{dbCertificate}, dbCAs...)
 	vars := map[string][]byte{}
 	// PK signs itself and KEK; KEK signs db.
 	for _, v := range []struct {
@@ -84,7 +109,7 @@ func SecureBootKeySet(pk, kek, db crypto.Signer) (map[string][]byte, *x509.Certi
 		by     *x509.Certificate
 	}{
 		{"PK.auth", efivar.PK, []*x509.Certificate{pkCert}, pk, pkCert},
-		{"KEK.auth", efivar.KEK, []*x509.Certificate{kekCert}, pk, pkCert},
+		{"KEK.auth", efivar.KEK, kekList, pk, pkCert},
 		{"db.auth", efivar.Db, dbList, kek, kekCert},
 	} {
 		list := signature.NewSignatureDatabase()
