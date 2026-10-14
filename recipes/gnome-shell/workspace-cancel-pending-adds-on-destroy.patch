@@ -1,0 +1,56 @@
+From: Construct <release@constructlinux.org>
+Subject: workspace: Cancel pending window additions when the workspace is destroyed
+
+_doAddWindow() defers a window the compositor has not seen yet to an
+idle, and nothing cancels that idle when the Workspace actor is
+destroyed before it runs: the overview's workspaces are rebuilt when
+the startup animation ends and when the monitors change, so a window
+mapped at that moment - an autostarted application three seconds into
+the session, on a slow machine - is added to a workspace whose actor is
+gone, and the idle fails with
+
+  Object Clutter.Actor (0x...), has been already disposed
+  JS ERROR: TypeError: can't access property "addWindow",
+    this._container.layout_manager is null
+  _addWindowClone@resource:///org/gnome/shell/ui/workspace.js:1365:9
+  _doAddWindow@resource:///org/gnome/shell/ui/workspace.js:1233:28
+  _doAddWindow/id<@resource:///org/gnome/shell/ui/workspace.js:1195:26
+
+The workspace keeps the ids of the idles it has pending, each forgets
+itself as it runs, and _onDestroy() removes the rest.
+
+--- a/js/ui/workspace.js
++++ b/js/ui/workspace.js
+@@ -1090,6 +1090,7 @@ export const Workspace = GObject.registerClass(
+         this._skipTaskbarSignals = new Map();
+         this._windows = [];
+         this._layoutFrozenId = 0;
++        this._pendingAddIds = new Set();
+ 
+         // DND requires this to be set
+         this._delegate = this;
+@@ -1190,11 +1191,13 @@ export const Workspace = GObject.registerClass(
+             // Newly-created windows are added to a workspace before
+             // the compositor finds out about them...
+             const id = GLib.idle_add_once(GLib.PRIORITY_DEFAULT, () => {
++                this._pendingAddIds.delete(id);
+                 if (metaWin.get_compositor_private() &&
+                     metaWin.get_workspace() === this.metaWorkspace)
+                     this._doAddWindow(metaWin);
+             });
+             GLib.Source.set_name_by_id(id, '[gnome-shell] this._doAddWindow');
++            this._pendingAddIds.add(id);
+             return;
+         }
+ 
+@@ -1310,6 +1313,10 @@ export const Workspace = GObject.registerClass(
+             this._layoutFrozenId = 0;
+         }
+ 
++        for (const id of this._pendingAddIds)
++            GLib.source_remove(id);
++        this._pendingAddIds.clear();
++
+         this._windows = [];
+     }
+ 

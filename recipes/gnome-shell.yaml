@@ -1,7 +1,7 @@
 package:
   name: gnome-shell
   version: "51.0"
-  epoch: 1
+  epoch: 2
   description: GNOME Shell, the core user interface of the GNOME desktop
   copyright:
     - license: GPL-2.0-or-later
@@ -88,6 +88,15 @@ pipeline:
       sed -i '/^const DEFAULT_BACKGROUND_COLOR /s/red: 40, green: 40, blue: 40,/red: 0, green: 0, blue: 0,/' \
         js/ui/background.js
       grep -q 'red: 0, green: 0, blue: 0, alpha: 255' js/ui/background.js
+
+  # A window mapped while the overview rebuilds its workspaces - the startup animation's end, a
+  # monitor change - is added to a workspace actor already destroyed, by an idle nothing cancels:
+  # the shell logs "already disposed" and a TypeError at each (seen with the installer, which
+  # autostarts 3 s into the live session, on the release builder's slow VM). The idle is cancelled
+  # with the workspace.
+  - uses: patch
+    with:
+      patches: gnome-shell/workspace-cancel-pending-adds-on-destroy.patch
 
   # portal_helper off: the captive-portal login window is a WebKitGTK browser, not shipped
   - uses: meson/configure
