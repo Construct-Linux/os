@@ -198,6 +198,7 @@ func test(args []string) (err error) {
 		r.gtkViews(v, g, l, false)
 		r.gtkViews(v, g, l, true)
 		r.shellViews(v, g, l)
+		r.unlockLeaves(v, g)
 		r.desktopViews(v, g, l, sc)
 		l.guestLook()
 	}
@@ -758,6 +759,34 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 		[]string{"S3", "TY4", "TY5"}}, nil)
 	g.quitApp(settingsApp)
 	time.Sleep(2 * time.Second)
+}
+
+// unlockLeaves checks that a lock, its prompt and the unlock leave nothing open in the session's
+// GDM worker, the process that serves every reauthentication of the session: each once kept its
+// D-Bus server and connection (recipes/gdm's patch), 5 files a time, until at the 1024th the lock
+// screen could show no prompt again, for no password, finger or key, until a reboot. Three more
+// cycles after the lock-screen views, and the count may not grow.
+func (r *report) unlockLeaves(v *qemu.VM, g *guest) {
+	files := func() int {
+		out, _ := g.run(`for p in $(pgrep -x gdm-session-wor); do grep -q gdm-autologin /proc/$p/cmdline && ls /proc/$p/fd | wc -l; done | head -1`, "")
+		n, _ := strconv.Atoi(strings.TrimSpace(out))
+		return n
+	}
+	before := files()
+	for range 3 {
+		_, _ = g.eval(`Main.screenShield.lock(false); true`)
+		time.Sleep(2 * time.Second)
+		_, _ = g.eval(`Main.screenShield.showDialog(); true`)
+		time.Sleep(3 * time.Second)
+		_, _ = g.eval(`Main.screenShield.deactivate(false); true`)
+		time.Sleep(2 * time.Second)
+	}
+	// The lock turned the display off, and an unlock asked for by the shell does not turn it on:
+	// the views after would be black.
+	wakePointer(v, nil)
+	after := files()
+	r.add("unlock leaves nothing open", before > 0 && after <= before,
+		fmt.Sprintf("the session's gdm-session-worker: %d files open, %d after three locks, prompts and unlocks", before, after))
 }
 
 // lockScreenRoles are the panel's own indicators the lock screen shows (gnome-shell's
