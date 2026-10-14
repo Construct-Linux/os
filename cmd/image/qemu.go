@@ -24,6 +24,7 @@ func boot(args []string) error {
 		return err
 	}
 	m.Width, m.Height = screenX9.W, screenX9.H
+	m.VNC = true
 	v, err := m.Start()
 	if err != nil {
 		return err

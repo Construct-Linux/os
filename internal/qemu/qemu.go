@@ -65,8 +65,11 @@ type Machine struct {
 	Cmdline []string
 	// Width and Height are the virtio GPU's panel; 0 is QEMU's default, 1280x800.
 	Width, Height int
-	// CID is the guest's vsock address, DefaultCID without one; its VNC display follows it.
+	// CID is the guest's vsock address, DefaultCID without one.
 	CID int
+	// VNC serves the screen at 127.0.0.1:5907 for a person to watch: task boot's. The harness
+	// takes its screenshots over QMP and opens no port.
+	VNC bool
 }
 
 // VM is a running QEMU, or one Attach found running.
@@ -129,7 +132,10 @@ func (m Machine) Start() (*VM, error) {
 	}
 	// An HDA card, so the sound stack - the kernel's driver, PipeWire, WirePlumber - has a device
 	// to find; its output goes nowhere unless the machine is in a window.
-	display := []string{"-device", m.gpu(), "-display", "none", "-vnc", fmt.Sprintf("127.0.0.1:%d", 7+cid-DefaultCID), "-audiodev", "none,id=snd0"}
+	display := []string{"-device", m.gpu(), "-display", "none", "-audiodev", "none,id=snd0"}
+	if m.VNC {
+		display = append(display, "-vnc", "127.0.0.1:7")
+	}
 	if m.Window {
 		display = []string{"-device", "virtio-vga-gl", "-display", "gtk,gl=on,show-cursor=on", "-audiodev", "pipewire,id=snd0"}
 	}
