@@ -123,6 +123,9 @@ contents:
     - xdg-terminal-exec
     - ptyxis
     - xwayland
+    # at-spi2-core's Xwayland hook (etc/xdg/Xwayland-session.d/00-at-spi) hands X11 clients the
+    # accessibility bus through it.
+    - xprop
     - networkmanager
     - networkmanager-wifi
     # .local names through avahi, the one mDNS stack (etc/nsswitch.conf's mdns4_minimal).
