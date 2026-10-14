@@ -121,7 +121,10 @@ falling back from a release that does not come up.
 ## Recipes (`recipes/`, melange)
 
 - Built with `task build -- <name>`, for **x86-64-v3** (`build/x86-64-v3.env`); a recipe that sets
-  `CFLAGS` appends to `$CFLAGS`, never replaces it.
+  `CFLAGS` appends to `$CFLAGS`, never replaces it. **`task rootfs` refuses a `packages/` that
+  lacks what a recipe makes** (`image packages missing`): apko would take Wolfi's package instead
+  without a word, and an override's whole point is what Wolfi's lacks. After a pull that bumps
+  recipes, build each one it names first.
 - **A changed recipe takes a new version or epoch**: the builder's cache knows a package by its
   apk's name, so the same name is the old build. `go test ./cmd/image` fails a recipe (or its
   directory) changed since origin/main that still makes the same apk.

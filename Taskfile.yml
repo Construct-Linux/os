@@ -103,6 +103,14 @@ tasks:
     deps: [keygen]
     cmds:
       - mkdir -p _output
+      # packages/ holds what every recipe makes before apko reads it: for a recipe whose apk is
+      # not there, apko would take Wolfi's package instead, without a word - at-spi2-core's
+      # deletes the systemd user units the screen reader needs. The builder builds them first
+      # (release:packages); a checkout builds each by hand.
+      - go run ./cmd/image packages missing > _output/unbuilt.txt
+      - >-
+        test ! -s _output/unbuilt.txt
+        || { echo "rootfs: packages/ lacks what these recipes make, so apko would take Wolfi's instead; task build -- each of:"; cat _output/unbuilt.txt; exit 1; }
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/apko.yaml _output/rootfs.tar
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/rootfs.tar
       # Every package's translations are in the root (its -lang package, which apko installs
