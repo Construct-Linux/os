@@ -190,7 +190,8 @@ func (r *report) firstBoot(l *lifeRun) (bool, error) {
 		_ = v.Stop()
 		return false, nil
 	}
-	r.add("boot the disk", g.version() == versions["v1"], "running "+g.version())
+	running := g.version()
+	r.add("boot the disk", running == versions["v1"], "running "+running)
 	r.plymouthPrompt(g, dir)
 	r.secureBoot(g)
 	src, _ := g.run(`awk '$2=="/var"{print $1}' /proc/mounts; cryptsetup status var | grep -E 'type|device'`, "")
@@ -294,7 +295,8 @@ func (r *report) urlUpdate(l *lifeRun, cdn *updateCDN) bool {
 		_ = v.Stop()
 		return false
 	}
-	r.add("reboot into v2", g.version() == versions["v2"], "running "+g.version())
+	running := g.version()
+	r.add("reboot into v2", running == versions["v2"], "running "+running)
 	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
 	r.add("kept across the update", strings.Count(kept, "kept") == 2, oneLine(kept))
 	// A map of /etc/ld.so.cache in systemd-shutdown pinned the /etc overlay and, under it, /var's
@@ -337,7 +339,8 @@ func (r *report) rollback(l *lifeRun) (*qemu.VM, *guest, string, error) {
 	until(20*time.Minute, 10*time.Second, func() bool {
 		return g.wait(30*time.Second) == nil && g.version() == versions["v2"] && g.uptimeOver(20*time.Second)
 	})
-	r.add("v3 rolls back to v2", g.version() == versions["v2"], "running "+g.version())
+	running := g.version()
+	r.add("v3 rolls back to v2", running == versions["v2"], "running "+running)
 	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v3 is marked bad", strings.Contains(esp, "construct_"+versions["v3"]+"+0-3"), oneLine(esp))
 	kept, _ := g.run(`cat /var/home/`+lifecycleUser+`/marker /etc/construct-marker`, "")
@@ -352,7 +355,8 @@ func (r *report) factoryReset(l *lifeRun, g *guest) {
 	_, _ = g.run(`systemctl start --no-block factory-reset.target`, "")
 	g.waitGone(3 * time.Minute)
 	err := g.wait(10 * time.Minute)
-	r.add("factory reset reboots", err == nil && g.version() == l.versions["v2"], "running "+g.version()+errText(err))
+	running := g.version()
+	r.add("factory reset reboots", err == nil && running == l.versions["v2"], "running "+running+errText(err))
 	gone, _ := g.run(`ls /var/home/; getent passwd `+lifecycleUser+`; cat /etc/construct-marker 2>&1`, "")
 	r.add("factory reset forgets the person", !strings.Contains(gone, lifecycleUser) && !strings.Contains(gone, "kept"), oneLine(gone))
 	setup, _ := g.run(`for i in $(seq 60); do loginctl list-sessions --no-legend | grep -q gnome-initial-setup && break; sleep 2; done; loginctl list-sessions --no-legend | awk '{print $3}' | sort -u | tr '\n' ' '`, "")

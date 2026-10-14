@@ -47,7 +47,7 @@ func cssContract(rules []css.Rule, text string, p lfPalette) (bool, string) {
 	for _, s := range cssBars {
 		checkOne(s, &g)
 	}
-	for _, s := range append(append([]string{}, cssLevel2...), cssLevel3...) {
+	for _, s := range slices.Concat(cssLevel2, cssLevel3) {
 		checkOne(s, &h)
 	}
 	for _, s := range cssRingsOnly {

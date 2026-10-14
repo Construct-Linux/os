@@ -129,8 +129,11 @@ func (r *report) system(g *guest) {
 	// property the theme writes that the shell ignores ("at line L, col C" of its stylesheet).
 	shell, shellErr := g.run(`journalctl -b --no-pager -o cat _COMM=gnome-shell | grep -E 'JS ERROR|already disposed|Could not load cursor|at line [0-9]+, col [0-9]+' || true`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "shell-log.txt"), []byte(shell), 0o644)
-	lines := strings.Fields(strings.ReplaceAll(strings.TrimSpace(shell), " ", "_"))
-	r.add("shell log", shellErr == nil && len(lines) == 0, fmt.Sprintf("%d lines in shell-log.txt: %s", len(lines), oneLine(firstLine(shell)))+errText(shellErr))
+	lines := 0
+	if s := strings.TrimSpace(shell); s != "" {
+		lines = strings.Count(s, "\n") + 1
+	}
+	r.add("shell log", shellErr == nil && lines == 0, fmt.Sprintf("%d lines in shell-log.txt: %s", lines, oneLine(firstLine(shell)))+errText(shellErr))
 	r.add("system units", failedErr == nil && strings.TrimSpace(failed) == "", "failed: "+oneLine(failed)+errText(failedErr))
 	// Each failed unit's own log, while the machine that has it is still up.
 	units := filepath.Join(r.dir, "units")
