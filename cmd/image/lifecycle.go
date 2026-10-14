@@ -177,10 +177,10 @@ func (r *report) firstBoot(l *lifeRun) (bool, error) {
 	r.add("the disk asks for the password", asked, "screen: password.png")
 	err = v.TypeText(lifecyclePassword)
 	// The outro goes back into the loop once the password is in, so the grid is there before GDM:
-	// eight screens, one as soon as the one before is saved (~0.5 s each), since when it starts
-	// depends on the TPM's unlock.
+	// eight screens half a second apart, since when it starts depends on the TPM's unlock.
 	for i := range 8 {
 		_ = v.PNG(filepath.Join(dir, fmt.Sprintf("password-after-%d.png", i)))
+		time.Sleep(500 * time.Millisecond)
 	}
 	if err == nil {
 		err = g.wait(5 * time.Minute)
@@ -576,15 +576,21 @@ func (r *report) person(g *guest) {
 	noPw, _ := g.run(`sudo -u `+lifecycleUser+` sudo -n true 2>&1; echo rc=$?`, "")
 	r.add("sudo asks for the password", strings.Contains(noPw, "rc=1"), oneLine(noPw))
 	withPw, _ := g.run(`printf '%s\n' '`+lifecyclePassword+`' | sudo -u `+lifecycleUser+` sudo -S -p '' id -u 2>&1; echo rc=$?`, "")
-	r.add("sudo takes the password", strings.HasPrefix(strings.TrimSpace(withPw), "0") && strings.Contains(withPw, "rc=0"), oneLine(withPw))
+	r.add("sudo takes the password", sudoRanID(withPw), oneLine(withPw))
 	// The person changes their own password, where Settings and passwd change it (pam_unix,
 	// /etc/shadow), and sudo then takes the new one.
 	changed, err := g.run(`printf '%s\n%s\n%s\n' '`+lifecyclePassword+`' '`+lifecycleNewPassword+`' '`+lifecycleNewPassword+`' | runuser -u `+lifecycleUser+` -- passwd 2>&1; echo rc=$?`, "")
 	r.add("the person changes their password", err == nil && strings.Contains(changed, "rc=0"), oneLine(changed))
 	newPw, _ := g.run(`printf '%s\n' '`+lifecycleNewPassword+`' | sudo -u `+lifecycleUser+` sudo -k -S -p '' id -u 2>&1; echo rc=$?`, "")
-	r.add("sudo takes the new password", strings.HasPrefix(strings.TrimSpace(newPw), "0") && strings.Contains(newPw, "rc=0"), oneLine(newPw))
+	r.add("sudo takes the new password", sudoRanID(newPw), oneLine(newPw))
 	root, _ := g.run(`getent shadow root | cut -d: -f2`, "")
 	r.add("root has no password", strings.TrimSpace(root) == "*", "root: "+strings.TrimSpace(root))
+}
+
+// sudoRanID is whether sudo -S ran id -u: the output ends with uid 0 and a status of 0, after
+// whatever came first - the lecture sudo gives a person the first time.
+func sudoRanID(out string) bool {
+	return strings.HasSuffix("\n"+strings.TrimSpace(out), "\n0\nrc=0")
 }
 
 // sessionsScript prints each login session's user, class and whether it is the seat's active one.
