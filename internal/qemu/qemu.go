@@ -356,25 +356,34 @@ func (v *VM) Screendump(file string) error {
 }
 
 // PNG saves the screen as a PNG at path, QEMU's own (the harness's QEMU is built with PNG, as
-// distributions' are). Every screen the harness keeps for a person goes through here, so it waits
-// in one place.
+// distributions' are). Every screen the harness keeps for a person goes through here, so it is
+// checked in one place.
 func (v *VM) PNG(path string) error {
 	abs, _ := filepath.Abs(path)
 	if err := qmp(v.QMP, map[string]any{"execute": "screendump", "arguments": map[string]any{"filename": abs, "format": "png"}}); err != nil {
 		return err
 	}
 	// QMP's answer is not taken as the file being whole: a screen read short would be measured as
-	// something it is not, so it is decoded whole before anything reads it.
-	time.Sleep(500 * time.Millisecond)
-	f, err := os.Open(abs)
+	// something it is not, so it is decoded whole before anything reads it - and again, a moment
+	// later, the few times it is not whole yet.
+	var err error
+	for range 10 {
+		if err = decodePNG(abs); err == nil {
+			return nil
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	return fmt.Errorf("screendump %s: %w", path, err)
+}
+
+func decodePNG(path string) error {
+	f, err := os.Open(path)
 	if err != nil {
 		return err
 	}
 	defer f.Close()
-	if _, err := png.Decode(f); err != nil {
-		return fmt.Errorf("screendump %s: %w", path, err)
-	}
-	return nil
+	_, err = png.Decode(f)
+	return err
 }
 
 // PointTo moves the USB tablet's pointer to (x, y) on QEMU's absolute scale, 0-32767 each way:
