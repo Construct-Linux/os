@@ -213,9 +213,13 @@ tasks:
     desc: "Once: the public half of a release's KMS keys into keys/ - release.pgp and the Secure Boot key set (PK, KEK and db sign their variables here, the only time PK and KEK sign) - to commit. Needs AWS credentials that may sign with all five keys (infra kms.tf)."
     status: ['test -f keys/release.pgp && test -f keys/secureboot/db.crt']
     cmds:
-      - go run ./cmd/image release-key -key kms:alias/construct-release -uid "CONSTRUCT release <release@constructlinux.org>" -o keys/release.pgp
+      # Each half on its own: the Secure Boot set is made again when what the variables hold
+      # changes (rm -r keys/secureboot), and the release key's creation time, part of its
+      # fingerprint, stays.
+      - test -f keys/release.pgp || go run ./cmd/image release-key -key kms:alias/construct-release -uid "CONSTRUCT release <release@constructlinux.org>" -o keys/release.pgp
       - >-
-        go run ./cmd/image secureboot-keys -dir keys/secureboot -pk kms:alias/construct-secureboot-pk
+        test -f keys/secureboot/db.crt
+        || go run ./cmd/image secureboot-keys -dir keys/secureboot -pk kms:alias/construct-secureboot-pk
         -kek kms:alias/construct-secureboot-kek -db kms:alias/construct-secureboot-db
 
   usb:
