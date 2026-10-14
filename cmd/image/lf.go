@@ -9,6 +9,7 @@ import (
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -1634,7 +1635,7 @@ func (l *lf) appSurfaces(id string, img image.Image, r pixels.Rect) {
 
 // firefoxPage is a light page of the controls GTK draws with the accent: Firefox takes them from
 // the theme for the other scheme, which without an Orchis-Construct it finds as Adwaita's blue.
-const firefoxPage = `<meta name="color-scheme" content="light"><body style="margin:48px;font:16px sans-serif">` +
+const firefoxPage = `<title>construct-controls</title><meta name="color-scheme" content="light"><body style="margin:48px;font:16px sans-serif">` +
 	`<p><input type="checkbox" checked> <input type="radio" checked> <input type="range"> ` +
 	`<progress value="60" max="100"></progress> <button>Button</button> <input value="text" autofocus></p>`
 
@@ -1651,7 +1652,20 @@ func (l *lf) firefoxControls(id string) {
 		l.check("app", "firefox controls", false, err.Error())
 		return
 	}
-	time.Sleep(6 * time.Second)
+	// The page is shot once Firefox shows it, in the window it had: on a loaded machine its
+	// first-run tabs took longer than a fixed wait, and the page, handed over late, opened a
+	// second Firefox after the quit. A second more for the controls to draw.
+	var titles []string
+	opened := until(30*time.Second, 500*time.Millisecond, func() bool {
+		titles = nil
+		_ = l.g.evalJSON(fmt.Sprintf(`return Shell.AppSystem.get_default().lookup_app(%q)?.get_windows().map(w => w.get_title()) ?? [];`, id), &titles)
+		return slices.ContainsFunc(titles, func(t string) bool { return strings.Contains(t, "construct-controls") })
+	})
+	if !opened {
+		l.check("app", "firefox controls", false, fmt.Sprintf("the page never opened in Firefox's window: titles %q", titles))
+		return
+	}
+	time.Sleep(time.Second)
 	l.r.shotLook(l.v, l.g, viewMeta{"firefox-controls", needle.GroupApp,
 		"A light page of the form controls GTK draws with the accent: Firefox fills them with the light accent through Orchis-Construct, not Adwaita's blue",
 		[]string{"X3", "C1"}})

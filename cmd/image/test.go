@@ -174,7 +174,7 @@ func test(args []string) (err error) {
 		time.Sleep(5 * time.Second)
 		l.shot(appView(a.id), nil)
 		l.app(a.id, strings.TrimSuffix(a.id, ".desktop"))
-		g.quitApp(a.id)
+		r.add(a.id+" quit", g.quitApp(a.id), "its windows gone, so it covers no view after")
 		// A shell dialog an app left open - the camera permission Snapshot asks for - outlives the
 		// app and would cover every screenshot after it.
 		_, _ = g.eval(`Main.layoutManager.modalDialogGroup.get_children().forEach(d => d.close?.()); true`)

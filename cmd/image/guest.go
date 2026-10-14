@@ -213,8 +213,24 @@ func (g *guest) windows(id string) int {
 }
 
 // quitApp asks an app to quit, as closing its last window does; one not running is no error.
-func (g *guest) quitApp(id string) {
-	_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, id))
+// quitApp asks the app to quit and waits for its windows to go, asking again every few seconds,
+// up to a limit: a window left open covers every view after it (a Firefox that opened its page
+// late, after the quit, was the desk of every light view). It answers whether the app is gone.
+func (g *guest) quitApp(id string) bool {
+	windows := func() int {
+		var n int
+		if err := g.evalJSON(fmt.Sprintf(`return Shell.AppSystem.get_default().lookup_app(%q)?.get_windows().length ?? 0;`, id), &n); err != nil {
+			return -1
+		}
+		return n
+	}
+	for range 4 {
+		_, _ = g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q)?.request_quit(); true`, id))
+		if until(5*time.Second, 500*time.Millisecond, func() bool { return windows() == 0 }) {
+			return true
+		}
+	}
+	return false
 }
 
 // version is the IMAGE_VERSION the guest booted, or "" when it does not answer.
