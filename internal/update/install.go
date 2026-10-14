@@ -131,7 +131,7 @@ type InstallOptions struct {
 // release's kernel image, blessed - a fresh install is known good, there is nothing to fall back
 // to - /var is made by o.MakeVar, and the firmware boots the disk first.
 func Install(ctx context.Context, o InstallOptions) error {
-	r, fetch, err := newest(ctx, o.Source, o.Keys)
+	r, fetch, err := readSource(ctx, o.Source, o.Keys)
 	if err != nil {
 		return err
 	}

@@ -84,7 +84,7 @@ func TestAnInstallLaysOutTheDiskAsAnUpdateReadsIt(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The layout of the same release with the same GUIDs, numbered: what the disk must hold now.
-	r, _, err := newest(t.Context(), dir, o.Keys)
+	r, _, err := readSource(t.Context(), dir, o.Keys)
 	must(t, err)
 	laid, err := layout(r, installSize, testVarUUID, in.options(t, dir, installSize).UUID)
 	must(t, err)

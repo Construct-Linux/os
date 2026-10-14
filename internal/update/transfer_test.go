@@ -26,31 +26,24 @@ func sumOf(b []byte) string {
 	return hex.EncodeToString(d[:])
 }
 
-// The newest release on a stick is the one taken, and a stick that carries one signed by another
-// key is refused whole.
-func TestTheNewestReleaseOnTheStickIsTheOneTaken(t *testing.T) {
-	stick := t.TempDir()
-	for _, r := range []struct {
-		version, root, verity string
-	}{{"1.1", newRoot, newVerity}, {"1.2", "fedc0000-1111-2222-3333-444455556666", "0000fedc-7777-8888-9999-aaaabbbbcccc"}} {
-		dir, _ := release(t, r.version, r.root, r.verity, signer(), 0xb)
-		must(t, os.Rename(dir, filepath.Join(stick, r.version)))
-	}
-	r, _, err := newest(t.Context(), stick, trusted(t))
-	if err != nil || r.Version != "1.2" {
+// The release on a stick is read from its root, checked against the keys before anything else of
+// it is read: one signed by another key is refused.
+func TestAReleaseOfAnotherKeyIsRefused(t *testing.T) {
+	dir, _ := release(t, "1.1", newRoot, newVerity, signer(), 0xb)
+	r, _, err := readSource(t.Context(), dir, trusted(t))
+	if err != nil || r.Version != "1.1" {
 		t.Fatalf("took %+v, %v", r, err)
 	}
-	dir, _ := release(t, "1.3", newRoot, newVerity, otherKey(), 0xb)
-	must(t, os.Rename(dir, filepath.Join(stick, "1.3")))
-	if _, _, err := newest(t.Context(), stick, trusted(t)); err == nil {
-		t.Fatal("a stick carrying a release of another key was taken")
+	other, _ := release(t, "1.3", newRoot, newVerity, otherKey(), 0xb)
+	if _, _, err := readSource(t.Context(), other, trusted(t)); err == nil {
+		t.Fatal("a release of another key was taken")
 	}
 }
 
 // A source that holds no release is an error, not a quiet nothing: the stick plugged in is not
 // what the person thinks it is.
 func TestASourceWithNoReleaseIsAnError(t *testing.T) {
-	if _, _, err := newest(t.Context(), t.TempDir(), trusted(t)); err == nil {
+	if _, _, err := readSource(t.Context(), t.TempDir(), trusted(t)); err == nil {
 		t.Error("an empty source was taken")
 	}
 }

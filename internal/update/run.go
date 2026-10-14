@@ -25,49 +25,16 @@ const (
 	maxSignature = 64 << 10
 )
 
-// newest is the newest release under source - source itself when it holds SHA256SUMS, else each
-// directory in it that does - and how its files are read. Every release there is checked against
-// keys before any is chosen: a stick that carries one signed by another key is refused whole, not
-// passed over for its neighbour.
-func newest(ctx context.Context, source string, keys openpgp.KeyRing) (Release, Fetch, error) {
-	dirs, err := releaseDirs(source)
+// readSource is the release at source, a directory with SHA256SUMS at its root - the stick's
+// construct-update partition - checked against keys before anything else of it is read, and how
+// its files are read.
+func readSource(ctx context.Context, source string, keys openpgp.KeyRing) (Release, Fetch, error) {
+	fetch := dirFetch(source)
+	r, err := readRelease(ctx, fetch, keys)
 	if err != nil {
 		return Release{}, nil, err
 	}
-	var best Release
-	var bestDir string
-	for _, dir := range dirs {
-		r, err := readRelease(ctx, dirFetch(dir), keys)
-		if err != nil {
-			return Release{}, nil, fmt.Errorf("%s: %w", dir, err)
-		}
-		if bestDir == "" || Compare(r.Version, best.Version) > 0 {
-			best, bestDir = r, dir
-		}
-	}
-	return best, dirFetch(bestDir), nil
-}
-
-// releaseDirs are the directories under source that hold a release.
-func releaseDirs(source string) ([]string, error) {
-	if _, err := os.Stat(filepath.Join(source, SumsFile)); err == nil {
-		return []string{source}, nil
-	}
-	entries, err := os.ReadDir(source)
-	if err != nil {
-		return nil, fmt.Errorf("update: the release source: %w", err)
-	}
-	var dirs []string
-	for _, e := range entries {
-		dir := filepath.Join(source, e.Name())
-		if _, err := os.Stat(filepath.Join(dir, SumsFile)); e.IsDir() && err == nil {
-			dirs = append(dirs, dir)
-		}
-	}
-	if len(dirs) == 0 {
-		return nil, fmt.Errorf("update: %s holds no release (no %s)", source, SumsFile)
-	}
-	return dirs, nil
+	return r, fetch, nil
 }
 
 // dirFetch reads a release's files from dir.
