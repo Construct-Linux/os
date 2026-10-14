@@ -338,8 +338,7 @@ small{color:#9FB3C0}</style><h1>Look: this run against the needles</h1>`)
 // differently from their needles, or that have none: GitHub shows each image's difference (side by
 // side, swipe, onion skin), and merging it is approving the new look. A run whose views all match
 // proposes nothing. The branch is look/<version>, from the needles' main. Each needle it writes
-// carries its whole spec and its approval; tolerance.json is written beside them, and the retired
-// views' needles go.
+// carries its whole spec and its approval; tolerance.json is written beside them.
 func needlesPropose(args []string) error {
 	fl := flag.NewFlagSet("needles-propose", flag.ExitOnError)
 	from := fl.String("from", filepath.Join(out, "test"), "the run")
@@ -402,11 +401,7 @@ func needlesPropose(args []string) error {
 			if err := writeTolerance(*needles); err != nil {
 				return err
 			}
-			gone, err := retireNeedles(*needles)
-			if err != nil {
-				return err
-			}
-			paths = append([]string{toleranceFile}, gone...)
+			paths = append(paths, toleranceFile)
 		}
 		for _, v := range b.views {
 			if err := proposeNeedle(*from, *needles, l, v); err != nil {
@@ -414,8 +409,7 @@ func needlesPropose(args []string) error {
 			}
 			paths = append(paths, v.Name+".png", v.Name+".json")
 		}
-		// -A stages the retired needles' removal with the rest.
-		if err := git(append([]string{"add", "-A", "--"}, paths...)...); err != nil {
+		if err := git(append([]string{"add", "--"}, paths...)...); err != nil {
 			return err
 		}
 		table := proposalTable(l, b.views)
@@ -526,29 +520,6 @@ func proposeNeedle(from, needles string, l look, v lookView) error {
 		return err
 	}
 	return spec.Write(filepath.Join(needles, v.Name+".json"))
-}
-
-// retiredViews are views no run shoots any more, whose needles a proposal removes. desktop-dark was
-// the desktop view again: the default dark wallpaper (construct-dark.png) under the same bars,
-// 0.165% from it, under the tolerance - it held nothing desktop did not.
-var retiredViews = []string{"desktop-dark"}
-
-// retireNeedles removes the retired views' needles from the checkout, and answers the files it
-// removed.
-func retireNeedles(needles string) ([]string, error) {
-	var gone []string
-	for _, name := range retiredViews {
-		for _, f := range []string{name + ".png", name + ".json"} {
-			err := os.Remove(filepath.Join(needles, f))
-			switch {
-			case err == nil:
-				gone = append(gone, f)
-			case !errors.Is(err, fs.ErrNotExist):
-				return gone, err
-			}
-		}
-	}
-	return gone, nil
 }
 
 // proposalTable is what a proposal changes, view by view: the commit's message, and the top of

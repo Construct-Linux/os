@@ -66,7 +66,7 @@ func TestViewMetas(t *testing.T) {
 }
 
 // A proposal makes the run's view the needle: its spec as the run wrote it, the needle's own
-// regions kept, and how it was approved; the tolerance beside them; retired views gone.
+// regions kept, and how it was approved; the tolerance beside them.
 func TestProposeNeedle(t *testing.T) {
 	from, needles := t.TempDir(), t.TempDir()
 	run := tSpec(false, nil, []needle.Rect{{X: 1, Y: 1, W: 2, H: 2, Why: "the clock"}})
@@ -106,18 +106,6 @@ func TestProposeNeedle(t *testing.T) {
 	}
 	if raw, _ := os.ReadFile(filepath.Join(needles, toleranceFile)); !strings.Contains(string(raw), `"channel": 24`) || !strings.Contains(string(raw), `"share": 0.002`) {
 		t.Errorf("tolerance: %s", raw)
-	}
-	for _, f := range []string{"desktop-dark.png", "desktop-dark.json"} {
-		if err := os.WriteFile(filepath.Join(needles, f), nil, 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	gone, err := retireNeedles(needles)
-	if err != nil || len(gone) != 2 {
-		t.Errorf("retired %v, %v", gone, err)
-	}
-	if gone, err := retireNeedles(needles); err != nil || len(gone) != 0 {
-		t.Errorf("retired again %v, %v", gone, err)
 	}
 }
 
