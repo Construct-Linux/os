@@ -344,12 +344,14 @@ func (g *guest) runSpecimen(s typeSetting) (specimenRun, pixels.Rect, error) {
 		return run, pixels.Rect{}, err
 	}
 	var raw string
-	for deadline := time.Now().Add(30 * time.Second); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
-		if out, err := g.run(`cat `+typeDir+`/specimen.json 2>/dev/null`, ""); err == nil && strings.TrimSpace(out) != "" {
-			raw = out
-			break
+	until(30*time.Second, 500*time.Millisecond, func() bool {
+		out, err := g.run(`cat `+typeDir+`/specimen.json 2>/dev/null`, "")
+		if err != nil || strings.TrimSpace(out) == "" {
+			return false
 		}
-	}
+		raw = out
+		return true
+	})
 	if raw == "" {
 		log, _ := g.run(`journalctl -b -q --no-pager -o cat --since -1min | grep -i -E 'gjs|specimen|Gtk' | tail -5`, "")
 		return run, pixels.Rect{}, fmt.Errorf("the specimen said nothing in 30 s: %s", oneLine(log))

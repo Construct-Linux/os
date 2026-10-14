@@ -334,13 +334,9 @@ func (r *report) rollback(l *lifeRun) (*qemu.VM, *guest, string, error) {
 		_ = os.WriteFile(filepath.Join(dir, "stick-update.txt"), []byte(why), 0o644)
 	}
 	g.reboot()
-	deadline := time.Now().Add(20 * time.Minute)
-	for time.Now().Before(deadline) {
-		if g.wait(30*time.Second) == nil && g.version() == versions["v2"] && g.uptimeOver(20*time.Second) {
-			break
-		}
-		time.Sleep(10 * time.Second)
-	}
+	until(20*time.Minute, 10*time.Second, func() bool {
+		return g.wait(30*time.Second) == nil && g.version() == versions["v2"] && g.uptimeOver(20*time.Second)
+	})
 	r.add("v3 rolls back to v2", g.version() == versions["v2"], "running "+g.version())
 	esp, _ := g.run(`ls /boot/EFI/Linux/`, "")
 	r.add("v3 is marked bad", strings.Contains(esp, "construct_"+versions["v3"]+"+0-3"), oneLine(esp))
@@ -466,16 +462,17 @@ func (u updateEnd) detail() string {
 // waitUpdate waits for the construct-update@ unit a plugged stick started to end. It reads the
 // journal: a oneshot that already ended is unloaded, and no longer listed.
 func (g *guest) waitUpdate(d time.Duration) updateEnd {
-	deadline := time.Now().Add(d)
-	for time.Now().Before(deadline) {
+	var end updateEnd
+	until(d, 3*time.Second, func() bool {
 		log, _ := g.run(`journalctl -b --no-pager -o cat -u 'construct-update@*' | grep -E '^(Finished|Failed to start) Update' | tail -1`, "")
-		if log = strings.TrimSpace(log); log != "" {
-			tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'construct-update@*' -t systemd-sysupdate | tail -3`, "")
-			return updateEnd{ended: true, ok: strings.HasPrefix(log, "Finished"), unit: log, sysupdate: strings.TrimSpace(tail)}
+		if log = strings.TrimSpace(log); log == "" {
+			return false
 		}
-		time.Sleep(3 * time.Second)
-	}
-	return updateEnd{}
+		tail, _ := g.run(`journalctl -b --no-pager -o cat -u 'construct-update@*' -t systemd-sysupdate | tail -3`, "")
+		end = updateEnd{ended: true, ok: strings.HasPrefix(log, "Finished"), unit: log, sysupdate: strings.TrimSpace(tail)}
+		return true
+	})
+	return end
 }
 
 // updateCDN is the update CDN (infra updates.tf) on this host, where a guest reaches it at
@@ -608,16 +605,17 @@ func (g *guest) installAsTheInstaller() (string, error) {
 	if _, err := g.eval(`GLib.spawn_async(null, ["sh", "-c", ` + strconv.Quote(script) + `], null, GLib.SpawnFlags.SEARCH_PATH, null); "started"`); err != nil {
 		return "", err
 	}
-	deadline := time.Now().Add(15 * time.Minute)
-	for time.Now().Before(deadline) {
-		if rc, err := g.run(`cat `+run+`.rc 2>/dev/null`, ""); err == nil && strings.TrimSpace(rc) != "" {
-			outs, _ := g.run(`cat `+run+`.json `+run+`.err`, "")
-			if strings.TrimSpace(rc) != "0" {
-				return outs, fmt.Errorf("construct install exited %s", strings.TrimSpace(rc))
-			}
-			return outs, nil
+	var rc string
+	if until(15*time.Minute, 5*time.Second, func() bool {
+		out, err := g.run(`cat `+run+`.rc 2>/dev/null`, "")
+		rc = strings.TrimSpace(out)
+		return err == nil && rc != ""
+	}) {
+		outs, _ := g.run(`cat `+run+`.json `+run+`.err`, "")
+		if rc != "0" {
+			return outs, fmt.Errorf("construct install exited %s", rc)
 		}
-		time.Sleep(5 * time.Second)
+		return outs, nil
 	}
 	// What it was doing when the time ran out: its progress so far, its errors, a password the
 	// session was asked for, and the journal's last words.

@@ -37,15 +37,11 @@ func (r *report) keyd(v *qemu.VM, g *guest) {
 		r.add("keyd", false, "the probe: "+err.Error())
 		return
 	}
-	focused := false
-	for range 20 {
-		time.Sleep(time.Second)
-		n, _ := g.eval(`String(global.get_window_actors().map(a => a.meta_window).filter(w => w.get_title() === "` + keydProbeTitle + `").map(w => (Main.activateWindow(w), w.has_focus())).join())`)
-		if strings.Trim(n, `"`) == "true" {
-			focused = true
-			break
-		}
-	}
+	focused := until(20*time.Second, time.Second, func() bool {
+		var has string
+		_ = g.evalJSON(`return global.get_window_actors().map(a => a.meta_window).filter(w => w.get_title() === "`+keydProbeTitle+`").map(w => (Main.activateWindow(w), w.has_focus())).join();`, &has)
+		return has == "true"
+	})
 	if !focused {
 		r.add("keyd", false, "the probe's window never had the focus")
 		return
@@ -64,15 +60,11 @@ func (r *report) keyd(v *qemu.VM, g *guest) {
 	step("meta_l", "x")
 	step("m")
 	step("meta_l", "v")
-	overview, _ := g.eval(`String(Main.overview.visible)`)
+	var overview string
+	_ = g.evalJSON(`return String(Main.overview.visible);`, &overview)
 	var got string
-	for range 60 {
-		if got, err = g.run(`cat `+keydProbeOut, ""); err == nil {
-			break
-		}
-		time.Sleep(time.Second)
-	}
-	r.add("keyd: Super+V, A, C, X", got == "mkjkj" && strings.Trim(overview, `"`) == "false",
+	until(60*time.Second, time.Second, func() bool { got, err = g.run(`cat `+keydProbeOut, ""); return err == nil })
+	r.add("keyd: Super+V, A, C, X", got == "mkjkj" && overview == "false",
 		fmt.Sprintf("the field held %q, want \"mkjkj\"; overview open %s", got, overview)+errText(err))
 }
 
@@ -94,13 +86,11 @@ func (r *report) usbStick(v *qemu.VM, g *guest) {
 		return
 	}
 	var mounted string
-	for range 30 {
-		time.Sleep(time.Second)
-		if mounted, _ = g.run(`awk '$2 ~ /USBTEST$/ {print $2}' /proc/mounts`, ""); strings.TrimSpace(mounted) != "" {
-			break
-		}
-	}
-	mounted = strings.TrimSpace(mounted)
+	until(30*time.Second, time.Second, func() bool {
+		out, _ := g.run(`awk '$2 ~ /USBTEST$/ {print $2}' /proc/mounts`, "")
+		mounted = strings.TrimSpace(out)
+		return mounted != ""
+	})
 	r.add("usb stick mounts by itself", mounted == "/run/media/live/USBTEST", "mounted at "+fmt.Sprintf("%q", mounted))
 	// gtk4-ding's window draws the desktop's icons, each a GTK widget labelled with the volume's
 	// name: the accessibility tree is how another process reads what a GTK 4 window shows.
@@ -118,13 +108,10 @@ func (r *report) usbStick(v *qemu.VM, g *guest) {
 // whether it came to that.
 func (r *report) desktopHasIcon(g *guest, label string, want bool) bool {
 	answer := map[bool]string{true: "yes", false: "no"}[want]
-	for range 20 {
-		time.Sleep(time.Second)
-		if out, _ := g.run(asLive+`/usr/lib/construct-test/a11y-label.py `+label, ""); strings.TrimSpace(out) == answer {
-			return true
-		}
-	}
-	return false
+	return until(20*time.Second, time.Second, func() bool {
+		out, _ := g.run(asLive+`/usr/lib/construct-test/a11y-label.py `+label, "")
+		return strings.TrimSpace(out) == answer
+	})
 }
 
 // console checks Ctrl+Alt+F3 reaches a text login, as logind starts one there (getty@ answering

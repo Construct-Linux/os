@@ -192,7 +192,7 @@ func test(args []string) error {
 			[]string{"S3", "TY4", "TY5"}})
 		l.view("panel-" + p)
 	}
-	g.quitApp("org.gnome.Settings.desktop")
+	g.quitApp(settingsApp)
 	if len(want) == 0 || want["views"] {
 		if err := g.fixClock(); err != nil {
 			r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
@@ -425,32 +425,22 @@ func (g *guest) runApp(a app) (bool, string) {
 	if v != `"launched"` {
 		return false, "not installed (no desktop file)"
 	}
-	deadline := time.Now().Add(a.timeout)
-	for time.Now().Before(deadline) {
-		n, err := g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows().length`, a.id))
-		if err == nil && n != "0" {
-			title, _ := g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0].get_title()`, a.id))
-			return true, "window " + title
-		}
-		time.Sleep(time.Second)
+	if !until(a.timeout, time.Second, func() bool { return g.windows(a.id) > 0 }) {
+		return false, fmt.Sprintf("no window within %v", a.timeout)
 	}
-	return false, fmt.Sprintf("no window within %v", a.timeout)
+	title, _ := g.eval(fmt.Sprintf(`Shell.AppSystem.get_default().lookup_app(%q).get_windows()[0].get_title()`, a.id))
+	return true, "window " + title
 }
 
 func (g *guest) runPanel(p string) (bool, string) {
 	if _, err := g.eval(fmt.Sprintf(`GLib.spawn_command_line_async("gnome-control-center %s")`, p)); err != nil {
 		return false, err.Error()
 	}
-	deadline := time.Now().Add(20 * time.Second)
-	for time.Now().Before(deadline) {
-		n, err := g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").get_windows().length`)
-		if err == nil && n != "0" {
-			time.Sleep(3 * time.Second) // the panel fills in after the window maps
-			return true, "opened"
-		}
-		time.Sleep(time.Second)
+	if !until(20*time.Second, time.Second, func() bool { return g.windows(settingsApp) > 0 }) {
+		return false, "Settings opened no window"
 	}
-	return false, "Settings opened no window"
+	time.Sleep(3 * time.Second) // the panel fills in after the window maps
+	return true, "opened"
 }
 
 // extension is one GNOME Shell extension the session enables, as the shell's extension manager
@@ -755,30 +745,24 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 
 	// Settings in Spanish: a process of its own, started with the language, once no instance is
 	// left for the request to go to.
-	g.quitApp("org.gnome.Settings.desktop")
-	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(time.Second) {
-		if n, err := g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").get_windows().length`); err == nil && n == "0" {
-			break
-		}
-	}
+	g.quitApp(settingsApp)
+	until(10*time.Second, time.Second, func() bool { return g.windows(settingsApp) == 0 })
 	if _, err := g.eval(`GLib.spawn_command_line_async("env LANGUAGE=es LANG=es_ES.UTF-8 LC_ALL=es_ES.UTF-8 gnome-control-center power")`); err != nil {
 		r.add("view:panel-power-es", false, err.Error())
 		return
 	}
 	var title string
-	for deadline := time.Now().Add(20 * time.Second); time.Now().Before(deadline) && title == ""; time.Sleep(time.Second) {
-		t, err := g.eval(`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").get_windows()[0]?.get_title() ?? ""`)
-		if err == nil {
-			title = strings.Trim(t, `"`)
-		}
-	}
+	until(20*time.Second, time.Second, func() bool {
+		_ = g.evalJSON(`return Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").get_windows()[0]?.get_title() ?? "";`, &title)
+		return title != ""
+	})
 	time.Sleep(3 * time.Second)
 	r.add("view:panel-power-es", title != "", "window "+title)
 	r.shotLook(v, g, viewMeta{"panel-power-es", needle.GroupSettings,
 		"Settings' Power panel in Spanish, whose strings run longer than English's: rows and groups that still fit",
 		[]string{"S3", "TY4", "TY5"}})
 	l.view("panel-power-es")
-	g.quitApp("org.gnome.Settings.desktop")
+	g.quitApp(settingsApp)
 	time.Sleep(2 * time.Second)
 }
 
@@ -817,22 +801,28 @@ func (r *report) secureBoot(g *guest) {
 // installerWindows counts the graphical installer's windows on the live session's screen.
 const installerWindows = `global.get_window_actors().map(a => a.meta_window).filter(w => w.get_wm_class() === "io.github.construct_linux.Installer")`
 
+// installerWindowCount is how many windows the graphical installer has open: -1 when the shell
+// does not answer.
+func (g *guest) installerWindowCount() int {
+	var n int
+	if err := g.evalJSON(`return `+installerWindows+`.length;`, &n); err != nil {
+		return -1
+	}
+	return n
+}
+
+// settingsApp is GNOME Settings' application id.
+const settingsApp = "org.gnome.Settings.desktop"
+
 // installer checks the live session offers the graphical installer at login on a stick, and
 // nowhere else; its window is shot, measured (lf), and closed, so it covers nothing after.
 func (r *report) installer(v *qemu.VM, g *guest, l *lf, stick bool) {
-	n := "0"
-	deadline := time.Now().Add(time.Minute)
-	for stick && time.Now().Before(deadline) {
-		if n, _ = g.eval(`String(` + installerWindows + `.length)`); strings.Trim(n, `"`) == "1" {
-			break
-		}
-		time.Sleep(2 * time.Second)
-	}
-	if !stick {
-		n, _ = g.eval(`String(` + installerWindows + `.length)`)
-	}
-	want := map[bool]string{true: "1", false: "0"}[stick]
-	r.add("installer offered", strings.Trim(n, `"`) == want, fmt.Sprintf("%s installer windows on a stick=%v", n, stick))
+	// On a stick the installer autostarts a few seconds after the login; anywhere else, one look.
+	wait := map[bool]time.Duration{true: time.Minute, false: 0}[stick]
+	n := -1
+	until(wait, 2*time.Second, func() bool { n = g.installerWindowCount(); return n == 1 })
+	want := map[bool]int{true: 1, false: 0}[stick]
+	r.add("installer offered", n == want, fmt.Sprintf("%d installer windows on a stick=%v", n, stick))
 	// Its pages, walked as a person does (image/test/rootfs/usr/lib/construct-test), and the two a
 	// person must read whole - installing, done - as the walk drew them, for the report.
 	walked, err := g.run(asLive+`WAYLAND_DISPLAY=wayland-0 /usr/lib/construct-test/walk-installer.py 2>&1`, "")
@@ -840,7 +830,7 @@ func (r *report) installer(v *qemu.VM, g *guest, l *lf, stick bool) {
 	for _, page := range []string{"installer-installing", "installer-done"} {
 		r.guestFile("/run/user/1000/construct-test/"+page+".png", page+".png", g)
 	}
-	if stick && strings.Trim(n, `"`) == "1" {
+	if stick && n == 1 {
 		time.Sleep(2 * time.Second)
 		r.shotLook(v, g, viewMeta{"installer", needle.GroupInstaller,
 			"The graphical installer as a stick's live session offers it: its body f, its headerbar g with one rule under it, the ring outside it",

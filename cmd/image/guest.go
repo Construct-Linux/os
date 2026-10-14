@@ -135,15 +135,22 @@ func answer(v *qemu.VM, d time.Duration) (*guest, error) {
 }
 
 func (g *guest) wait(d time.Duration) error {
-	deadline := time.Now().Add(d)
 	var err error
-	for time.Now().Before(deadline) {
-		if err = g.answers(); err == nil {
-			return nil
-		}
-		time.Sleep(3 * time.Second)
-	}
+	until(d, 3*time.Second, func() bool { err = g.answers(); return err == nil })
 	return err
+}
+
+// until asks cond every tick until it answers true, or d has passed, and says whether it did.
+// What cond read last is its closure's to keep; a d of 0 asks once.
+func until(d, every time.Duration, cond func() bool) bool {
+	for deadline := time.Now().Add(d); ; time.Sleep(every) {
+		if cond() {
+			return true
+		}
+		if !time.Now().Before(deadline) {
+			return false
+		}
+	}
 }
 
 // evalScript calls org.gnome.Shell.Eval in the test user's session with the JavaScript on stdin,
@@ -181,19 +188,28 @@ func (g *guest) eval(js string) (string, error) {
 
 // waitShell waits up to d for GNOME Shell to finish starting up.
 func (g *guest) waitShell(d time.Duration) error {
-	deadline := time.Now().Add(d)
 	var err error
 	var v string
-	for time.Now().Before(deadline) {
-		if v, err = g.eval(`Main.layoutManager._startingUp === false`); err == nil && v == "true" {
-			return nil
-		}
-		time.Sleep(3 * time.Second)
+	if until(d, 3*time.Second, func() bool {
+		v, err = g.eval(`Main.layoutManager._startingUp === false`)
+		return err == nil && v == "true"
+	}) {
+		return nil
 	}
 	if err == nil {
 		err = fmt.Errorf("still starting up (%s)", v)
 	}
 	return err
+}
+
+// windows is how many windows the app id has open, as the shell sees it: 0 for one not installed,
+// -1 when the shell does not answer.
+func (g *guest) windows(id string) int {
+	var n int
+	if err := g.evalJSON(fmt.Sprintf(`return Shell.AppSystem.get_default().lookup_app(%q)?.get_windows().length ?? 0;`, id), &n); err != nil {
+		return -1
+	}
+	return n
 }
 
 // quitApp asks an app to quit, as closing its last window does; one not running is no error.
@@ -224,25 +240,17 @@ func (g *guest) reboot() {
 // waitGone waits up to d for the guest to stop answering: a reboot, a suspend or a reset it was
 // asked for has begun.
 func (g *guest) waitGone(d time.Duration) {
-	for deadline := time.Now().Add(d); time.Now().Before(deadline); time.Sleep(time.Second) {
-		if g.answers() != nil {
-			return
-		}
-	}
+	until(d, time.Second, func() bool { return g.answers() != nil })
 }
 
 // waitUnit2Active waits for unit to be active, and fails as soon as it failed.
 func (g *guest) waitUnit2Active(unit string, d time.Duration) (bool, string) {
-	deadline := time.Now().Add(d)
 	state := ""
-	for time.Now().Before(deadline) {
+	until(d, 3*time.Second, func() bool {
 		out, _ := g.run("systemctl is-active "+unit, "")
 		state = strings.TrimSpace(out)
-		if state == "active" || state == "failed" {
-			break
-		}
-		time.Sleep(3 * time.Second)
-	}
+		return state == "active" || state == "failed"
+	})
 	return state == "active", unit + ": " + state
 }
 

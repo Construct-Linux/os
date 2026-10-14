@@ -80,14 +80,15 @@ func (g *guest) setSessionScale(scale float64, wantW, wantH int) (string, error)
 		return out, nil
 	}
 	var w, h int
-	for deadline := time.Now().Add(15 * time.Second); time.Now().Before(deadline); time.Sleep(500 * time.Millisecond) {
+	if until(15*time.Second, 500*time.Millisecond, func() bool {
 		var st [2]int
-		if g.evalJSON(`return [global.stage.width, global.stage.height];`, &st) == nil {
-			w, h = st[0], st[1]
-			if w == wantW && h == wantH {
-				return out, nil
-			}
+		if g.evalJSON(`return [global.stage.width, global.stage.height];`, &st) != nil {
+			return false
 		}
+		w, h = st[0], st[1]
+		return w == wantW && h == wantH
+	}) {
+		return out, nil
 	}
 	return out, fmt.Errorf("the stage is %dx%d at scale %g, want %dx%d", w, h, scale, wantW, wantH)
 }
