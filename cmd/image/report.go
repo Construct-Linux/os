@@ -36,6 +36,9 @@ type report struct {
 	// benchWindow is when construct bench ran, in seconds since the guest's boot: the kernel's
 	// out-of-memory report it provokes on purpose is not an error of the image's.
 	benchWindow [2]float64
+	// castWindow is when the screen was recorded: PipeWire's report of the format the VM's stream
+	// could not give the recorder, before the one it could, is not an error of the image's.
+	castWindow [2]float64
 }
 
 func (r *report) add(name string, ok bool, detail string) {
@@ -152,6 +155,7 @@ func (r *report) system(g *guest) {
 	pam, pamErr := g.run(`journalctl -b --no-pager -o cat | grep -E 'unable to open config for' | sort -u || true`, "")
 	r.add("pam", pamErr == nil && strings.TrimSpace(pam) == "", oneLine(pam)+errText(pamErr))
 	errs = withoutBenchOOM(errs, r.benchWindow)
+	errs = withoutCastFormats(errs, r.castWindow)
 	_ = os.WriteFile(filepath.Join(r.dir, "journal-errors.txt"), []byte(errs), 0o644)
 	// What every error came after and with: an error line alone - a read cut short by a process
 	// killed, say - does not name what was killed, and a failure only the release builder's
@@ -238,6 +242,26 @@ func monotonic(line string) (float64, bool) {
 	var t float64
 	_, err := fmt.Sscanf(strings.TrimLeft(line, "[ "), "%f]", &t)
 	return t, err == nil
+}
+
+// withoutCastFormats is the journal's errors (short-monotonic) without PipeWire's format
+// negotiation while the screen was recorded: the recorder asks the screen's stream for DMA-BUF
+// formats first, which a VM without a GPU cannot give, and PipeWire logs the refused format, a
+// screenful of it, before the stream falls back to one it can (the recording is checked by its
+// file). Any other error then stays, PipeWire's own included.
+func withoutCastFormats(errs string, window [2]float64) string {
+	if window[1] == 0 {
+		return errs
+	}
+	var kept []string
+	for _, line := range strings.Split(errs, "\n") {
+		if at, ok := monotonic(line); ok && at >= window[0] && at <= window[1] &&
+			strings.Contains(line, " pipewire[") && strings.Contains(line, "]: pw.context: ") {
+			continue
+		}
+		kept = append(kept, line)
+	}
+	return strings.Join(kept, "\n")
 }
 
 // withoutBenchOOM is the journal's errors (short-monotonic) without the kernel's lines while

@@ -24,6 +24,26 @@ func TestWithoutBenchOOM(t *testing.T) {
 	}
 }
 
+// PipeWire's format lines while the screen was recorded go; its other errors, and the same lines
+// at another time, stay.
+func TestWithoutCastFormats(t *testing.T) {
+	errs := strings.Join([]string{
+		"[   60.000000] construct pipewire[988]: pw.context: params Spa:Enum:ParamId:EnumFormat: 0:0 Invalid argument (input format (no more input formats))",
+		"[   79.940162] construct pipewire[988]: pw.context: params Spa:Enum:ParamId:EnumFormat: 0:0 Invalid argument (input format (no more input formats))",
+		"[   79.940193] construct pipewire[988]: pw.context: Object: size 272, type Spa:Pod:Object:Param:Format (262147), id Spa:Enum:ParamId:EnumFormat (3)",
+		"[   79.940205] construct pipewire[988]: pw.context:   Prop: key Spa:Pod:Object:Param:Format:mediaType (1), flags 00000000",
+		"[   80.000000] construct pipewire[988]: mod.rt: could not make thread realtime",
+		"[   80.100000] construct gnome-shell[665]: JS ERROR: TypeError: x is null",
+	}, "\n")
+	got := withoutCastFormats(errs, [2]float64{79, 83})
+	if strings.Contains(got, "79.94") || !strings.Contains(got, "60.000000") || !strings.Contains(got, "mod.rt") || !strings.Contains(got, "JS ERROR") {
+		t.Errorf("kept:\n%s", got)
+	}
+	if withoutCastFormats(errs, [2]float64{}) != errs {
+		t.Error("no recording, yet lines went")
+	}
+}
+
 // Each error comes with the journal's lines from five seconds before it to two after, windows
 // apart split by "--": what was killed, or what failed first, is in them.
 func TestAroundErrors(t *testing.T) {

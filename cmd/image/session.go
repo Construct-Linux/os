@@ -183,6 +183,9 @@ func (r *report) screencast(g *guest) {
 		File      string
 		Err       string
 	}
+	// PipeWire's lines while it records are left out of the journal's errors (withoutCastFormats):
+	// only when both ends were read.
+	start, serr := g.uptime()
 	err := g.evalJSON(`
 		const wait = ms => new Promise(r => GLib.timeout_add(GLib.PRIORITY_DEFAULT, ms, () => { r(); return GLib.SOURCE_REMOVE; }));
 		const ui = Main.screenshotUI;
@@ -201,6 +204,9 @@ func (r *report) screencast(g *guest) {
 			res.err = String(e);
 		}
 		return res;`, &got)
+	if end, eerr := g.uptime(); serr == nil && eerr == nil {
+		r.castWindow = [2]float64{start, end}
+	}
 	if err == nil && got.Err != "" {
 		err = errors.New(got.Err)
 	}
