@@ -99,7 +99,7 @@ func main() {
 	case "key":
 		err = keyCmd(ctx, os.Args[2:], os.Stdin, os.Stdout)
 	case "kernel-profile":
-		err = kernelProfileCmd(os.Args[2:], os.Stdout)
+		err = kernelProfileCmd(ctx, os.Args[2:], os.Stdout)
 	default:
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
