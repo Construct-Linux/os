@@ -28,10 +28,11 @@ vars:
 
 tasks:
   keygen:
-    desc: Create the key that signs packages/.
-    status: [test -f melange.rsa]
+    desc: "The key that signs packages/, melange.rsa, and its public half melange.rsa.pub, which apk knows the signatures by: a new pair, or the public half of a key that is here (the builder's, from Secrets Manager). Neither is in the repository: a person's builds are signed by their own."
+    status: [test -f melange.rsa.pub]
     cmds:
-      - docker run --rm -u $(id -u):$(id -g) -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}} keygen melange.rsa
+      - test -f melange.rsa || docker run --rm -u $(id -u):$(id -g) -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}} keygen melange.rsa
+      - test -f melange.rsa.pub || openssl rsa -in melange.rsa -pubout -out melange.rsa.pub
 
   build:
     desc: "Build one recipe: task build -- json-glib"
@@ -99,6 +100,7 @@ tasks:
 
   rootfs:
     desc: Build the desktop's root filesystem from image/apko.yaml (Wolfi + packages/) into _output/rootfs.tar.
+    deps: [keygen]
     cmds:
       - mkdir -p _output
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/apko.yaml _output/rootfs.tar
@@ -109,6 +111,7 @@ tasks:
 
   initrd:
     desc: Build the initrd systemd runs in before the root, from image/initrd/apko.yaml, into _output/initrd.tar.
+    deps: [keygen]
     cmds:
       - mkdir -p _output
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/initrd/apko.yaml _output/initrd.tar
@@ -116,6 +119,7 @@ tasks:
 
   tools:
     desc: The container the root is laid in, and this repository's programs for it (cmd/image) and for the root (cmd/construct).
+    deps: [keygen]
     cmds:
       # packages/ and its public key, for systemd (build/tools/Dockerfile).
       - mkdir -p _output/tools-keys && cp melange.rsa.pub _output/tools-keys/

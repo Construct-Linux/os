@@ -2,5 +2,6 @@
 /.cache/
 /_output/
 /melange.rsa
+/melange.rsa.pub
 /.env
 /.claude/worktrees/
