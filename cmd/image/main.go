@@ -25,7 +25,11 @@
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
 //	image run   [-usb] [-wait 30s] [-poweroff] -- <script>   boot, run script as root over vsock, stop (or power off)
 //	image play  [-fresh] [-stick=false]          the stick in a window on the host, with a disk to install on
+//	image dev-up | dev-down                                 the test stick booted and left running for theme-dev and type-dev, and stopped (cmd/image/dev.go)
+//	image theme-dev -orchis dir -needles dir    the local Orchis checkout built into dev-up's machine, and the shell's views taken
 //	image type-dev                              the type specimen and its rendering matrix, in dev-up's machine (cmd/image/typespec.go)
+//	image needles-propose -needles dir          a pull request in the needles repository with the views the last run drew differently
+//	image scan-report                           _output/scan/report.md from Grype's report, by severity (cmd/image/scanreport.go)
 //	image forge                                 the forged sticks the lifecycle must refuse
 //	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
 //	image check-langs                           every package in the root comes with its translations
@@ -46,7 +50,7 @@ const out = "_output"
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: image disk|boot [flags]")
+		fmt.Fprintln(os.Stderr, "usage: image <command> [flags]; the commands are listed in the package's doc (go doc ./cmd/image)")
 		os.Exit(2)
 	}
 	var err error

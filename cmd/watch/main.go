@@ -1,6 +1,6 @@
 // Command watch keeps the repository's GitHub side in order, from a workflow or a person's shell:
 //
-//	watch labels [-file .github/labels.json] [-dry-run]   create or update the issue labels the file lists
+//	watch labels [-dry-run]                               create or update the issue labels .github/labels.json lists
 //	watch run [-grype FILE [-release TAG]] [-dry-run]     open, update and close the issues of security fixes and big updates
 //
 // run opens an issue only for what a person must act on: a Critical or High vulnerability a
