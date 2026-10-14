@@ -941,7 +941,7 @@ func (l *lf) focus(img image.Image, s focusSeen) {
 		return
 	}
 	r := l.px(s.Toggle.rect()).Inset(-2*l.k, -2*l.k)
-	drawn, share := pixels.FocusDiff(before, img, r, needle.ChannelDelta, accent, lfFocusRingTol)
+	drawn, share := pixels.FocusDiff(before, img, r, needle.ChannelTolerance, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
 	l.check("focus", "quick toggle drawn", drawn >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px of the accent drawn in %v against shell-quick-settings, %.0f%% of the change the accent; want >= %d and >= %.0f%%",
@@ -1436,7 +1436,7 @@ func (l *lf) gtkFocus(name string, img image.Image) {
 		accent = l.c("light-accent")
 	}
 	all := pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}
-	drawn, share := pixels.FocusDiff(before, img, all, needle.ChannelDelta, accent, lfFocusRingTol)
+	drawn, share := pixels.FocusDiff(before, img, all, needle.ChannelTolerance, accent, lfFocusRingTol)
 	least := lfFocusMinChanged * l.k * l.k
 	l.check("focus", name, drawn >= least && share >= lfFocusAccentShare,
 		fmt.Sprintf("%d px of %s drawn against %s, %.0f%% of the change the ring, drawn or left; want >= %d and >= %.0f%%",

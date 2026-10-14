@@ -475,12 +475,12 @@ func proposalBatches(views []lookView) []proposalBatch {
 	return out
 }
 
-// toleranceFile is needle.ChannelDelta and needle.MaxShare at the needles' root, for the gallery to
+// toleranceFile is needle.ChannelTolerance and needle.MaxShare at the needles' root, for the gallery to
 // show what "matches" means without reading this file.
 const toleranceFile = "tolerance.json"
 
 func writeTolerance(needles string) error {
-	b, err := json.MarshalIndent(map[string]any{"channel": needle.ChannelDelta, "share": needle.MaxShare}, "", "  ")
+	b, err := json.MarshalIndent(map[string]any{"channel": needle.ChannelTolerance, "share": needle.MaxShare}, "", "  ")
 	if err != nil {
 		return err
 	}

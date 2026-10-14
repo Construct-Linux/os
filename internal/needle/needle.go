@@ -29,7 +29,7 @@ import (
 const (
 	// A pixel differs when a channel moved more than this: antialiasing and the GPU-less
 	// renderer's rounding stay under it, a colour the theme changed does not.
-	ChannelDelta = 24
+	ChannelTolerance = 24
 	// A view fails when more of its compared area than this differs: a few glyphs that moved
 	// fail it, noise does not.
 	MaxShare = 0.002
@@ -70,7 +70,7 @@ type Spec struct {
 }
 
 // Noise is how busy a view is, measured on its screenshot: the share of its pixels on an edge
-// (a neighbour, right or below, beyond ChannelDelta), and how many of the palette's colours
+// (a neighbour, right or below, beyond ChannelTolerance), and how many of the palette's colours
 // cover a surface of it. Informative, never a gate: it is for a reviewer to see a view grow
 // noisier from one approval to the next, which no single rule says.
 type Noise struct {
@@ -103,7 +103,7 @@ func NoiseOf(img image.Image, palette []color.NRGBA, tol int) Noise {
 		for x := range w {
 			p := px(x, y)
 			hist[p]++
-			if (x+1 < w && pixels.ChannelDelta(p, px(x+1, y)) > ChannelDelta) || (y+1 < h && pixels.ChannelDelta(p, px(x, y+1)) > ChannelDelta) {
+			if (x+1 < w && pixels.ChannelDelta(p, px(x+1, y)) > ChannelTolerance) || (y+1 < h && pixels.ChannelDelta(p, px(x, y+1)) > ChannelTolerance) {
 				edges++
 			}
 		}
@@ -385,7 +385,7 @@ func Compare(ref, shot, specPath, diff string) (float64, error) {
 			}
 			compared++
 			cb := pixels.At(b, x, y)
-			if pixels.ChannelDelta(ca, cb) > ChannelDelta {
+			if pixels.ChannelDelta(ca, cb) > ChannelTolerance {
 				differ++
 				dim = color.NRGBA{255, 40, 40, 255}
 			}
