@@ -41,7 +41,6 @@ type Partition struct {
 	Type, UUID  string
 	First, Last int64
 	Name        string
-	Attrs       uint64
 	// Number is the entry's place in the table, from 1: the kernel's partition number, which a
 	// table read gives and a table written takes from the order of Partitions.
 	Number int
@@ -97,7 +96,6 @@ func Write(w io.WriterAt, size int64, t Table) error {
 		}
 		binary.LittleEndian.PutUint64(e[32:], uint64(p.First))
 		binary.LittleEndian.PutUint64(e[40:], uint64(p.Last))
-		binary.LittleEndian.PutUint64(e[48:], p.Attrs)
 		for j, u := range utf16.Encode([]rune(p.Name)) {
 			binary.LittleEndian.PutUint16(e[56+2*j:], u)
 		}
@@ -205,7 +203,6 @@ func Read(r io.ReaderAt) (Table, error) {
 			Type: guid(e), UUID: guid(e[16:]),
 			First: int64(le.Uint64(e[32:])), Last: int64(le.Uint64(e[40:])),
 			Name:   strings.TrimRight(string(utf16.Decode(units)), "\x00"),
-			Attrs:  le.Uint64(e[48:]),
 			Number: i + 1,
 		}
 		if p.First > p.Last || p.Last > 1<<50 {

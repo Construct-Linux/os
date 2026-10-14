@@ -31,9 +31,9 @@ func bootOrder(t *testing.T, vars Vars) []uint16 {
 func TestTheBootEntryStartsTheInstalledSystemdBootFirst(t *testing.T) {
 	vars := Vars(t.TempDir())
 	for _, n := range []string{"Boot0000", "Boot0001"} {
-		must(t, vars.Write(n, Global, nvBootRuntime, []byte("the firmware's")))
+		must(t, vars.Write(n, Global, []byte("the firmware's")))
 	}
-	must(t, vars.Write("BootOrder", Global, nvBootRuntime, []byte{1, 0, 0, 0}))
+	must(t, vars.Write("BootOrder", Global, []byte{1, 0, 0, 0}))
 	_, esp := installed()
 	n, err := bootEntry(vars, esp)
 	if err != nil || n != 2 {
@@ -89,7 +89,7 @@ func TestTheBootEntrysPathIsWalkedByItsLengths(t *testing.T) {
 func TestABootEntryTakesNoOneElsesNumber(t *testing.T) {
 	vars := Vars(t.TempDir())
 	for n := range 17 {
-		must(t, vars.Write(fmt.Sprintf("Boot%04X", n), Global, nvBootRuntime, []byte("the firmware's")))
+		must(t, vars.Write(fmt.Sprintf("Boot%04X", n), Global, []byte("the firmware's")))
 	}
 	_, esp := installed()
 	if n, err := bootEntry(vars, esp); err != nil || n != 0x11 {

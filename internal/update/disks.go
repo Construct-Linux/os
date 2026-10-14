@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"maps"
 	"os"
 	"path/filepath"
 	"slices"
@@ -175,10 +176,7 @@ func MediumDisk(sys string) (string, error) {
 	if len(disks) != 1 {
 		return "", fmt.Errorf("install: the root is on %d disks, not a medium's one", len(disks))
 	}
-	for d := range disks {
-		return d, nil
-	}
-	return "", nil
+	return slices.Collect(maps.Keys(disks))[0], nil
 }
 
 // dmNamed is the kernel's name, dm-N, of the device-mapper device called name.

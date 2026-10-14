@@ -25,7 +25,7 @@ func TestABootThatIsNotGoodIsRebootedWhileCounted(t *testing.T) {
 		t.Errorf("a blessed image's bad boot: %v, %d reboots", err, s.reboots)
 	}
 	path := `\EFI\Linux\` + ImageID + `_1.1+2-1.efi`
-	must(t, vars.Write("LoaderBootCountPath", loader, bootService|runtimeAccess, efiString(path)))
+	must(t, vars.Write("LoaderBootCountPath", loader, efiString(path)))
 	if err := BootCheck(t.Context(), s, vars, log); err != nil || s.reboots != 1 {
 		t.Errorf("a counted image's bad boot: %v, %d reboots", err, s.reboots)
 	}

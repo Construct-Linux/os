@@ -39,7 +39,7 @@ func bootEntry(vars Vars, esp gpt.Partition) (uint16, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := vars.Write(fmt.Sprintf("Boot%04X", n), Global, nvBootRuntime, option); err != nil {
+	if err := vars.Write(fmt.Sprintf("Boot%04X", n), Global, option); err != nil {
 		return 0, err
 	}
 	order, err := vars.Read("BootOrder", Global)
@@ -52,7 +52,7 @@ func bootEntry(vars Vars, esp gpt.Partition) (uint16, error) {
 			next = binary.LittleEndian.AppendUint16(next, e)
 		}
 	}
-	return n, vars.Write("BootOrder", Global, nvBootRuntime, next)
+	return n, vars.Write("BootOrder", Global, next)
 }
 
 // bootVariable is a Boot#### variable's name.

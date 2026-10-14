@@ -24,14 +24,9 @@ const (
 	loader = "4a67b082-0a4c-41cf-b6c7-440b29bb8c4f"
 )
 
-// Attributes a variable is written with; a boot entry's is nvBootRuntime: non-volatile, and seen
-// at boot and after.
-const (
-	nonVolatile   = 0x01
-	bootService   = 0x02
-	runtimeAccess = 0x04
-	nvBootRuntime = nonVolatile | bootService | runtimeAccess
-)
+// nvBootRuntime are the attributes a boot entry's variables are written with: non-volatile, and
+// seen at boot and after (NON_VOLATILE | BOOTSERVICE_ACCESS | RUNTIME_ACCESS).
+const nvBootRuntime = 0x01 | 0x02 | 0x04
 
 // fsImmutable is the inode flag (FS_IMMUTABLE_FL) efivarfs sets on a variable's file.
 const fsImmutable = 0x10
@@ -56,9 +51,9 @@ func (v Vars) Read(name, guid string) ([]byte, error) {
 	return raw[attributesSize:], nil
 }
 
-// Write sets the variable name of vendor guid to value, with attrs, in one write: efivarfs takes
-// one write as one SetVariable call, the firmware's to accept or refuse.
-func (v Vars) Write(name, guid string, attrs uint32, value []byte) error {
+// Write sets the variable name of vendor guid to value, with a boot entry's attributes, in one
+// write: efivarfs takes one write as one SetVariable call, the firmware's to accept or refuse.
+func (v Vars) Write(name, guid string, value []byte) error {
 	p := v.path(name, guid)
 	// efivarfs makes a variable's file immutable so that nothing removes a variable by accident;
 	// a new value is not an accident. A file system without the flag has nothing to unset.
@@ -67,7 +62,7 @@ func (v Vars) Write(name, guid string, attrs uint32, value []byte) error {
 			return fmt.Errorf("efivars: %s: %w", name, err)
 		}
 	}
-	body := binary.LittleEndian.AppendUint32(nil, attrs)
+	body := binary.LittleEndian.AppendUint32(nil, nvBootRuntime)
 	if err := os.WriteFile(p, append(body, value...), 0o644); err != nil {
 		return fmt.Errorf("efivars: setting %s: %w", name, err)
 	}
