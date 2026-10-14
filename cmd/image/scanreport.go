@@ -54,26 +54,47 @@ func scanReport(args []string) error {
 func writeScanReport(w io.Writer, g grype.Report, ours map[string]bool) {
 	fmt.Fprintln(w, "# Vulnerabilities in the image")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "| severity | a version fixes it | nobody has yet |")
-	fmt.Fprintln(w, "|---|---:|---:|")
-	fixed, unfixed := bySeverity(g.Matches), bySeverity(g.IgnoredMatches)
+	fmt.Fprintln(w, "| severity | a version fixes it | nobody has yet | kept by build/grype.yaml |")
+	fmt.Fprintln(w, "|---|---:|---:|---:|")
+	// What a rule of build/grype.yaml keeps is apart from what nobody has fixed: a fix exists,
+	// in a library a third party's binary embeds, and the rule says why it is kept.
+	var unfixed, kept []grype.Match
+	for _, m := range g.IgnoredMatches {
+		if m.Kept() != "" {
+			kept = append(kept, m)
+		} else {
+			unfixed = append(unfixed, m)
+		}
+	}
+	fixed, unfixedBy, keptBy := bySeverity(g.Matches), bySeverity(unfixed), bySeverity(kept)
 	for _, s := range severities {
-		fmt.Fprintf(w, "| %s | %d | %d |\n", s, len(fixed[s]), len(unfixed[s]))
+		fmt.Fprintf(w, "| %s | %d | %d | %d |\n", s, len(fixed[s]), len(unfixedBy[s]), len(keptBy[s]))
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "A Critical or High that a version fixes fails `task scan`: a Wolfi package's by rebuilding the root, a recipe's by updating it.")
 	for _, part := range []struct {
 		title string
 		by    map[string][]grype.Match
-	}{{"A version fixes it", fixed}, {"Nobody has fixed it yet", unfixed}} {
+		why   bool
+	}{{"A version fixes it", fixed, false}, {"Nobody has fixed it yet", unfixedBy, false}, {"Kept by a rule in build/grype.yaml", keptBy, true}} {
 		for _, s := range severities {
 			if len(part.by[s]) == 0 {
 				continue
 			}
 			fmt.Fprintf(w, "\n## %s: %s\n\n", part.title, s)
-			fmt.Fprintln(w, "| vulnerability | package | installed | fixed in | from | EPSS |")
-			fmt.Fprintln(w, "|---|---|---|---|---|---:|")
+			if part.why {
+				fmt.Fprintln(w, "| vulnerability | package | installed | fixed in | why it is kept |")
+				fmt.Fprintln(w, "|---|---|---|---|---|")
+			} else {
+				fmt.Fprintln(w, "| vulnerability | package | installed | fixed in | from | EPSS |")
+				fmt.Fprintln(w, "|---|---|---|---|---|---:|")
+			}
 			for _, m := range part.by[s] {
+				fixedIn := strings.Join(m.Vulnerability.Fix.Versions, ", ")
+				if part.why {
+					fmt.Fprintf(w, "| %s | %s | %s | %s | %s |\n", m.Vulnerability.ID, m.Artifact.Name, m.Artifact.Version, fixedIn, m.Kept())
+					continue
+				}
 				from := "Wolfi"
 				if ours[m.Artifact.Name] {
 					from = "recipes/"
@@ -82,8 +103,7 @@ func writeScanReport(w io.Writer, g grype.Report, ours map[string]bool) {
 				if len(m.Vulnerability.EPSS) > 0 {
 					epss = fmt.Sprintf("%.2f%%", 100*m.Vulnerability.EPSS[0].EPSS)
 				}
-				fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s |\n", m.Vulnerability.ID, m.Artifact.Name, m.Artifact.Version,
-					strings.Join(m.Vulnerability.Fix.Versions, ", "), from, epss)
+				fmt.Fprintf(w, "| %s | %s | %s | %s | %s | %s |\n", m.Vulnerability.ID, m.Artifact.Name, m.Artifact.Version, fixedIn, from, epss)
 			}
 		}
 	}

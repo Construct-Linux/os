@@ -42,7 +42,15 @@ func securityCheck(path, release, recipes string) check {
 
 func securityFindings(r grype.Report, release string, ours map[string]bool) []finding {
 	byPackage := map[string][]grype.Match{}
-	for _, m := range r.Matches {
+	// What a rule of build/grype.yaml keeps is an issue too: the rule is dropped when a release
+	// of the binary's vendor carries the fix, and the issue is where that is waited for.
+	matches := slices.Clone(r.Matches)
+	for _, m := range r.IgnoredMatches {
+		if m.Kept() != "" {
+			matches = append(matches, m)
+		}
+	}
+	for _, m := range matches {
 		s := m.Vulnerability.Severity
 		if (s != "Critical" && s != "High") || len(m.Vulnerability.Fix.Versions) == 0 {
 			continue
@@ -103,6 +111,8 @@ func securityFindings(r grype.Report, release string, ours map[string]bool) []fi
 		}
 		fmt.Fprintln(&b)
 		switch {
+		case ms[0].Kept() != "":
+			fmt.Fprintf(&b, "A rule in build/grype.yaml keeps it out of `task scan`: %s. Drop the rule when a release carries the fix.\n", ms[0].Kept())
 		case kernelPackages[name]:
 			fmt.Fprintln(&b, "The kernel is built here: bump KERNEL_VERSION and KERNEL_SHA256 in build/versions.env to a fixed release.")
 		case ours[name]:

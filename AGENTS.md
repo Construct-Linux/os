@@ -173,7 +173,7 @@ falling back from a release that does not come up.
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
 | install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, four forged sticks refused, update from a URL, rollback from a broken release, files in `/var` and `/etc` kept |
 | the kernel | `task kernel:config`, then `task kernel` | the assertion's output |
-| packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | `_output/scan/report.md`, by severity: a Critical or High a version fixes fails it; what nobody has fixed is listed too |
+| packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | `_output/scan/report.md`, by severity: a Critical or High a version fixes fails it; what nobody has fixed is listed too, and what a rule in `build/grype.yaml` keeps, with its reason - a fix in a library a third party's binary embeds, which only they rebuild; the weekly watch files an issue for it |
 | the boot's look (splash, Plymouth) | `go run ./cmd/image boot -usb -shots 30` | the frames in `_output/boot` |
 
 To use it as a person does: `task play` (a window, the stick, a disk to install on; state in

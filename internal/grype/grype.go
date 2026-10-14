@@ -24,10 +24,27 @@ type Match struct {
 		Name    string `json:"name"`
 		Version string `json:"version"`
 	} `json:"artifact"`
+	// AppliedIgnoreRules is why Grype ignored the match: only-fixed's rule, which names no
+	// vulnerability, or a rule of build/grype.yaml, which names one and says why.
+	AppliedIgnoreRules []struct {
+		Vulnerability string `json:"vulnerability"`
+		Reason        string `json:"reason"`
+	} `json:"appliedIgnoreRules"`
+}
+
+// Kept is the reason a rule of build/grype.yaml keeps m, "" when none does: a fix exists in a
+// library a third party's binary embeds, which only that party rebuilds.
+func (m Match) Kept() string {
+	for _, r := range m.AppliedIgnoreRules {
+		if r.Vulnerability != "" {
+			return r.Reason
+		}
+	}
+	return ""
 }
 
 // Report is Grype's JSON report: the matches a version fixes, and under ignoredMatches those
-// build/grype.yaml ignores - nobody has fixed them yet.
+// build/grype.yaml ignores - nobody has fixed them yet, or a rule keeps them (Match.Kept).
 type Report struct {
 	Matches        []Match `json:"matches"`
 	IgnoredMatches []Match `json:"ignoredMatches"`

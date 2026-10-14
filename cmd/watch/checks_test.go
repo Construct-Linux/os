@@ -39,6 +39,9 @@ func TestSecurityFindings(t *testing.T) {
 		{"vulnerability": {"id": "CVE-4", "severity": "High", "fix": {"versions": []}}, "artifact": {"name": "glibc", "version": "2.44"}},
 		{"vulnerability": {"id": "CVE-5", "severity": "High", "fix": {"versions": ["7.2.9"]}}, "artifact": {"name": "linux-kernel", "version": "7.2.8"}},
 		{"vulnerability": {"id": "CVE-6", "severity": "High", "fix": {"versions": ["51.1"]}}, "artifact": {"name": "gnome-shell", "version": "51.0"}}
+	], "ignoredMatches": [
+		{"vulnerability": {"id": "CVE-7", "severity": "High", "fix": {"versions": []}}, "artifact": {"name": "curl", "version": "8"}, "appliedIgnoreRules": [{"fix-state": "unknown"}]},
+		{"vulnerability": {"id": "GHSA-8", "severity": "High", "fix": {"versions": ["9.0.21"]}}, "artifact": {"name": "Pkcs", "version": "9.0.5"}, "appliedIgnoreRules": [{"vulnerability": "GHSA-8", "reason": "only its vendor rebuilds it"}]}
 	]}`), &r); err != nil {
 		t.Fatal(err)
 	}
@@ -47,8 +50,11 @@ func TestSecurityFindings(t *testing.T) {
 	for _, f := range fs {
 		by[f.key] = f
 	}
-	if len(fs) != 3 {
-		t.Fatalf("%d findings, want openssl, the kernel and gnome-shell (a Medium and an unfixed High are none): %+v", len(fs), fs)
+	if len(fs) != 4 {
+		t.Fatalf("%d findings, want openssl, the kernel, gnome-shell and the kept Pkcs (a Medium and an unfixed High are none): %+v", len(fs), fs)
+	}
+	if k := by["security:Pkcs"]; !strings.Contains(k.body, "only its vendor rebuilds it") || !strings.Contains(k.body, "Drop the rule") {
+		t.Errorf("the kept one's body:\n%s", k.body)
 	}
 	o := by["security:openssl"]
 	if o.title != "security: openssl 3.5.0 - 2 fixable (Critical)" || strings.Join(o.labels, ",") != "security,severity:critical,area:packages" {
