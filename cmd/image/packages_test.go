@@ -1,6 +1,8 @@
 package main
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"os"
 	"os/exec"
@@ -74,19 +76,52 @@ func TestMissingInWaves(t *testing.T) {
 	}
 }
 
-// Of a package's builds, every one but the newest is superseded, by version then epoch.
-func TestSuperseded(t *testing.T) {
-	got, err := superseded([]string{"APKINDEX.tar.gz", "gdm-51.0-r2.apk", "gdm-51.0-r3.apk", "gdm-dev-51.0-r3.apk",
-		"orchis-theme-20260914-r9.apk", "orchis-theme-20260914-r12.apk", "mesa-26.2.10-r0.apk", "mesa-26.2.9-r4.apk"})
-	if err != nil || strings.Join(got, " ") != "gdm-51.0-r2.apk mesa-26.2.9-r4.apk orchis-theme-20260914-r9.apk" {
-		t.Errorf("superseded %v %v", got, err)
+// Prune keeps what the recipes make: a package's build at its recipe's version and epoch, and no
+// other - an older one, a newer one a recipe took back, or one of a recipe that is gone.
+func TestUnmade(t *testing.T) {
+	dir := t.TempDir()
+	for _, a := range []struct{ name, origin, pkgver string }{
+		{"gdm-51.0-r2", "gdm", "51.0-r2"}, {"gdm-51.0-r3", "gdm", "51.0-r3"}, {"gdm-dev-51.0-r3", "gdm", "51.0-r3"},
+		{"udev-261.3-r6", "systemd", "261.3-r6"}, {"udev-261.3-r7", "systemd", "261.3-r7"},
+		{"mesa-26.2.9-r4", "mesa", "26.2.9-r4"},
+	} {
+		apkOf(t, filepath.Join(dir, a.name+".apk"), "origin = "+a.origin+"\npkgver = "+a.pkgver+"\n")
+	}
+	must(t, os.WriteFile(filepath.Join(dir, "APKINDEX.tar.gz"), nil, 0o644))
+	recipes := []recipe{{Name: "gdm", Version: "51.0", Epoch: 3}, {Name: "systemd", Version: "261.3", Epoch: 6}}
+	got, err := unmade(dir, recipes)
+	if err != nil || strings.Join(got, " ") != "gdm-51.0-r2.apk mesa-26.2.9-r4.apk udev-261.3-r7.apk" {
+		t.Errorf("unmade %v %v", got, err)
+	}
+	// An apk that does not say what made it stops prune before it names a file to delete.
+	apkOf(t, filepath.Join(dir, "stray-1.0-r0.apk"), "pkgname = stray\n")
+	if got, err := unmade(dir, recipes); err == nil {
+		t.Errorf("a stray apk was ordered: %v", got)
 	}
 }
 
-// A version prune cannot order stops it before it names a file to delete.
-func TestSupersededRefusesWhatItCannotOrder(t *testing.T) {
-	if got, err := superseded([]string{"gdm-51.0-r2.apk", "gdm-51.x-r3.apk"}); err == nil {
-		t.Errorf("51.x ordered: %v", got)
+// apkOf writes an apk at path with pkginfo as its .PKGINFO: as melange lays it, a tar in gzip,
+// the control segment, with a file of the package after it.
+func apkOf(t *testing.T, path, pkginfo string) {
+	t.Helper()
+	f, err := os.Create(path)
+	must(t, err)
+	defer f.Close()
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	for _, e := range []struct{ name, body string }{{".PKGINFO", pkginfo}, {"usr/bin/x", "#!/bin/sh\n"}} {
+		must(t, tw.WriteHeader(&tar.Header{Name: e.name, Mode: 0o644, Size: int64(len(e.body))}))
+		_, err = tw.Write([]byte(e.body))
+		must(t, err)
+	}
+	must(t, tw.Close())
+	must(t, gz.Close())
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -183,34 +218,5 @@ func TestWithoutComments(t *testing.T) {
 	}
 	if withoutComments(strings.Replace(was, "# kept", "# changed", 1)) == withoutComments(was) {
 		t.Error("a # line inside a block scalar is the block's text, and a change to it is a change")
-	}
-}
-
-// apk's order: a release candidate before its release, a patch level and a snapshot after it, a
-// shorter version older, a letter after none, numbers as numbers.
-func TestAPKCompare(t *testing.T) {
-	ordered := []string{"1.0_rc1", "1.0_rc2", "1.0", "1.0_p1", "1.0.1", "1.9", "1.10", "18.0_rc20260919", "18.0", "18.0_git20260101", "18.0_p2"}
-	for i, older := range ordered {
-		for _, newer := range ordered[i+1:] {
-			if c, err := apkCompare(older, newer); c != -1 || err != nil {
-				t.Errorf("%s is not older than %s: %d %v", older, newer, c, err)
-			}
-			if c, _ := apkCompare(newer, older); c != 1 {
-				t.Errorf("%s is not newer than %s", newer, older)
-			}
-		}
-	}
-	if c, _ := apkCompare("1.0", "1.0a"); c != -1 {
-		t.Error("1.0 is not older than 1.0a")
-	}
-	if c, err := apkCompare("1.9.17_p2", "1.9.17_p2"); c != 0 || err != nil {
-		t.Error("a version is not equal to itself")
-	}
-	// The epoch orders two builds of one version.
-	if l, _ := versionLess("18.0", 1, "18.0", 2); !l {
-		t.Error("epochs")
-	}
-	if l, _ := versionLess("18.0", 2, "18.0_rc1", 9); l {
-		t.Error("an epoch outranked the version")
 	}
 }

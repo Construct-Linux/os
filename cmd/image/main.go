@@ -19,7 +19,7 @@
 //	image release-log [-id i-...] [-file f]     follow a builder's log in the logs bucket (cmd/image/releaselog.go)
 //	image release-notes -version v -packages f  a release's notes (cmd/image/notes.go)
 //	image channel-index -version v -add|-withdraw  a channel's index with a release added or withdrawn (cmd/image/channel.go)
-//	image packages missing|prune                the recipes packages/ lacks, a wave a line; superseded builds out (cmd/image/packages.go)
+//	image packages missing|prune                the recipes packages/ lacks, a wave a line; builds no recipe makes out (cmd/image/packages.go)
 //	image cache pull|push                       the release builder's packages/, kernel, firmware and QEMU in S3 (cmd/image/cache.go)
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)

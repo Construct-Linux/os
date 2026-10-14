@@ -12,9 +12,6 @@ dotenv: [build/versions.env, .env]
 vars:
   MELANGE: cgr.dev/chainguard/melange@sha256:3285b57ff3d6f241993f181c1cb154a590ec3ade8c3f6d987686b42693d27afe
   APKO: cgr.dev/chainguard/apko@sha256:730ae486fc77b0cc7326cdd66fb2bb3e093f9fd14b101af603fe714786752ab3
-  # The version APKO's digest is (docker run --rm <APKO> version): tools/apkorder orders packages
-  # with the same apko, which TestApkorderIsTheImagesApko holds - move all three together.
-  APKO_VERSION: v1.4.6
   WOLFI: --repository-append https://packages.wolfi.dev/os --keyring-append https://packages.wolfi.dev/os/wolfi-signing.rsa.pub
   LOCAL: --repository-append /work/packages --keyring-append /work/melange.rsa.pub
   # The kernel's banner dates it by the last commit, so the same sources make the same kernel.
@@ -66,9 +63,6 @@ tasks:
       - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - go vet ./...
       - go test ./internal/... ./cmd/...
-      # apkCompare is held to testdata/apk-order.golden; this holds the golden to apko itself
-      # (tools/apkorder, a module of its own so apko stays out of the binaries).
-      - cd tools/apkorder && go vet . && go run . < ../../cmd/image/testdata/apk-versions.txt | diff -u ../../cmd/image/testdata/apk-order.golden -
 
   kernel:config:
     desc: Merge and assert the desktop kernel's configuration, without compiling it.
@@ -401,8 +395,8 @@ tasks:
       - task: scan
       - task: release:publish
         vars: {VERSION: '{{.VERSION}}', NEW: '{{.NEW}}'}
-      # Every package's builds but its newest go, and the index is made again before the cache
-      # takes packages/ back (the deferred push).
+      # Every build no recipe makes goes, and the index is made again before the cache takes
+      # packages/ back (the deferred push).
       - go run ./cmd/image packages prune
       - >-
         docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.MELANGE}}
