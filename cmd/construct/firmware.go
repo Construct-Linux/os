@@ -36,7 +36,9 @@ var ishLoaded = regexp.MustCompile(`ISH loader: load firmware: intel/ish/ish_([a
 // firmware a person brings: construct firmware FILE.
 func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 	if len(args) != 1 {
-		return errors.New("usage: construct firmware ishS_SI_<version>.bin (the sensor hub's, from the laptop maker's Windows driver)")
+		// The driver has two: the maker's, signed for the machine, under Lenovo/FwImage, and
+		// Intel's generic one under IntelDriver/IshHeci, whose start the hub refuses.
+		return errors.New("usage: construct firmware ishS_SI_<version>.bin (the sensor hub's, from the laptop maker's Windows driver: the one under Lenovo/FwImage, not Intel's under IntelDriver/IshHeci)")
 	}
 	fw, err := os.ReadFile(args[0])
 	if err != nil {
@@ -66,7 +68,9 @@ func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 	if err := fsx.WriteFile(dst, fw, 0o644); err != nil {
 		return err
 	}
-	fmt.Fprintf(out, "installed %s as %s: restart for the sensor hub to boot it\n", args[0], dst)
+	// The hub checks the image's signature only when told to start it (ishtp/loader.c).
+	fmt.Fprintf(out, "installed %s as %s: restart for the sensor hub to boot it.\n"+
+		"If the kernel then logs \"ISH loader: cmd 2 failed 10\", the hub refused it: it is signed for another machine.\n", args[0], dst)
 	return nil
 }
 
