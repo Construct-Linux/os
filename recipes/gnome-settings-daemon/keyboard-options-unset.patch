@@ -1,0 +1,13 @@
+diff --git a/plugins/keyboard/gsd-keyboard-manager.c b/plugins/keyboard/gsd-keyboard-manager.c
+index 18a025cf..7fd22d86 100644
+--- a/plugins/keyboard/gsd-keyboard-manager.c
++++ b/plugins/keyboard/gsd-keyboard-manager.c
+@@ -326,7 +326,7 @@ maybe_create_initial_settings (GsdKeyboardManager *manager)
+         options = g_settings_get_user_value (settings, KEY_KEYBOARD_OPTIONS);
+         if (options == NULL)
+                 get_options_from_xkb_config (manager);
+-        g_variant_unref (options);
++        g_clear_pointer (&options, g_variant_unref);
+ }
+ 
+ static void

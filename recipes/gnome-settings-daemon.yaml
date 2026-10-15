@@ -1,7 +1,7 @@
 package:
   name: gnome-settings-daemon
   version: "51.0"
-  epoch: 1
+  epoch: 2
   description: GNOME settings daemon
   copyright:
     - license: GPL-2.0-only AND LGPL-2.1-only
@@ -54,6 +54,13 @@ pipeline:
   - uses: patch
     with:
       patches: gnome-settings-daemon/stop-absent-unit-is-done.patch
+
+  # The keyboard plugin unref'd the person's xkb-options without checking there were any, and
+  # nobody has set them on a new account: a CRITICAL at every login (g_variant_unref: assertion
+  # 'value != NULL' failed), since 48 (3a9fce09), still on main.
+  - uses: patch
+    with:
+      patches: gnome-settings-daemon/keyboard-options-unset.patch
 
   # wwan off: needs ModemManager, which is not shipped
   # usb-protection off: it drives USBGuard, which is not shipped, and asked for it at every
