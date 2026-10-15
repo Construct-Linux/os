@@ -1,0 +1,28 @@
+diff --git a/app/utils/dbusUtils.js b/app/utils/dbusUtils.js
+index 952b0aa..29a69f4 100644
+--- a/app/utils/dbusUtils.js
++++ b/app/utils/dbusUtils.js
+@@ -171,7 +171,9 @@ class ProxyManager {
+                     this._inSystemBus ? Gio.DBus.system : Gio.DBus.session,
+                     this._serviceName,
+                     this._objectName,
+-                    null
++                    null,
++                    null,
++                    Gio.DBusProxyFlags.DO_NOT_AUTO_START_AT_CONSTRUCTION
+                 );
+ 
+                 for (let signal in this._signals) {
+@@ -213,7 +215,11 @@ class ProxyManager {
+         }
+     }
+ 
+-    makeNewProxyAsync(cancellable = null, flags = Gio.DBusProxyFlags.NONE) {
++    // A proxy starts its service when first called, not when made: made at the desktop's start,
++    // it started Nautilus twice over (org.gnome.Nautilus and org.freedesktop.FileManager1, each
++    // its own activation) before anyone used it.
++    makeNewProxyAsync(cancellable = null,
++        flags = Gio.DBusProxyFlags.DO_NOT_AUTO_START_AT_CONSTRUCTION) {
+         return new Promise(resolve => {
+             const interfaceXML =
+                 this._dbusManager

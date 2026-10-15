@@ -6,7 +6,7 @@ package:
   name: gnome-shell-extension-gtk4-ding
   # The newest tag (gtk4-100.12) is for GNOME 48; main's metadata.json names 50 and 51.
   version: 100.29_git20261002
-  epoch: 2
+  epoch: 3
   description: GNOME Shell extension that shows icons on the desktop
   copyright:
     - license: GPL-3.0-or-later
@@ -56,6 +56,13 @@ pipeline:
   - uses: patch
     with:
       patches: gnome-shell-extension-gtk4-ding/eject-after-mount-gone.patch
+
+  # Its D-Bus proxies, made at start, each started their service: Nautilus twice at every login,
+  # by its two names, each its own D-Bus activation, one of which then failed to register. They
+  # start it at the first call now, as when a person opens a folder.
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-gtk4-ding/proxies-start-services-when-called.patch
 
   - uses: meson/configure
 
