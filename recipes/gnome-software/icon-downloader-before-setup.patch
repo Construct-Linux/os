@@ -1,0 +1,29 @@
+From 59a8a9c30bc32a061bab269277f9ecca3df489de Mon Sep 17 00:00:00 2001
+From: Philip Withnall <pwithnall@gnome.org>
+Date: Mon, 21 Sep 2026 23:47:41 +0100
+Subject: [PATCH] gs-plugin-loader: Add missing NULL check for icon downloader
+
+Signed-off-by: Philip Withnall <pwithnall@gnome.org>
+
+Fixes: #3025
+---
+ lib/gs-plugin-loader.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/lib/gs-plugin-loader.c b/lib/gs-plugin-loader.c
+index a00473d5..b1961e90 100644
+--- a/lib/gs-plugin-loader.c
++++ b/lib/gs-plugin-loader.c
+@@ -3410,7 +3410,8 @@ gs_plugin_loader_set_cpu_priority (GsPluginLoader *self,
+ 		self->cpu_priority = cpu_priority;
+ 		g_object_notify_by_pspec (G_OBJECT (self), obj_props[PROP_CPU_PRIORITY]);
+ 
+-		gs_icon_downloader_update_priority (self->icon_downloader, self->system_bus_connection, cpu_priority);
++		if (self->icon_downloader != NULL)
++			gs_icon_downloader_update_priority (self->icon_downloader, self->system_bus_connection, cpu_priority);
+ 	}
+ }
+ 
+-- 
+2.53.0
+

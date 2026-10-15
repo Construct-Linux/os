@@ -1,0 +1,39 @@
+diff --git a/lib/gs-plugin-loader.c b/lib/gs-plugin-loader.c
+index a00473d5..64be4ba6 100644
+--- a/lib/gs-plugin-loader.c
++++ b/lib/gs-plugin-loader.c
+@@ -1924,6 +1924,19 @@ finish_setup_get_bus (GTask *task)
+ 	finish_setup_op (task);
+ }
+ 
++static void
++plugin_failed_setup_shutdown_cb (GObject      *source_object,
++                                 GAsyncResult *result,
++                                 gpointer      user_data)
++{
++	GsPlugin *plugin = GS_PLUGIN (source_object);
++	g_autoptr(GError) local_error = NULL;
++
++	if (!gs_plugin_shutdown_finish (plugin, result, &local_error))
++		g_debug ("failed to shut down %s after its setup failed: %s",
++			 gs_plugin_get_name (plugin), local_error->message);
++}
++
+ static void
+ plugin_setup_cb (GObject      *source_object,
+                  GAsyncResult *result,
+@@ -1943,6 +1956,14 @@ plugin_setup_cb (GObject      *source_object,
+ 			 gs_plugin_get_name (plugin),
+ 			 local_error->message);
+ 		gs_plugin_set_enabled (plugin, FALSE);
++
++		/* What its setup started - the worker thread appstream
++		 * and flatpak start first - is stopped now: the loader's
++		 * shutdown passes over a disabled plugin, and the worker,
++		 * disposed with its thread still running, aborted
++		 * gnome-software at every logout (appstream, with no
++		 * AppStream data). */
++		gs_plugin_shutdown_async (plugin, NULL, plugin_failed_setup_shutdown_cb, NULL);
+ 	}
+ 
+ 	GS_PROFILER_ADD_MARK (PluginLoader,

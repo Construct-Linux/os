@@ -1,7 +1,7 @@
 package:
   name: gnome-software
   version: "51.0"
-  epoch: 1
+  epoch: 2
   description: Install and update applications (Flatpak)
   copyright:
     - license: GPL-2.0-or-later
@@ -45,6 +45,28 @@ pipeline:
     with:
       uri: https://download.gnome.org/sources/gnome-software/${{vars.series}}/gnome-software-${{package.version}}.tar.xz
       expected-sha256: 834b6035e61e36dd72339eb3e15d299b472ae0b393467a5bb36bb0045e0ba123
+
+  # Upstream's (59a8a9c3, after 51.0): started as a D-Bus service, the CPU priority is set before
+  # the icon downloader exists, and its NULL logged a CRITICAL at every login.
+  - uses: patch
+    with:
+      patches: gnome-software/icon-downloader-before-setup.patch
+
+  # No plugin here lists distribution upgrades or keeps offline updates: systemd-sysupdate's are
+  # updates, applied at the next boot by themselves. Asked for either, the loader answered "no
+  # plugin could handle", which gnome-software logged as a warning at every check, and the shell
+  # at every logout and restart dialog. That answer is no upgrade, and no offline update prepared.
+  - uses: patch
+    with:
+      patches: gnome-software/no-plugin-is-none.patch
+
+  # A plugin whose setup failed was disabled with its worker thread still running, and never shut
+  # down: at every logout, disposing it aborted gnome-software (gs_worker_thread_dispose:
+  # assertion failed: (self->worker_thread == NULL)) - appstream's, on a machine with no AppStream
+  # data but Flatpak's. A failed setup now shuts the plugin down as it disables it.
+  - uses: patch
+    with:
+      patches: gnome-software/failed-setup-shuts-down.patch
 
   # Flatpak is the source of apps; fwupd brings firmware updates and systemd-sysupdated
   # (recipes/systemd) the system's own, both shown and installed here. There is no

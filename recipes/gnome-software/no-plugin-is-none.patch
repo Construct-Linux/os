@@ -1,0 +1,47 @@
+diff --git a/src/gs-software-offline-updates-provider.c b/src/gs-software-offline-updates-provider.c
+index 419ffc39..c4b55898 100644
+--- a/src/gs-software-offline-updates-provider.c
++++ b/src/gs-software-offline-updates-provider.c
+@@ -86,6 +86,12 @@ get_state_done_cb (GObject *source_object,
+ 			break;
+ 		}
+ 		gs_software_offline_updates_complete_get_state (self->skeleton, data->invocation, state_str);
++	} else if (g_error_matches (local_error, GS_PLUGIN_ERROR, GS_PLUGIN_ERROR_NOT_SUPPORTED)) {
++		/* No plugin keeps offline updates (systemd-sysupdate applies
++		 * its at the next boot by itself): none is prepared. The shell
++		 * asked at every logout and restart dialog, and logged the
++		 * error each time. */
++		gs_software_offline_updates_complete_get_state (self->skeleton, data->invocation, "none");
+ 	} else {
+ 		g_prefix_error_literal (&local_error, "Failed to get offline update state: ");
+ 		g_debug ("%s", local_error->message);
+diff --git a/src/gs-update-monitor.c b/src/gs-update-monitor.c
+index ec803aa5..e3abc779 100644
+--- a/src/gs-update-monitor.c
++++ b/src/gs-update-monitor.c
+@@ -795,7 +795,10 @@ get_upgrades_finished_cb (GObject *object,
+ 
+ 	/* get result */
+ 	if (!gs_plugin_loader_job_process_finish (GS_PLUGIN_LOADER (object), res, (GsPluginJob **) &list_distro_upgrades_job, &error)) {
++		/* No plugin lists distribution upgrades where none ships them
++		 * (systemd-sysupdate's are updates): there is none to offer. */
+ 		if (!g_error_matches (error, GS_PLUGIN_ERROR, GS_PLUGIN_ERROR_CANCELLED) &&
++		    !g_error_matches (error, GS_PLUGIN_ERROR, GS_PLUGIN_ERROR_NOT_SUPPORTED) &&
+ 		    !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+ 			g_warning ("failed to get upgrades: %s",
+ 				   error->message);
+diff --git a/src/gs-updates-page.c b/src/gs-updates-page.c
+index 5cadbbf5..371c6a31 100644
+--- a/src/gs-updates-page.c
++++ b/src/gs-updates-page.c
+@@ -512,7 +512,10 @@ gs_updates_page_get_upgrades_cb (GObject *source_object,
+ 
+ 	if (error != NULL) {
+ 		gs_updates_page_clear_flag (self, GS_UPDATES_PAGE_FLAG_HAS_UPGRADES);
++		/* No plugin lists distribution upgrades where none ships them
++		 * (systemd-sysupdate's are updates): there is none to offer. */
+ 		if (!g_error_matches (error, GS_PLUGIN_ERROR, GS_PLUGIN_ERROR_CANCELLED) &&
++		    !g_error_matches (error, GS_PLUGIN_ERROR, GS_PLUGIN_ERROR_NOT_SUPPORTED) &&
+ 		    !g_error_matches (error, G_IO_ERROR, G_IO_ERROR_CANCELLED)) {
+ 			g_warning ("updates-shell: failed to get upgrades: %s",
+ 				   error->message);
