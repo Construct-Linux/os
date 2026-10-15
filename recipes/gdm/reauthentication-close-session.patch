@@ -1,0 +1,29 @@
+From: Construct <release@constructlinux.org>
+Subject: session-worker: Close a reauthentication's session when its request goes
+
+A reauthentication request held its GdmSession, and so did every
+conversation the session started. When the client went away - its
+connection closed, or a new request from the same process replaced the
+old one - the request dropped its reference and nothing stopped the
+conversations: a gdm-password worker waiting for a password kept the
+session, and the session its two D-Bus servers and the worker's
+connection, for good. Measured on a laptop that woke from suspend every
+half minute to show its lock screen: 202 gdm-password workers and 824
+files in the session's worker an hour after boot; at 1024 the lock
+screen showed no prompt.
+
+The request now closes its session, stopping the conversations, before
+it lets it go.
+
+--- a/daemon/gdm-session-worker.c
++++ b/daemon/gdm-session-worker.c
+@@ -3358,6 +3358,9 @@
+         g_signal_handlers_disconnect_by_func (request->session,
+                                               G_CALLBACK (on_reauthentication_verification_complete),
+                                               request);
++        /* Each conversation holds the session: stopped, they let it go with its servers and
++         * workers, or a request the client left with services running stays for good. */
++        gdm_session_close (request->session);
+         g_clear_object (&request->session);
+         g_slice_free (ReauthenticationRequest, request);
+ }

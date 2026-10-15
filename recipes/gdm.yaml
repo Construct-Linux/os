@@ -1,7 +1,7 @@
 package:
   name: gdm
   version: "51.0"
-  epoch: 5
+  epoch: 6
   description: GNOME display manager
   copyright:
     - license: GPL-2.0-or-later
@@ -66,6 +66,13 @@ pipeline:
   - uses: patch
     with:
       patches: gdm/session-close-outside-connections.patch
+
+  # A reauthentication the client left - its connection closed, or a new one replacing it - kept
+  # its session alive through the conversations still running (a gdm-password worker waiting for
+  # a password): a worker and 4 file descriptors each time, every wake from suspend.
+  - uses: patch
+    with:
+      patches: gdm/reauthentication-close-session.patch
 
   # x11-support off: gnome-shell 51 runs only as a Wayland compositor. selinux off: it is not in
   # the image. Plymouth on: GDM takes the screen over from the boot splash without a flash.
