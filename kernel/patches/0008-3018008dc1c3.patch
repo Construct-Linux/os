@@ -1,0 +1,82 @@
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 1 of 8. The ThinkPad X9-15p's VBT
+asks for its own voltage swing and pre-emphasis tables on port D (USB-C, C20 PHY), which 7.2
+ignores with a WARNING at every boot (intel_bios.c, "Port D asks to use VBT vswing/preemph
+tables"), driving the port with the default tables. The series reads VBT block 57 and uses them.
+
+From 3018008dc1c3ca1d8c3f0a2362e15a1f47e66616 Mon Sep 17 00:00:00 2001
+From: Michał Grzelak <michal.grzelak@intel.com>
+Date: Fri, 4 Sep 2026 14:31:41 +0200
+Subject: drm/i915/bios: search for VBT #57 by default
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Start searching for Vswing / Preemphasis Override Block during VBT
+parsing at init_bdb_blocks().
+
+Check for failure since pre-ICL GOPs do not contain the block. Check
+also if VBT version is appropriately up-to-date.
+
+v6->v7
+- parse VBT#57 before blocks dependent on child device list (Jani)
+- remove debug message (Suraj)
+
+v3->v4
+- add Bspec (Suraj)
+
+Bspec: 32063
+Signed-off-by: Michał Grzelak <michal.grzelak@intel.com>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Acked-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Link: https://patch.msgid.link/20260904123148.2165596-2-michal.grzelak@intel.com
+---
+ drivers/gpu/drm/i915/display/intel_bios.c | 18 ++++++++++++++++++
+ 1 file changed, 18 insertions(+)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.c b/drivers/gpu/drm/i915/display/intel_bios.c
+index 97cbae2e547e2..ece4df4a9d62a 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.c
++++ b/drivers/gpu/drm/i915/display/intel_bios.c
+@@ -200,6 +200,8 @@ static const struct {
+ 	  .min_size = sizeof(struct bdb_mipi_sequence) },
+ 	{ .section_id = BDB_COMPRESSION_PARAMETERS,
+ 	  .min_size = sizeof(struct bdb_compression_parameters), },
++	{ .section_id = BDB_VSWING_PREEMPH,
++	  .min_size = sizeof(struct bdb_vswing_preemph), },
+ 	{ .section_id = BDB_GENERIC_DTD,
+ 	  .min_size = sizeof(struct bdb_generic_dtd), },
+ };
+@@ -2203,6 +2205,21 @@ parse_compression_parameters(struct intel_display *display)
+ 	}
+ }
+ 
++static void
++parse_vswing_preemph_override(struct intel_display *display)
++{
++	const struct bdb_vswing_preemph *block;
++
++	if (display->vbt.version < 218)
++		return;
++
++	block = bdb_find_section(display, BDB_VSWING_PREEMPH);
++
++	/* pre-ICL GOPs don't have VBT #57 */
++	if (!block)
++		return;
++}
++
+ static u8 translate_iboost(struct intel_display *display, u8 val)
+ {
+ 	static const u8 mapping[] = { 1, 3, 7 }; /* See VBT spec */
+@@ -3291,6 +3308,7 @@ void intel_bios_init(struct intel_display *display)
+ 	parse_general_features(display);
+ 	parse_general_definitions(display);
+ 	parse_driver_features(display);
++	parse_vswing_preemph_override(display);
+ 
+ 	/* Depends on child device list */
+ 	parse_compression_parameters(display);
+-- 
+cgit 1.3.1-korg
+

@@ -1,0 +1,123 @@
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 4 of 8 (see 0008).
+
+From a138a81d7805a025a778035c0850642381d1fdf9 Mon Sep 17 00:00:00 2001
+From: Michał Grzelak <michal.grzelak@intel.com>
+Date: Fri, 4 Sep 2026 14:31:44 +0200
+Subject: drm/i915/bios: de/allocate VS/PE-O buffers for each port
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Every devdata needs VS/PE-O dedicated buffers since each port can
+request an override. Add intel_ddi_buf_trans{,_entry} pointers into
+intel_bios_encoder_data.
+
+Allocate struct intel_ddi_buf_trans{,_entry} for the port if VS/PE-O was
+requested and is supported. Keep NULL in vspeo if any allocation failed
+or VS/PE-O was not requested. It will be used later for checking if
+override should actually take place.
+
+Note that we theoretically could store intel_ddi_buf_trans_entry inside
+`entries` field of newly allocated intel_ddi_buf_trans. However it will
+be impossible to overwrite the buffer during intel_ddi_get_buf_trans()
+without discarding const qualifier of `entries` field. This would
+involve either void casting or deconstifying entries field and in turn
+all predefined tables as well. Thus add a separate non-const qualified
+field into intel_bios_encoder_data for the buffer, which after
+overwriting will be promoted to be const qualified.
+
+Deallocate the buffer as well as entries if requested.
+
+v11->v12
+- set vspeo->num_entries once (Sashiko)
+- free allocated vspeo->entries (Sashiko)
+
+v9->v10
+- add separate non-const field for `entries` caching
+- cache `entries` into const field after data is overwritten (Jani)
+
+v4->v5
+- set devdata->vspeo->num_entries in intel_bios.c
+
+Signed-off-by: Michał Grzelak <michal.grzelak@intel.com>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Acked-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Link: https://patch.msgid.link/20260904123148.2165596-5-michal.grzelak@intel.com
+---
+ drivers/gpu/drm/i915/display/intel_bios.c | 31 +++++++++++++++++++++++++++++++
+ 1 file changed, 31 insertions(+)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.c b/drivers/gpu/drm/i915/display/intel_bios.c
+index 9610b794bc147..1a09f7933e491 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.c
++++ b/drivers/gpu/drm/i915/display/intel_bios.c
+@@ -34,6 +34,7 @@
+ #include <drm/drm_fixed.h>
+ #include <drm/drm_print.h>
+ 
++#include "intel_ddi_buf_trans.h"
+ #include "intel_display.h"
+ #include "intel_display_core.h"
+ #include "intel_display_rpm.h"
+@@ -72,6 +73,8 @@
+ struct intel_bios_encoder_data {
+ 	struct intel_display *display;
+ 
++	struct intel_ddi_buf_trans *vspeo;
++	union intel_ddi_buf_trans_entry *entries;
+ 	struct child_device_config child;
+ 	struct dsc_compression_parameters_entry *dsc;
+ 	struct list_head node;
+@@ -2648,6 +2651,30 @@ static void sanitize_device_type(struct intel_bios_encoder_data *devdata,
+ 	devdata->child.device_type |= DEVICE_TYPE_NOT_HDMI_OUTPUT;
+ }
+ 
++static void allocate_vswing_preemph_override(struct intel_bios_encoder_data *devdata)
++{
++	int num_rows = devdata->display->vbt.vspeo.num_rows;
++	union intel_ddi_buf_trans_entry *entries;
++	struct intel_ddi_buf_trans *vspeo;
++
++	if (!intel_bios_encoder_requests_vspeo(devdata))
++		return;
++
++	vspeo = kzalloc_obj(*vspeo);
++	if (!vspeo)
++		return;
++
++	entries = kzalloc_objs(*entries, num_rows);
++	if (!entries) {
++		kfree(vspeo);
++		return;
++	}
++
++	devdata->entries = entries;
++	devdata->vspeo = vspeo;
++	devdata->vspeo->num_entries = num_rows;
++}
++
+ static void sanitize_hdmi_level_shift(struct intel_bios_encoder_data *devdata,
+ 				      enum port port)
+ {
+@@ -2866,6 +2893,7 @@ static void parse_ddi_port(struct intel_bios_encoder_data *devdata)
+ 	sanitize_dedicated_external(devdata, port);
+ 	sanitize_device_type(devdata, port);
+ 	sanitize_hdmi_level_shift(devdata, port);
++	allocate_vswing_preemph_override(devdata);
+ }
+ 
+ static bool has_ddi_port_info(struct intel_display *display)
+@@ -3403,6 +3431,9 @@ void intel_bios_driver_remove(struct intel_display *display)
+ 	list_for_each_entry_safe(devdata, nd, &display->vbt.display_devices,
+ 				 node) {
+ 		list_del(&devdata->node);
++
++		kfree(devdata->entries);
++		kfree(devdata->vspeo);
+ 		kfree(devdata->dsc);
+ 		kfree(devdata);
+ 	}
+-- 
+cgit 1.3.1-korg
+

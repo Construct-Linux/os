@@ -1,0 +1,53 @@
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 8 of 8 (see 0008).
+
+From 4bda5543b3c6697ca435e89aeea655eea9087f96 Mon Sep 17 00:00:00 2001
+From: Michał Grzelak <michal.grzelak@intel.com>
+Date: Fri, 4 Sep 2026 14:31:48 +0200
+Subject: drm/i915/bios: remove VS/PE-O warning
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+There is not much use of warning when port asks to override default
+VS/PE since it is already logged. Remove drm_WARN() and child_device
+from print_ddi_port() since drm_WARN() was the only user of it.
+
+Signed-off-by: Michał Grzelak <michal.grzelak@intel.com>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Acked-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Link: https://patch.msgid.link/20260904123148.2165596-9-michal.grzelak@intel.com
+---
+ drivers/gpu/drm/i915/display/intel_bios.c | 9 ---------
+ 1 file changed, 9 deletions(-)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.c b/drivers/gpu/drm/i915/display/intel_bios.c
+index 11d2cbb78eabf..7b6a6f8c3cf19 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.c
++++ b/drivers/gpu/drm/i915/display/intel_bios.c
+@@ -2791,7 +2791,6 @@ static bool is_port_valid(struct intel_display *display, enum port port)
+ static void print_ddi_port(const struct intel_bios_encoder_data *devdata)
+ {
+ 	struct intel_display *display = devdata->display;
+-	const struct child_device_config *child = &devdata->child;
+ 	bool is_dvi, is_hdmi, is_dp, is_edp, is_dsi, is_crt, supports_typec_usb, supports_tbt;
+ 	int dp_boost_level, dp_max_link_rate, hdmi_boost_level, hdmi_level_shift, max_tmds_clock;
+ 	enum port port;
+@@ -2864,14 +2863,6 @@ static void print_ddi_port(const struct intel_bios_encoder_data *devdata)
+ 		drm_dbg_kms(display->drm,
+ 			    "Port %c VBT DP max link rate: %d\n",
+ 			    port_name(port), dp_max_link_rate);
+-
+-	/*
+-	 * FIXME need to implement support for VBT
+-	 * vswing/preemph tables should this ever trigger.
+-	 */
+-	drm_WARN(display->drm, child->use_vbt_vswing,
+-		 "Port %c asks to use VBT vswing/preemph tables\n",
+-		 port_name(port));
+ }
+ 
+ static void parse_ddi_port(struct intel_bios_encoder_data *devdata)
+-- 
+cgit 1.3.1-korg
+

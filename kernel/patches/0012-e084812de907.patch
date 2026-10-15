@@ -1,0 +1,70 @@
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 5 of 8 (see 0008).
+
+From e084812de907c63b0b943b3955bf629df62f6745 Mon Sep 17 00:00:00 2001
+From: Michał Grzelak <michal.grzelak@intel.com>
+Date: Fri, 4 Sep 2026 14:31:45 +0200
+Subject: drm/i915/buf_trans: add vfunc for VS/PE-O
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Choosing correct table for Vswing / Pre-emphasis Override is platform
+specific. It also requires different checks that are already used for
+choosing predefined tables.
+
+Add new get_buf_trans_override() vfunc into intel_encoder returning
+deparsed table from VBT#57. In next patches, set it inside already
+present if-ladder from intel_ddi_buf_trans_init() instead of duplicating
+it.
+
+Note that get_buf_trans() cannot be overwritten since there are cases
+when we need to rollback although VS/PE-O was requested, eg. DP is not
+connected or feature is not yet implemented for the platform. Assume
+that vfunc returns NULL on rollback and return predefined tables.
+
+Suggested-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Michał Grzelak <michal.grzelak@intel.com>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Acked-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Link: https://patch.msgid.link/20260904123148.2165596-6-michal.grzelak@intel.com
+---
+ drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c | 8 ++++++++
+ drivers/gpu/drm/i915/display/intel_display_types.h | 3 +++
+ 2 files changed, 11 insertions(+)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c b/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c
+index 4cd1e4d76c7af..f31283a0331b7 100644
+--- a/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c
++++ b/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c
+@@ -1857,5 +1857,13 @@ const struct intel_ddi_buf_trans *intel_ddi_buf_trans_get(struct intel_encoder *
+ 							  const struct intel_crtc_state *crtc_state,
+ 							  int *n_entries)
+ {
++	if (encoder->get_buf_trans_override) {
++		const struct intel_ddi_buf_trans *override;
++
++		override = encoder->get_buf_trans_override(encoder, crtc_state, n_entries);
++		if (override)
++			return intel_get_buf_trans(override, n_entries);
++	}
++
+ 	return encoder->get_buf_trans(encoder, crtc_state, n_entries);
+ }
+diff --git a/drivers/gpu/drm/i915/display/intel_display_types.h b/drivers/gpu/drm/i915/display/intel_display_types.h
+index 5f0fe18c0614e..9016be52c7eac 100644
+--- a/drivers/gpu/drm/i915/display/intel_display_types.h
++++ b/drivers/gpu/drm/i915/display/intel_display_types.h
+@@ -289,6 +289,9 @@ struct intel_encoder {
+ 	 */
+ 	enum icl_port_dpll_id (*port_pll_type)(struct intel_encoder *encoder,
+ 					       const struct intel_crtc_state *crtc_state);
++	const struct intel_ddi_buf_trans *(*get_buf_trans_override)(struct intel_encoder *encoder,
++								    const struct intel_crtc_state *crtc_state,
++								    int *n_entries);
+ 	const struct intel_ddi_buf_trans *(*get_buf_trans)(struct intel_encoder *encoder,
+ 							   const struct intel_crtc_state *crtc_state,
+ 							   int *n_entries);
+-- 
+cgit 1.3.1-korg
+

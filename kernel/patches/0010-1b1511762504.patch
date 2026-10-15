@@ -1,0 +1,75 @@
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 3 of 8 (see 0008).
+
+From 1b15117625045baa107970a9a1ffb5638ab05414 Mon Sep 17 00:00:00 2001
+From: Michał Grzelak <michal.grzelak@intel.com>
+Date: Fri, 4 Sep 2026 14:31:43 +0200
+Subject: drm/i915/bios: print VS/PE-O port info
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Issue a debug message when port asks to override default Vswing /
+Preemphasis tables.
+
+Add helper intel_bios_encoder_requests_vspeo() to check if port
+requests for overriding default VS/PE tables.
+
+v6->v7
+- expand VS/PE-O acronym in debug logging (Jani)
+
+v3->v4
+- change debug message when requesting VS/PE-O (Suraj)
+
+Signed-off-by: Michał Grzelak <michal.grzelak@intel.com>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Acked-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Link: https://patch.msgid.link/20260904123148.2165596-4-michal.grzelak@intel.com
+---
+ drivers/gpu/drm/i915/display/intel_bios.c | 10 ++++++++++
+ drivers/gpu/drm/i915/display/intel_bios.h |  1 +
+ 2 files changed, 11 insertions(+)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.c b/drivers/gpu/drm/i915/display/intel_bios.c
+index 06a8dd7581bb8..9610b794bc147 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.c
++++ b/drivers/gpu/drm/i915/display/intel_bios.c
+@@ -2801,6 +2801,11 @@ static void print_ddi_port(const struct intel_bios_encoder_data *devdata)
+ 			    "Port %c supports dynamic DDI allocation in TCSS\n",
+ 			    port_name(port));
+ 
++	if (intel_bios_encoder_requests_vspeo(devdata))
++		drm_dbg_kms(display->drm,
++			    "Port %c requests vswing/pre-emphasis override\n",
++			    port_name(port));
++
+ 	hdmi_level_shift = intel_bios_hdmi_level_shift(devdata);
+ 	if (hdmi_level_shift >= 0) {
+ 		drm_dbg_kms(display->drm,
+@@ -3829,6 +3834,11 @@ int intel_bios_hdmi_ddc_pin(const struct intel_bios_encoder_data *devdata)
+ 	return map_ddc_pin(devdata->display, devdata->child.ddc_pin);
+ }
+ 
++bool intel_bios_encoder_requests_vspeo(const struct intel_bios_encoder_data *devdata)
++{
++	return devdata->display->vbt.version >= 218 && devdata->child.use_vbt_vswing;
++}
++
+ bool intel_bios_encoder_supports_typec_usb(const struct intel_bios_encoder_data *devdata)
+ {
+ 	return devdata->display->vbt.version >= 195 && devdata->child.dp_usb_type_c;
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.h b/drivers/gpu/drm/i915/display/intel_bios.h
+index 75dff27b42289..7a50a272cd27d 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.h
++++ b/drivers/gpu/drm/i915/display/intel_bios.h
+@@ -73,6 +73,7 @@ bool intel_bios_get_dsc_params(struct intel_encoder *encoder,
+ const struct intel_bios_encoder_data *
+ intel_bios_encoder_data_lookup(struct intel_display *display, enum port port);
+ 
++bool intel_bios_encoder_requests_vspeo(const struct intel_bios_encoder_data *devdata);
+ bool intel_bios_encoder_supports_dvi(const struct intel_bios_encoder_data *devdata);
+ bool intel_bios_encoder_supports_hdmi(const struct intel_bios_encoder_data *devdata);
+ bool intel_bios_encoder_supports_dp(const struct intel_bios_encoder_data *devdata);
+-- 
+cgit 1.3.1-korg
+

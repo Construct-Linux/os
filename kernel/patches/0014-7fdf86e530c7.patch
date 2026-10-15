@@ -1,0 +1,277 @@
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 7 of 8 (see 0008).
+
+From 7fdf86e530c7f6655aad0612a8c90ab1559984bc Mon Sep 17 00:00:00 2001
+From: Michał Grzelak <michal.grzelak@intel.com>
+Date: Mon, 7 Sep 2026 14:27:42 +0200
+Subject: drm/i915: override Combo's VS/PE when requested
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Add accessor function for Combo to read requested table from VBT #57.
+Parse the requested table and transform data into port's buffer.
+
+Actual data is fully stored in the lowest byte although each entry is 4
+bytes wide. Thus convert u32 into u8 and store the data.
+
+For EHL, in cases when eDP encoder uses low vswing, choose 3rd table if
+encoder supports HBR3. Otherwise use 2nd table for eDP using low vswing.
+
+In cases when eDP encoder does not use low vswing, choose 2nd table if
+encoder supports mode higher or including HBR2. Otherwise use 1st table
+for eDP not using low vswing.
+
+For external DP follow same path and use same indices as in eDP without
+low vswing case.
+
+For JSL, always use 1st table for external DP. For eDPs not using low
+vswing use 1st table as well.
+
+In cases when eDP encoder uses low vswing, choose 1st table if encoder
+supports HBR3. When encoder supports HBR2 choose 3rd table. When
+encoder supports modes lower than HBR2 choose 2nd table.
+
+There are no changes to intel_ddi_dp_level() since selection of correct
+row of intel_ddi_buf_trans_entry is same as when no override request has
+been done.
+
+Looking from other OSes, in case when encoder does not support DP we
+could theoretically use 1st table. However, as of now, use default
+tables.
+
+v11->v12
+- don't set vspeo->num_entries per PHY/platform
+- check for low vswing eDP for EHL (Sashiko)
+- reverse order of indices for JSL (Sashiko)
+
+v10->v11
+- initialize local variables at declaration block (Jani)
+- branch with 'else` instead of initializing twice (Jani)
+
+v9->v10
+- call dedicated VS/PE-O vfunc
+- drop deconstifying default tables (Suraj, Jani)
+- cache `entries` into const field after data is overwritten (Jani)
+
+v8->v9
+- deconstify intel_ddi_buf_trans_entry
+
+v6->v7
+- handle VS/PE-O's VBT details in intel_bios_* functions (Jani)
+- remove vspeo's cast to (void *) (Jani)
+- call encoder->get_buf_trans() once (Jani)
+- return NULL from intel_bios_get_* when using default (Jani)
+- validate VS/PE-O in intel_bios.c (Jani)
+- check devdata->vspeo if VS/PE-O was requested
+- inline {jsl,ehl}_combo_get_vspeo_buf_trans()
+- remove temporarily LT
+
+v4->v5
+- blend index computation with table parsing
+- remove enums entirely
+- add spaces around operators (Suraj)
+- remove spaces after type casting (Suraj)
+- remove INTEL_DISPLAY_STATE_WARN (Suraj)
+
+Signed-off-by: Michał Grzelak <michal.grzelak@intel.com>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Acked-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Link: https://patch.msgid.link/20260907122742.2512901-1-michal.grzelak@intel.com
+---
+ drivers/gpu/drm/i915/display/intel_bios.c          | 93 ++++++++++++++++++++++
+ drivers/gpu/drm/i915/display/intel_bios.h          |  6 ++
+ drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c | 45 ++++++++++-
+ 3 files changed, 140 insertions(+), 4 deletions(-)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.c b/drivers/gpu/drm/i915/display/intel_bios.c
+index be7554c483ad2..11d2cbb78eabf 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.c
++++ b/drivers/gpu/drm/i915/display/intel_bios.c
+@@ -3971,6 +3971,99 @@ intel_bios_get_c10_vspeo(const struct intel_bios_encoder_data *devdata,
+ 	return vspeo;
+ }
+ 
++const struct intel_ddi_buf_trans *
++intel_bios_get_ehl_combo_vspeo(const struct intel_bios_encoder_data *devdata,
++			       bool has_dp, int port_clock, bool low_vswing_edp)
++{
++	struct intel_display *display = devdata->display;
++	union intel_ddi_buf_trans_entry *entries = devdata->entries;
++	struct intel_ddi_buf_trans *vspeo = devdata->vspeo;
++	const u32 *tables = display->vbt.vspeo.tables;
++	int num_columns = display->vbt.vspeo.num_columns;
++	int num_rows = display->vbt.vspeo.num_rows;
++	size_t offset = 0;
++	int level, idx;
++
++	if (!validate_vspeo(devdata, has_dp))
++		return NULL;
++
++	if (low_vswing_edp)
++		idx = port_clock > 540000 ? 2 : 1;
++	else
++		idx = port_clock > 270000 ? 1 : 0;
++
++	offset += idx * num_rows * num_columns;
++
++	for (level = 0; level < num_rows; level++) {
++		u32 dw2_swing_sel = tables[offset];
++		u32 dw7_n_scalar = tables[offset + 1];
++		u32 dw4_cursor_coeff = tables[offset + 2];
++		u32 dw4_post_cursor_2 = tables[offset + 3];
++		u32 dw4_post_cursor_1 = tables[offset + 4];
++
++		entries[level].icl.dw2_swing_sel = dw2_swing_sel;
++		entries[level].icl.dw7_n_scalar = dw7_n_scalar;
++		entries[level].icl.dw4_cursor_coeff = dw4_cursor_coeff;
++		entries[level].icl.dw4_post_cursor_2 = dw4_post_cursor_2;
++		entries[level].icl.dw4_post_cursor_1 = dw4_post_cursor_1;
++
++		offset += num_columns;
++	}
++
++	vspeo->entries = entries;
++
++	return vspeo;
++}
++
++const struct intel_ddi_buf_trans *
++intel_bios_get_jsl_combo_vspeo(const struct intel_bios_encoder_data *devdata,
++			       bool has_dp, int port_clock, bool low_vswing_edp)
++{
++	struct intel_display *display = devdata->display;
++	union intel_ddi_buf_trans_entry *entries = devdata->entries;
++	struct intel_ddi_buf_trans *vspeo = devdata->vspeo;
++	const u32 *tables = display->vbt.vspeo.tables;
++	int num_columns = display->vbt.vspeo.num_columns;
++	int num_rows = display->vbt.vspeo.num_rows;
++	size_t offset = 0;
++	int idx = 0;
++	int level;
++
++	if (!validate_vspeo(devdata, has_dp))
++		return NULL;
++
++	if (low_vswing_edp) {
++		if (port_clock > 540000)
++			idx = 0;
++		else if (port_clock > 270000)
++			idx = 2;
++		else
++			idx = 1;
++	}
++
++	offset += idx * num_rows * num_columns;
++
++	for (level = 0; level < num_rows; level++) {
++		u32 dw2_swing_sel = tables[offset];
++		u32 dw7_n_scalar = tables[offset + 1];
++		u32 dw4_cursor_coeff = tables[offset + 2];
++		u32 dw4_post_cursor_2 = tables[offset + 3];
++		u32 dw4_post_cursor_1 = tables[offset + 4];
++
++		entries[level].icl.dw2_swing_sel = dw2_swing_sel;
++		entries[level].icl.dw7_n_scalar = dw7_n_scalar;
++		entries[level].icl.dw4_cursor_coeff = dw4_cursor_coeff;
++		entries[level].icl.dw4_post_cursor_2 = dw4_post_cursor_2;
++		entries[level].icl.dw4_post_cursor_1 = dw4_post_cursor_1;
++
++		offset += num_columns;
++	}
++
++	vspeo->entries = entries;
++
++	return vspeo;
++}
++
+ bool intel_bios_encoder_is_dedicated_external(const struct intel_bios_encoder_data *devdata)
+ {
+ 	return devdata->display->vbt.version >= 264 &&
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.h b/drivers/gpu/drm/i915/display/intel_bios.h
+index 49acf8c405e2b..196b8b3f434f5 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.h
++++ b/drivers/gpu/drm/i915/display/intel_bios.h
+@@ -79,6 +79,12 @@ intel_bios_get_c20_vspeo(const struct intel_bios_encoder_data *devdata,
+ const struct intel_ddi_buf_trans *
+ intel_bios_get_c10_vspeo(const struct intel_bios_encoder_data *devdata,
+ 			 bool has_dp, int port_clock, bool has_edp);
++const struct intel_ddi_buf_trans *
++intel_bios_get_ehl_combo_vspeo(const struct intel_bios_encoder_data *devdata,
++			       bool has_dp, int port_clock, bool low_vswing_edp);
++const struct intel_ddi_buf_trans *
++intel_bios_get_jsl_combo_vspeo(const struct intel_bios_encoder_data *devdata,
++			       bool has_dp, int port_clock, bool low_vswing_edp);
+ 
+ bool intel_bios_encoder_requests_vspeo(const struct intel_bios_encoder_data *devdata);
+ bool intel_bios_encoder_supports_dvi(const struct intel_bios_encoder_data *devdata);
+diff --git a/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c b/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c
+index 92c0d0f933ab4..cc5912178d9cd 100644
+--- a/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c
++++ b/drivers/gpu/drm/i915/display/intel_ddi_buf_trans.c
+@@ -1784,6 +1784,40 @@ xe3plpd_get_lt_buf_trans(struct intel_encoder *encoder,
+ 		return intel_get_buf_trans(&xe3plpd_lt_trans_dp14, n_entries);
+ }
+ 
++static const struct intel_ddi_buf_trans *
++jsl_get_combo_buf_trans_override(struct intel_encoder *encoder,
++				 const struct intel_crtc_state *crtc_state,
++				 int *n_entries)
++{
++	const struct intel_bios_encoder_data *devdata = encoder->devdata;
++	bool has_edp, has_dp;
++	int port_clock;
++
++	has_edp = intel_crtc_has_type(crtc_state, INTEL_OUTPUT_EDP);
++	has_dp = intel_crtc_has_dp_encoder(crtc_state);
++	port_clock = crtc_state->port_clock;
++
++	return intel_bios_get_jsl_combo_vspeo(devdata, has_dp, port_clock,
++					      has_edp && use_edp_low_vswing(encoder));
++}
++
++static const struct intel_ddi_buf_trans *
++ehl_get_combo_buf_trans_override(struct intel_encoder *encoder,
++				 const struct intel_crtc_state *crtc_state,
++				 int *n_entries)
++{
++	const struct intel_bios_encoder_data *devdata = encoder->devdata;
++	bool has_edp, has_dp;
++	int port_clock;
++
++	has_edp = intel_crtc_has_type(crtc_state, INTEL_OUTPUT_EDP);
++	has_dp = intel_crtc_has_dp_encoder(crtc_state);
++	port_clock = crtc_state->port_clock;
++
++	return intel_bios_get_ehl_combo_vspeo(devdata, has_dp, port_clock,
++					      has_edp && use_edp_low_vswing(encoder));
++}
++
+ static const struct intel_ddi_buf_trans *
+ mtl_get_c10_buf_trans_override(struct intel_encoder *encoder,
+ 			       const struct intel_crtc_state *crtc_state,
+@@ -1847,14 +1881,17 @@ void intel_ddi_buf_trans_init(struct intel_encoder *encoder)
+ 		else
+ 			encoder->get_buf_trans = tgl_get_dkl_buf_trans;
+ 	} else if (DISPLAY_VER(display) == 11) {
+-		if (display->platform.jasperlake)
++		if (display->platform.jasperlake) {
+ 			encoder->get_buf_trans = jsl_get_combo_buf_trans;
+-		else if (display->platform.elkhartlake)
++			encoder->get_buf_trans_override = jsl_get_combo_buf_trans_override;
++		} else if (display->platform.elkhartlake) {
+ 			encoder->get_buf_trans = ehl_get_combo_buf_trans;
+-		else if (intel_encoder_is_combo(encoder))
++			encoder->get_buf_trans_override = ehl_get_combo_buf_trans_override;
++		} else if (intel_encoder_is_combo(encoder)) {
+ 			encoder->get_buf_trans = icl_get_combo_buf_trans;
+-		else
++		} else {
+ 			encoder->get_buf_trans = icl_get_mg_buf_trans;
++		}
+ 	} else if (display->platform.geminilake || display->platform.broxton) {
+ 		encoder->get_buf_trans = bxt_get_buf_trans;
+ 	} else if (display->platform.cometlake_ulx ||
+-- 
+cgit 1.3.1-korg
+

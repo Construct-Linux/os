@@ -1,0 +1,89 @@
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 2 of 8 (see 0008).
+
+From c76c03dab828709469558a6bdd55336ef9fd9420 Mon Sep 17 00:00:00 2001
+From: Michał Grzelak <michal.grzelak@intel.com>
+Date: Fri, 4 Sep 2026 14:31:42 +0200
+Subject: drm/i915/bios: store VBT #57's metadata in intel_vbt_data
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Store tables, number of tables, number of rows and number of columns in
+intel_vbt_data when search for the VBT #57 has succeeded. Structurize
+all VS/PE-O relevant metadata inside anonymous struct named as vspeo.
+
+Presence of C20 or newer PHY causes each table to contain 16 rows. Each
+table contains 10 rows in case C20 PHY is absent. Use display version to
+determine number of rows since there is no helper in intel_bios.c to
+check presence of any C20+ PHY. pre-MTL platforms should have 10 rows
+while MTL+ should have 16 rows.
+
+v5->v6
+- add Bspec (Suraj)
+
+v3->v4
+- remove unnecessary init of VS/PE-O metadata (Suraj)
+- add helper for computing number of rows (Suraj)
+- fix num_rows's type (Jani, Suraj)
+- declare num_rows (Suraj)
+
+Bspec: 68963
+Signed-off-by: Michał Grzelak <michal.grzelak@intel.com>
+Reviewed-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Acked-by: Jani Nikula <jani.nikula@intel.com>
+Signed-off-by: Suraj Kandpal <suraj.kandpal@intel.com>
+Link: https://patch.msgid.link/20260904123148.2165596-3-michal.grzelak@intel.com
+---
+ drivers/gpu/drm/i915/display/intel_bios.c         | 10 ++++++++++
+ drivers/gpu/drm/i915/display/intel_display_core.h |  7 +++++++
+ 2 files changed, 17 insertions(+)
+
+diff --git a/drivers/gpu/drm/i915/display/intel_bios.c b/drivers/gpu/drm/i915/display/intel_bios.c
+index ece4df4a9d62a..06a8dd7581bb8 100644
+--- a/drivers/gpu/drm/i915/display/intel_bios.c
++++ b/drivers/gpu/drm/i915/display/intel_bios.c
+@@ -2205,6 +2205,11 @@ parse_compression_parameters(struct intel_display *display)
+ 	}
+ }
+ 
++static int vswing_preemph_num_rows(struct intel_display *display)
++{
++	return DISPLAY_VER(display) >= 14 ? 16 : 10;
++}
++
+ static void
+ parse_vswing_preemph_override(struct intel_display *display)
+ {
+@@ -2218,6 +2223,11 @@ parse_vswing_preemph_override(struct intel_display *display)
+ 	/* pre-ICL GOPs don't have VBT #57 */
+ 	if (!block)
+ 		return;
++
++	display->vbt.vspeo.tables = block->tables;
++	display->vbt.vspeo.num_tables = block->num_tables;
++	display->vbt.vspeo.num_columns = block->num_columns;
++	display->vbt.vspeo.num_rows = vswing_preemph_num_rows(display);
+ }
+ 
+ static u8 translate_iboost(struct intel_display *display, u8 val)
+diff --git a/drivers/gpu/drm/i915/display/intel_display_core.h b/drivers/gpu/drm/i915/display/intel_display_core.h
+index 7e988b7b1fe7a..c80b4a2f74f9e 100644
+--- a/drivers/gpu/drm/i915/display/intel_display_core.h
++++ b/drivers/gpu/drm/i915/display/intel_display_core.h
+@@ -244,6 +244,13 @@ struct intel_vbt_data {
+ 	struct list_head display_devices;
+ 	struct list_head bdb_blocks;
+ 
++	struct {
++		const u32 *tables;
++		int num_tables;
++		int num_columns;
++		int num_rows;
++	} vspeo;
++
+ 	struct sdvo_device_mapping {
+ 		u8 initialized;
+ 		u8 dvo_port;
+-- 
+cgit 1.3.1-korg
+
