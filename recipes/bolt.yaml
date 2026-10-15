@@ -1,7 +1,7 @@
 package:
   name: bolt
   version: 0.9.11
-  epoch: 0
+  epoch: 1
   description: Thunderbolt 3 device manager
   copyright:
     - license: LGPL-2.1-or-later
@@ -25,6 +25,14 @@ pipeline:
     with:
       uri: https://gitlab.freedesktop.org/bolt/bolt/-/archive/${{package.version}}/bolt-${{package.version}}.tar.gz
       expected-sha256: cde4fc6d4a188e37d088cf59a5b2d174ac4b03d57bf9d084d711ba92105c33c0
+
+  # The NHI table of bolt's main branch, which knows the controllers released after 0.9.11: a
+  # controller missing from it is taken as having no stable uid, with a warning at every boot
+  # (Panther Lake's, 0xe433 and 0xe434), and Barlow Ridge's discrete hosts, whose uid is stable,
+  # were taken as unstable too.
+  - uses: patch
+    with:
+      patches: bolt/nhi-table-from-master.patch
 
   - uses: meson/configure
     with:

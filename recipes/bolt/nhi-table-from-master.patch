@@ -1,0 +1,58 @@
+--- a/boltd/bolt-sysfs.c	2026-10-14 23:37:10.395947226 -0300
++++ b/boltd/bolt-sysfs.c	2026-10-14 23:37:10.396829345 -0300
+@@ -613,22 +613,36 @@
+   guint32  pci_id;
+   gboolean stable; /* Does the UUID change on reboot */
+ } nhi_table[] = {
++  /* AMD */
++  {0x1120, TRUE},  // AMD_1AH_M60H_NHI0
++  {0x1121, TRUE},  // AMD_1AH_M60H_NHI1
++  {0x113b, TRUE},  // AMD_1AH_M68H_NHI0
++  {0x113c, TRUE},  // AMD_1AH_M68H_NHI1
++  {0x1155, TRUE},  // AMD_1AH_M80H_NHI0
++  {0x1158, TRUE},  // AMD_1AH_M80H_NHI1
++  {0x1159, TRUE},  // AMD_1AH_M80H_NHI2
++  {0x151c, TRUE},  // AMD_1AH_M24H_NHI0
++  {0x151d, TRUE},  // AMD_1AH_M24H_NHI1
++  {0x158d, TRUE},  // AMD_1AH_M70H_NHI0
++  {0x158e, TRUE},  // AMD_1AH_M70H_NHI1
++  {0x162f, TRUE},  // REMBRANDT_NHI
++  /* Intel */
+   {0x1134, TRUE},  // MAPLE_RIDGE_2C_NHI
+   {0x1137, TRUE},  // MAPLE_RIDGE_4C_NHI
+-  {0x151c, TRUE},  // AMD Strix Point USB4 Routers 0
+-  {0x151d, TRUE},  // AMD Strix Point USB4 Routers 1
+   {0x157d, TRUE},  // WIN_RIDGE_2C_NHI
+   {0x15bf, TRUE},  // ALPINE_RIDGE_LP_NHI
+   {0x15d2, TRUE},  // ALPINE_RIDGE_C_4C_NHI
+   {0x15d9, TRUE},  // ALPINE_RIDGE_C_2C_NHI
+   {0x15dc, TRUE},  // ALPINE_RIDGE_LP_USBONLY_NHI
+-  {0x15dd, TRUE},  // ALPINE_RIDGE_USBONLY_NH
++  {0x15dd, TRUE},  // ALPINE_RIDGE_USBONLY_NHI
+   {0x15de, TRUE},  // ALPINE_RIDGE_C_USBONLY_NHI
+   {0x15e8, TRUE},  // TITAN_RIDGE_2C_NHI
+   {0x15eb, TRUE},  // TITAN_RIDGE_4C_NHI
+-  {0x162f, TRUE},  // REMBRANDT_NHI
+   {0x463e, FALSE},  // ADL_NHI0
+   {0x466d, FALSE},  // ADL_NHI1
++  {0x4d33, FALSE},  // WCL_NHI0
++  {0x5781, TRUE},   // BARLOW_RIDGE_HOST_80G_NHI
++  {0x5784, TRUE},   // BARLOW_RIDGE_HOST_40G_NHI
+   {0x7eb2, FALSE},  // MTL_M_NHI0
+   {0x7ec2, FALSE},  // MTL_P_NHI0
+   {0x7ec3, FALSE},  // MTL_P_NHI1
+@@ -639,7 +653,13 @@
+   {0x9a1f, FALSE},  // TGL_H_NHI0
+   {0x9a21, FALSE},  // TGL_H_NHI1
+   {0xa73e, FALSE},  // RPL_NHI0
+-  {0xa76d, FALSE}   // RPL_NHI1
++  {0xa76d, FALSE},  // RPL_NHI1
++  {0xa833, FALSE},  // LNL_NHI0
++  {0xa834, FALSE},  // LNL_NHI1
++  {0xe333, FALSE},  // PTL_M_NHI0
++  {0xe334, FALSE},  // PTL_M_NHI1
++  {0xe433, FALSE},  // PTL_P_NHI0
++  {0xe434, FALSE},  // PTL_P_NHI1
+ };
+ 
+ gboolean
