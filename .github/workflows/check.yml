@@ -25,18 +25,26 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
+      # Three installs that need nothing of each other, at once: one after another they took 62 s
+      # of a 76 s run (2026-10-15). Go's PATH reaches Check after the group's implicit wait.
+      - parallel:
+          - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+            with:
+              go-version-file: go.mod
 
-      - name: Install Task
-        run: go install github.com/go-task/task/v3/cmd/task@v3.54.0
+          # Task's own build of the version recipes/task makes, held to its digest: go install
+          # compiled it in 26 s.
+          - name: Install Task
+            run: |
+              curl -fsSL -o "$RUNNER_TEMP/task.tar.gz" https://github.com/go-task/task/releases/download/v3.54.0/task_linux_amd64.tar.gz
+              echo "680859dbb4d881a9c72d4d9a8f510825450849af8567deacd7302c01124416fb  $RUNNER_TEMP/task.tar.gz" | sha256sum -c -
+              sudo tar -xzf "$RUNNER_TEMP/task.tar.gz" -C /usr/local/bin task
 
-      # GNU gettext's msgfmt and msgunfmt, which the .mo reader is checked against
-      # (cmd/image/bootprompt_mo_test.go); systemd-analyze, which update.Compare is checked
-      # against, is the runner's own.
-      - name: Install gettext
-        run: sudo apt-get install -y --no-install-recommends gettext
+          # GNU gettext's msgfmt and msgunfmt, which the .mo reader is checked against
+          # (cmd/image/bootprompt_mo_test.go); systemd-analyze, which update.Compare is checked
+          # against, is the runner's own.
+          - name: Install gettext
+            run: sudo apt-get install -y --no-install-recommends gettext
 
       - name: Check
         run: task check
