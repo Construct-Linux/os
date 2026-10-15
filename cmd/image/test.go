@@ -148,6 +148,7 @@ func test(args []string) (err error) {
 	r.add("the login keyring is open", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
 	if *stick {
 		r.secureBoot(g)
+		r.loaderCache(g)
 	}
 	l.shot(viewMeta{"desktop", needle.GroupDesktop,
 		"The desktop at login over the default dark wallpaper: both bars opaque g with their ring, the top bar a 36 px pill 6 px from the edge, its text Adwaita Sans 400, and no accent",
@@ -830,6 +831,14 @@ func keyringRoundTrip(user string, uid int) string {
 func (r *report) secureBoot(g *guest) {
 	out, _ := g.run(`bootctl status 2>/dev/null | grep -E 'Secure Boot:'; cat /sys/kernel/security/lockdown`, "")
 	r.add("secure boot", strings.Contains(out, "Secure Boot: enabled (user)") && strings.Contains(out, "[integrity]"), oneLine(out))
+}
+
+// loaderCache checks that the first boot of a new release leaves /etc's link to the loader's cache
+// in /usr: without /etc/.updated, as after an update, ConditionNeedsUpdate holds, and ldconfig
+// wrote its own cache over the link, onto /var.
+func (r *report) loaderCache(g *guest) {
+	out, _ := g.run(`rm /etc/.updated && systemctl start ldconfig.service && readlink /etc/ld.so.cache`, "")
+	r.add("the loader's cache stays in /usr", strings.TrimSpace(out) == "../usr/lib/ld.so.cache", oneLine(out))
 }
 
 // installerWindows counts the graphical installer's windows on the live session's screen.
