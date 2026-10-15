@@ -378,6 +378,10 @@ func (r *report) systemChecks(g *guest) {
 	r.add("ghostty's terminfo", err == nil && strings.TrimSpace(colors) == "256", oneLine(colors)+errText(err))
 	tools, err := g.run(`task --version && ifconfig lo | head -1 && unpigz --version 2>&1 | head -1`, "")
 	r.add("command-line tools", err == nil && strings.Contains(tools, "3.54") && strings.Contains(tools, "lo:"), oneLine(tools)+errText(err))
+	// Their manuals (the -doc packages), and the index bake made in /usr (etc/man_db.conf), which
+	// whatis reads.
+	manual, err := g.run(`man -w top && whatis ls`, "")
+	r.add("manuals", err == nil && strings.Contains(manual, "/usr/share/man/man1/top.1") && strings.Contains(manual, "ls (1)"), oneLine(manual)+errText(err))
 	// Flathub is a static remote (usr/share/flatpak/remotes.d), added the first time flatpak
 	// looks; Chrome is installed as a person does, when asked for.
 	chrome, err := g.run(`timeout 900 flatpak install --system --noninteractive -y flathub com.google.Chrome >/dev/null 2>&1 && flatpak info --system com.google.Chrome | grep -m1 Ref:`, "")

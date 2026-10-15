@@ -299,6 +299,104 @@ contents:
     - nftables
     # Tailscale (usr/lib/systemd/system/tailscaled.service).
     - tailscale
+    # Manuals: man (man-db, its index baked at build: etc/man_db.conf) and the pages of every
+    # command the root has, which Wolfi puts in <name>-doc and nothing installs unless it is named
+    # here. go run ./cmd/image check-docs (in task rootfs) fails the build when one is missing, and
+    # lists those left out on purpose (cmd/image/docs.go).
+    - man-db
+    - man-db-doc
+    - groff-doc
+    - texinfo-doc
+    - bash-doc
+    - binutils-doc
+    - bluez-doc
+    - brotli-doc
+    - bzip2-doc
+    - ca-certificates-doc
+    - coreutils-doc
+    - cryptsetup-doc
+    - cups-doc
+    - curl-doc
+    - dbus-doc
+    - dmidecode-doc
+    - docker-cli-doc
+    - dosfstools-doc
+    - e2fsprogs-doc
+    - enchant2-doc
+    - fuse-overlayfs-doc
+    - fuse3-doc
+    - gcc-doc
+    - gdbm-doc
+    - gdk-pixbuf-doc
+    - gettext-doc
+    - ghostscript-doc
+    - git-doc
+    - glib-doc
+    - gpgme-doc
+    - gptfdisk-doc
+    - gst-plugins-base-doc
+    - gstreamer-doc
+    - gtk-3-doc
+    - i2c-tools-doc
+    - iproute2-doc
+    - iptables-doc
+    - jbig2dec-doc
+    - kbd-doc
+    - kmod-doc
+    - less-doc
+    - libgcrypt-doc
+    - libgpg-error-doc
+    - libgsf-doc
+    - libheif-doc
+    - libinput-doc
+    - libpaper-doc
+    - libseccomp-doc
+    - libselinux-doc
+    - libsepol-doc
+    - libsndfile-doc
+    - libtool-doc
+    - libxcvt-doc
+    - libxkbcommon-doc
+    - libxslt-doc
+    - libzip-doc
+    - lm-sensors-doc
+    - lsof-doc
+    - lvm2-doc
+    - lz4-doc
+    - make-doc
+    - ncurses-doc
+    - net-tools-doc
+    - nftables-doc
+    - openssl-4.0-doc
+    - openvpn-doc
+    - parted-doc
+    - pciutils-doc
+    - pcsc-lite-doc
+    - perl-doc
+    - pkgconf-doc
+    - polkit-doc
+    - powertop-doc
+    - procps-doc
+    - python-3.13-doc
+    - qrencode-doc
+    - quota-tools-doc
+    - runc-doc
+    - shadow-doc
+    - shared-mime-info-doc
+    - sqlite-doc
+    - stress-ng-doc
+    - sudo-doc
+    - tiff-doc
+    - vim-doc
+    - wireguard-tools-doc
+    - xdg-utils-doc
+    - xkbcomp-doc
+    - xprop-doc
+    - xz-doc
+    - zeromq-doc
+    - zfs-doc
+    - zstd-doc
+
     # Translations: Wolfi and recipes/ put a package's catalogs in <name>-lang, which nothing
     # installs unless it is named here. go run ./cmd/image check-langs (in task rootfs) fails the
     # build when one is missing.

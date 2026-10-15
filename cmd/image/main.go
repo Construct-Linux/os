@@ -34,6 +34,7 @@
 //	image forge                                 the forged sticks the lifecycle must refuse
 //	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
 //	image check-langs                           every package in the root comes with its translations
+//	image check-docs                            every command in the root comes with its manual
 //	image check                                 every ELF's NEEDED libraries are in the root
 //
 // A key is a reference (internal/sign): a PEM file, or kms:<key> for one in AWS KMS.
@@ -120,6 +121,8 @@ func main() {
 		err = play(os.Args[2:])
 	case "check-langs":
 		err = checkLangs(filepath.Join(out, "rootfs.tar"))
+	case "check-docs":
+		err = checkDocs(filepath.Join(out, "rootfs.tar"))
 	case "check":
 		err = checkELF(tarLayer{file: filepath.Join(out, "root.tar")})
 	default:

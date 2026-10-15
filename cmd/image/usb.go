@@ -368,6 +368,8 @@ func bake(root, version string) error {
 		"ldconfig -C /usr/lib/ld.so.cache && ln -sf ../usr/lib/ld.so.cache /etc/ld.so.cache",
 		// The desktop's defaults (etc/dconf/db/local.d): theme, icons, accent, extensions.
 		"dconf update",
+		// apropos's and whatis's index, inside each manual hierarchy (etc/man_db.conf).
+		"mandb --quiet --create",
 	); err != nil {
 		return err
 	}

@@ -116,6 +116,8 @@ tasks:
       # Every package's translations are in the root (its -lang package, which apko installs
       # only when named).
       - go run ./cmd/image check-langs
+      # Every command's manual (its -doc package), the same way.
+      - go run ./cmd/image check-docs
 
   initrd:
     desc: Build the initrd systemd runs in before the root, from image/initrd/apko.yaml, into _output/initrd.tar.

@@ -26,16 +26,25 @@ func checkLangs(rootTar string) error {
 	if err != nil {
 		return err
 	}
-	available := map[string]bool{}
-	for _, idx := range []string{wolfiIndex, "packages/x86_64/APKINDEX.tar.gz"} {
-		if err := indexPackages(idx, available); err != nil {
-			return fmt.Errorf("%s: %w", idx, err)
-		}
+	available, err := availablePackages()
+	if err != nil {
+		return err
 	}
 	if missing := missingLangs(installed, available); len(missing) > 0 {
 		return fmt.Errorf("the root lacks the translations of what it installs; add to image/apko.yaml:\n    - %s", strings.Join(missing, "\n    - "))
 	}
 	return nil
+}
+
+// availablePackages are the names image/apko.yaml can install: Wolfi's and what recipes/ built.
+func availablePackages() (map[string]bool, error) {
+	available := map[string]bool{}
+	for _, idx := range []string{wolfiIndex, "packages/x86_64/APKINDEX.tar.gz"} {
+		if err := indexPackages(idx, available); err != nil {
+			return nil, fmt.Errorf("%s: %w", idx, err)
+		}
+	}
+	return available, nil
 }
 
 // missingLangs are the <name>-lang packages available for an installed package and not
@@ -53,19 +62,31 @@ func missingLangs(installed, available map[string]bool) []string {
 
 // installedPackages are the names in the root's apk database.
 func installedPackages(rootTar string) (map[string]bool, error) {
+	db, err := installedDB(rootTar)
 	names := map[string]bool{}
+	for _, p := range db {
+		names[p.Name] = true
+	}
+	return names, err
+}
+
+// installedDB is the root's apk database: its packages and the files each installed.
+func installedDB(rootTar string) ([]apkPackage, error) {
+	var db []apkPackage
 	found := false
 	err := tarLayer{file: rootTar}.walk(func(h *tar.Header, r io.Reader) error {
 		if h.Name != "usr/lib/apk/db/installed" && h.Name != "lib/apk/db/installed" {
 			return nil
 		}
 		found = true
-		return packageNames(r, names)
+		var err error
+		db, err = readAPKDB(r)
+		return err
 	})
 	if err == nil && !found {
 		err = fmt.Errorf("%s has no lib/apk/db/installed", rootTar)
 	}
-	return names, err
+	return db, err
 }
 
 // indexPackages adds the names in an APKINDEX.tar.gz, a path or an https URL, to names.
