@@ -116,6 +116,12 @@ clock-menu-position=1
 [org/gnome/desktop/privacy]
 usb-protection=false
 
+# No smartcard sign-in: the image has no gdm-smartcard PAM service (a security key is FIDO2,
+# etc/pam.d/construct-key), so with a key's CCID interface plugged in the lock screen offered a
+# mechanism whose every start failed with "PAM service gdm-smartcard was not found".
+[org/gnome/login-screen]
+enable-smartcard-authentication=false
+
 [org/gnome/shell/keybindings]
 show-screenshot-ui=['Print', 'XF86SelectiveScreenshot']
 # keyd takes Super with C, V, X, Z, A, S, F, T, W and Q for the clipboard and the rest
