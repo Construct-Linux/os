@@ -765,7 +765,10 @@ func (r *report) desktopViews(v *qemu.VM, g *guest, l *lf, sc screen) {
 // GDM worker, the process that serves every reauthentication of the session: each once kept its
 // D-Bus server and connection (recipes/gdm's patch), 5 files a time, until at the 1024th the lock
 // screen could show no prompt again, for no password, finger or key, until a reboot. Three more
-// cycles after the lock-screen views, and the count may not grow.
+// cycles after the lock-screen views, and the count may not grow. Each cycle also drops the
+// prompt's channel while its password conversation runs, as a wake from suspend does, and opens
+// another: the dropped one's session once lived on through that conversation, a gdm-password
+// worker and 4 files a time (recipes/gdm's reauthentication-close-session.patch).
 func (r *report) unlockLeaves(v *qemu.VM, g *guest) {
 	files := func() int {
 		out, _ := g.run(`for p in $(pgrep -x gdm-session-wor); do grep -q gdm-autologin /proc/$p/cmdline && ls /proc/$p/fd | wc -l; done | head -1`, "")
@@ -776,7 +779,13 @@ func (r *report) unlockLeaves(v *qemu.VM, g *guest) {
 	for range 3 {
 		_, _ = g.eval(`Main.screenShield.lock(false); true`)
 		time.Sleep(2 * time.Second)
-		_, _ = g.eval(`Main.screenShield.showDialog(); true`)
+		// showDialog alone shows the clock: the prompt, and its reauthentication, come with
+		// _showPrompt, as a key pressed on the lock screen does.
+		_, _ = g.eval(`Main.screenShield.showDialog(); Main.screenShield._dialog._showPrompt(); true`)
+		time.Sleep(3 * time.Second)
+		_, _ = g.eval(`Main.screenShield._dialog._authPrompt._userVerifier._userVerifier.get_connection().close_sync(null); true`)
+		time.Sleep(2 * time.Second)
+		_, _ = g.eval(`Main.screenShield._dialog._authPrompt.reset(); true`)
 		time.Sleep(3 * time.Second)
 		_, _ = g.eval(`Main.screenShield.deactivate(false); true`)
 		time.Sleep(2 * time.Second)
@@ -786,7 +795,7 @@ func (r *report) unlockLeaves(v *qemu.VM, g *guest) {
 	wakePointer(v, nil)
 	after := files()
 	r.add("unlock leaves nothing open", before > 0 && after <= before,
-		fmt.Sprintf("the session's gdm-session-worker: %d files open, %d after three locks, prompts and unlocks", before, after))
+		fmt.Sprintf("the session's gdm-session-worker: %d files open, %d after three locks, prompts, dropped channels and unlocks", before, after))
 }
 
 // lockScreenRoles are the panel's own indicators the lock screen shows (gnome-shell's
