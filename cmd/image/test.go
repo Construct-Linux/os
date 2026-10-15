@@ -382,6 +382,12 @@ func (r *report) systemChecks(g *guest) {
 	// whatis reads.
 	manual, err := g.run(`man -w top && whatis ls`, "")
 	r.add("manuals", err == nil && strings.Contains(manual, "/usr/share/man/man1/top.1") && strings.Contains(manual, "ls (1)"), oneLine(manual)+errText(err))
+	// ~/.local/bin on the PATH, last: the session's (usr/lib/environment.d), and a login shell's,
+	// whose PATH starts anew (etc/profile.d/construct-local-bin.sh): login's own PATH and --login,
+	// as sshd and login start one. runuser -l does not stand in: bash reads /etc/profile for a
+	// login shell given a command only with --login.
+	path, err := g.run(asLive+`systemctl --user show-environment | grep '^PATH='; runuser -u live -- env -i HOME=/var/home/live PATH=/usr/local/bin:/bin:/usr/bin bash --login -c 'echo "PATH=$PATH"'`, "")
+	r.add("~/.local/bin last on the PATH", err == nil && strings.Count(path, ":/var/home/live/.local/bin\n") == 2, oneLine(path)+errText(err))
 	// Flathub is a static remote (usr/share/flatpak/remotes.d), added the first time flatpak
 	// looks; Chrome is installed as a person does, when asked for.
 	chrome, err := g.run(`timeout 900 flatpak install --system --noninteractive -y flathub com.google.Chrome >/dev/null 2>&1 && flatpak info --system com.google.Chrome | grep -m1 Ref:`, "")
