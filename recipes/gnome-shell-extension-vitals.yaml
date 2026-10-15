@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-vitals
   version: 84.0.0
-  epoch: 4
+  epoch: 5
   description: GNOME Shell extension showing temperature, voltage, fan, memory, CPU, network and storage
   copyright:
     - license: GPL-2.0-or-later
@@ -11,6 +11,8 @@ package:
       # sensors.js imports gi://GTop for storage usage and silently drops it when the typelib is
       # missing; melange cannot see a GI import, so the dependency is written out.
       - libgtop
+      # The Wi-Fi signal comes from NetworkManager (gi://NM), as the shell's own network menu's does.
+      - libnm
 
 environment:
   contents:
@@ -29,6 +31,15 @@ pipeline:
       repository: https://github.com/Construct-Linux/Vitals
       branch: gnome-51
       expected-commit: f78845bf89b14272ceec46da4d5b370aa9bfee76
+
+  # Wi-Fi 7 cards have no wireless extensions: /proc/net/wireless, which Vitals read for the link
+  # quality, has no line for them, and the read made the kernel warn at every login ("uses wireless
+  # extensions which will stop working for Wi-Fi 7 hardware"; a ThinkPad X9-15p's BE211). The
+  # quality comes from NetworkManager instead, for any card; the signal level in dBm, which
+  # NetworkManager does not publish, is no longer shown.
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-vitals/wifi-from-networkmanager.patch
 
   # Upstream ships no build system: the extension is its source tree. The schema goes to the
   # system directory because the image compiles schemas there at build; the .po/.pot sources stay

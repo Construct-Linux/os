@@ -1,0 +1,77 @@
+diff --git a/sensors.js b/sensors.js
+index ddce227..b334bcb 100644
+--- a/sensors.js
++++ b/sensors.js
+@@ -26,6 +26,7 @@
+ 
+ import GLib from 'gi://GLib';
+ import GObject from 'gi://GObject';
++import NM from 'gi://NM';
+ import * as FileModule from './helpers/file.js';
+ 
+ let GTop, hasGTop = true;
+@@ -291,21 +292,34 @@ export const Sensors = GObject.registerClass({
+             this._queryWireless(callback);
+     }
+ 
+-    _queryWireless(callback) {
+-        new FileModule.File('/proc/net/wireless').read("\n", true).then(lines => {
+-            // wireless has two headers - first is stripped in helper function
+-            lines.shift();
++    // Wi-Fi 7 cards have no wireless extensions: /proc/net/wireless has no line for them, and
++    // reading it makes the kernel warn that they stopped working. NetworkManager reports any
++    // card's signal, as a strength in percent; the level in dBm is not on its D-Bus API.
++    _wifiDevices() {
++        if (!this._nmClient) {
++            this._nmClient = new Promise((resolve, reject) => {
++                NM.Client.new_async(null, (obj, res) => {
++                    try {
++                        resolve(NM.Client.new_finish(res));
++                    } catch (err) {
++                        reject(err);
++                    }
++                });
++            });
++        }
++        return this._nmClient.then(client => client.get_devices().filter(
++            dev => dev.get_device_type() === NM.DeviceType.WIFI));
++    }
+ 
+-            // if multiple wireless device, we use the last one
+-            let line = lines[lines.length - 1];
+-            if (!line)
++    _queryWireless(callback) {
++        this._wifiDevices().then(devices => {
++            // if multiple wireless devices, we use the last connected one
++            let aps = devices.map(dev => dev.get_active_access_point()).filter(ap => ap);
++            if (!aps.length)
+                 return;
+-            let netArray = line.trim().split(/\s+/);
+-            let quality_pct = netArray[2].substr(0, netArray[2].length-1) / 70;
+-            let signal = netArray[3].substr(0, netArray[3].length-1);
++            let quality_pct = aps[aps.length - 1].get_strength() / 100;
+ 
+             this._returnValue(callback, 'WiFi Link Quality', quality_pct, 'network', 'percent');
+-            this._returnValue(callback, 'WiFi Signal Level', signal, 'network', 'string');
+         }).catch(err => { });
+     }
+ 
+@@ -737,9 +751,8 @@ export const Sensors = GObject.registerClass({
+                     this._returnValue(callback, sensor.name, 'destroy', sensor.type, 'storage');
+             }
+ 
+-            new FileModule.File('/proc/net/wireless').read("\n", true).then(lines => {
+-                lines.shift();
+-                if (!lines[lines.length - 1])
++            this._wifiDevices().then(devices => {
++                if (!devices.length)
+                     return;
+                 this._hasWireless = true;
+                 this._queryWireless(callback);
+@@ -870,5 +883,6 @@ export const Sensors = GObject.registerClass({
+ 
+     destroy() {
+         this._destroyed = true;
++        this._nmClient = null;
+     }
+ });
