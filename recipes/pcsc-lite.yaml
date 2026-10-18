@@ -1,7 +1,7 @@
 package:
   name: pcsc-lite
-  version: "2.5.2"
-  # Replaces Wolfi's pcsc-lite 2.5.2 (epoch 0), whose pcscd units are user units and whose sysusers
+  version: "2.5.3"
+  # Replaces Wolfi's pcsc-lite 2.5.3 (epoch 0), whose pcscd units are user units and whose sysusers
   # file is in /usr/sysusers.d, which systemd never reads: a smart card reader or a security key
   # over CCID (a YubiKey's PIV and OATH, an NFC reader) reached no system pcscd. Built as Wolfi's,
   # with system units, systemd's socket activation and directories, and polkit deciding who may
@@ -37,7 +37,7 @@ pipeline:
     with:
       repository: https://github.com/LudovicRousseau/PCSC
       tag: ${{package.version}}
-      expected-commit: 6cadd8152f3cfdb79131a65843d9b85f01f0ae51
+      expected-commit: 58de510789550941e6548399e024083f54b8d4f5
       recurse-submodules: true
 
   - uses: meson/configure
