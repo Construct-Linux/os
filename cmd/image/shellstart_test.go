@@ -46,6 +46,7 @@ func TestParseShellStart(t *testing.T) {
 	}
 	text := s.text()
 	if !strings.Contains(text, "(1.200 s)") || !strings.Contains(text, "(1.350 s)") || !strings.Contains(text, "0.650 s together") ||
+		!strings.Contains(text, "dash-to-panel@jderose9.github.com (at 0.70 s)") ||
 		strings.Index(text, "dash-to-panel") > strings.Index(text, "Vitals") {
 		t.Errorf("text:\n%s", text)
 	}

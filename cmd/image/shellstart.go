@@ -123,7 +123,9 @@ func (s shellStart) text() string {
 		b.WriteString("No extension loads logged: the shell's debug log (G_MESSAGES_DEBUG=GNOME Shell) was off.\n")
 		return b.String()
 	}
-	fmt.Fprintf(&b, "\nExtensions, from loading to the state each ended in, %.3f s together:\n", s.extensionsTotal())
+	// Each from when its load began, after the unit: the shell's own startup goes on between
+	// the loads' turns on the main loop, so the first to load carries some of it.
+	fmt.Fprintf(&b, "\nExtensions, from loading to the state each ended in, %.3f s together (the time each began, after the unit):\n", s.extensionsTotal())
 	sorted := slices.Clone(s.extensions)
 	slices.SortStableFunc(sorted, func(a, b extensionLoad) int {
 		switch {
@@ -135,7 +137,7 @@ func (s shellStart) text() string {
 		return 0
 	})
 	for _, e := range sorted {
-		fmt.Fprintf(&b, "%7.0f ms  %-12s %s\n", e.seconds()*1000, e.state, e.uuid)
+		fmt.Fprintf(&b, "%7.0f ms  %-12s %s (at %.2f s)\n", e.seconds()*1000, e.state, e.uuid, e.start-s.unit)
 	}
 	return b.String()
 }
