@@ -51,8 +51,8 @@ COPY kernel/platform.config kernel/desktop.config /usr/src/fragments/
 # driver a general-purpose distribution builds, as modules. A desktop meets hardware nobody listed
 # when the image was built; a module costs nothing on a machine without its device, while a driver
 # left out is a device that does not work. Pinned by tag and content, like the tarball.
-ADD --checksum=sha256:b6e9aae6e8a89e341b9dcabd0bbd78bf789dbcc8754489e4916a45fa4e1e2865 \
-    https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/raw/7.2.10.arch1-1/config.x86_64 \
+ADD --checksum=sha256:f16adcb6dc1dc241ea90e23ca920697d00e4618df1b72d914ff15bc55ab4051f \
+    https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/raw/7.2.11.arch1-1/config.x86_64 \
     /usr/src/base.config
 
 # Which kernel this is: the fragments merged over the base, in order, a later one's line for a
