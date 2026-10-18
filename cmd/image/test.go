@@ -154,6 +154,8 @@ func test(args []string) (err error) {
 		"The desktop at login over the default dark wallpaper: both bars opaque g with their ring, the top bar a 36 px pill 6 px from the edge, its text Adwaita Sans 400, and no accent",
 		[]string{"S1", "SP2", "R1", "T2", "E2"}}, (*lf).viewDesktop)
 	r.systemChecks(g)
+	// With the desktop up and nothing asked of it yet: what it does by itself.
+	r.idle(g)
 
 	want, unknown := parseOnly(*only)
 	for _, n := range unknown {
