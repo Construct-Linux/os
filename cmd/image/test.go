@@ -806,7 +806,14 @@ func (r *report) unlockLeaves(v *qemu.VM, g *guest) {
 	// The lock turned the display off, and an unlock asked for by the shell does not turn it on:
 	// the views after would be black.
 	wakePointer(v, nil)
+	// The last cycle's teardown may still be closing when a slow machine is counted at once -
+	// Software refreshing Flathub behind the harness made two files show for a while - where a
+	// leak never comes back down: the count is given time to settle, not a fixed moment.
 	after := files()
+	until(20*time.Second, time.Second, func() bool {
+		after = files()
+		return after <= before
+	})
 	r.add("unlock leaves nothing open", before > 0 && after <= before,
 		fmt.Sprintf("the session's gdm-session-worker: %d files open, %d after three locks, prompts, dropped channels and unlocks", before, after))
 }
