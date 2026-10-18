@@ -147,6 +147,12 @@ func TestCmdline(t *testing.T) {
 		t.Errorf("a test build's cmdline = %q, want ttyS0 then tty0", got)
 	}
 	text := v.cmdline(false, false, "")
+	// PID 1 never asks the console its size, with Plymouth on it or a serial line behind it.
+	for _, c := range []string{plain, v.cmdline(true, true, ""), text} {
+		if !strings.Contains(c, " systemd.tty.term.console=dumb ") {
+			t.Errorf("cmdline lets PID 1 query the console: %q", c)
+		}
+	}
 	for _, want := range []string{"plymouth.enable=0", "rd.plymouth=0", "systemd.show_status=1", "roothash=" + v.rootHash, "firmware_class.path="} {
 		if !strings.Contains(text, want) {
 			t.Errorf("the boot without the splash lacks %s: %q", want, text)

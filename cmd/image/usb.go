@@ -686,8 +686,15 @@ func (v verity) cmdline(serial, splash bool, extra string) string {
 	if !splash {
 		shown = " plymouth.enable=0 rd.plymouth=0 systemd.show_status=1"
 	}
+	// systemd.tty.term.console=dumb: since v257 PID 1 asks the console its size with ANSI
+	// queries and waits for the answer, and with Plymouth on the screen the answer sometimes
+	// never comes: a boot in ten or thirty stops black until a key is pressed (systemd#35499,
+	// still reported against 261.2 and 262 after two fixes). A dumb terminal is never asked,
+	// which also takes the queries' timeouts off every boot, the initrd's PID 1 and the root's:
+	// a release stick's sshd answered at 7.9 s of uptime in QEMU (median of 20 boots) and at
+	// 6.4 s with this. The hang itself did not show in 20 boots either way.
 	return "roothash=" + v.rootHash + " systemd.verity_root_options=panic-on-corruption rootfstype=erofs ro" +
-		consoles + " cgroup_no_v1=all,named systemd.machine_id=firmware panic=10" + shown +
+		consoles + " systemd.tty.term.console=dumb cgroup_no_v1=all,named systemd.machine_id=firmware panic=10" + shown +
 		" firmware_class.path=/var/lib/construct/firmware" + strings.TrimRight(" "+extra, " ")
 }
 
