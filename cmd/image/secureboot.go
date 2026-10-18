@@ -26,8 +26,8 @@ import (
 // (internal/sign); the certificates and the signed variables are public.
 //
 // systemd-boot enrolls the three variables from the ESP's loader/keys/auto while the firmware is
-// in setup mode: by itself in a VM, from its menu on a machine (loader.conf's secure-boot-enroll
-// if-safe).
+// in setup mode: by itself in a VM, from its menu on a machine - hidden until a key is held
+// (loader.conf's secure-boot-enroll if-safe).
 
 // The key set's public half in its directory: each key's certificate, and the three variables to
 // enroll.

@@ -94,8 +94,10 @@ Or with a window: GNOME Disks (*Restore Disk Image*) and balenaEtcher take the `
 **Enroll Secure Boot.** systemd-boot and every kernel image are signed with Construct's key, which
 the stick carries for the firmware. Put the firmware's Secure Boot in setup mode (its menu calls
 it "clear keys", "reset to setup mode" or "delete all keys"), boot the stick from the firmware's
-boot menu (F12 on a ThinkPad) and choose *Enroll Secure Boot keys: auto*; the machine restarts and
-from then on boots only what Construct signed. The keys keep Microsoft's certificates for graphics
+boot menu (F12 on a ThinkPad), hold any key while the stick starts so that systemd-boot shows its
+menu, and choose *Enroll Secure Boot keys: auto*; the machine restarts and from then on boots only
+what Construct signed. The same menu offers the boot without the splash, for a boot that stops
+somewhere, and `systemctl reboot --boot-loader-menu=10` opens it once from a running desktop. The keys keep Microsoft's certificates for graphics
 and network cards' own firmware, not Windows'.
 
 **Install from the live session.** The stick boots a desktop, as the user `live`, that opens

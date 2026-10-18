@@ -721,9 +721,11 @@ func espTree(root, esp, label string, v verity, serial bool, extra, pcrPub, sbKe
 	for p, b := range map[string][]byte{
 		"EFI/BOOT/BOOTX64.EFI":            boot,
 		"EFI/systemd/systemd-bootx64.efi": boot,
-		// Enroll the keys by itself in a VM, and offer it in the menu on a machine whose
+		// The menu stays hidden - the stick boots its one entry, and a held key shows the
+		// menu (the boot without the splash, the enrollment) - which is three seconds off every
+		// boot. Enroll the keys by itself in a VM, and offer it in the menu on a machine whose
 		// firmware is in setup mode.
-		"loader/loader.conf": []byte("timeout 3\neditor no\nsecure-boot-enroll if-safe\n"),
+		"loader/loader.conf": []byte("timeout menu-hidden\neditor no\nsecure-boot-enroll if-safe\n"),
 	} {
 		full := filepath.Join(esp, p)
 		if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
