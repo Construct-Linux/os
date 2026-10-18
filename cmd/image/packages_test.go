@@ -255,8 +255,8 @@ o:glib
 	}
 	got := overtaken(recipes, db)
 	want := []string{
-		"pcsc-lite is 2.5.3-r0 in the root, not the recipe's 2.5.2-r1: Wolfi's is above the recipe's; give recipes/pcsc-lite.yaml a version or epoch above it",
-		"pcsc-lite-doc is 2.5.3-r0 in the root, not the recipe's 2.5.2-r1: Wolfi's is above the recipe's; give recipes/pcsc-lite.yaml a version or epoch above it",
+		"pcsc-lite is 2.5.3-r0 in the root, not the recipe's 2.5.2-r1: give recipes/pcsc-lite.yaml a version or epoch above Wolfi's, then task lock",
+		"pcsc-lite-doc is 2.5.3-r0 in the root, not the recipe's 2.5.2-r1: give recipes/pcsc-lite.yaml a version or epoch above Wolfi's, then task lock",
 	}
 	if strings.Join(got, "\n") != strings.Join(want, "\n") {
 		t.Errorf("overtaken:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))

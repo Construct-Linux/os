@@ -1,0 +1,71 @@
+# Every Monday, Wolfi's packages bumped to its index in image/apko.lock.yaml and
+# image/initrd/apko.lock.yaml, as a pull request (image lock index): a build installs the lock's
+# versions, so a Wolfi bump reaches a release only when the pull request is merged. One pull
+# request at a time, on the lock/wolfi branch, written again each week until it is merged. The
+# recipes' packages stay as they are: resolving them needs packages/, which no runner has, and
+# task lock does it on a person's machine. The job holds no secret but its own token, which pushes
+# the branch and opens the pull request; GitHub runs no workflow for a pull request that token
+# opens, so the job runs the module's tests itself, and check runs on main after the merge.
+name: lock
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: lock
+  cancel-in-progress: false
+
+jobs:
+  lock:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The whole history: the tests compare the tree with origin/main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Bump Wolfi's lines to its index
+        id: bump
+        run: |
+          set -euo pipefail
+          go run ./cmd/image lock index > "$RUNNER_TEMP/changes.md"
+          if git diff --quiet; then
+            echo "::notice::The locks are at Wolfi's index: nothing to bump."
+            exit 0
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check
+        if: steps.bump.outputs.changed == 'true'
+        run: go test ./cmd/image ./internal/apkver
+
+      - name: Push the branch and open the pull request
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c lock/wolfi
+          git commit -q -a -F - <<EOM
+          image: Wolfi's packages of $(date -u +%Y-%m-%d)
+
+          $(cat "$RUNNER_TEMP/changes.md")
+          EOM
+          git push --force -u origin lock/wolfi
+          if [ -z "$(gh pr list --repo "$GITHUB_REPOSITORY" --head lock/wolfi --state open --json number --jq '.[0].number // ""')" ]; then
+            gh pr create --repo "$GITHUB_REPOSITORY" --base main --head lock/wolfi \
+              --title "image: Wolfi's packages of $(date -u +%Y-%m-%d)" --body-file "$RUNNER_TEMP/changes.md"
+          fi

@@ -118,7 +118,7 @@ func securityFindings(r grype.Report, release string, ours map[string]bool) []fi
 		case ours[name]:
 			fmt.Fprintf(&b, "`%s` is built by recipes/: update its recipe to a fixed version.\n", name)
 		default:
-			fmt.Fprintf(&b, "`%s` is Wolfi's, and Wolfi has published the fix: a release built now picks it up.\n", name)
+			fmt.Fprintf(&b, "`%s` is Wolfi's, and Wolfi has published the fix: the lock workflow's next pull request takes it into image/apko.lock.yaml, or `task lock -- -all` now.\n", name)
 		}
 		found = append(found, finding{
 			key:    "security:" + name,

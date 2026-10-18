@@ -328,29 +328,10 @@ func overtaken(recipes []recipe, db []apkPackage) []string {
 			continue
 		}
 		if want := fmt.Sprintf("%s-r%d", r.Version, r.Epoch); p.Version != want {
-			out = append(out, fmt.Sprintf("%s is %s in the root, not the recipe's %s: Wolfi's is above the recipe's; give recipes/%s.yaml a version or epoch above it",
+			out = append(out, fmt.Sprintf("%s is %s in the root, not the recipe's %s: give recipes/%s.yaml a version or epoch above Wolfi's, then task lock",
 				p.Name, p.Version, want, r.File))
 		}
 	}
 	sort.Strings(out)
 	return out
-}
-
-// checkRecipes (image check-recipes [rootfs.tar|initrd.tar]) fails when a root apko built holds
-// Wolfi's package where a recipe's should be. It runs after apko in task rootfs and task initrd: a
-// Wolfi bump above an override's version takes the override's place without a word otherwise,
-// and shows up as whatever the override carried - a sysusers file, a unit, a build option.
-func checkRecipes(rootTar string) error {
-	recipes, err := readRecipes("recipes")
-	if err != nil {
-		return err
-	}
-	db, err := installedDB(rootTar)
-	if err != nil {
-		return err
-	}
-	if over := overtaken(recipes, db); len(over) > 0 {
-		return fmt.Errorf("%s holds Wolfi's package where a recipe's should be:\n  %s", rootTar, strings.Join(over, "\n  "))
-	}
-	return nil
 }

@@ -21,6 +21,7 @@
 //	image release-notes -version v -packages f  a release's notes (cmd/image/notes.go)
 //	image channel-index -version v -add|-withdraw  a channel's index with a release added or withdrawn (cmd/image/channel.go)
 //	image packages missing|prune                the recipes packages/ lacks, a wave a line; builds no recipe makes out (cmd/image/packages.go)
+//	image lock write [-all] | index             the locks from apko's resolution, or Wolfi's lines bumped to its index (cmd/image/lock.go)
 //	image cache pull|push                       the release builder's packages/, kernel, firmware and QEMU in S3 (cmd/image/cache.go)
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)
 //	image lifecycle                             install, update and roll back in QEMU (cmd/image/lifecycle.go)
@@ -33,6 +34,7 @@
 //	image scan-report                           _output/scan/report.md from Grype's report, by severity (cmd/image/scanreport.go)
 //	image forge                                 the forged sticks the lifecycle must refuse
 //	image check-key <keyring>                   the release keyring holds Ed25519 signing keys only
+//	image check-lock rootfs.tar|initrd.tar      the root installs what its lock pins, and the recipes' packages, not Wolfi's
 //	image check-langs                           every package in the root comes with its translations
 //	image check-docs                            every command in the root comes with its manual
 //	image check                                 every ELF's NEEDED libraries are in the root
@@ -41,6 +43,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -121,12 +124,14 @@ func main() {
 		err = play(os.Args[2:])
 	case "check-langs":
 		err = checkLangs(filepath.Join(out, "rootfs.tar"))
-	case "check-recipes":
-		tar := "rootfs.tar"
-		if len(os.Args) > 2 {
-			tar = os.Args[2]
+	case "lock":
+		err = lockCmd(os.Args[2:])
+	case "check-lock":
+		if len(os.Args) != 3 {
+			err = errors.New("check-lock rootfs.tar|initrd.tar")
+		} else {
+			err = checkLock(os.Args[2])
 		}
-		err = checkRecipes(filepath.Join(out, tar))
 	case "check-docs":
 		err = checkDocs(filepath.Join(out, "rootfs.tar"))
 	case "check":

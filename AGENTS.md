@@ -130,12 +130,21 @@ falling back from a release that does not come up.
 - Built with `task build -- <name>`, for **x86-64-v3** (`build/x86-64-v3.env`); a recipe that sets
   `CFLAGS` appends to `$CFLAGS`, never replaces it. **`task rootfs` refuses a `packages/` that
   lacks what a recipe makes** (`image packages missing`): apko would take Wolfi's package instead
-  without a word, and an override's whole point is what Wolfi's lacks, **and refuses a root that
-  holds Wolfi's package where a recipe's should be** (`image check-recipes`, after apko in `task
-  rootfs` and `task initrd`): apko installs the newest version across its repositories, so a Wolfi
-  bump above an override's version takes the override's place, and what the override carried (its
-  sysusers file, a unit, a build option) is gone - a release failed on pcsc-lite 2.5.3 this way.
-  After a pull that bumps recipes, build each one it names first.
+  without a word, and an override's whole point is what Wolfi's lacks. After a pull that bumps
+  recipes, build each one it names first.
+- **Every package is pinned in a lock, and a changed recipe goes through it.** `image/apko.lock.yaml`
+  and `image/initrd/apko.lock.yaml` are the configurations apko builds: each includes the
+  hand-written one and pins every package the root installs, `name=version`, the recipes' packages
+  first and Wolfi's after. `task lock` writes them from apko's resolution (`cmd/image/lock.go` says
+  why apko's own lock file is not used): a bumped recipe's package at its build in `packages/`,
+  Wolfi's as pinned, or at Wolfi's newest with `task lock -- -all`. The `lock` workflow bumps
+  Wolfi's lines to its index every Monday, in a pull request. `image check-lock`, after apko in
+  `task rootfs` and `task initrd`, refuses a root that installs what its lock does not pin, or
+  Wolfi's package where a recipe's should be: apko installs the newest version across its
+  repositories, so a Wolfi bump above an override's version takes the override's place, and what
+  the override carried (its sysusers file, a unit, a build option) is gone - the release of
+  2026-10-18 failed on pcsc-lite 2.5.3 this way, before the lock. `go test ./cmd/image` fails a
+  configuration that names a package its lock does not pin.
 - **A changed recipe takes a new version or epoch**: the builder's cache knows a package by its
   apk's name, so the same name is the old build. `go test ./cmd/image` fails a recipe (or its
   directory) changed since origin/main that still makes the same apk.
@@ -172,7 +181,7 @@ falling back from a release that does not come up.
 | changed | run | and look at |
 |---|---|---|
 | Go | `task check` (gofmt, go vet, the tests; what CI runs on a pull request) | a test for the behaviour, not for the lines |
-| a recipe | `task build -- <name>`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files and `.PKGINFO` depends/provides |
+| a recipe | `task build -- <name>`, `task lock`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files and `.PKGINFO` depends/provides, and the lock's diff: the recipe's package and nothing of Wolfi's |
 | anything in the image or a package | `task test` (ext4 disk, kernel given directly) | the report, **and the screenshots in `_output/test`** - a PASS means a window opened, not that it looks right |
 | a shell extension, or the shell itself | `task test` | `shell-startup.txt`: the session's shell from its unit to its startup complete and to the last extension loaded, and each extension's own load, slowest first; and `idle.txt`: the session at rest for 30 s, the shell's CPU share and wakeups and whatever else is busy, with the busiest process's threads, stacks and files. Neither is a gate: numbers the last build is compared to |
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
@@ -258,3 +267,5 @@ libproxy#371 is merged.
 
 `build/versions.env` pins what every build fetches from outside: the Wolfi base image (whose
 Clang 23 also builds the kernel), the kernel, linux-firmware, Intel's microcode and Grype. Taskfile.yml reads it (dotenv); a bump changes it and is checked like any other change.
+`image/apko.lock.yaml` and `image/initrd/apko.lock.yaml` pin Wolfi's packages (above, under
+Recipes): the `lock` workflow's weekly pull request bumps them, `task lock -- -all` now.

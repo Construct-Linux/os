@@ -91,6 +91,11 @@ func installedDB(rootTar string) ([]apkPackage, error) {
 
 // indexPackages adds the names in an APKINDEX.tar.gz, a path or an https URL, to names.
 func indexPackages(src string, names map[string]bool) error {
+	return withIndex(src, func(r io.Reader) error { return packageNames(r, names) })
+}
+
+// withIndex calls read with the APKINDEX of an APKINDEX.tar.gz, a path or an https URL.
+func withIndex(src string, read func(io.Reader) error) error {
 	var r io.ReadCloser
 	if strings.HasPrefix(src, "https://") {
 		// A CDN that stops answering would hang task rootfs, as it would task gap.
@@ -125,7 +130,7 @@ func indexPackages(src string, names map[string]bool) error {
 			return err
 		}
 		if h.Name == "APKINDEX" {
-			return packageNames(tr, names)
+			return read(tr)
 		}
 	}
 }
