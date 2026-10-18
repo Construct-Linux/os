@@ -220,3 +220,45 @@ func TestWithoutComments(t *testing.T) {
 		t.Error("a # line inside a block scalar is the block's text, and a change to it is a change")
 	}
 }
+
+// A root holds Wolfi's package where a recipe's should be when a package whose origin is a
+// recipe's is installed at any version but the recipe's: Wolfi's bump above an override's
+// version, which apko takes without a word. The subpackages of an overtaken recipe fail too;
+// what no recipe makes, and a recipe's package at its own version, pass.
+func TestOvertaken(t *testing.T) {
+	recipes := []recipe{
+		{File: "pcsc-lite", Name: "pcsc-lite", Version: "2.5.2", Epoch: 1},
+		{File: "mesa", Name: "mesa", Version: "26.2.5", Epoch: 1},
+	}
+	db, err := readAPKDB(strings.NewReader(`P:pcsc-lite
+V:2.5.3-r0
+o:pcsc-lite
+
+P:pcsc-lite-doc
+V:2.5.3-r0
+o:pcsc-lite
+
+P:mesa
+V:26.2.5-r1
+o:mesa
+
+P:mesa-dev
+V:26.2.5-r1
+o:mesa
+
+P:glib
+V:2.86.0-r0
+o:glib
+`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := overtaken(recipes, db)
+	want := []string{
+		"pcsc-lite is 2.5.3-r0 in the root, not the recipe's 2.5.2-r1: Wolfi's is above the recipe's; give recipes/pcsc-lite.yaml a version or epoch above it",
+		"pcsc-lite-doc is 2.5.3-r0 in the root, not the recipe's 2.5.2-r1: Wolfi's is above the recipe's; give recipes/pcsc-lite.yaml a version or epoch above it",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Errorf("overtaken:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}

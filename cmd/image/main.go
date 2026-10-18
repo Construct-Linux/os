@@ -121,6 +121,12 @@ func main() {
 		err = play(os.Args[2:])
 	case "check-langs":
 		err = checkLangs(filepath.Join(out, "rootfs.tar"))
+	case "check-recipes":
+		tar := "rootfs.tar"
+		if len(os.Args) > 2 {
+			tar = os.Args[2]
+		}
+		err = checkRecipes(filepath.Join(out, tar))
 	case "check-docs":
 		err = checkDocs(filepath.Join(out, "rootfs.tar"))
 	case "check":

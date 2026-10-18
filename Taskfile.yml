@@ -113,6 +113,7 @@ tasks:
         || { echo "rootfs: packages/ lacks what these recipes make, so apko would take Wolfi's instead; task build -- each of:"; cat _output/unbuilt.txt; exit 1; }
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/apko.yaml _output/rootfs.tar
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/rootfs.tar
+      - go run ./cmd/image check-recipes rootfs.tar
       # Every package's translations are in the root (its -lang package, which apko installs
       # only when named).
       - go run ./cmd/image check-langs
@@ -126,6 +127,7 @@ tasks:
       - mkdir -p _output
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} build-minirootfs --build-arch amd64 image/initrd/apko.yaml _output/initrd.tar
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown {{.UID}}:{{.UID}} /work/_output/initrd.tar
+      - go run ./cmd/image check-recipes initrd.tar
 
   tools:
     desc: The container the root is laid in, and this repository's programs for it (cmd/image) and for the root (cmd/construct).

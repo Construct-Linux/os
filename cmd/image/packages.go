@@ -272,15 +272,16 @@ func readRecipes(dir string) ([]recipe, error) {
 	return recipes, nil
 }
 
-// apkPackage is one package of an apk database or index: its name, its version, and the files
-// it installed, relative to the root (an index lists none).
+// apkPackage is one package of an apk database or index: its name, its version, its origin (the
+// package of the recipe that built it) and the files it installed, relative to the root (an index
+// lists none).
 type apkPackage struct {
-	Name, Version string
-	Files         []string
+	Name, Version, Origin string
+	Files                 []string
 }
 
 // readAPKDB reads apk's database format, blocks of one-letter fields: P: names a package, V: is
-// its version, F: a directory and the R: lines after it the files in it.
+// its version, o: its origin, F: a directory and the R: lines after it the files in it.
 func readAPKDB(r io.Reader) ([]apkPackage, error) {
 	var pkgs []apkPackage
 	dir := ""
@@ -300,6 +301,8 @@ func readAPKDB(r io.Reader) ([]apkPackage, error) {
 		switch {
 		case strings.HasPrefix(line, "V:"):
 			p.Version = line[2:]
+		case strings.HasPrefix(line, "o:"):
+			p.Origin = line[2:]
 		case strings.HasPrefix(line, "F:"):
 			dir = line[2:]
 		case strings.HasPrefix(line, "R:"):
@@ -307,4 +310,47 @@ func readAPKDB(r io.Reader) ([]apkPackage, error) {
 		}
 	}
 	return pkgs, sc.Err()
+}
+
+// overtaken are the packages in db that a recipe makes - the db's origin names the recipe's
+// package - installed at a version other than the recipe's: Wolfi's, taken because apko installs
+// the newest version across its repositories and Wolfi's climbed above the recipe's, and an
+// override's whole point is what Wolfi's lacks. One line per package, sorted.
+func overtaken(recipes []recipe, db []apkPackage) []string {
+	makes := make(map[string]recipe, len(recipes))
+	for _, r := range recipes {
+		makes[r.Name] = r
+	}
+	var out []string
+	for _, p := range db {
+		r, ok := makes[p.Origin]
+		if !ok {
+			continue
+		}
+		if want := fmt.Sprintf("%s-r%d", r.Version, r.Epoch); p.Version != want {
+			out = append(out, fmt.Sprintf("%s is %s in the root, not the recipe's %s: Wolfi's is above the recipe's; give recipes/%s.yaml a version or epoch above it",
+				p.Name, p.Version, want, r.File))
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// checkRecipes (image check-recipes [rootfs.tar|initrd.tar]) fails when a root apko built holds
+// Wolfi's package where a recipe's should be. It runs after apko in task rootfs and task initrd: a
+// Wolfi bump above an override's version takes the override's place without a word otherwise,
+// and shows up as whatever the override carried - a sysusers file, a unit, a build option.
+func checkRecipes(rootTar string) error {
+	recipes, err := readRecipes("recipes")
+	if err != nil {
+		return err
+	}
+	db, err := installedDB(rootTar)
+	if err != nil {
+		return err
+	}
+	if over := overtaken(recipes, db); len(over) > 0 {
+		return fmt.Errorf("%s holds Wolfi's package where a recipe's should be:\n  %s", rootTar, strings.Join(over, "\n  "))
+	}
+	return nil
 }
