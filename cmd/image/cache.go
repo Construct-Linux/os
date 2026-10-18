@@ -17,21 +17,29 @@ import (
 // through the AWS CLI, with the credentials and region a person's or the builder's environment
 // gives it.
 
-// cached is a build output the cache keeps: what it is built from (paths git tracks), and what it
-// is - directories under the repository, with the file its build writes when it is whole, or a
-// Docker image.
+// cached is a build output the cache keeps: what it is built from - paths git tracks, and the
+// pins of build/versions.env its build reads, not the whole file, so that a scanner's or another
+// build's bump does not evict it - and what it is: directories under the repository, with the
+// file its build writes when it is whole, or a Docker image.
 type cached struct {
 	name   string
 	inputs []string
+	pins   []string
 	dirs   []string
 	whole  string
 	image  string
 }
 
+// pinsFile is where the pins are; a change to it that touches none of a build's pins keeps the
+// build's key.
+const pinsFile = "build/versions.env"
+
 var cacheable = []cached{
-	{name: "kernel", inputs: []string{"kernel", "build/versions.env"}, dirs: []string{"_output/kernel", "_output/modules"}, whole: "_output/kernel/bzImage"},
-	{name: "firmware", inputs: []string{"firmware", "build/versions.env"}, dirs: []string{"_output/firmware"}, whole: "_output/firmware/firmware.tar"},
-	{name: "qemu", inputs: []string{"build/qemu", "build/versions.env"}, image: "construct-qemu"},
+	{name: "kernel", inputs: []string{"kernel"}, pins: []string{"WOLFI_BASE_IMAGE", "KERNEL_VERSION", "KERNEL_SHA256"},
+		dirs: []string{"_output/kernel", "_output/modules"}, whole: "_output/kernel/bzImage"},
+	{name: "firmware", inputs: []string{"firmware"}, pins: []string{"WOLFI_BASE_IMAGE", "LINUX_FIRMWARE_VERSION", "LINUX_FIRMWARE_SHA256", "INTEL_MICROCODE_VERSION", "INTEL_MICROCODE_SHA256"},
+		dirs: []string{"_output/firmware"}, whole: "_output/firmware/firmware.tar"},
+	{name: "qemu", inputs: []string{"build/qemu"}, pins: []string{"HARNESS_DEBIAN_IMAGE", "QEMU_VERSION", "QEMU_SHA256", "CANOKEY_QEMU_COMMIT"}, image: "construct-qemu"},
 }
 
 // inBucket is whether key is in bucket: head-object's 404, said on stderr (output keeps it out of
@@ -58,8 +66,8 @@ func isBuilt(c cached) bool {
 	return err == nil
 }
 
-// cacheKey is a hash of the blobs git has for c's inputs: the committed sources, whatever the
-// checkout's dates.
+// cacheKey is a hash of the blobs git has for c's inputs - the committed sources, whatever the
+// checkout's dates - and of c's pins as committed.
 func cacheKey(c cached) (string, error) {
 	out, err := exec.Command("git", append([]string{"ls-files", "-s", "--"}, c.inputs...)...).Output()
 	if err != nil {
@@ -68,7 +76,34 @@ func cacheKey(c cached) (string, error) {
 	if len(out) == 0 {
 		return "", fmt.Errorf("%s: git tracks none of %v", c.name, c.inputs)
 	}
-	return fmt.Sprintf("%x", sha256.Sum256(out))[:16], nil
+	env, err := exec.Command("git", "show", "HEAD:"+pinsFile).Output()
+	if err != nil {
+		return "", fmt.Errorf("git show HEAD:%s: %w", pinsFile, err)
+	}
+	lines, err := pinLines(string(env), c.pins)
+	if err != nil {
+		return "", fmt.Errorf("%s: %w", c.name, err)
+	}
+	return fmt.Sprintf("%x", sha256.Sum256(append(out, strings.Join(lines, "\n")...)))[:16], nil
+}
+
+// pinLines are the lines of env that set pins, in pins' order; a pin env does not set is an
+// error, not a key that silently says nothing of it.
+func pinLines(env string, pins []string) ([]string, error) {
+	var out []string
+	for _, pin := range pins {
+		found := ""
+		for _, line := range strings.Split(env, "\n") {
+			if strings.HasPrefix(line, pin+"=") {
+				found = line
+			}
+		}
+		if found == "" {
+			return nil, fmt.Errorf("%s sets no %s", pinsFile, pin)
+		}
+		out = append(out, found)
+	}
+	return out, nil
 }
 
 // cacheCmd is image cache pull, which fetches packages/ and every cached output there is, or
@@ -90,9 +125,10 @@ func cacheCmd(args []string) error {
 		// committed (cache:seed from a person's checkout), it would be a hit for sources it was
 		// not built from. Checked before anything is stored.
 		for _, c := range cacheable {
-			dirty, err := exec.Command("git", append([]string{"status", "--porcelain", "--"}, c.inputs...)...).Output()
+			inputs := append([]string{pinsFile}, c.inputs...)
+			dirty, err := exec.Command("git", append([]string{"status", "--porcelain", "--"}, inputs...)...).Output()
 			if err != nil {
-				return fmt.Errorf("git status %v: %w", c.inputs, err)
+				return fmt.Errorf("git status %v: %w", inputs, err)
 			}
 			if len(dirty) > 0 {
 				return fmt.Errorf("cache: %s's inputs have changes git has not committed, which its key would not say:\n%s", c.name, dirty)
