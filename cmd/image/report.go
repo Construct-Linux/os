@@ -181,7 +181,14 @@ func (r *report) system(g *guest) {
 	// boot it makes /var, and where that time goes is in its journal.
 	initrd, _ := g.run(`journalctl -b -o short-monotonic --no-pager | sed '/Switching root/q'`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "initrd.txt"), []byte(initrd), 0o644)
+	// The session's own chain, which the system's stops short of: what the user manager started
+	// for the person, and how long each took.
+	if r.user != "" {
+		session, _ := g.run(`u=`+r.user+`; sudo -u "$u" env XDG_RUNTIME_DIR=/run/user/$(id -u "$u") DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/$(id -u "$u")/bus sh -c 'systemd-analyze --user time; echo; systemd-analyze --user critical-chain graphical-session.target; echo; systemd-analyze --user blame | head -20' 2>&1`, "")
+		_ = os.WriteFile(filepath.Join(r.dir, "boot.txt"), []byte(boot+"\n== the session ("+r.user+") ==\n"+session), 0o644)
+	}
 	r.add("boot time", bootErr == nil, oneLine(firstLine(boot))+errText(bootErr))
+	r.shellStartup(g)
 	// Plymouth's own log, when the disk was built to boot with plymouth.debug.
 	if ply, err := g.run("cat /var/log/plymouth-debug.log", ""); err == nil && ply != "" {
 		_ = os.WriteFile(filepath.Join(r.dir, "plymouth-debug.log"), []byte(ply), 0o644)

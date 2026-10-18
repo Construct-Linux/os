@@ -170,6 +170,7 @@ falling back from a release that does not come up.
 | Go | `task check` (gofmt, go vet, the tests; what CI runs on a pull request) | a test for the behaviour, not for the lines |
 | a recipe | `task build -- <name>`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files and `.PKGINFO` depends/provides |
 | anything in the image or a package | `task test` (ext4 disk, kernel given directly) | the report, **and the screenshots in `_output/test`** - a PASS means a window opened, not that it looks right |
+| a shell extension, or the shell itself | `task test` | `shell-startup.txt`: the session's shell from its unit to its startup complete and to the last extension loaded, and each extension's own load, slowest first; not a gate, a number the last build is compared to |
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
 | install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, four forged sticks refused, update from a URL, rollback from a broken release, files in `/var` and `/etc` kept |
 | the kernel | `task kernel:config`, then `task kernel` | the assertion's output |
@@ -233,9 +234,11 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
 
 AutoFDO/Propeller profiles recorded on real hardware; boot time measured on real hardware
 (every report's `boot.txt` has the VM's: an installed disk 8.0 s, of it the initrd 1.6 s; the
-stick 13.1 s, most of it GDM's first frame over emulated USB); the initrd's size (31 MB
-compressed, after its PAM and NSS modules, network daemons, LVM and OpenSSL 3 went; Wolfi's lvm2
-package carries device-mapper's udev rules, which stay); tailscaled's sandbox (`systemd-analyze
+stick 13.1 s, most of it GDM's first frame over emulated USB; and `shell-startup.txt` the
+session's shell: 3.0 s from its unit to its startup complete on the test disk, 3.9 s to the last
+extension loaded, AppIndicator the slowest extension at 0.9 s, where Vitals and Dash to Panel take
+0.1 s; on the stick 5.2 s and 6.7 s, Tiling Shell's 2.1 s read over emulated USB); the initrd's size (31 MB compressed, after its PAM and NSS modules, network daemons, LVM
+and OpenSSL 3 went; Wolfi's lvm2 package carries device-mapper's udev rules, which stay); tailscaled's sandbox (`systemd-analyze
 security` 9.4), which needs a tailnet to be tested - cups-browsed and geoclue are sandboxed, gdm,
 docker, containerd and udisks2 are what they are for; fwupd's UEFI capsule updates, which need
 fwupd-efi built and its binary signed with db's key before the root is made, inside the verified
