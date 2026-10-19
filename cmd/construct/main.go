@@ -42,7 +42,7 @@ const usage = `usage:
   construct pending    [--mark FILE]
   construct theme      [--themes DIR] [--home DIR] [--config DIR]
   construct live
-  construct firmware   FILE
+  construct firmware   DIR|FILE
   construct power      [--seconds N] | suspend
   construct bench      [--rounds N] [--seconds N]
   construct kernel-profile [--minutes N] [-o FILE]

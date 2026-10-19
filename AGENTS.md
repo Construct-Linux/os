@@ -121,7 +121,10 @@ falling back from a release that does not come up.
   builtin designates it only on its own machine and never on another disk. The initrd mounts it and
   lays `/etc` over it before the switch (image/initrd: systemd mounts /var itself only after). Home
   is `/var/home` (`/home`, `/opt`, `/srv`, `/mnt` and `/root` link into `/var`); NetworkManager's
-  connections, SSH host keys, Flatpaks and Docker are on `/var`. A path a service writes in `/etc`
+  connections, SSH host keys, Flatpaks and Docker are on `/var`. So is firmware a person brings
+  for their machine (`construct firmware`, cmd/construct/firmware.go: a maker's build its license
+  keeps out of the image), in `/var/lib/construct/firmware`, which the kernel searches before the
+  root's (`firmware_class.path`, cmd/image/usb.go) and `construct install` carries onto the disk. A path a service writes in `/etc`
   or `/usr` works only through the overlay - check it on the USB disk, not only on the ext4 test
   disk.
 

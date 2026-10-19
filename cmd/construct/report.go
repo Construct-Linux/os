@@ -65,6 +65,7 @@ func gatherReport(ctx context.Context, root string, run runner) ([]fact, []strin
 		fact{"tpm 2.0", tpm(root)},
 		fact{"/var encrypted", varEncrypted(root)},
 		fact{"gpu", strings.Join(gpus(root), ", ")},
+		fact{"own firmware", ownFirmware(root)},
 		fact{"failed units", failedUnits(ctx, run)},
 	)
 	return facts, journalErrors(ctx, run)

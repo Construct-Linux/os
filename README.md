@@ -122,6 +122,14 @@ of a forgotten password. Take the stick out and restart.
   `/var` anew (every person, file, container and setting gone; the system slots untouched) and
   GNOME's Initial Setup asks who it is for. The disk still opens with the password it was installed
   with: to hand the machine to someone else, install it again from the stick.
+- **Firmware the image cannot carry.** A few parts boot only their maker's firmware, licensed to
+  the machine's owner and to nobody else: the ThinkPad X9-15p's sensor hub (ambient light,
+  rotation, presence) and the tuning of its four speakers are in Lenovo's Windows driver packages
+  for it (Motherboard devices, Audio), and in no Linux package. Unpack them on Windows (their
+  installers refuse anywhere else; they leave `C:\DRIVERS`), copy that folder over, and
+  `sudo construct firmware /path/to/DRIVERS` installs what this machine's drivers ask for, on
+  `/var`, where updates leave it. Done on the stick before installing, the installed machine has
+  it too. `construct report` lists it as *own firmware*.
 - **Something wrong?** `construct report` prints what an [issue](https://github.com/Construct-Linux/os/issues/new/choose)
   needs; `construct diagnose` collects logs for a harder one. A security flaw goes privately, as
   `SECURITY.md` says.

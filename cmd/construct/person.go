@@ -206,6 +206,11 @@ func prepareVar(ctx context.Context, dev string, p person, keys []securitykey.Ke
 	if err == nil && len(keys) > 0 {
 		err = securitykey.Write(upper, keys)
 	}
+	// The firmware the person gave the stick for this machine (construct firmware), which the
+	// image cannot carry: the installed machine needs it as much.
+	if err == nil {
+		_, err = carryFirmware(firmwareDir, filepath.Join(dir, strings.TrimPrefix(firmwareDir, "/var/")))
+	}
 	// Their language and keyboard, which GDM, GNOME and the console start from, and the machine's
 	// name.
 	files := map[string][]byte{"locale.conf": p.lang.localeConf(), "vconsole.conf": p.lang.vconsole()}

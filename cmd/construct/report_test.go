@@ -53,6 +53,10 @@ func machine(t *testing.T) string {
 	link(t, "../../block/nvme0n1/nvme0n1p2", filepath.Join(root, "sys/class/block/nvme0n1p2"))
 	writeFile(t, filepath.Join(root, "sys/class/block/dm-0/slaves/nvme0n1p2"), nil)
 	link(t, "../../../../bus/pci/drivers/xe", filepath.Join(root, "sys/class/drm/card0/device/driver"))
+	// Nothing brought for it: the directory tmpfiles makes at boot, empty.
+	if err := os.MkdirAll(filepath.Join(root, firmwareDir), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	return root
 }
 
@@ -115,6 +119,7 @@ func TestReport(t *testing.T) {
 		"tpm 2.0:         yes\n",
 		"/var encrypted:  yes (LUKS2)\n",
 		"gpu:             8086:64a0 (xe), 10de:28e1 (no driver)\n",
+		"own firmware:    none\n",
 		"failed units:    fwupd-refresh.service\n",
 		"journal errors:  12 this boot\n",
 	} {
