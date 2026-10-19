@@ -127,7 +127,11 @@ func (s sources) kernelCheck(pinned string) check {
 			var newest series
 			newestVersion, newestMoniker, point := "", "", ""
 			for _, rel := range r.Releases {
-				if rel.Moniker != "stable" && rel.Moniker != "longterm" {
+				// A series kernel.org lists as mainline is its newest: a release candidate until
+				// its version loses the -rc, then the newest stable series until its first point
+				// release moves it to "stable" - listed, and no end of anything, meanwhile.
+				final := rel.Moniker == "mainline" && !strings.Contains(rel.Version, "-")
+				if rel.Moniker != "stable" && rel.Moniker != "longterm" && !final {
 					continue
 				}
 				ser, ok := parseSeries(rel.Version)

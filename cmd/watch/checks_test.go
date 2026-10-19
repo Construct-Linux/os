@@ -121,6 +121,25 @@ func TestKernelCheck(t *testing.T) {
 	}
 }
 
+// The day kernel.org releases a series it lists it as mainline, with no -rc in its version and
+// no stable entry yet: a kernel pinned at it is at the newest, not at an end (issue #18, 7.3 on
+// 2026-10-19); a release candidate there stays no release.
+func TestKernelCheckOnReleaseDay(t *testing.T) {
+	src := serve(t, map[string]string{"/releases.json": `{"releases": [
+	{"moniker": "mainline", "version": "7.3", "iseol": false},
+	{"moniker": "stable", "version": "7.2.11", "iseol": false},
+	{"moniker": "longterm", "version": "6.18.57", "iseol": false}
+]}`})
+	fs, err := src.kernelCheck("7.3").find(t.Context())
+	if err != nil || len(fs) != 0 {
+		t.Errorf("7.3 on its release day: %+v, %v", fs, err)
+	}
+	fs, err = src.kernelCheck("7.2.11").find(t.Context())
+	if err != nil || len(fs) != 1 || fs[0].title != "update: kernel 7.2 -> 7.3" || !strings.Contains(fs[0].body, "7.3 (mainline)") {
+		t.Errorf("7.2.11 under a 7.3 just released: %+v, %v", fs, err)
+	}
+}
+
 func gnomeCache(versions ...string) string {
 	files := map[string]map[string]map[string]string{"gnome-shell": {}}
 	for _, v := range versions {
