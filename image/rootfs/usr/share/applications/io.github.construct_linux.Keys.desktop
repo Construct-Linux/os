@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Keyboard Shortcuts
+Comment=Super with a letter, the same in every application
+Icon=input-keyboard-symbolic
+Exec=construct-keys
+Categories=Settings;System;
+StartupNotify=true

@@ -1,0 +1,65 @@
+{
+  "about": "Super with a letter, as a Mac's Command, the same in every application. keyd (etc/keyd/default.conf) takes the letters below the compositor: copy, paste and cut as the Insert chords every application and terminal takes, and each other letter as a plain key no keyboard has (F13 to F24), which the shell's keys extension turns into the chord the focused application binds for it: Ctrl with the letter in most, Ctrl+Shift in a terminal, whose Ctrl+letter are its control characters. Super alone opens the overview, Super+number the dock's apps, Super+M the notifications, Super+K this table. construct-keys shows it.",
+  "everywhere": [
+    {"key": "c", "does": "Copy", "sends": "<Control>Insert"},
+    {"key": "v", "does": "Paste", "sends": "<Shift>Insert"},
+    {"key": "x", "does": "Cut", "sends": "<Shift>Delete"}
+  ],
+  "default": [
+    {"key": "a", "plain": "F13", "does": "Select all", "sends": "<Control>a"},
+    {"key": "z", "plain": "F14", "does": "Undo", "sends": "<Control>z"},
+    {"key": "s", "plain": "F15", "does": "Save", "sends": "<Control>s"},
+    {"key": "f", "plain": "F16", "does": "Find", "sends": "<Control>f"},
+    {"key": "t", "plain": "F17", "does": "New tab", "sends": "<Control>t"},
+    {"key": "w", "plain": "F18", "does": "Close the tab or window", "sends": "<Control>w"},
+    {"key": "n", "plain": "F19", "does": "New window or document", "sends": "<Control>n"},
+    {"key": "p", "plain": "F20", "does": "Print", "sends": "<Control>p"},
+    {"key": "q", "plain": "F21", "does": "Quit", "sends": "<Control>q"},
+    {"key": "r", "plain": "F22", "does": "Reload", "sends": "<Control>r"},
+    {"key": "l", "plain": "F23", "does": "The location or address", "sends": "<Control>l"},
+    {"key": "o", "plain": "F24", "does": "Open", "sends": "<Control>o"}
+  ],
+  "apps": {
+    "com.mitchellh.ghostty.desktop": {
+      "name": "Ghostty",
+      "keys": [
+        {"key": "a", "does": "Select all", "sends": "<Control><Shift>a"},
+        {"key": "f", "does": "Find", "sends": "<Control><Shift>f"},
+        {"key": "t", "does": "New tab", "sends": "<Control><Shift>t"},
+        {"key": "w", "does": "Close the tab", "sends": "<Control><Shift>w"},
+        {"key": "n", "does": "New window", "sends": "<Control><Shift>n"},
+        {"key": "q", "does": "Quit", "sends": "<Control><Shift>q"},
+        {"key": "z", "does": "Nothing: the shell's own Ctrl+Z suspends", "sends": ""},
+        {"key": "s", "does": "Nothing: the shell's own Ctrl+S stops output", "sends": ""},
+        {"key": "p", "does": "Nothing: the shell's own Ctrl+P is the previous command", "sends": ""},
+        {"key": "r", "does": "Nothing: the shell's own Ctrl+R searches the history", "sends": ""},
+        {"key": "l", "does": "Nothing: the shell's own Ctrl+L clears the screen", "sends": ""},
+        {"key": "o", "does": "Nothing", "sends": ""}
+      ]
+    },
+    "org.gnome.Ptyxis.desktop": {
+      "name": "Ptyxis",
+      "keys": [
+        {"key": "a", "does": "Select all", "sends": "<Control><Shift>a"},
+        {"key": "f", "does": "Find", "sends": "<Control><Shift>f"},
+        {"key": "t", "does": "New tab", "sends": "<Control><Shift>t"},
+        {"key": "w", "does": "Close the tab", "sends": "<Control><Shift>w"},
+        {"key": "n", "does": "New window", "sends": "<Control><Shift>n"},
+        {"key": "q", "does": "Quit", "sends": "<Control><Shift>q"},
+        {"key": "z", "does": "Nothing: the shell's own Ctrl+Z suspends", "sends": ""},
+        {"key": "s", "does": "Nothing: the shell's own Ctrl+S stops output", "sends": ""},
+        {"key": "p", "does": "Nothing: the shell's own Ctrl+P is the previous command", "sends": ""},
+        {"key": "r", "does": "Nothing: the shell's own Ctrl+R searches the history", "sends": ""},
+        {"key": "l", "does": "Nothing: the shell's own Ctrl+L clears the screen", "sends": ""},
+        {"key": "o", "does": "Nothing", "sends": ""}
+      ]
+    }
+  },
+  "shell": [
+    {"key": "Super", "does": "The overview; pressed twice, the app grid"},
+    {"key": "1 to 9", "does": "The dock's apps, in order"},
+    {"key": "m", "does": "Notifications"},
+    {"key": "k", "does": "This table"},
+    {"key": "Tab", "does": "Switch windows"}
+  ]
+}

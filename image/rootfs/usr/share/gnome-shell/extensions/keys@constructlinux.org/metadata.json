@@ -1,0 +1,7 @@
+{
+  "uuid": "keys@constructlinux.org",
+  "name": "Keys",
+  "description": "Super with a letter, the same in every application: the plain keys keyd sends for them become the chord the focused application binds, from usr/share/construct/keys.json.",
+  "shell-version": ["51"],
+  "version": 1
+}

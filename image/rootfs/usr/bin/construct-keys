@@ -1,0 +1,101 @@
+#!/usr/bin/python3
+# Keyboard shortcuts: the table of Super with a letter (usr/share/construct/keys.json), as keyd and
+# the shell's keys extension apply it, shown per application. A viewer only: the table is the
+# image's, and go test ./cmd/image keeps keyd's file to it.
+import gettext
+import json
+import sys
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+from gi.repository import Adw, Gtk  # noqa: E402
+
+_ = gettext.translation("construct-keys", fallback=True).gettext
+
+APP_ID = "io.github.construct_linux.Keys"
+TABLE = "/usr/share/construct/keys.json"
+
+
+def chord_label(accel):
+    """"<Control><Shift>t" as a person reads it: Ctrl+Shift+T."""
+    if not accel:
+        return _("nothing")
+    parts = []
+    rest = accel
+    while rest.startswith("<"):
+        mod, rest = rest[1:].split(">", 1)
+        parts.append({"Control": "Ctrl", "Shift": "Shift", "Alt": "Alt"}.get(mod, mod))
+    parts.append(rest.upper() if len(rest) == 1 else rest)
+    return "+".join(parts)
+
+
+def key_label(key):
+    return key.upper() if len(key) == 1 else key
+
+
+class Page:
+    def __init__(self, title, note, rows):
+        self.title, self.note, self.rows = title, note, rows
+
+
+def pages(table):
+    everywhere = [(key_label(e["key"]), e["does"], chord_label(e["sends"])) for e in table["everywhere"]]
+    default = [(key_label(e["key"]), e["does"], chord_label(e["sends"])) for e in table["default"]]
+    result = [
+        Page(_("Everywhere"), _("Super with the letter, in every application, the console and the login screen"), everywhere),
+        Page(_("Most applications"), _("Super with the letter, where the application binds Ctrl with it"), default),
+    ]
+    for app in table["apps"].values():
+        rows = [(key_label(e["key"]), e["does"], chord_label(e["sends"])) for e in app["keys"]]
+        result.append(Page(app["name"], _("Super with the letter, as this application binds it"), everywhere + rows))
+    result.append(Page(_("The shell"), _("Super on its own, and with what the shell keeps"), [(e["key"], e["does"], "") for e in table["shell"]]))
+    return result
+
+
+class KeysWindow(Adw.ApplicationWindow):
+    def __init__(self, app, table):
+        super().__init__(application=app, title=_("Keyboard shortcuts"), default_width=760, default_height=560)
+        split = Adw.NavigationSplitView()
+        self.set_content(split)
+        sidebar = Gtk.ListBox(css_classes=["navigation-sidebar"])
+        self._pages = pages(table)
+        for page in self._pages:
+            sidebar.append(Gtk.Label(label=page.title, xalign=0, margin_top=8, margin_bottom=8, margin_start=8))
+        sidebar.connect("row-selected", lambda _box, row: self._show(self._pages[row.get_index()]) if row else None)
+        side = Adw.ToolbarView()
+        side.add_top_bar(Adw.HeaderBar())
+        side.set_content(Gtk.ScrolledWindow(child=sidebar))
+        split.set_sidebar(Adw.NavigationPage(title=_("Keyboard shortcuts"), child=side))
+        self._content = Adw.ToolbarView()
+        self._content.add_top_bar(Adw.HeaderBar())
+        self._page = Adw.NavigationPage(title=self._pages[0].title, child=self._content)
+        split.set_content(self._page)
+        sidebar.select_row(sidebar.get_row_at_index(0))
+
+    def _show(self, page):
+        self._page.set_title(page.title)
+        group = Adw.PreferencesGroup(description=page.note)
+        for key, does, sends in page.rows:
+            row = Adw.ActionRow(title=does, subtitle=sends)
+            chip = Gtk.Label(label=f"Super+{key}" if len(key) == 1 or key[0].isdigit() else key, css_classes=["keycap"], valign=Gtk.Align.CENTER)
+            row.add_prefix(chip)
+            group.add(row)
+        prefs = Adw.PreferencesPage()
+        prefs.add(group)
+        self._content.set_content(prefs)
+
+
+class KeysApp(Adw.Application):
+    def __init__(self):
+        super().__init__(application_id=APP_ID)
+
+    def do_activate(self):
+        with open(TABLE) as f:
+            table = json.load(f)
+        win = self.props.active_window or KeysWindow(self, table)
+        win.present()
+
+
+sys.exit(KeysApp().run([]))

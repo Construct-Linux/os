@@ -66,6 +66,34 @@ func (r *report) keyd(v *qemu.VM, g *guest) {
 	until(60*time.Second, time.Second, func() bool { got, err = g.run(`cat `+keydProbeOut, ""); return err == nil })
 	r.add("keyd: Super+V, A, C, X", got == "mkjkj" && overview == "false",
 		fmt.Sprintf("the field held %q, want \"mkjkj\"; overview open %s", got, overview)+errText(err))
+	// The letters keyd sends as plain keys reach the focused application as the chord it binds
+	// (usr/share/construct/keys.json, the keys extension): Super+T, W and R to a window posing as
+	// Files are Ctrl+T, Ctrl+W and Ctrl+R; to one posing as Ghostty, Ctrl+Shift+T and
+	// Ctrl+Shift+W, and nothing for R, which is the shell's own history search.
+	for _, c := range []struct{ pose, want string }{
+		{"org.gnome.Nautilus", "ctrl+t\nctrl+w\nctrl+r"},
+		{"com.mitchellh.ghostty", "ctrl+shift+t\nctrl+shift+w"},
+	} {
+		_, _ = g.run(`rm -f `+keydProbeOut, "")
+		if _, err := g.eval(`GLib.spawn_command_line_async("/usr/lib/construct-test/keyd-probe.py ` + c.pose + `"); true`); err != nil {
+			r.add("keys: "+c.pose, false, "the probe: "+err.Error())
+			continue
+		}
+		if !until(20*time.Second, time.Second, func() bool {
+			var has string
+			_ = g.evalJSON(`return global.get_window_actors().map(a => a.meta_window).filter(w => w.get_title() === "`+keydProbeTitle+`").map(w => (Main.activateWindow(w), w.has_focus())).some(Boolean) ? "true" : "false";`, &has)
+			return has == "true"
+		}) {
+			r.add("keys: "+c.pose, false, "the probe's window never had the focus")
+			continue
+		}
+		step("meta_l", "t")
+		step("meta_l", "w")
+		step("meta_l", "r")
+		var got string
+		until(60*time.Second, time.Second, func() bool { got, err = g.run(`cat `+keydProbeOut, ""); return err == nil })
+		r.add("keys: "+c.pose, strings.TrimSpace(got) == c.want, fmt.Sprintf("the window got %q, want %q", strings.TrimSpace(got), c.want)+errText(err))
+	}
 }
 
 // usbStick plugs a stick into the running session as a person does: udisks sees it, GNOME mounts

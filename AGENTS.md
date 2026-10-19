@@ -82,6 +82,14 @@ falling back from a release that does not come up.
   every digest for `url-file` sources only; a `regular-file` source is written unchecked. A stick
   is read as `file:///run/construct/update`, the CDN as https. Transfers are generated
   (`cmd/image/transfers.go`), never hand-written.
+- **Super with a letter is one table**, `usr/share/construct/keys.json`: keyd (`etc/keyd/default.conf`,
+  held to the table by `go test ./cmd/image`) swallows Super and sends copy, paste and cut as the
+  Insert chords every application takes, and each other letter as F13 to F24; the shell's `keys`
+  extension turns those into the chord the focused application binds (Ctrl, or Ctrl+Shift in a
+  terminal), and `construct-keys` (Super+K) shows the table. keyd sees no window and the shell
+  cannot send a chord cleanly while Super is held, which is why the two share the work; keyd's
+  socket stays closed to the session (recipes/keyd). `task test` presses the letters in windows
+  posing as Files and as Ghostty.
 - **Nothing reaches the machine that it did not ask for.** The firewall
   (`usr/lib/construct/firewall.nft`, before any network) drops what comes in but replies, what
   IPv4/IPv6, DHCP and mDNS need, the containers' bridges, and SSH and RDP when a person turned them
