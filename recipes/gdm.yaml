@@ -1,7 +1,7 @@
 package:
   name: gdm
   version: "51.0"
-  epoch: 7
+  epoch: 8
   description: GNOME display manager
   copyright:
     - license: GPL-2.0-or-later

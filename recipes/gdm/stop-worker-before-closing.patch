@@ -12,11 +12,27 @@ logged two errors for a prompt nobody failed:
 
 A worker that has not started a session exits on SIGTERM at once
 (session-worker-main.c, on_sigterm_cb), so sent first it is gone before
-the query can fail. The connection is closed after, as before.
+the query can fail. Its connection is closed after: a connection whose
+peer is gone is closed already as GDBus sees it, refuses to close again
+and keeps its socket until it is finalized, so the stream is closed by
+hand - measured as one socket kept per prompt in the session's worker
+otherwise.
 
 --- a/daemon/gdm-session.c
 +++ b/daemon/gdm-session.c
-@@ -2433,19 +2433,23 @@
+@@ -2425,7 +2425,10 @@
+         if (conversation->worker_proxy != NULL) {
+                 GDBusConnection *connection = g_dbus_proxy_get_connection (G_DBUS_PROXY (conversation->worker_proxy));
+ 
+-                g_dbus_connection_close_sync (connection, NULL, NULL);
++                /* A connection the worker's exit closed already refuses to close again, and
++                 * keeps its socket until it is finalized: the stream is closed by hand. */
++                if (!g_dbus_connection_close_sync (connection, NULL, NULL))
++                        g_io_stream_close (g_dbus_connection_get_stream (connection), NULL, NULL);
+         }
+ 
+ }
+@@ -2433,19 +2436,23 @@
  static void
  stop_conversation (GdmSessionConversation *conversation)
  {

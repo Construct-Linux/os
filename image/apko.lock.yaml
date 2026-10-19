@@ -67,8 +67,8 @@ contents:
     - gcr=3.41.2-r0
     - gcr4=4.4.1-r0
     - gcr4-lang=4.4.1-r0
-    - gdm=51.0-r7
-    - gdm-lang=51.0-r7
+    - gdm=51.0-r8
+    - gdm-lang=51.0-r8
     - geoclue=2.8.2-r1
     - geocode-glib=3.26.4-r0
     - ghostty=1.3.1-r0
