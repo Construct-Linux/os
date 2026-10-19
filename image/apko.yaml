@@ -90,6 +90,7 @@ contents:
     # construct firmware takes from them the firmware the image cannot carry (cmd/construct,
     # internal/lenovo), the ThinkPad X9-15p's sensor hub image and its speakers' tunings.
     - innoextract
+    - innoextract-doc
     # lm-sensors (sensors, sensors-detect) and i2c-tools: the temperatures, fans and voltages the
     # kernel's hwmon drivers report, and the I2C buses they sit on.
     - lm-sensors

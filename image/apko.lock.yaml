@@ -684,6 +684,7 @@ contents:
     - icu78-data-full=78.3-r4
     - inih=62-r5
     - innoextract=1.9-r6
+    - innoextract-doc=1.9-r6
     - ip6tables=1.8.13-r5
     - iproute2=7.2.0-r1
     - iproute2-doc=7.2.0-r1
