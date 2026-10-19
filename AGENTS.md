@@ -86,10 +86,15 @@ falling back from a release that does not come up.
 - **Nothing reaches the machine that it did not ask for.** The firewall
   (`usr/lib/construct/firewall.nft`, before any network) drops what comes in but replies, what
   IPv4/IPv6, DHCP and mDNS need, the containers' bridges, Tailscale, and SSH when a person turned it
-  on; Docker publishes on 127.0.0.1 unless given an address. What it drops is logged to the kernel's
-  journal under `firewall-drop`, rate limited, but for broadcasts and multicast. Open a port with its
-  reason, never by widening a rule; `task test` checks that a network cannot reach a server on every
-  address, that sshd answers only once enabled and with its Ed25519 key alone, and the log.
+  on; Docker publishes on 127.0.0.1 unless given an address. Open a port with its reason, never by
+  widening a rule. What is dropped is counted, and what was addressed to this machine (not a
+  network's broadcasts and multicast) logged to the kernel's journal under `construct-fw`, rate
+  limited; a source probing closed ports in numbers is held as a scanner for ten minutes (dynamic
+  sets). `construct firewall` (internal/firewall) reads all of it and writes a person's rules in
+  `/etc/nftables.d`, one file each, never by hand; the session is told of a scan by
+  `construct firewall watch` (a user unit). `task test` checks that a network cannot reach a server
+  on every address, that sshd answers only once enabled and with its Ed25519 key alone, the log,
+  a scan held and let go, and a port opened and closed with `construct firewall`.
 - **Nothing runs with more rights than its caller unless the image needs it to.** A setuid or
   setgid program runs its caller's environment, arguments and descriptors as root; elevation is
   asked over IPC instead (polkit, whose helper its socket starts). `cmd/image/setuid.go` lists the

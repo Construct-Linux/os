@@ -388,6 +388,26 @@ func (r *report) systemChecks(g *guest) {
 	r.add("firewall", strings.HasPrefix(fw, "1\n") && strings.Contains(fw, "local=0") && strings.Contains(fw, "network=28"), oneLine(fw))
 	sshOn, sshErr := g.run(sshOnNetworkScript, "")
 	r.add("ssh on the network", sshErr == nil && sshOnNetworkOK(sshOn), oneLine(sshOn)+errText(sshErr))
+	// A rule the person adds (construct firewall allow) opens a port to a network and no other,
+	// counted under its name, and deny takes it back with its file.
+	allow, _ := g.run(`ip netns add fwrule && ip link add fr0 type veth peer name fr1 netns fwrule && `+
+		`ip addr add 10.98.0.1/24 dev fr0 && ip link set fr0 up && ip -n fwrule addr add 10.98.0.2/24 dev fr1 && ip -n fwrule link set fr1 up && `+
+		`{ python3 -m http.server 8766 --bind 0.0.0.0 >/dev/null 2>&1 & p=$!; for i in $(seq 20); do curl -s -o /dev/null -m 1 http://127.0.0.1:8766/ && break; sleep 0.5; done; `+
+		`construct firewall allow 8766/tcp from 10.98.0.0/24 >/dev/null; echo allow=$?; `+
+		`ip netns exec fwrule curl -s -o /dev/null -m 3 http://10.98.0.1:8766/; echo opened=$?; `+
+		`construct firewall status | grep -c 'allow-8766-tcp-from-10.98.0.0_24.*8766/tcp from 10.98.0.0/24'; `+
+		`construct firewall deny allow-8766-tcp-from-10.98.0.0_24 >/dev/null; echo deny=$?; `+
+		`ip netns exec fwrule curl -s -o /dev/null -m 3 http://10.98.0.1:8766/; echo closed=$?; test -e /etc/nftables.d/allow-8766-tcp-from-10.98.0.0_24.nft; echo file=$?; kill $p; }`, "")
+	r.add("firewall rule", strings.Contains(allow, "allow=0\nopened=0\n1\ndeny=0\nclosed=28\nfile=1"), oneLine(allow))
+	// A scan: fifteen connections to closed ports from the network side in seconds, and the
+	// source is held in the scanners set, logged once as a scan where construct firewall log and
+	// status show it, and let go by unblock.
+	scan, _ := g.run(`for p in $(seq 9001 9015); do ip netns exec fwrule timeout 0.3 bash -c "echo > /dev/tcp/10.98.0.1/$p" 2>/dev/null; done; sleep 1; `+
+		`nft list set inet construct scanners | grep -c '10.98.0.2'; `+
+		`journalctl -k -b -q -o cat -g 'construct-fw scan: ' | grep -c 'SRC=10.98.0.2'; `+
+		`construct firewall log | grep -c 'scan from 10.98.0.2'; construct firewall status | grep -c 'holding 10.98.0.2'; `+
+		`construct firewall unblock 10.98.0.2 >/dev/null; echo unblock=$?; nft list set inet construct scanners | grep -c '10.98.0.2'; ip netns del fwrule`, "")
+	r.add("firewall scan", strings.HasPrefix(scan, "1\n1\n1\n1\nunblock=0\n0"), oneLine(scan))
 	dock, err := g.run(asLive+`docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
@@ -1421,8 +1441,8 @@ const sshOnNetworkScript = `echo enabled=$(systemctl is-enabled sshd.service); `
 	`ip netns exec sshtest python3 -c "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); ` +
 	`s.setsockopt(socket.SOL_SOCKET,socket.SO_BROADCAST,1); s.sendto(b'x',('10.99.1.255',9997))"; ` +
 	`ip netns exec sshtest curl -s -o /dev/null -m 3 telnet://10.99.1.1:9998; sleep 1; ` +
-	`journalctl -q -k -b -g 'firewall-drop.*DPT=9998' -o cat | grep -q .; echo logged=$?; ` +
-	`journalctl -q -k -b -g 'firewall-drop.*DPT=9997' -o cat | grep -q .; echo broadcast=$?; ` +
+	`journalctl -q -k -b -g 'construct-fw drop: .*DPT=9998' -o cat | grep -q .; echo logged=$?; ` +
+	`journalctl -q -k -b -g 'construct-fw drop: .*DPT=9997' -o cat | grep -q .; echo broadcast=$?; ` +
 	`systemctl start sshd.service; echo start=$?; ` +
 	`ip netns exec sshtest timeout 5 bash -c 'exec 3<>/dev/tcp/10.99.1.1/22; head -1 <&3'; ` +
 	`echo keys=$(ls /etc/ssh/ssh_host_*_key); ` +

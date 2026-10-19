@@ -1,0 +1,1 @@
+{"nftables": [{"metainfo": {"version": "1.1.7", "release_name": "Commodore Bullmoose #8", "json_schema_version": 1}}, {"set": {"family": "inet", "name": "scanners", "table": "construct", "type": "ipv4_addr", "handle": 2, "size": 65535, "count": 1, "flags": ["timeout", "dynamic"], "timeout": 600, "elem": [{"elem": {"val": "10.99.0.2", "expires": 599}}]}}]}
