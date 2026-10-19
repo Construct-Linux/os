@@ -43,6 +43,7 @@ const usage = `usage:
   construct theme      [--themes DIR] [--home DIR] [--config DIR]
   construct live
   construct firmware   [DIR|FILE]
+  construct firewall   status | log | allow PORT/tcp|udp [from ADDRESS|NETWORK] | deny NAME | unblock ADDRESS | watch
   construct power      [--seconds N] | suspend
   construct bench      [--rounds N] [--seconds N]
   construct kernel-profile [--minutes N] [-o FILE]
@@ -86,6 +87,8 @@ func main() {
 		err = liveCmd("/etc", "/var")
 	case "firmware":
 		err = firmwareCmd(ctx, os.Args[2:], os.Stdout)
+	case "firewall":
+		err = firewallCmd(ctx, os.Args[2:], os.Stdout)
 	case "power":
 		err = powerCmd(ctx, os.Args[2:], os.Stdout)
 	case "bench":

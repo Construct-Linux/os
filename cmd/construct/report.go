@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/Construct-Linux/os/internal/firewall"
 	"github.com/Construct-Linux/os/internal/update"
 )
 
@@ -66,6 +67,7 @@ func gatherReport(ctx context.Context, root string, run runner) ([]fact, []strin
 		fact{"/var encrypted", varEncrypted(root)},
 		fact{"gpu", strings.Join(gpus(root), ", ")},
 		fact{"own firmware", ownFirmware(root)},
+		fact{"firewall", firewallFact(ctx, run)},
 		fact{"failed units", failedUnits(ctx, run)},
 	)
 	return facts, journalErrors(ctx, run)
@@ -263,6 +265,24 @@ func gpus(root string) []string {
 		out = append(out, fmt.Sprintf("%s:%s (%s)", vendor, device, driver))
 	}
 	return out
+}
+
+// firewallFact is what the firewall dropped and who scanned this boot, from its counters and
+// the kernel's journal (internal/firewall): unknown where nft or the journal cannot be read.
+func firewallFact(ctx context.Context, run runner) string {
+	table, err := run(ctx, "nft", "-j", "list", "table", "inet", "construct")
+	if err != nil {
+		return ""
+	}
+	counters, err := firewall.ParseCounters(table)
+	if err != nil {
+		return ""
+	}
+	log, err := run(ctx, "journalctl", "-k", "-b", "-q", "--no-pager", "-o", "short-iso", "-g", firewall.Prefix)
+	if err != nil {
+		return ""
+	}
+	return firewall.Summary(counters, firewall.ParseLog(bytes.NewReader(log)), nil)
 }
 
 // failedUnits are the units systemd lists as failed, or "none".

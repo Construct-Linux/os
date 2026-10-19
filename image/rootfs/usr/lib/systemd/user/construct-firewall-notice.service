@@ -1,0 +1,16 @@
+# Tells the person when the firewall holds a source as a scanner (usr/lib/construct/firewall.nft
+# logs it to the kernel's journal, which wheel reads): construct firewall watch follows the journal
+# and sends one notification per source every ten minutes, no more.
+[Unit]
+Description=Tell the person of a port scan the firewall caught
+After=graphical-session.target
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/construct firewall watch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=graphical-session.target

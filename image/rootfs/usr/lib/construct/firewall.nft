@@ -3,17 +3,50 @@
 # that it did not ask for, but what a network needs to work and what a person turned on.
 # Development servers listening on every address (npm's, python -m http.server) stay this
 # machine's; Docker publishes on 127.0.0.1 unless told an address (etc/docker/daemon.json), its
-# DNAT passing by this chain. An administrator opens more in /etc/nftables.d/*.nft, rules of this
-# chain, kept in /var with the rest of /etc.
+# DNAT passing by this chain. What it drops is counted, and the unsolicited logged to the kernel's
+# journal under "construct-fw" - a source probing closed ports in numbers as a scan, which is
+# then dropped whole for a while - where `construct firewall log` and `construct report` read it.
+# A person opens more with `construct firewall allow`, which writes a rule of this chain in
+# /etc/nftables.d/*.nft, kept in /var with the rest of /etc.
 destroy table inet construct
 
 table inet construct {
+	# Sources that probed this machine's closed ports in numbers (the scan rules below), dropped
+	# whole for ten minutes: what they send meanwhile reaches no counter per port and no log.
+	# `construct firewall status` lists them, `construct firewall unblock` lets one go early.
+	set scanners {
+		type ipv4_addr
+		flags dynamic, timeout
+		timeout 10m
+	}
+	set scanners6 {
+		type ipv6_addr
+		flags dynamic, timeout
+		timeout 10m
+	}
+	# The rate of unsolicited connection attempts per source, a meter with an entry per address.
+	set probes {
+		type ipv4_addr
+		flags dynamic, timeout
+		timeout 1m
+		size 65536
+	}
+	set probes6 {
+		type ipv6_addr
+		flags dynamic, timeout
+		timeout 1m
+		size 65536
+	}
+
 	chain input {
 		type filter hook input priority filter; policy drop;
 
 		ct state established,related accept
-		ct state invalid drop
+		ct state invalid counter drop comment "invalid"
 		iif lo accept
+
+		ip saddr @scanners counter drop comment "scanners"
+		ip6 saddr @scanners6 counter drop comment "scanners6"
 
 		# Containers reach the host's own services (host.docker.internal) through their bridges.
 		iifname "docker0" accept
@@ -41,15 +74,22 @@ table inet construct {
 
 		# SSH answers only while sshd listens, which it does once a person ran systemctl enable
 		# --now sshd.
-		tcp dport 22 accept
+		tcp dport 22 counter accept comment "ssh"
 
 		include "/etc/nftables.d/*.nft"
 
-		# What is left is dropped, and said in the kernel's log: journalctl -k -g firewall-drop.
-		# A network's broadcasts and multicast are other machines talking, not addressed to this
-		# one, and would spend the log's rate before a probe of this machine is seen. By address:
-		# an access point can deliver them to this machine's own MAC.
-		fib daddr type { broadcast, multicast } drop
-		limit rate 10/minute burst 20 packets log prefix "firewall-drop: " level info
+		# What reaches here was not asked for. A source attempting new connections to this
+		# machine faster than a person's mistake - over ten a minute - is scanning: logged once,
+		# and dropped whole for ten minutes (the sets above).
+		ct state new fib daddr type local meta l4proto { tcp, udp } \
+			add @probes { ip saddr limit rate over 10/minute burst 10 packets } \
+			add @scanners { ip saddr } log prefix "construct-fw scan: " level info counter drop comment "scans"
+		ct state new fib daddr type local meta l4proto { tcp, udp } \
+			add @probes6 { ip6 saddr limit rate over 10/minute burst 10 packets } \
+			add @scanners6 { ip6 saddr } log prefix "construct-fw scan: " level info counter drop comment "scans6"
+		# The rest of the unsolicited: unicast to this machine, not the LAN's broadcasts and
+		# multicasts, logged at a rate the journal can hold, counted whole.
+		ct state new fib daddr type local limit rate 10/minute burst 20 packets log prefix "construct-fw drop: " level info
+		ct state new fib daddr type local counter comment "dropped"
 	}
 }

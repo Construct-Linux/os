@@ -140,6 +140,12 @@ of a forgotten password. Take the stick out and restart.
   on the stick before installing, the installed machine has it too; `construct report` lists it
   as *own firmware*. A directory the packages were unpacked to serves as well
   (`construct firmware DIR`).
+- **The firewall** drops whatever the machine did not ask for, counts it, and logs the unsolicited
+  to the journal; a source that tries port after port is held for ten minutes and the desktop
+  tells you. `construct firewall status` says what was dropped, who scanned and what you opened;
+  `construct firewall log` lists it; `construct firewall allow 8080/tcp from 192.168.1.0/24` opens
+  a port, to a network or to anyone, as a rule in `/etc/nftables.d` that updates keep;
+  `construct firewall deny` takes it back, `construct firewall unblock` lets a held source go.
 - **Something wrong?** `construct report` prints what an [issue](https://github.com/Construct-Linux/os/issues/new/choose)
   needs; `construct diagnose` collects logs for a harder one. A security flaw goes privately, as
   `SECURITY.md` says.
