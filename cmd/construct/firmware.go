@@ -17,17 +17,20 @@ import (
 	"strings"
 
 	"github.com/Construct-Linux/os/internal/fsx"
+	"github.com/Construct-Linux/os/internal/lenovo"
 	"github.com/Construct-Linux/os/internal/program"
 )
 
-// Firmware a person brings for their own machine, which the image cannot carry: a laptop maker's
-// build whose license does not let anyone redistribute it. The ThinkPad X9-15p's Integrated Sensor
-// Hub (ambient light, rotation, presence) boots only Lenovo's build, and its four CS35L57
+// Firmware a person's machine needs and the image cannot carry: a laptop maker's build whose
+// license does not let anyone redistribute it. The ThinkPad X9-15p's Integrated Sensor Hub
+// (ambient light, rotation, presence) boots only Lenovo's build, and its four CS35L57
 // amplifiers play at full volume only with Lenovo's tuning for them and Cirrus's DSP firmware;
 // all of it is in Lenovo's Windows driver packages (the sensor driver's under Lenovo/FwImage,
-// the audio driver's under CS/XU_Ext) - unpacked on Windows, their installers refuse anywhere
-// else - and none of it in linux-firmware, which carries Dell's tunings for the same amplifier.
-// It goes on /var, in firmwareDir, which the kernel searches before /usr/lib/firmware
+// the audio driver's under CS/XU_Ext) and none of it in linux-firmware, which carries Dell's
+// tunings for the same amplifier. construct firmware fetches the packages for this machine from
+// Lenovo's own catalog (internal/lenovo) and takes the files from them without running them;
+// a directory the packages were unpacked to, or the hub's image alone, serve as well. It goes
+// on /var, in firmwareDir, which the kernel searches before /usr/lib/firmware
 // (firmware_class.path on the kernel image's command line, cmd/image), and construct install
 // carries it onto the disk it installs (carryFirmware), so what the stick was given the machine
 // keeps.
@@ -39,12 +42,15 @@ const firmwareDir = "/var/lib/construct/firmware"
 // hub's generation (ptl): the generic ish_<gen>.bin when no machine-specific one was there.
 var ishLoaded = regexp.MustCompile(`ISH loader: load firmware: intel/ish/ish_([a-z0-9]+)(?:_[0-9a-f_]+)?\.bin`)
 
-// firmwareCmd installs what a laptop maker ships for Windows alone: construct firmware PATH,
-// the sensor hub's image on its own, or the directory Lenovo's driver packages were unpacked to,
-// from which it takes whatever this machine's drivers ask for.
+// firmwareCmd installs what the laptop maker ships for Windows alone: construct firmware, from
+// Lenovo's servers; construct firmware DIR, from the directory its driver packages were unpacked
+// to; construct firmware FILE, the sensor hub's image on its own.
 func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
-	if len(args) != 1 {
-		return errors.New("usage: construct firmware DIR|FILE: the directory the laptop maker's Windows drivers were unpacked to (Lenovo's C:\\DRIVERS), or the sensor hub's ishS_SI_<version>.bin alone")
+	switch {
+	case len(args) > 1:
+		return errors.New("usage: construct firmware [DIR|FILE]: from Lenovo's servers, from the directory the laptop maker's Windows drivers were unpacked to, or the sensor hub's ishS_SI_<version>.bin alone")
+	case len(args) == 0:
+		return fetchFirmware(ctx, out)
 	}
 	info, err := os.Stat(args[0])
 	if err != nil {
@@ -85,11 +91,99 @@ func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 	if err != nil {
 		return err
 	}
-	// A machine without a sensor hub, or whose driver did not start, takes no hub firmware; the
-	// rest is still looked for.
-	ish, ishErr := sensorHubName(ctx)
-	if ishErr != nil {
-		fmt.Fprintf(out, "sensor hub: %v\n", ishErr)
+	b, err := askedFor(ctx, files, out)
+	if err != nil {
+		return err
+	}
+	if len(b.files) == 0 {
+		return fmt.Errorf("%s holds nothing this machine's drivers ask for", args[0])
+	}
+	return installBrought(args[0], b, out)
+}
+
+// fetchFirmware takes the firmware from Lenovo's packages for this machine: the ones its
+// catalog has for the devices whose firmware the image lacks, downloaded, listed, and the
+// files wanted unpacked from them, nothing of theirs run.
+func fetchFirmware(ctx context.Context, out io.Writer) error {
+	vendor, product := dmi("sys_vendor"), dmi("product_name")
+	if !strings.EqualFold(vendor, "LENOVO") {
+		return fmt.Errorf("construct firmware fetches from Lenovo's servers, and this is a %s: unpack the maker's driver packages and give their directory", vendor)
+	}
+	if len(product) < 4 {
+		return fmt.Errorf("the DMI product name %q does not start with a machine type", product)
+	}
+	machineType := product[:4]
+	ids := firmwareDevices("/sys")
+	if len(ids) == 0 {
+		return errors.New("this machine has no sensor hub and no PCI sound device: nothing to fetch firmware for")
+	}
+	fmt.Fprintf(out, "reading Lenovo's catalog for machine type %s\n", machineType)
+	packages, err := lenovo.Catalog(ctx, machineType)
+	if err != nil {
+		return err
+	}
+	var wanted []lenovo.Package
+	for _, p := range packages {
+		if p.For(ids) {
+			wanted = append(wanted, p)
+		}
+	}
+	if len(wanted) == 0 {
+		return fmt.Errorf("Lenovo's catalog for %s has no package for the devices %s", machineType, strings.Join(ids, ", "))
+	}
+	// On /var: the installers are hundreds of megabytes.
+	tmp, err := os.MkdirTemp("/var/tmp", "construct-firmware-")
+	if err != nil {
+		return err
+	}
+	defer os.RemoveAll(tmp)
+	var files []string
+	installers := map[string]string{}
+	for _, p := range wanted {
+		fmt.Fprintf(out, "downloading %s %s (%d MB)\n", p.Title, p.Version, p.Installer.Size>>20)
+		exe, err := lenovo.Download(ctx, p, tmp)
+		if err != nil {
+			return err
+		}
+		listed, err := lenovo.List(ctx, exe)
+		if err != nil {
+			return err
+		}
+		for _, f := range listed {
+			files = append(files, p.ID+"/"+f)
+		}
+		installers[p.ID] = exe
+	}
+	b, err := askedFor(ctx, files, out)
+	if err != nil {
+		return err
+	}
+	if len(b.files) == 0 {
+		return errors.New("the packages hold nothing this machine's drivers ask for")
+	}
+	for id, exe := range installers {
+		var take []string
+		for _, src := range b.files {
+			if rest, ok := strings.CutPrefix(src, id+"/"); ok && !slices.Contains(take, rest) {
+				take = append(take, rest)
+			}
+		}
+		if len(take) == 0 {
+			continue
+		}
+		if err := lenovo.Extract(ctx, exe, filepath.Join(tmp, id), take); err != nil {
+			return err
+		}
+	}
+	return installBrought(tmp, b, out)
+}
+
+// askedFor is what this machine's drivers ask for among files, a tree's regular files as slash
+// paths; what it lacks to ask with (a sensor hub, a sound device) is said and not an error.
+func askedFor(ctx context.Context, files []string, out io.Writer) (broughtFirmware, error) {
+	ish, err := sensorHubName(ctx)
+	if err != nil {
+		fmt.Fprintf(out, "sensor hub: %v\n", err)
 	}
 	ssid, err := soundSSID("/sys")
 	if err != nil {
@@ -97,16 +191,18 @@ func firmwareCmd(ctx context.Context, args []string, out io.Writer) error {
 	}
 	b, err := brought(files, ssid, ish)
 	if err != nil {
-		return err
+		return b, err
 	}
 	for _, n := range b.notes {
 		fmt.Fprintln(out, n)
 	}
-	if len(b.files) == 0 {
-		return fmt.Errorf("%s holds nothing this machine's drivers ask for", args[0])
-	}
+	return b, nil
+}
+
+// installBrought writes what was brought, read under root, into firmwareDir.
+func installBrought(root string, b broughtFirmware, out io.Writer) error {
 	for _, dst := range slices.Sorted(maps.Keys(b.files)) {
-		fw, err := os.ReadFile(filepath.Join(args[0], filepath.FromSlash(b.files[dst])))
+		fw, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(b.files[dst])))
 		if err != nil {
 			return err
 		}
@@ -128,6 +224,11 @@ func restartNote(out io.Writer, hub bool) {
 	}
 }
 
+func dmi(field string) string {
+	b, _ := os.ReadFile(filepath.Join("/sys/class/dmi/id", field))
+	return strings.TrimSpace(string(b))
+}
+
 // sensorHubName is the name the sensor hub driver asks for first on this machine: its generation
 // from the firmware the kernel loaded this boot, and the machine's DMI fields.
 func sensorHubName(ctx context.Context) (string, error) {
@@ -138,10 +239,6 @@ func sensorHubName(ctx context.Context) (string, error) {
 	gen, err := ishGeneration(log.String())
 	if err != nil {
 		return "", err
-	}
-	dmi := func(f string) string {
-		b, _ := os.ReadFile(filepath.Join("/sys/class/dmi/id", f))
-		return strings.TrimSuffix(string(b), "\n")
 	}
 	return ishName(gen, dmi("sys_vendor"), dmi("product_family"), dmi("product_name"), dmi("product_sku")), nil
 }
@@ -184,24 +281,59 @@ func ishName(gen, vendor, family, product, sku string) string {
 	return "intel/ish/ish_" + gen + ".bin"
 }
 
+// pciDevices are the machine's PCI devices under sysRoot, each a directory with its class, its
+// ids and its driver.
+func pciDevices(sysRoot string) []string {
+	devs, _ := filepath.Glob(filepath.Join(sysRoot, "bus/pci/devices/*"))
+	return devs
+}
+
+func sysValue(dev, file string) string {
+	b, err := os.ReadFile(filepath.Join(dev, file))
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(b))
+}
+
+// isSoundDevice is true of a PCI device of class 04, multimedia: 0401 audio, 0403 HD Audio and
+// the DSPs behind it.
+func isSoundDevice(dev string) bool {
+	return strings.HasPrefix(sysValue(dev, "class"), "0x04")
+}
+
+// isSensorHub is true of the PCI device the sensor hub's driver is bound to.
+func isSensorHub(dev string) bool {
+	driver, err := os.Readlink(filepath.Join(dev, "driver"))
+	return err == nil && filepath.Base(driver) == "intel_ish_ipc"
+}
+
+// firmwareDevices are the PCI ids, vendor:device, of the devices whose firmware a maker's
+// packages may carry: the sensor hub, and the sound device the amplifiers hang off.
+func firmwareDevices(sysRoot string) []string {
+	var ids []string
+	for _, dev := range pciDevices(sysRoot) {
+		if !isSensorHub(dev) && !isSoundDevice(dev) {
+			continue
+		}
+		vendor, device := sysValue(dev, "vendor"), sysValue(dev, "device")
+		if len(vendor) != 6 || len(device) != 6 {
+			continue
+		}
+		ids = append(ids, vendor[2:]+":"+device[2:])
+	}
+	return ids
+}
+
 // soundSSID is the subsystem id of the machine's PCI sound device, vendor then device as the
 // amplifier driver writes it in the firmware names it asks for (cs35l56.c, "%04x%04x-spkid%d",
 // from snd_soc_card_get_pci_ssid): 17aa2355 on the ThinkPad X9-15p.
 func soundSSID(sysRoot string) (string, error) {
-	devs, _ := filepath.Glob(filepath.Join(sysRoot, "bus/pci/devices/*/class"))
-	for _, class := range devs {
-		c, err := os.ReadFile(class)
-		// PCI class 04: multimedia; 0401 audio, 0403 HD Audio and the DSPs behind it.
-		if err != nil || !strings.HasPrefix(string(c), "0x04") {
+	for _, dev := range pciDevices(sysRoot) {
+		if !isSoundDevice(dev) {
 			continue
 		}
-		dev := filepath.Dir(class)
-		v, verr := os.ReadFile(filepath.Join(dev, "subsystem_vendor"))
-		d, derr := os.ReadFile(filepath.Join(dev, "subsystem_device"))
-		if verr != nil || derr != nil {
-			continue
-		}
-		vendor, device := strings.TrimSpace(string(v)), strings.TrimSpace(string(d))
+		vendor, device := sysValue(dev, "subsystem_vendor"), sysValue(dev, "subsystem_device")
 		if len(vendor) != 6 || len(device) != 6 || vendor == "0x0000" {
 			continue
 		}

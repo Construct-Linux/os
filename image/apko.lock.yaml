@@ -683,6 +683,7 @@ contents:
     - i2c-tools-doc=4.4-r14
     - icu78-data-full=78.3-r4
     - inih=62-r5
+    - innoextract=1.9-r6
     - ip6tables=1.8.13-r5
     - iproute2=7.2.0-r1
     - iproute2-doc=7.2.0-r1
@@ -719,6 +720,9 @@ contents:
     - libattr1=2.6.0-r4
     - libaudit=4.2.1-r2
     - libblkid=2.42.4-r0
+    - libboost-filesystem=1.88.0-r7
+    - libboost-iostreams=1.88.0-r7
+    - libboost-program_options=1.88.0-r7
     - libbpf=1.8.0-r0
     - libbrotlicommon1=1.2.0-r6
     - libbrotlidec1=1.2.0-r6

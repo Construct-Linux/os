@@ -125,11 +125,12 @@ of a forgotten password. Take the stick out and restart.
 - **Firmware the image cannot carry.** A few parts boot only their maker's firmware, licensed to
   the machine's owner and to nobody else: the ThinkPad X9-15p's sensor hub (ambient light,
   rotation, presence) and the tuning of its four speakers are in Lenovo's Windows driver packages
-  for it (Motherboard devices, Audio), and in no Linux package. Unpack them on Windows (their
-  installers refuse anywhere else; they leave `C:\DRIVERS`), copy that folder over, and
-  `sudo construct firmware /path/to/DRIVERS` installs what this machine's drivers ask for, on
-  `/var`, where updates leave it. Done on the stick before installing, the installed machine has
-  it too. `construct report` lists it as *own firmware*.
+  for it, and in no Linux package. `sudo construct firmware` reads Lenovo's own catalog for the
+  machine, downloads the packages for its sensor hub and its sound device, takes the firmware
+  out of them without running anything, and installs it on `/var`, where updates leave it. Done
+  on the stick before installing, the installed machine has it too; `construct report` lists it
+  as *own firmware*. A directory the packages were unpacked to serves as well
+  (`construct firmware DIR`).
 - **Something wrong?** `construct report` prints what an [issue](https://github.com/Construct-Linux/os/issues/new/choose)
   needs; `construct diagnose` collects logs for a harder one. A security flaw goes privately, as
   `SECURITY.md` says.

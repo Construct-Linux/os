@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -89,6 +90,16 @@ func TestBroughtFromLenovosDrivers(t *testing.T) {
 	if len(b.files) != 4 || len(b.notes) != 1 {
 		t.Errorf("tunings without a DSP firmware: %v %v", b.files, b.notes)
 	}
+	// As listed in the packages fetched from Lenovo: under the package's id and Inno Setup's
+	// own prefix.
+	b, err = brought([]string{
+		"n4qhi16w_v2/code$GetExtractPath$/Lenovo/FwImage/0004/ishS_SI_5.8.1.7779.bin",
+		"n4qa226w/code$GetExtractPath$/CS/XU_Ext/lenovo/tn/35L57/2355/dflt/b2_dflt_SS0_2355_LW_l1u0.bin",
+		"n4qa226w/code$GetExtractPath$/CS/XU_Ext/lenovo/fw/35L56/4.5.3/dflt/b2_dflt_35l56_4.5.3.wmfw",
+	}, "17aa2355", ish)
+	if err != nil || len(b.files) != 3 || !b.hub || b.files["cirrus/cs35l57-b2-dsp1-misc-17aa2355-spkid0.wmfw"] == "" {
+		t.Errorf("from the fetched packages: %v %v %v", b.files, b.notes, err)
+	}
 }
 
 func TestVersionLess(t *testing.T) {
@@ -102,22 +113,29 @@ func TestVersionLess(t *testing.T) {
 	}
 }
 
-// The sound device's subsystem id is read from the first PCI multimedia device that has one.
-func TestSoundSSID(t *testing.T) {
+// The sound device's subsystem id is read from the first PCI multimedia device that has one,
+// and the devices a maker's packages are looked up by are the sensor hub, by its driver, and the
+// sound device, by its class: the X9-15p's 8086:e345 and 8086:e428, not its GPU.
+func TestSoundDeviceAndSensorHub(t *testing.T) {
 	sys := t.TempDir()
 	for dev, files := range map[string]map[string]string{
-		"0000:00:02.0": {"class": "0x030000\n", "subsystem_vendor": "0x17aa\n", "subsystem_device": "0x2355\n"},
-		"0000:00:1f.3": {"class": "0x040380\n", "subsystem_vendor": "0x17aa\n", "subsystem_device": "0x2355\n"},
+		"0000:00:02.0": {"class": "0x030000\n", "vendor": "0x8086\n", "device": "0xb0a0\n", "subsystem_vendor": "0x17aa\n", "subsystem_device": "0x2355\n"},
+		"0000:00:12.0": {"class": "0x0c8000\n", "vendor": "0x8086\n", "device": "0xe345\n"},
+		"0000:00:1f.3": {"class": "0x040380\n", "vendor": "0x8086\n", "device": "0xe428\n", "subsystem_vendor": "0x17aa\n", "subsystem_device": "0x2355\n"},
 	} {
 		for name, body := range files {
 			writeFile(t, filepath.Join(sys, "bus/pci/devices", dev, name), []byte(body))
 		}
 	}
+	link(t, "../../../../bus/pci/drivers/intel_ish_ipc", filepath.Join(sys, "bus/pci/devices/0000:00:12.0/driver"))
 	if got, err := soundSSID(sys); err != nil || got != "17aa2355" {
 		t.Errorf("%q, %v", got, err)
 	}
 	if _, err := soundSSID(t.TempDir()); err == nil {
 		t.Error("an id without a sound device")
+	}
+	if got := firmwareDevices(sys); strings.Join(got, " ") != "8086:e345 8086:e428" {
+		t.Errorf("devices %v", got)
 	}
 }
 

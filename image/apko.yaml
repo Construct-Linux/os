@@ -86,6 +86,10 @@ contents:
     # and the microphones (recipes/sof-firmware, recipes/alsa-ucm-conf).
     - sof-firmware
     - alsa-ucm-conf
+    # innoextract unpacks Inno Setup installers, which Lenovo's Windows driver packages are:
+    # construct firmware takes from them the firmware the image cannot carry (cmd/construct,
+    # internal/lenovo), the ThinkPad X9-15p's sensor hub image and its speakers' tunings.
+    - innoextract
     # lm-sensors (sensors, sensors-detect) and i2c-tools: the temperatures, fans and voltages the
     # kernel's hwmon drivers report, and the I2C buses they sit on.
     - lm-sensors
