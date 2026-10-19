@@ -8,7 +8,7 @@
 package:
   name: ghostty
   version: 1.3.1
-  epoch: 0
+  epoch: 1
   description: A fast, native terminal emulator (GTK 4)
   copyright:
     - license: MIT
@@ -43,6 +43,13 @@ pipeline:
     with:
       uri: https://release.files.ghostty.org/${{package.version}}/ghostty-${{package.version}}.tar.gz
       expected-sha256: 3349d25600ffbda281197a18314f7d18791969cffe9474f0ff16a45a9ebfccdb
+
+  # systemd 262 refuses a notify-reload service that says READY=1 before it catches its reload
+  # signal, and 1.3.1 did: the unit failed and the terminal did not open. Upstream's fix, in the
+  # release after 1.3.1.
+  - uses: patch
+    with:
+      patches: ghostty/systemd-ready-after-sigusr2.patch
 
   # The build environment, as Zig's linker reads it: Wolfi's glibc writes its libc.so and libm.so
   # linker scripts naming copies called libc.so-2.44 and libm.so-2.44, an extension Zig refuses,

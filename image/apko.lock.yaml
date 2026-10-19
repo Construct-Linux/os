@@ -71,8 +71,8 @@ contents:
     - gdm-lang=51.0-r8
     - geoclue=2.8.2-r1
     - geocode-glib=3.26.4-r0
-    - ghostty=1.3.1-r0
-    - ghostty-lang=1.3.1-r0
+    - ghostty=1.3.1-r1
+    - ghostty-lang=1.3.1-r1
     - gjs=1.90.0-r0
     - glib-networking=2.90.0-r0
     - glib-networking-lang=2.90.0-r0
