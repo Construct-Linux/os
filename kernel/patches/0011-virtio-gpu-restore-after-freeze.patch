@@ -1,0 +1,45 @@
+construct: not upstream yet, to be sent to dri-devel. 7.3's 8907eb42c0 ("drm/virtio: Reset
+device before deleting virtqueues on freeze") resets the device at every suspend, so that it
+stops using the virtqueues' memory while the guest sleeps - and a reset makes the device forget
+every resource (QEMU destroys them). The driver recreated them only after a hibernation
+(78e434bdc0's PM notifier), so after a plain suspend it resumed the display with SET_SCANOUT,
+RESOURCE_FLUSH and TRANSFER_TO_HOST_2D for resources the device no longer had, each answered
+with INVALID_RESOURCE_ID (0x1203), and the screen stayed dead: the harness's suspend and resume
+test (task test:usb, "locked after resume"), which 7.2.11 passed. Restore now recreates the
+objects after every freeze, as it did after a hibernation. 3D contexts are not recreated, as
+after a hibernation, which the notifier refuses with virgl: the harness's VM has no virgl, task
+play's does.
+
+Subject: [PATCH] drm/virtio: Restore objects after every freeze, now that freeze resets the device
+
+Since commit 8907eb42c0 ("drm/virtio: Reset device before deleting
+virtqueues on freeze") virtgpu_freeze() resets the device, which makes
+it forget every resource the guest created. Objects were recreated on
+restore only after a hibernation (vgdev->hibernated), so after a plain
+suspend the display resumed against resources the device no longer had:
+SET_SCANOUT, RESOURCE_FLUSH and TRANSFER_TO_HOST_2D each failed with
+VIRTIO_GPU_RESP_ERR_INVALID_RESOURCE_ID and the screen stayed blank
+until a reboot (QEMU 11.1, virtio-vga).
+
+Recreate the objects on every restore, as the hibernation path did.
+
+Fixes: 8907eb42c0 ("drm/virtio: Reset device before deleting virtqueues on freeze")
+---
+--- a/drivers/gpu/drm/virtio/virtgpu_drv.c
++++ b/drivers/gpu/drm/virtio/virtgpu_drv.c
+@@ -252,7 +252,14 @@
+ 
+ 	virtio_device_ready(vdev);
+ 
+-	virtgpu_hibernation_restore(vgdev);
++	/*
++	 * The reset in virtgpu_freeze() left the device without a single
++	 * resource, as a hibernation does: create them all again, so that
++	 * the scanouts, flushes and transfers that resuming the display
++	 * sends do not name resources the device no longer knows.
++	 */
++	vgdev->hibernated = false;
++	virtio_gpu_object_restore_all(vgdev);
+ 
+ 	error = drm_mode_config_helper_resume(dev);
+ 	if (error) {
