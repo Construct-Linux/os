@@ -125,6 +125,12 @@ of a forgotten password. Take the stick out and restart.
   `/var` anew (every person, file, container and setting gone; the system slots untouched) and
   GNOME's Initial Setup asks who it is for. The disk still opens with the password it was installed
   with: to hand the machine to someone else, install it again from the stick.
+- **Super with a letter, the same everywhere.** Super+C, V and X copy, paste and cut in every
+  application and in a terminal, where Ctrl+C would interrupt; Super+T, W, N, F, A, Z, S, P, Q,
+  R, L and O do what Ctrl with the letter does in most applications and what Ctrl+Shift with it
+  does in a terminal, so a terminal's own Ctrl+R, L and P stay its. Super alone is the overview,
+  Super+number the dock, Super+M the notifications, and Super+K shows the whole table, per
+  application (*Keyboard Shortcuts* in the app grid). Ctrl keeps working as before.
 - **Firmware the image cannot carry.** A few parts boot only their maker's firmware, licensed to
   the machine's owner and to nobody else: the ThinkPad X9-15p's sensor hub (ambient light,
   rotation, presence) and the tuning of its four speakers are in Lenovo's Windows driver packages

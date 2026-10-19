@@ -38,7 +38,7 @@ unmaximize=@as []
 # Drive Menu and Night Theme Switcher are installed, off: Orchis is the system shell theme, and
 # the last turns libadwaita light by day while the shell and GTK 3 stay on Orchis's dark theme.
 [org/gnome/shell]
-enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com', 'gtk4-ding@smedius.gitlab.com']
+enabled-extensions=['keys@constructlinux.org', 'appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicator@tudmotu.com', 'just-perfection-desktop@just-perfection', 'caffeine@patapon.info', 'Vitals@CoreCoding.com', 'tilingshell@ferrarodomenico.com', 'dash-to-panel@jderose9.github.com', 'gtk4-ding@smedius.gitlab.com']
 
 # The dock: Files, the browser, the editor, the terminal, Software, Calendar.
 favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'code.desktop', 'com.mitchellh.ghostty.desktop', 'org.gnome.Software.desktop', 'org.gnome.Calendar.desktop']
@@ -137,12 +137,23 @@ enable-smartcard-authentication=false
 
 [org/gnome/shell/keybindings]
 show-screenshot-ui=['Print', 'XF86SelectiveScreenshot']
-# keyd takes Super with C, V, X, Z, A, S, F, T, W and Q for the clipboard and the rest
-# (etc/keyd/default.conf): the shell never sees them, so it binds none. The notification list
-# keeps Super+M; the app grid is Super pressed twice; Quick Settings is the panel's menu.
+# keyd takes Super with a letter (etc/keyd/default.conf, usr/share/construct/keys.json): the
+# clipboard's as Insert chords, the rest as F13 to F24, which the keys extension turns into each
+# application's chord; the shell never sees Super with those letters, so it binds none. The
+# notification list keeps Super+M, Super+K opens the table (construct-keys, below); the app grid
+# is Super pressed twice; Quick Settings is the panel's menu.
 toggle-message-tray=['<Super>m']
 toggle-application-view=@as []
 toggle-quick-settings=@as []
+
+# Super+K: the table of what Super does with each letter, per application (construct-keys).
+[org/gnome/settings-daemon/plugins/media-keys]
+custom-keybindings=['/org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/keys/']
+
+[org/gnome/settings-daemon/plugins/media-keys/custom-keybindings/keys]
+name='Keyboard shortcuts'
+command='construct-keys'
+binding='<Super>k'
 
 # Vitals' readings at their own widths: fixed widths reserved room for the widest value each can
 # take, which spread the bar out; the bar's numbers are tabular, so a reading keeps its width as
