@@ -1,282 +1,183 @@
 # AGENTS.md - Construct
 
-What an agent working here needs and the code cannot say: rules, their reasons, and how a change
-is checked. `README.md` says what the desktop is; `task --list` is the catalogue; git is the
-history. Nothing here is a changelog.
+What an agent working here needs and the code cannot say: the rules, their reasons, and how a
+change is checked. `README.md` says what the desktop is; `task --list` is the catalogue; git is
+the history; issues hold what is open. Nothing here is a changelog, an incident log or a to-do
+list: a rule earns its place by having a reason and a check, and goes when its reason does.
 
 Construct is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on its own kernel,
-booted the way systemd's image-based distributions boot: a unified kernel image with a
-systemd initrd, a read-only EROFS root under dm-verity found by its root hash, partitions of the
+booted the way systemd's image-based distributions boot: a unified kernel image with a systemd
+initrd, a read-only EROFS root under dm-verity found by its root hash, partitions of the
 Discoverable Partitions Specification, A/B slots updated by systemd-sysupdate, and systemd-boot
 falling back from a release that does not come up.
 
-- **Standards before our own code.** Before writing something, look for how systemd, or the
-  image-based distributions (ParticleOS, GNOME OS, SteamOS, Fedora's), do it, and do that: a
+## How to work
+
+- **Standards before our own code.** Before writing something, look for how systemd or the
+  image-based distributions (ParticleOS, GNOME OS, SteamOS, Fedora's) do it, and do that: a
   generator, a unit, a repart definition, a udev rule. Our own code is for what nobody does.
-
-## The rules
-
-- **English, always**: code, comments, commit messages, docs, unit descriptions, task
-  descriptions. The person you work for may write in another language; what lands in the
-  repository is English.
-- **Locales are the product's, not the repository's**: the desktop speaks every language its
-  packages ship. Never strip translations to save space: build with NLS, split catalogs into
-  `<name>-lang` (`split/locales`), install every `-lang` package in `image/apko.yaml` - apko
-  installs none by itself, and `go run ./cmd/image check-langs` (in `task rootfs`) fails the build
-  when one is missing - keep `glibc-locale-*` in the image, and do not hard-code a language
-  anywhere but the image's default (`image/rootfs/etc/locale.conf`).
-- **Every build step is a Taskfile task.** A container run, a melange build, a disk, a test: if it
-  is done twice it is a task, and the task is how it is done - by people, agents and CI alike.
-  `task build -- <recipe>` builds a recipe, `task rootfs`, `task kernel`, `task firmware`,
-  `task usb`, `task test`, `task test:usb`, `task test:lifecycle`. Do not run `docker`/`melange`
-  /`apko` by hand for something a task does; add or fix the task instead.
-- **Decisions are Go, not shell.** `cmd/image` (disks, the initrd, the harness, releases),
-  `cmd/construct` (install, boot-check, the live user, the GTK 4 theme and Ghostty's seed),
-  `internal/` (one package per concern, its implementation behind the API the commands call; a
-  command keeps its flags, its files and the order of its steps).
-  The Taskfile runs steps and containers, in short blocks; a unit's `ExecStart=` stays a command,
-  not a program.
-- **Keep looking for performance and for security**, and measure both. Every change is a chance
-  to ask whether something can be faster (boot time, memory, the compiler's work) or smaller in
-  what it exposes (a service that need not run, a capability not needed, a package not used). Say
-  what you measured; an optimisation without a number, or a hardening without a check that it
-  holds, is a guess. Open questions worth chasing are listed under "Where to look next".
-- **Comments say why.** Not what the line does, never what it used to be: git keeps history.
+- **Performance, measured; stability, checked.** Every change is a chance to make something faster
+  (boot, the session's start, memory, the compiler's work) or smaller in what it exposes (a service
+  that need not run, a capability, a package). Say what you measured, against the last build's
+  report; and the harness passes before the change lands. A number without the harness is a
+  regression waiting; a harness pass without a number is a guess.
+- **Design forward.** Nothing is released yet: no compatibility shims, no migrations for data that
+  does not exist; change a format and its readers together. A rule here is not a fence: when a
+  better way appears, change the rule, its reason and its check in the same commit.
+- **English, always**: code, comments, commit messages, docs, unit and task descriptions. The
+  person you work for may write in another language; what lands in the repository is English.
+- **Comments say why**, never what the line does or what it used to be: git keeps history.
 - **Commits are partial and each one builds.** Subject `area: what changed`, the body says why.
   Commit locally; nothing is pushed or published without the person saying so.
-- **Nothing is released yet: design forward.** No compatibility shims, no migrations for data that
-  does not exist; change the format and its readers together.
+- **Every build step is a Taskfile task.** A container run, a melange build, a disk, a test: done
+  twice, it is a task, and the task is how it is done by people, agents and CI alike. Do not run
+  `docker`, `melange` or `apko` by hand for what a task does; fix the task.
+- **Decisions are Go, not shell.** `cmd/image` (disks, the initrd, the harness, releases),
+  `cmd/construct` (install, boot-check, the live user, the theme), `internal/` (one package per
+  concern). The Taskfile runs steps in short blocks that assert what they made; a unit's
+  `ExecStart=` is a command, not a program.
+- **Locales are the product's.** The desktop speaks every language its packages ship: build with
+  NLS, split catalogs into `<name>-lang` (`split/locales`), install every `-lang` package in
+  `image/apko.yaml` (`image check-langs` fails the build when one is missing), keep
+  `glibc-locale-*`, and hard-code no language but the image's default
+  (`image/rootfs/etc/locale.conf`).
 
 ## Security, which nothing may loosen
 
-- **Ed25519 only.** SSH host and client keys (`sshd_config.d/10-construct.conf`), and release
-  signing keys: `image check-key` (internal/update `ParseKeyring`) refuses a keyring with any other
-  signing key, at build. No ECDSA, and RSA-2048 only where the firmware and the TPM take nothing
-  else: the PCR key (`SIGNING_HOME/pcr.pem`, `task keygen:pcr`), because a TPM cannot verify
-  Ed25519 and systemd verifies PCR policies as RSA. It signs kernel images' PCR 11 policies and
-  nothing else (`image sign-pcr` refuses any other kind of key). Secure Boot's keys are RSA-2048
-  for the same reason: UEFI verifies nothing else.
-- **The release, PCR and Secure Boot keys never enter the repository or a container.** A
-  release's are AWS KMS keys (infra `kms.tf`) that never leave KMS: the release builder asks KMS to
-  sign. A person's own builds use files in `SIGNING_HOME`, outside the repo (`task
-  keygen:release`, `keygen:pcr`, `keygen:secureboot`). Either way every key is a `crypto.Signer`
-  named by a reference, `kms:<key>` or a PEM file (internal/sign), and `task usb` signs on the
-  host: the PCR policy (ukify computes its digests in the container, `image sign-pcr` signs them,
-  `image usb-join` joins the signature), Secure Boot's db over systemd-boot and the kernel image
-  (`image usb-sign`), and `SHA256SUMS` (`image sign-release`, OpenPGP written in internal/sign over
-  the signer, checked with go-crypto before it is written). The keys' public halves - the
-  release's `release.pgp`, the three Secure Boot certificates and the signed variables - are in
-  `keys/` for KMS (`task keys:kms`) and beside the files otherwise. **A certificate is made once
-  and never again**: firmware holds the certificate, not the key, and refuses a signature under a
-  new certificate for the same key; a KEK or db that must hold something new is signed again under
-  the same certificates (`task keys:kms --force`), and `go test ./cmd/image` fails a certificate
-  changed since origin/main, or variables that do not hold what internal/sign puts in them. Tests
-  use throwaway keys in `.cache/test-keys`. The KEK holds Microsoft's KEK CAs beside Construct's
-  so that Microsoft's dbx revocations apply (fwupd's `uefi_dbx`); db holds its option ROM CAs and
-  never the CAs for Windows or for others' boot loaders (internal/sign/secureboot.go says why
-  each).
-- **An installed machine's `/var` is LUKS2** (cmd/construct `makeVar`). The person's password opens
-  it: as the TPM's PIN when the machine has a TPM, sealed to the signed policy of PCR 11, or as
-  the passphrase when it has none. A recovery key is shown once at
-  install. GDM then logs the person in, and sudo and the lock screen ask for the password again.
+- **Ed25519 only**, for SSH keys and release signing (`image check-key` refuses any other signing
+  key at build). RSA-2048 only where the firmware and the TPM take nothing else: the PCR key signs
+  kernel images' PCR 11 policies and nothing else; Secure Boot's keys, because UEFI verifies
+  nothing else.
+- **The release, PCR and Secure Boot keys never enter the repository or a container.** A release
+  signs with AWS KMS keys that never leave KMS; a person's own builds with files in
+  `SIGNING_HOME`, outside the repo. Every key is a `crypto.Signer` named by a reference
+  (internal/sign), and `task usb` signs on the host: the PCR policy, Secure Boot's db over
+  systemd-boot and the kernel image, and `SHA256SUMS`. Public halves live in `keys/`.
+- **A certificate is made once and never again**: firmware holds the certificate, not the key, and
+  refuses a signature under a new certificate for the same key. A KEK or db that must hold
+  something new is signed again under the same certificates (`task keys:kms --force`);
+  `go test ./cmd/image` fails a certificate changed since origin/main. The KEK holds Microsoft's
+  KEK CAs so that its dbx revocations apply; db holds its option ROM CAs and never the CAs for
+  Windows or others' boot loaders (internal/sign/secureboot.go says why each).
+- **A test build is never signed with a release's keys**: `image usb` records the test layer in
+  `built.json`, and the signing steps refuse a KMS key for it. `image/test/` (unsafe-mode shell,
+  the broken GDM) goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot
+  credential and is written nowhere.
+- **An installed machine's `/var` is LUKS2.** The person's password opens it: as the TPM's PIN,
+  sealed to the signed policy of PCR 11, or as the passphrase without a TPM. A recovery key is
+  shown once at install. GDM then logs the person in; sudo and the lock screen ask again.
 - **Whatever else proves the person sits beside the password, never in its place.** A security key
-  (`construct key`) also opens the disk with its PIN and a touch, and its touch is taken where sudo,
-  polkit and the lock screen ask (`etc/pam.d/construct-key`: one root-written mappings file, a fixed
-  origin, never `nouserok`). An enrolled finger is taken at the login and lock screens only, by
-  GDM's own fingerprint service beside the password field (`etc/pam.d/gdm-fingerprint`); `task
-  test` checks no other PAM service takes one.
-- **Updates come only through url-file transfers.** systemd-sysupdate checks `SHA256SUMS.gpg` and
-  every file's digest only for `url-file` sources (via systemd-pull); a `regular-file` source is
-  written unchecked. A stick is read as `file:///run/construct/update`, the update CDN as
-  https. The transfers are generated in `cmd/image/transfers.go`; never hand-write one.
-- **The test layer never reaches a real disk.** `image/test/` (unsafe-mode shell, the broken GDM)
-  goes in only with `-test`/`-broken`; the harness's SSH key arrives as a per-boot credential
-  (`ssh.ephemeral-authorized_keys-all`) and is written nowhere.
-- **Nothing reaches the machine that it did not ask for.** The firewall (`usr/lib/construct/
-  firewall.nft`, loaded by nftables.service before any network) drops what comes in but replies,
-  what IPv4/IPv6, DHCP and mDNS need, the containers' bridges, and SSH and RDP, which answer only
-  when a person turned them on; Docker publishes on 127.0.0.1 unless given an address. Open a port
-  in the ruleset with its reason, never by widening a rule; `task test` checks that a network
-  cannot reach a server listening on every address.
-- **No person, password or private key in the image or the repository.** `construct install` asks
-  who a machine is for and adds them to the installed `/etc`'s passwd and shadow, on `/var`
-  (`internal/account`, starting from the image's own files in `usr/share/factory/etc`), where
-  passwd and GNOME's Settings change them later; a root with nobody installed boots the
-  passwordless `live` user `construct live` adds (construct-live.service). root stays locked (`*`).
-  The person is logged in at boot once their password has opened `/var`; sudo (wheel, 15
-  minutes) and the lock screen ask for it, or for what stands beside it (above).
+  opens the disk with its PIN and a touch, and its touch is taken where sudo, polkit and the lock
+  screen ask (`etc/pam.d/construct-key`: one root-written mappings file, a fixed origin, never
+  `nouserok`). A finger is taken at the login and lock screens only (`etc/pam.d/gdm-fingerprint`);
+  `task test` checks no other PAM service takes one.
+- **Updates come only through url-file transfers**: systemd-sysupdate checks `SHA256SUMS.gpg` and
+  every digest for `url-file` sources only; a `regular-file` source is written unchecked. A stick
+  is read as `file:///run/construct/update`, the CDN as https. Transfers are generated
+  (`cmd/image/transfers.go`), never hand-written.
+- **Nothing reaches the machine that it did not ask for.** The firewall
+  (`usr/lib/construct/firewall.nft`, before any network) drops what comes in but replies, what
+  IPv4/IPv6, DHCP and mDNS need, the containers' bridges, and SSH and RDP when a person turned them
+  on; Docker publishes on 127.0.0.1 unless given an address. Open a port with its reason, never by
+  widening a rule; `task test` checks that a network cannot reach a server on every address.
+- **No person, password or private key in the image or the repository.** `construct install` adds
+  the person to the installed `/etc` on `/var` (internal/account); a root with nobody installed
+  boots the passwordless `live` user. root stays locked.
 
 ## What the root is, and what it implies
 
 - The root is **read-only and verified block by block**. Whatever a package's install trigger
-  would write at boot (GSettings schemas, icon/font/MIME caches, users, hwdb, ld.so.cache) is baked
-  at build (`cmd/image/usb.go` `bake`); add to it when a new package needs one. The USB disk and
-  the ext4 test disk are made from the same baked tree.
-- **Units are enabled by preset**, never by a hand-made link: `usr/lib/systemd/system-preset/` and
-  `user-preset/10-construct.preset` list what runs (everything else is off), and `bake` runs
-  `systemctl preset-all`, which follows each unit's `[Install]` and makes its `Alias=` names.
-- **Mutable state lives in `/var`**, a partition on the root's own disk: systemd-repart makes it
-  in the initrd on a stick's first boot, `construct install` on an installed disk - its UUID derived
-  from the machine id, as the Discoverable Partitions Specification asks, so the dissect_image udev
-  builtin designates it only on its own machine and never on another disk. The initrd mounts it and
-  lays `/etc` over it before the switch (image/initrd: systemd mounts /var itself only after). Home
-  is `/var/home` (`/home`, `/opt`, `/srv`, `/mnt` and `/root` link into `/var`); NetworkManager's
-  connections, SSH host keys, Flatpaks and Docker are on `/var`. So is firmware a person's machine
-  needs and the image cannot carry (`construct firmware`, cmd/construct/firmware.go: a maker's
-  build its license keeps out of the image, fetched from Lenovo's own catalog by internal/lenovo
-  and unpacked with innoextract, never run), in `/var/lib/construct/firmware`, which the kernel
-  searches before the root's (`firmware_class.path`, cmd/image/usb.go) and `construct install`
-  carries onto the disk. A path a service writes in `/etc`
-  or `/usr` works only through the overlay - check it on the USB disk, not only on the ext4 test
-  disk.
+  would write at boot (GSettings schemas, icon, font and MIME caches, users, hwdb, ld.so.cache) is
+  baked at build (`cmd/image/usb.go` `bake`); add to it when a new package needs one. The USB disk
+  and the ext4 test disk come from the same baked tree.
+- **Units are enabled by preset**, never by a hand-made link: `usr/lib/systemd/system-preset/`
+  and `user-preset/10-construct.preset` list what runs, everything else is off.
+- **Mutable state lives in `/var`**, a partition on the root's own disk, its UUID derived from the
+  machine id so that only its own machine designates it. The initrd mounts it and lays `/etc` over
+  it before the switch. Home is `/var/home`; `/home`, `/opt`, `/srv`, `/mnt` and `/root` link into
+  `/var`, as do NetworkManager's connections, SSH host keys, Flatpaks, Docker, and firmware the
+  image cannot carry (`construct firmware`, searched before the root's). A path a service writes
+  in `/etc` or `/usr` works only through the overlay: check it on the USB disk, not only on the
+  ext4 test disk, and `image run -usb -poweroff` says whether a shutdown left the stick clean.
 
 ## Recipes (`recipes/`, melange)
 
-- Built with `task build -- <name>`, for **x86-64-v3** (`build/x86-64-v3.env`); a recipe that sets
-  `CFLAGS` appends to `$CFLAGS`, never replaces it. **`task rootfs` refuses a `packages/` that
-  lacks what a recipe makes** (`image packages missing`): apko would take Wolfi's package instead
-  without a word, and an override's whole point is what Wolfi's lacks. After a pull that bumps
-  recipes, build each one it names first.
+- Built with `task build -- <name>` for **x86-64-v3** (`build/x86-64-v3.env`); a recipe that sets
+  `CFLAGS` appends to `$CFLAGS`. `task rootfs` refuses a `packages/` that lacks what a recipe
+  makes: apko would take Wolfi's package instead, and an override's whole point is what Wolfi's
+  lacks. After a pull that bumps recipes, build each one it names first.
 - **Every package is pinned in a lock, and a changed recipe goes through it.** `image/apko.lock.yaml`
-  and `image/initrd/apko.lock.yaml` are the configurations apko builds: each includes the
-  hand-written one and pins every package the root installs, `name=version`, the recipes' packages
-  first and Wolfi's after. `task lock` writes them from apko's resolution (`cmd/image/lock.go` says
-  why apko's own lock file is not used): a bumped recipe's package at its build in `packages/`,
-  Wolfi's as pinned, or at Wolfi's newest with `task lock -- -all`. The `lock` workflow bumps
-  Wolfi's lines to its index every Monday, in a pull request. `image check-lock`, after apko in
-  `task rootfs` and `task initrd`, refuses a root that installs what its lock does not pin, or
-  Wolfi's package where a recipe's should be: apko installs the newest version across its
-  repositories, so a Wolfi bump above an override's version takes the override's place, and what
-  the override carried (its sysusers file, a unit, a build option) is gone - the release of
-  2026-10-18 failed on pcsc-lite 2.5.3 this way, before the lock. `go test ./cmd/image` fails a
-  configuration that names a package its lock does not pin.
+  and `image/initrd/apko.lock.yaml` are what apko builds: the hand-written configuration plus
+  every package at a version, recipes' first, Wolfi's after. `task lock` writes them (a bumped
+  recipe at its build, Wolfi's as pinned, or Wolfi's newest with `-all`; the `lock` workflow bumps
+  Wolfi's weekly in a pull request). `image check-lock` refuses a root that installs what the lock
+  does not pin, or Wolfi's package where a recipe's should be: apko takes the newest version across
+  repositories, so a Wolfi bump above an override silently replaces it and everything it carried.
 - **A changed recipe takes a new version or epoch**: the builder's cache knows a package by its
-  apk's name, so the same name is the old build. `go test ./cmd/image` fails a recipe (or its
-  directory) changed since origin/main that still makes the same apk.
-- An **override of a Wolfi package** (mesa, pipewire, at-spi2-core, duktape) keeps Wolfi's package
-  and subpackage names and takes an epoch above Wolfi's current one; read Wolfi's recipe first.
-- melange's gaps, each found by booting: it derives **no dependency from an unversioned soname**
-  (`libnss3.so`, `libSPIRV-Tools.so`) and **no provides for libraries in private directories**
-  (`/usr/lib/mutter-51`) - declare both by hand. Wolfi ships some **pkg-config names it does not
-  provide** (`xkeyboard-config` is `-2`, `cairomm-1.16`) - rewrite the `.pc` or write the
-  dependencies out. `go run ./cmd/image check` fails any ELF whose libraries the root lacks.
-- **Never rebuild a package while an image is being built from `packages/`**: rewriting a version
-  in place under apko fails with a control hash mismatch.
+  apk's name. `go test ./cmd/image` fails a recipe changed since origin/main that makes the same
+  apk. An **override of a Wolfi package** keeps Wolfi's package and subpackage names, starts from
+  Wolfi's recipe and takes an epoch above Wolfi's; Wolfi's index can carry a version whose recipe
+  is not on GitHub yet, so start from the newest published recipe and upstream's tag.
+- melange derives **no dependency from an unversioned soname** and **no provides for libraries in
+  private directories**; declare both by hand. Wolfi ships some pkg-config names it does not
+  provide; rewrite the `.pc` or write the dependencies out. `image check` fails any ELF whose
+  libraries the root lacks.
 - A Wolfi package that is stale, broken or built without what the desktop needs is a recipe here,
-  with the reason in its comments - not a workaround in the image.
+  with the reason in its comments, not a workaround in the image.
+- `build/versions.env` pins what every build fetches from outside (the Wolfi base image, the
+  kernel, linux-firmware, microcode, Grype); a bump is checked like any other change.
 
 ## The kernel and firmware
 
-- The base is Arch Linux's configuration for the same kernel (pinned in `kernel/Dockerfile`):
-  every driver a general distribution builds, as modules. A kernel Arch has not tagged yet builds
-  over its newest tag's, and `task kernel:config` lists the symbols that base does not know: take
-  Arch's tag for the kernel as soon as there is one. `kernel/platform.config` (boot,
-  systemd, hardening, what is never built) and then `kernel/desktop.config` (a PC's hardware) are
-  merged over it, and **every line of both is asserted** after olddefconfig: a line is a promise.
-  Fix a dropped symbol's dependency, do not delete the line. A PC is not a server in a controlled
-  environment: do not close what a person's hardware or tools may need.
-- Modules are signed by a key that exists only inside the build, with integrity lockdown: nothing
-  built elsewhere loads.
-- Compiled with Wolfi's Clang 23, ThinLTO, `-march=x86-64-v3`, AutoFDO and Propeller enabled for a profile from
-  real hardware, full dynamic preemption, sched_ext (scx_lavd at boot). CachyOS's compiler side,
-  none of its patches: out-of-tree scheduler patches are not taken.
-- Firmware is the pinned linux-firmware, all of it but what no PC carries (ARM SoCs, data-centre
-  network cards), zstd; microcode stays uncompressed (it rides in the UKI's early cpio).
+- The base is Arch Linux's configuration for the same kernel (`kernel/Dockerfile`): every driver
+  a general distribution builds, as modules; take Arch's tag for a kernel as soon as there is one.
+  `kernel/platform.config` (boot, systemd, hardening) and `kernel/desktop.config` (a PC's hardware)
+  are merged over it and **every line of both is asserted** after olddefconfig: fix a dropped
+  symbol's dependency, do not delete the line. A PC is not a server in a controlled environment:
+  do not close what a person's hardware or tools may need.
+- Modules are signed by a key that exists only inside the build, with integrity lockdown.
+- Compiled with Wolfi's Clang, ThinLTO, `-march=x86-64-v3`, AutoFDO and Propeller for a profile
+  from real hardware, full dynamic preemption, sched_ext (scx_lavd at boot). CachyOS's compiler
+  side, none of its patches.
+- Firmware is the pinned linux-firmware, all of it but what no PC carries, zstd; microcode stays
+  uncompressed in the UKI's early cpio.
 
 ## How a change is checked
 
 | changed | run | and look at |
 |---|---|---|
-| Go | `task check` (gofmt, go vet, the tests; what CI runs on a pull request) | a test for the behaviour, not for the lines |
-| a recipe | `task build -- <name>`, `task lock`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files and `.PKGINFO` depends/provides, and the lock's diff: the recipe's package and nothing of Wolfi's |
-| anything in the image or a package | `task test` (ext4 disk, kernel given directly) | the report, **and the screenshots in `_output/test`** - a PASS means a window opened, not that it looks right |
-| a shell extension, or the shell itself | `task test` | `shell-startup.txt`: the session's shell from its unit to its startup complete and to the last extension loaded, and each extension's own load, slowest first; and `idle.txt`: the session at rest for 30 s, the shell's CPU share and wakeups and whatever else is busy, with the busiest process's threads, stacks and files. Neither is a gate: numbers the last build is compared to |
-| boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a 32 GB USB stick, the verified root) | the same, on the disk a machine boots |
-| install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, four forged sticks refused, update from a URL, rollback from a broken release, files in `/var` and `/etc` kept |
+| Go | `task check` (what CI runs on a pull request) | a test for the behaviour, not for the lines |
+| a recipe | `task build -- <name>`, `task lock`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files, `.PKGINFO` depends/provides, and the lock's diff: the recipe's package and nothing of Wolfi's |
+| anything in the image or a package | `task test` (ext4 disk, kernel given directly) | the report **and the screenshots in `_output/test`**: a PASS means a window opened, not that it looks right |
+| a shell extension, or the shell itself | `task test` | `shell-startup.txt` (the session's shell from its unit to the last extension loaded, each extension's own load) and `idle.txt` (the session at rest: CPU, wakeups, what is busy), against the last build's |
+| boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a USB stick, the verified root) | the same, on the disk a machine boots, and `boot.txt` against the last build's |
+| install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, forged sticks refused, update from a URL, rollback from a broken release, `/var` and `/etc` kept |
 | the kernel | `task kernel:config`, then `task kernel` | the assertion's output |
-| packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | `_output/scan/report.md`, by severity: a Critical or High a version fixes fails it; what nobody has fixed is listed too, and what a rule in `build/grype.yaml` keeps, with its reason - a fix in a library a third party's binary embeds, which only they rebuild; the weekly watch files an issue for it |
+| packages, their versions | `task usb`, then `task scan` (Grype, `build/grype.yaml`) | `_output/scan/report.md`: a Critical or High a version fixes fails it; a rule that keeps one carries its reason |
 | the boot's look (splash, Plymouth) | `go run ./cmd/image boot -usb -shots 30` | the frames in `_output/boot` |
 
-To use it as a person does: `task play` (a window, the stick, a disk to install on; state in
-`_output/play`). The graphical installer is UI only (Python, libadwaita): what it shows comes from
-`construct disks --json` and `construct install --json`, and test:lifecycle installs through exactly its
-command, pkexec included.
+Never pipe a gate's exit status away: redirect to a file and read the status.
 
-Tools for a boot that misbehaves: `go run ./cmd/image run [-usb | -vars -nvme -sticks] -- '<cmd>'`
-runs a command as root in a booted VM; the harness saves failed units' logs in `units/`; `task usb
--- -append <option> [-append <option>...]` adds kernel options for one build; a disk's journal can be read
-with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shell` gets a shell there.
+To use it as a person does: `task play`. The graphical installer is UI only: what it shows comes
+from `construct disks --json` and `construct install --json`, and test:lifecycle installs through
+exactly its command.
+
+For a boot that misbehaves: `go run ./cmd/image run [-usb | -vars -nvme -sticks] -- '<cmd>'` runs
+a command as root in a booted VM; the harness saves failed units' logs in `units/`; `task usb --
+-append <option>` adds kernel options for one build; `rd.systemd.debug_shell` gets a shell in the
+initrd, whose units log to the journal.
 
 ## Releases
 
 - **A release is built on the release builder, never on a person's machine**: `task release`
-  launches an EC2 instance for the pushed commit (infra repository, Construct-Linux/infra), which
-  runs `task release:build` - the cache, the harness on a test build of the same commit
-  (`test:usb`, `test:lifecycle`), the release signed with KMS, `task scan` - and terminates, at
-  two hours at the latest. A check that fails stops the release. **`task release` refuses a commit
-  `task test:usb` has not passed on this machine** (`image tested`, from the harness's
-  `_output/test/tested.json`): the builder runs the same harness, and finds a failure two hours
-  and a machine later.
-- **A test build is never signed with a release's keys**: `image usb` records the test layer in
-  `built.json` and `sign-pcr`/`usb-sign` refuse a KMS key for it.
-- **Versions are CalVer**, `vYYYYMMDD.N` (`image release-version`); files carry them without the v.
-- **Machines follow channels** (`construct channel`): a channel is a signed SHA256SUMS of its
-  newest releases at the update CDN, each file a redirect to its release's own copy there
-  (`releases/<version>/`: a root is past GitHub's 2 GiB asset limit). A release
-  goes to `testing`; `task release:promote` offers it to `stable`; `task release:withdraw` takes a
-  bad one out before machines take it.
-- **Issues are where problems go**: `.github/labels.json` (`task labels`), the issue forms ask for
-  `construct report`, and the weekly `watch` workflow files security fixes, big dependency
-  changes and the pins in build/ behind upstream, nothing a release picks up by itself
-  (cmd/watch); Dependabot opens the Go modules' and the actions' bumps as pull requests.
-
-## Traps already fallen into
-
-- **A scripted edit that matches nothing changes nothing, silently** (Python `str.replace`, `sed`
-  on a gofmt-aligned line). Use edits that fail when they do not match, and grep for the result.
-- **`set -e` does not stop a failing `a && b && c`**: only the list's last command counts, so a
-  `find` busybox does not support skipped the firmware's copy and the build shipped 19 MB of it.
-  One command per line under `set -e`, and assert what a step must have made.
-- **Never pipe a gate's exit status away** (`task test | tail && ...`): redirect to a file and
-  read the status.
-- A VM stopped by QMP `quit` is a power cut: files written without fsync are empty afterwards.
-  The lifecycle powers machines off; anything that writes a file a boot depends on syncs it.
-- A oneshot that already ended is unloaded: look for it in the journal, not in `list-units`.
-- **Anything held open on `/etc` or `/var` at shutdown leaves `/var`'s journal to replay**: the
-  `/etc` overlay's upper is on `/var`, so a file mapped through `/etc` (glibc's `ld.so.cache`, now
-  in `/usr/lib`) or one an `@` process keeps open (plymouth's boot log, off) pins both.
-  `image run -usb -poweroff` then the stick's superblock says whether a shutdown left it clean.
-- `recipes/systemd` is Wolfi's systemd recipe with sysupdate and FIDO2 turned on (TPM2 Wolfi
-  builds itself since 261.3 epoch 5). Bump it whenever Wolfi bumps systemd, starting again from
-  Wolfi's file - and Wolfi's index can carry a version whose recipe is not on GitHub yet (262.1
-  on 2026-10-19, built from a commit wolfi-dev/os did not have): `task lock` refuses the lock
-  until the override is above it, so the bump is written from Wolfi's newest published recipe
-  and upstream's tag, and the epoch goes above Wolfi's.
-- The kernel image on the ESP must stay writable (0644): systemd-boot counts a try by renaming it.
-
-## Where to look next
-
-AutoFDO/Propeller profiles recorded on real hardware; boot time measured on real hardware
-(every report's `boot.txt` has the VM's: an installed disk 8.0 s, of it the initrd 1.6 s; the
-stick 13.1 s, most of it GDM's first frame over emulated USB; and `shell-startup.txt` the
-session's shell: 3.0 s from its unit to its startup complete on the test disk, 3.9 s to the last
-extension loaded, AppIndicator the slowest extension at 0.9 s, where Vitals and Dash to Panel take
-0.1 s; on the stick 5.2 s and 6.7 s, Tiling Shell's 2.1 s read over emulated USB; and `idle.txt`
-the session at rest: the shell under 1% and 3 to 8 wakeups a second, Vitals three of them, where
-gnome-software was found at a quarter of a core minutes after login); the initrd's size (31 MB compressed, after its PAM and NSS modules, network daemons, LVM
-and OpenSSL 3 went; Wolfi's lvm2 package carries device-mapper's udev rules, which stay); tailscaled's sandbox (`systemd-analyze
-security` 9.4), which needs a tailnet to be tested - cups-browsed and geoclue are sandboxed, gdm,
-docker, containerd and udisks2 are what they are for; fwupd's UEFI capsule updates, which need
-fwupd-efi built and its binary signed with db's key before the root is made, inside the verified
-`/usr` - a new step at the front of the release's signing, and testable only on hardware with
-capsules; the lock libproxy's GIO resolver blocks geoclue on (its unit uses GLib's dummy
-resolver meanwhile): libproxy holds its manager's mutex through a PAC or WPAD download and run, so
-one slow lookup blocks the rest (libproxy#370); take the fix into `recipes/libproxy` once
-libproxy#371 is merged.
-
-## Pins
-
-`build/versions.env` pins what every build fetches from outside: the Wolfi base image (whose
-Clang 23 also builds the kernel), the kernel, linux-firmware, Intel's microcode and Grype. Taskfile.yml reads it (dotenv); a bump changes it and is checked like any other change.
-`image/apko.lock.yaml` and `image/initrd/apko.lock.yaml` pin Wolfi's packages (above, under
-Recipes): the `lock` workflow's weekly pull request bumps them, `task lock -- -all` now.
+  launches an EC2 instance for the pushed commit (Construct-Linux/infra), which runs the harness
+  on a test build of the same commit, signs with KMS, scans, and terminates. A check that fails
+  stops the release. `task release` refuses a commit `task test:usb` has not passed on this
+  machine: the builder finds the same failure two hours and a machine later.
+- **Versions are CalVer**, `vYYYYMMDD.N`; files carry them without the v.
+- **Machines follow channels**: a channel is a signed SHA256SUMS of its newest releases at the
+  update CDN. A release goes to `testing`; `task release:promote` offers it to `stable`;
+  `task release:withdraw` takes a bad one out before machines take it.
+- **Issues are where problems go**, and where open work goes: the issue forms ask for
+  `construct report`, the weekly `watch` workflow files security fixes and pins behind upstream,
+  Dependabot opens the Go modules' and the actions' bumps.
