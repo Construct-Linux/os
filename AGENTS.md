@@ -166,7 +166,9 @@ falling back from a release that does not come up.
 ## The kernel and firmware
 
 - The base is Arch Linux's configuration for the same kernel (pinned in `kernel/Dockerfile`):
-  every driver a general distribution builds, as modules. `kernel/platform.config` (boot,
+  every driver a general distribution builds, as modules. A kernel Arch has not tagged yet builds
+  over its newest tag's, and `task kernel:config` lists the symbols that base does not know: take
+  Arch's tag for the kernel as soon as there is one. `kernel/platform.config` (boot,
   systemd, hardening, what is never built) and then `kernel/desktop.config` (a PC's hardware) are
   merged over it, and **every line of both is asserted** after olddefconfig: a line is a promise.
   Fix a dropped symbol's dependency, do not delete the line. A PC is not a server in a controlled

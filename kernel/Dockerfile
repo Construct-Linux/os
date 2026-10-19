@@ -50,7 +50,10 @@ COPY kernel/platform.config kernel/desktop.config /usr/src/fragments/
 # The base the fragments are merged over: Arch Linux's configuration for this same kernel, every
 # driver a general-purpose distribution builds, as modules. A desktop meets hardware nobody listed
 # when the image was built; a module costs nothing on a machine without its device, while a driver
-# left out is a device that does not work. Pinned by tag and content, like the tarball.
+# left out is a device that does not work. Pinned by tag and content, like the tarball. A kernel
+# newer than Arch's newest tag (7.3 on the day it came out) builds over the newest tag's: every
+# symbol the base does not know takes olddefconfig's default, a driver new in this kernel is not
+# built, and the log lists them (listnewconfig); Arch's tag for the kernel replaces it when it is.
 ADD --checksum=sha256:f16adcb6dc1dc241ea90e23ca920697d00e4618df1b72d914ff15bc55ab4051f \
     https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/raw/7.2.11.arch1-1/config.x86_64 \
     /usr/src/base.config
@@ -71,6 +74,9 @@ RUN <<EOT
     promised=/usr/src/promised/.config
     cp /usr/src/base.config .config
     scripts/kconfig/merge_config.sh -m .config "$promised"
+    make -s listnewconfig > /usr/src/newconfig
+    echo "symbols the base configuration does not know: $(wc -l < /usr/src/newconfig)"
+    cat /usr/src/newconfig
     make olddefconfig
 
     # A symbol olddefconfig dropped is one whose dependency is missing, and the kernel it leaves

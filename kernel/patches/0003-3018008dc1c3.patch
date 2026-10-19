@@ -1,5 +1,5 @@
 construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 1 of 8. The ThinkPad X9-15p's VBT
-asks for its own voltage swing and pre-emphasis tables on port D (USB-C, C20 PHY), which 7.2
+asks for its own voltage swing and pre-emphasis tables on port D (USB-C, C20 PHY), which 7.3
 ignores with a WARNING at every boot (intel_bios.c, "Port D asks to use VBT vswing/preemph
 tables"), driving the port with the default tables. The series reads VBT block 57 and uses them.
 

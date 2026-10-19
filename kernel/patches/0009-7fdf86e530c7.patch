@@ -1,4 +1,4 @@
-construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 7 of 8 (see 0008).
+construct: linux-next (drm-intel-next), for 7.4: VS/PE-O, patch 7 of 8 (see 0003).
 
 From 7fdf86e530c7f6655aad0612a8c90ab1559984bc Mon Sep 17 00:00:00 2001
 From: Michał Grzelak <michal.grzelak@intel.com>
