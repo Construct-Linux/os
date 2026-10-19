@@ -10,7 +10,8 @@ ARG WOLFI_BASE_IMAGE
 
 FROM ${WOLFI_BASE_IMAGE} AS build
 
-RUN apk add --no-cache bash curl gnutar xz zstd
+# coreutils: copy-firmware.sh resolves WHENCE's links with GNU realpath -m -s; busybox's has neither.
+RUN apk add --no-cache bash coreutils curl gnutar xz zstd
 
 ARG LINUX_FIRMWARE_VERSION
 ARG LINUX_FIRMWARE_SHA256
