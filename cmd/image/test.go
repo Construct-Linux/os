@@ -253,8 +253,20 @@ func parseOnly(only string) (want map[string]bool, unknown []string) {
 func (r *report) systemChecks(g *guest) {
 	sinks, err := g.run(asLive+`wpctl status 2>&1 | sed -n '/Sinks:/,/Sources:/p'`, "")
 	r.add("audio", err == nil && strings.Contains(sinks, "Built-in Audio"), oneLine(sinks)+errText(err))
-	sched, err := g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
-	r.add("sched_ext", err == nil && strings.HasPrefix(sched, "enabled"), oneLine(sched)+errText(err))
+	// scx_loader loads the scheduler at boot, after its BPF program is verified: seconds on a
+	// slow machine, so it is given until the loader has it. A scheduler not up by then, or down
+	// again, leaves the loader's log beside the failed units' (units/scx_loader.service.log).
+	var sched string
+	up := until(45*time.Second, 2*time.Second, func() bool {
+		sched, err = g.run("cat /sys/kernel/sched_ext/state /sys/kernel/sched_ext/root/ops 2>&1", "")
+		return err == nil && strings.HasPrefix(sched, "enabled")
+	})
+	r.add("sched_ext", up, oneLine(sched)+errText(err))
+	if !up {
+		log, _ := g.run("journalctl -b --no-pager -o short-monotonic -u scx_loader.service | tail -n 80; journalctl -b -k --no-pager -o short-monotonic | grep -i sched_ext", "")
+		_ = os.MkdirAll(filepath.Join(r.dir, "units"), 0o755)
+		_ = os.WriteFile(filepath.Join(r.dir, "units", "scx_loader.service.log"), []byte(log), 0o644)
+	}
 	// scx_loader runs it (etc/scx_loader.toml), and answers which over its bus.
 	loader, err := g.run(`scxctl get 2>&1`, "")
 	r.add("scx_loader runs lavd", err == nil && strings.Contains(strings.ToLower(loader), "running lavd"), oneLine(loader)+errText(err))
