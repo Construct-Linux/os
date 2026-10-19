@@ -3,7 +3,8 @@
 What an agent working here needs and the code cannot say: the rules, their reasons, and how a
 change is checked. `README.md` says what the desktop is; `task --list` is the catalogue; git is
 the history; issues hold what is open. Nothing here is a changelog, an incident log or a to-do
-list: a rule earns its place by having a reason and a check, and goes when its reason does.
+list: a rule earns its place by having a reason and a verification method, automated when
+practical, and goes when its reason does.
 
 Construct is Wolfi plus what Wolfi lacks for a GNOME desktop (`recipes/`), on its own kernel,
 booted the way systemd's image-based distributions boot: a unified kernel image with a systemd
@@ -14,16 +15,20 @@ falling back from a release that does not come up.
 ## How to work
 
 - **Standards before our own code.** Before writing something, look for how systemd or the
-  image-based distributions (ParticleOS, GNOME OS, SteamOS, Fedora's) do it, and do that: a
-  generator, a unit, a repart definition, a udev rule. Our own code is for what nobody does.
-- **Performance, measured; stability, checked.** Every change is a chance to make something faster
-  (boot, the session's start, memory, the compiler's work) or smaller in what it exposes (a service
-  that need not run, a capability, a package). Say what you measured, against the last build's
-  report; and the harness passes before the change lands. A number without the harness is a
-  regression waiting; a harness pass without a number is a guess.
-- **Design forward.** Nothing is released yet: no compatibility shims, no migrations for data that
-  does not exist; change a format and its readers together. A rule here is not a fence: when a
-  better way appears, change the rule, its reason and its check in the same commit.
+  image-based distributions (ParticleOS, GNOME OS, SteamOS, Fedora's) solve it: prefer their
+  generator, unit, repart definition or udev rule. Depart only when it delivers required product
+  behaviour or demonstrably lowers complexity, cost or latency; record why beside the departure.
+- **Performance is budgeted; stability is checked proportionally.** A change that can affect boot,
+  session latency, CPU, memory, image size, battery or exposed services measures the relevant
+  metric against a reproducible baseline. A regression needs a stated reason and an accepted
+  budget. Run the narrowest test that proves a behaviour, escalating to the image, USB, lifecycle
+  and release gates when their boundary changes. An unrelated change needs neither a performance
+  number nor the full harness.
+- **Design forward.** Nothing is released yet: do not add compatibility shims or migrations for
+  data with no promised external or durable format; change such a format and its readers together.
+  Once data crosses a documented external or persistent boundary, specify its compatibility,
+  migration and rollback behaviour. A rule here is not a fence: when a better way appears, change
+  the rule, its reason and its verification method in the same commit.
 - **English, always**: code, comments, commit messages, docs, unit and task descriptions. The
   person you work for may write in another language; what lands in the repository is English.
 - **Comments say why**, never what the line does or what it used to be: git keeps history.
@@ -32,10 +37,11 @@ falling back from a release that does not come up.
 - **Every build step is a Taskfile task.** A container run, a melange build, a disk, a test: done
   twice, it is a task, and the task is how it is done by people, agents and CI alike. Do not run
   `docker`, `melange` or `apko` by hand for what a task does; fix the task.
-- **Decisions are Go, not shell.** `cmd/image` (disks, the initrd, the harness, releases),
+- **Durable decisions are Go, not shell.** `cmd/image` (disks, the initrd, the harness, releases),
   `cmd/construct` (install, boot-check, the live user, the theme), `internal/` (one package per
-  concern). The Taskfile runs steps in short blocks that assert what they made; a unit's
-  `ExecStart=` is a command, not a program.
+  concern). Short declarative or shell glue is appropriate when it is simpler, asserted and cannot
+  grow into a second program. The Taskfile runs steps in short blocks that assert what they made;
+  a unit's `ExecStart=` is a command, not a program.
 - **Locales are the product's.** The desktop speaks every language its packages ship: build with
   NLS, split catalogs into `<name>-lang` (`split/locales`), install every `-lang` package in
   `image/apko.yaml` (`image check-langs` fails the build when one is missing), keep
@@ -44,10 +50,11 @@ falling back from a release that does not come up.
 
 ## Security, which nothing may loosen
 
-- **Ed25519 only**, for SSH keys and release signing (`image check-key` refuses any other signing
-  key at build). RSA-2048 only where the firmware and the TPM take nothing else: the PCR key signs
-  kernel images' PCR 11 policies and nothing else; Secure Boot's keys, because UEFI verifies
-  nothing else.
+- **Approved cryptography only.** Today that is Ed25519 for SSH keys and release signing (`image
+  check-key` refuses another signing key), and RSA-2048 where the firmware and TPM require it: the
+  PCR key signs kernel images' PCR 11 policies and nothing else; Secure Boot's keys use what UEFI
+  verifies. Change this profile only with a documented threat-model, compatibility and migration
+  review.
 - **The release, PCR and Secure Boot keys never enter the repository or a container.** A release
   signs with AWS KMS keys that never leave KMS; a person's own builds with files in
   `SIGNING_HOME`, outside the repo. Every key is a `crypto.Signer` named by a reference
@@ -113,9 +120,10 @@ falling back from a release that does not come up.
   Wolfi's weekly in a pull request). `image check-lock` refuses a root that installs what the lock
   does not pin, or Wolfi's package where a recipe's should be: apko takes the newest version across
   repositories, so a Wolfi bump above an override silently replaces it and everything it carried.
-- **A changed recipe takes a new version or epoch**: the builder's cache knows a package by its
-  apk's name. `go test ./cmd/image` fails a recipe changed since origin/main that makes the same
-  apk. An **override of a Wolfi package** keeps Wolfi's package and subpackage names, starts from
+- **A recipe whose produced package can change takes a new version or epoch**: the builder's cache
+  knows a package by its apk's name. `go test ./cmd/image` fails a changed recipe that can make the
+  same apk as origin/main; comments outside build blocks are not a change. An **override of a
+  Wolfi package** keeps Wolfi's package and subpackage names, starts from
   Wolfi's recipe and takes an epoch above Wolfi's; Wolfi's index can carry a version whose recipe
   is not on GitHub yet, so start from the newest published recipe and upstream's tag.
 - melange derives **no dependency from an unversioned soname** and **no provides for libraries in
@@ -129,8 +137,10 @@ falling back from a release that does not come up.
 
 ## The kernel and firmware
 
-- The base is Arch Linux's configuration for the same kernel (`kernel/Dockerfile`): every driver
-  a general distribution builds, as modules; take Arch's tag for a kernel as soon as there is one.
+- The base is Arch Linux's configuration for the same kernel (`kernel/Dockerfile`), with general-PC
+  drivers as modules unless the supported-hardware policy and measured image or boot budgets say
+  otherwise. Adopt an Arch kernel tag after its configuration assertions and relevant compatibility
+  and performance checks pass; availability alone is not a release criterion.
   `kernel/platform.config` (boot, systemd, hardening) and `kernel/desktop.config` (a PC's hardware)
   are merged over it and **every line of both is asserted** after olddefconfig: fix a dropped
   symbol's dependency, do not delete the line. A PC is not a server in a controlled environment:
@@ -144,11 +154,17 @@ falling back from a release that does not come up.
 
 ## How a change is checked
 
+Validation is tiered. Run the fast checks for the changed code or configuration first, then the
+row for each affected boundary. A release runs every applicable gate. Do not run a slower unrelated
+gate merely because it exists; do not omit a boundary gate because a faster one passed. Compare
+performance reports only with a successful comparable baseline, and state the metric and budget in
+the change when one applies.
+
 | changed | run | and look at |
 |---|---|---|
 | Go | `task check` (what CI runs on a pull request) | a test for the behaviour, not for the lines |
 | a recipe | `task build -- <name>`, `task lock`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files, `.PKGINFO` depends/provides, and the lock's diff: the recipe's package and nothing of Wolfi's |
-| anything in the image or a package | `task test` (ext4 disk, kernel given directly) | the report **and the screenshots in `_output/test`**: a PASS means a window opened, not that it looks right |
+| an affected image or package behaviour | `task test` (ext4 disk, kernel given directly) | the report and relevant screenshots in `_output/test`: a PASS means a window opened, not that it looks right |
 | a shell extension, or the shell itself | `task test` | `shell-startup.txt` (the session's shell from its unit to the last extension loaded, each extension's own load) and `idle.txt` (the session at rest: CPU, wakeups, what is busy), against the last build's |
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a USB stick, the verified root) | the same, on the disk a machine boots, and `boot.txt` against the last build's |
 | install, updates, signatures, boot counting | `task test:lifecycle` | install onto NVMe, forged sticks refused, update from a URL, rollback from a broken release, `/var` and `/etc` kept |
@@ -176,8 +192,11 @@ initrd, whose units log to the journal.
   machine: the builder finds the same failure two hours and a machine later.
 - **Versions are CalVer**, `vYYYYMMDD.N`; files carry them without the v.
 - **Machines follow channels**: a channel is a signed SHA256SUMS of its newest releases at the
-  update CDN. A release goes to `testing`; `task release:promote` offers it to `stable`;
-  `task release:withdraw` takes a bad one out before machines take it.
+  update CDN. A release goes to `testing`; promote it only after its stated soak criterion and
+  required lifecycle evidence pass, and record that evidence with the promotion. Then
+  `task release:promote` offers it to `stable`; `task release:withdraw` takes a bad one out before
+  machines take it. The criterion may be elapsed time, successful boots, a cohort, or a combination
+  appropriate to the release's risk.
 - **Issues are where problems go**, and where open work goes: the issue forms ask for
   `construct report`, the weekly `watch` workflow files security fixes and pins behind upstream,
   Dependabot opens the Go modules' and the actions' bumps.
