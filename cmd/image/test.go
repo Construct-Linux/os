@@ -546,6 +546,16 @@ type shellView struct {
 	measure           func(l *lf, name string, img image.Image)
 }
 
+// waitSearch waits for the overview's search to have its results: until the providers have
+// answered the section is a spinner and "Searching", which a slow machine still shows when the
+// settle time is up.
+func waitSearch(_ *qemu.VM, l *lf) {
+	until(20*time.Second, 500*time.Millisecond, func() bool {
+		v, err := l.g.eval(`Main.overview.searchController._searchResults.searchInProgress === false`)
+		return err == nil && v == "true"
+	})
+}
+
 // wakePointer moves the pointer, which brings a locked session's display back.
 func wakePointer(v *qemu.VM, _ *lf) {
 	_ = v.PointTo(16000, 16000)
@@ -588,7 +598,7 @@ var shellViews = []shellView{
 		`Main.overview.hide(); new Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, nil, 6 * time.Second,
 		"The overview in the light scheme: the shell's ground still the boot's black, the workspace card the light wallpaper drawn small",
 		[]string{"S4", "W3"}, (*lf).viewOverviewLight},
-	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, nil, 0,
+	{"overview-search", `Main.overview.show(); Main.overview.searchEntry.set_text("se")`, `Main.overview.searchEntry.set_text(""); Main.overview.hide()`, waitSearch, 0,
 		"The overview's search: the entry and the results' section on h with the ring, the section's radius concentric with its controls'",
 		[]string{"S2", "R1"}, (*lf).viewSearch},
 	{"app-grid", `Main.overview.showApps()`, `Main.overview.hide()`, nil, 0,
