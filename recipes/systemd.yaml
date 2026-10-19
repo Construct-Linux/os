@@ -1,19 +1,19 @@
-# Wolfi's systemd (wolfi-dev/os systemd.yaml, 261.3 epoch 2, with its files in systemd/), built
-# with what Wolfi turns off and the desktop needs:
-# - TPM2: Wolfi's environment has tpm2-tss but not its headers, so meson leaves it out and
-#   systemd-cryptsetup, systemd-cryptenroll and systemd-measure cannot use a TPM - the encrypted
-#   /var unlocks with the TPM and the person's PIN, sealed to a signed PCR 11 policy.
+# Wolfi's systemd (wolfi-dev/os systemd.yaml, 261.3 epoch 5, with its files in systemd/), at
+# 262.1, which Wolfi's index carries from a recipe it has not published yet, built with what
+# Wolfi turns off and the desktop needs:
 # - sysupdate and sysupdated, in their own subpackage: the updates' engine and the D-Bus service
-#   GNOME Software updates the OS through.
+#   GNOME Software updates the OS through (sysupdated goes in v263, for Varlink: construct-update
+#   and GNOME Software move then).
 # - FIDO2: Wolfi builds without libfido2, so systemd-cryptenroll cannot enrol a security key and
 #   systemd-cryptsetup has no token to open /var with one (touch and the key's PIN). libfido2 is
 #   opened at run time: the root and the initrd install it themselves.
-# Everything else is Wolfi's, but for the aarch64-only patch (we build x86_64) and the package
-# tests, which use Wolfi's own test pipelines and which melange build does not run.
+# TPM2 Wolfi builds itself since its epoch 5. Everything else is Wolfi's, but for the aarch64-only
+# patch (we build x86_64), bootctl's random-seed patch (in 262.1) and the package tests, which use
+# Wolfi's own test pipelines and which melange build does not run.
 package:
   name: systemd
-  version: "261.3"
-  epoch: 6
+  version: "262.1"
+  epoch: 1
   description: The systemd System and Service Manager
   copyright:
     - license: LGPL-2.1-or-later AND GPL-2.0-or-later
@@ -29,21 +29,24 @@ package:
       - libarchive
       - libaudit
       - libblkid
-      - libcrypto3
       - libfdisk
       - libmount
       - libseccomp
       - libselinux
-      - libssl3
       - linux-pam
       - merged-lib
       - merged-sbin
       - merged-usrsbin
+      - openssl-4.0-libcrypto
+      - openssl-4.0-libssl
       - quota-tools
       - so:libcryptsetup.so.12
       - systemd-boot
       - systemd-systemctl
       - wolfi-baselayout
+  test-resources:
+    cpu: "1"
+    memory: 4Gi
 
 vars:
   llvm-version: 23
@@ -121,7 +124,7 @@ pipeline:
     with:
       repository: https://github.com/systemd/systemd
       tag: v${{package.version}}
-      expected-commit: 3255daee1572366b74fe92f002a3d60ecbb27103
+      expected-commit: 73612ea502d53baf9b0df4336cfc296a7ee0d524
 
   - uses: patch
     with:
@@ -603,29 +606,6 @@ subpackages:
           # just replace the first line with '#!/usr/bin/python3.XX'
           sed -i -e '1s,.*,#!/usr/bin/python${{vars.python-version}},' \
             "${{targets.subpkgdir}}/usr/bin/ukify"
-  - name: systemd-sysupdate
-    description: systemd-sysupdate, systemd-sysupdated and updatectl
-    dependencies:
-      runtime:
-        - systemd
-        # It writes each transfer by running systemd-import (local sources) or systemd-pull (URL
-        # sources), which are in systemd-container.
-        - systemd-container
-        # systemd-pull checks a URL source's SHA256SUMS.gpg by running gpg.
-        - gpg
-    pipeline:
-      - runs: |
-          cd ${{targets.destdir}}
-          for f in usr/lib/systemd/systemd-sysupdate usr/bin/systemd-sysupdate usr/lib/systemd/systemd-sysupdated usr/bin/updatectl \
-              usr/lib/systemd/system/systemd-sysupdate*.service usr/lib/systemd/system/systemd-sysupdate*.timer \
-              usr/lib/systemd/system/dbus-org.freedesktop.sysupdate1.service \
-              usr/share/dbus-1/system.d/org.freedesktop.sysupdate1.conf \
-              usr/share/dbus-1/system-services/org.freedesktop.sysupdate1.service \
-              usr/share/polkit-1/actions/org.freedesktop.sysupdate1.policy; do
-            test -e "$f" || test -L "$f" || { echo "missing $f" >&2; exit 1; }
-            mkdir -p "${{targets.subpkgdir}}/${f%/*}"
-            mv "$f" "${{targets.subpkgdir}}/$f"
-          done
   - name: "systemd-journal-gatewayd"
     description: "HTTP server for journal events"
     dependencies:
@@ -687,3 +667,29 @@ subpackages:
           mv "${{targets.destdir}}/usr/share/dbus-1/system-services/org.freedesktop.timesync1.service" "${{targets.subpkgdir}}/usr/share/dbus-1/system-services/org.freedesktop.timesync1.service"
           mv "${{targets.destdir}}/usr/share/dbus-1/system.d/org.freedesktop.timesync1.conf" "${{targets.subpkgdir}}/usr/share/dbus-1/system.d/org.freedesktop.timesync1.conf"
           mv "${{targets.destdir}}/usr/share/polkit-1/actions/org.freedesktop.timesync1.policy" "${{targets.subpkgdir}}/usr/share/polkit-1/actions/org.freedesktop.timesync1.policy"
+
+  - name: systemd-sysupdate
+    description: systemd-sysupdate, systemd-sysupdated and updatectl
+    dependencies:
+      runtime:
+        - systemd
+        # It writes each transfer by running systemd-import (local sources) or systemd-pull (URL
+        # sources), which are in systemd-container.
+        - systemd-container
+        # systemd-pull checks a URL source's SHA256SUMS.gpg by running gpg.
+        - gpg
+    pipeline:
+      - runs: |
+          cd ${{targets.destdir}}
+          # 262 keeps the binary in libexecdir alone, renames the units (compatibility links beside
+          # them) and adds the Varlink and notify ones: every systemd-sysupdate* unit goes.
+          for f in usr/lib/systemd/systemd-sysupdate usr/lib/systemd/systemd-sysupdated usr/bin/updatectl \
+              usr/lib/systemd/system/systemd-sysupdate* \
+              usr/lib/systemd/system/dbus-org.freedesktop.sysupdate1.service \
+              usr/share/dbus-1/system.d/org.freedesktop.sysupdate1.conf \
+              usr/share/dbus-1/system-services/org.freedesktop.sysupdate1.service \
+              usr/share/polkit-1/actions/org.freedesktop.sysupdate1.policy; do
+            test -e "$f" || test -L "$f" || { echo "missing $f" >&2; exit 1; }
+            mkdir -p "${{targets.subpkgdir}}/${f%/*}"
+            mv "$f" "${{targets.subpkgdir}}/$f"
+          done

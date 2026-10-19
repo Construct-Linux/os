@@ -246,8 +246,12 @@ with `debugfs -c`. The initrd's units log to the journal; `rd.systemd.debug_shel
   `/etc` overlay's upper is on `/var`, so a file mapped through `/etc` (glibc's `ld.so.cache`, now
   in `/usr/lib`) or one an `@` process keeps open (plymouth's boot log, off) pins both.
   `image run -usb -poweroff` then the stick's superblock says whether a shutdown left it clean.
-- `recipes/systemd` is Wolfi's systemd recipe with TPM2 and sysupdate turned on. Wolfi's own
-  build has neither. Bump it whenever Wolfi bumps systemd, starting again from Wolfi's file.
+- `recipes/systemd` is Wolfi's systemd recipe with sysupdate and FIDO2 turned on (TPM2 Wolfi
+  builds itself since 261.3 epoch 5). Bump it whenever Wolfi bumps systemd, starting again from
+  Wolfi's file - and Wolfi's index can carry a version whose recipe is not on GitHub yet (262.1
+  on 2026-10-19, built from a commit wolfi-dev/os did not have): `task lock` refuses the lock
+  until the override is above it, so the bump is written from Wolfi's newest published recipe
+  and upstream's tag, and the epoch goes above Wolfi's.
 - The kernel image on the ESP must stay writable (0644): systemd-boot counts a try by renaming it.
 
 ## Where to look next
