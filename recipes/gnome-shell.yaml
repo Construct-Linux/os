@@ -1,7 +1,7 @@
 package:
   name: gnome-shell
   version: "51.0"
-  epoch: 2
+  epoch: 3
   description: GNOME Shell, the core user interface of the GNOME desktop
   copyright:
     - license: GPL-2.0-or-later
@@ -94,9 +94,16 @@ pipeline:
   # the shell logs "already disposed" and a TypeError at each (seen with the installer, which
   # autostarts 3 s into the live session, on the release builder's slow VM). The idle is cancelled
   # with the workspace.
+  # The unlock dialog's prompt finishes without a verification when the shield is deactivated
+  # (logind's Unlock, the shield's own deactivate), and cleared its user verifier without
+  # cancelling it: GDM kept the conversation, a gdm-password worker and 5 files in the session's
+  # worker, until the next prompt replaced it (task test:usb, "unlock leaves nothing open"). The
+  # prompt cancels a verification it finishes without.
   - uses: patch
     with:
-      patches: gnome-shell/workspace-cancel-pending-adds-on-destroy.patch
+      patches: |
+        gnome-shell/workspace-cancel-pending-adds-on-destroy.patch
+        gnome-shell/authprompt-cancel-on-finish.patch
 
   # portal_helper off: the captive-portal login window is a WebKitGTK browser, not shipped
   - uses: meson/configure

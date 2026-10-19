@@ -1,0 +1,52 @@
+From: Construct <release@constructlinux.org>
+Subject: authPrompt: Cancel a pending verification when the prompt finishes without one
+
+The unlock dialog finishes its prompt when the shield is deactivated,
+and not only after a successful verification: logind's Unlock signal
+(loginctl unlock-session) and the shield's own deactivate() do it with
+the prompt still waiting for the password. finish() then cleared the
+user verifier without cancelling it, so GDM never heard the
+reauthentication was over: its session kept the conversation, and the
+gdm-password worker waiting for the answer stayed alive with its pidfd,
+its socket pair and its connection in the session's worker, until this
+process asked for another prompt and replaced the request, or for good.
+Measured over three lock, prompt and deactivate cycles: one worker and
+5 file descriptors left after each unlock, replaced at the next prompt.
+
+Cancel the verifier when the prompt finishes without a successful
+verification: GDM resets the session and stops its conversations, as
+it does when the person cancels the prompt.
+
+--- a/js/gdm/authPrompt.js
++++ b/js/gdm/authPrompt.js
+@@ -1047,16 +1047,26 @@
+     }
+ 
+     finish(onComplete) {
+-        if (!this._userVerifier.hasPendingMessages) {
+-            this._userVerifier.clear();
++        // Finished without a verification - the session unlocked through
++        // logind, the shield dropped - a conversation still waiting for its
++        // answer must be cancelled, or GDM keeps it, a password worker with
++        // it, until this process asks for another.
++        const done = () => {
++            if (this.verificationStatus === AuthPromptStatus.VERIFICATION_SUCCEEDED)
++                this._userVerifier.clear();
++            else
++                this._userVerifier.cancel();
+             onComplete();
++        };
++
++        if (!this._userVerifier.hasPendingMessages) {
++            done();
+             return;
+         }
+ 
+         const signalId = this._userVerifier.connect('no-more-messages', () => {
+             this._userVerifier.disconnect(signalId);
+-            this._userVerifier.clear();
+-            onComplete();
++            done();
+         });
+     }
+ 
