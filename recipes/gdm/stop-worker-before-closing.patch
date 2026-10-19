@@ -1,0 +1,46 @@
+From: Construct <release@constructlinux.org>
+Subject: session: Stop a conversation's worker before closing its connection
+
+stop_conversation() closed the worker's connection and then sent the
+worker SIGTERM. A worker waiting on a query - gdm-password, for the
+password of a prompt the person cancelled or the shell took down - saw
+its query fail first, returned PAM_CONV_ERR to the module, and pam_unix
+logged two errors for a prompt nobody failed:
+
+  pam_unix(gdm-password:auth): conversation failed
+  pam_unix(gdm-password:auth): auth could not identify password for [x]
+
+A worker that has not started a session exits on SIGTERM at once
+(session-worker-main.c, on_sigterm_cb), so sent first it is gone before
+the query can fail. The connection is closed after, as before.
+
+--- a/daemon/gdm-session.c
++++ b/daemon/gdm-session.c
+@@ -2433,19 +2433,23 @@
+ static void
+ stop_conversation (GdmSessionConversation *conversation)
+ {
+-        close_conversation (conversation);
+-
++        /* The worker first: a worker that has not started a session exits on
++         * SIGTERM at once, where closing its connection first makes the query
++         * it is waiting on fail, and the PAM module log the cancelled
++         * conversation as an error before the signal reaches it. */
+         conversation->is_stopping = TRUE;
+         gdm_session_worker_job_stop (conversation->job);
++
++        close_conversation (conversation);
+ }
+ 
+ static void
+ stop_conversation_now (GdmSessionConversation *conversation)
+ {
+-        close_conversation (conversation);
+-
+         gdm_session_worker_job_stop_now (conversation->job);
+         g_clear_object (&conversation->job);
++
++        close_conversation (conversation);
+ }
+ 
+ void

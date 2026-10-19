@@ -1,7 +1,7 @@
 package:
   name: gdm
   version: "51.0"
-  epoch: 6
+  epoch: 7
   description: GNOME display manager
   copyright:
     - license: GPL-2.0-or-later
@@ -73,6 +73,14 @@ pipeline:
   - uses: patch
     with:
       patches: gdm/reauthentication-close-session.patch
+
+  # A conversation stopped - the prompt cancelled, or taken down - had its worker's connection
+  # closed before the worker was signalled: the query it waited on failed, and pam_unix logged
+  # "conversation failed" and "could not identify password" for a prompt nobody failed. The
+  # worker, which exits on SIGTERM at once, is stopped first.
+  - uses: patch
+    with:
+      patches: gdm/stop-worker-before-closing.patch
 
   # x11-support off: gnome-shell 51 runs only as a Wayland compositor. selinux off: it is not in
   # the image. Plymouth on: GDM takes the screen over from the boot splash without a flash.
