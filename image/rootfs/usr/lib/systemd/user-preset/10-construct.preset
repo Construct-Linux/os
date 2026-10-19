@@ -5,6 +5,7 @@ enable pipewire-pulse.socket
 enable wireplumber.service
 enable xdg-user-dirs.service
 enable construct-reboot-notice.path
+enable construct-firewall-notice.service
 enable construct-theme.service
 
 disable *
