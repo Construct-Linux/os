@@ -4,7 +4,7 @@
 package:
   name: libfprint
   version: 1.94.100
-  epoch: 0
+  epoch: 1
   description: Fingerprint reader drivers
   copyright:
     - license: LGPL-2.1-or-later

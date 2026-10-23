@@ -6,7 +6,7 @@
 package:
   name: wpa_supplicant
   version: "2.12"
-  epoch: 1
+  epoch: 2
   description: IEEE 802.1X/WPA supplicant, for NetworkManager's Wi-Fi
   copyright:
     - license: BSD-3-Clause
