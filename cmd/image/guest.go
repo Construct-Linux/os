@@ -254,9 +254,9 @@ func (g *guest) reboot() {
 }
 
 // waitGone waits up to d for the guest to stop answering: a reboot, a suspend or a reset it was
-// asked for has begun.
-func (g *guest) waitGone(d time.Duration) {
-	until(d, time.Second, func() bool { return g.answers() != nil })
+// asked for has begun, or a guest too busy to answer in time.
+func (g *guest) waitGone(d time.Duration) bool {
+	return until(d, time.Second, func() bool { return g.answers() != nil })
 }
 
 // waitUnit2Active waits for unit to be active, and fails as soon as it failed.

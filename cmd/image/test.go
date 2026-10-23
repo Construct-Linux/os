@@ -940,16 +940,23 @@ func (r *report) suspend(v *qemu.VM, g *guest) {
 		// --no-block: the job ends only once the machine is awake again, which this side does.
 		_, err = g.run(`systemctl suspend --no-block`, "")
 	}
-	if err == nil {
-		// Asleep once the guest stops answering.
-		g.waitGone(30 * time.Second)
-		time.Sleep(3 * time.Second)
-		err = v.Key("shift")
+	// Asleep once the guest stops answering, and slept once the kernel counted it. A guest still
+	// paging in what the bench's OOM pushed out stops answering before logind has even frozen the
+	// session: the key pressed then wakes nothing, and the sleep that follows waits for another.
+	after := before
+	for range 3 {
+		if err != nil || strings.TrimSpace(after) != strings.TrimSpace(before) {
+			break
+		}
+		if g.waitGone(30 * time.Second) {
+			time.Sleep(3 * time.Second)
+			err = v.Key("shift")
+		}
+		if err == nil {
+			err = g.wait(2 * time.Minute)
+		}
+		after, _ = g.run(`cat /sys/power/suspend_stats/success`, "")
 	}
-	if err == nil {
-		err = g.wait(2 * time.Minute)
-	}
-	after, _ := g.run(`cat /sys/power/suspend_stats/success`, "")
 	// What the machine said from the suspend on: what a resume broke is read here.
 	resumed, _ := g.run(`journalctl -b -q --no-pager -o short-monotonic -p warning --since "-5min"`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "resume.txt"), []byte(resumed), 0o644)
