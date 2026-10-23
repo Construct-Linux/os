@@ -1577,9 +1577,8 @@ func (l *lf) app(id, shot string) {
 	// every surface of the workbench to 0.6 of its colour: Escape, as a person would, and the
 	// workbench is what is measured.
 	if id == "code.desktop" {
-		_ = l.v.Key("esc")
-		time.Sleep(2 * time.Second)
 		shot = "code-workbench"
+		l.dismissCodeOnboarding(id, shot)
 		l.shot(viewMeta{shot, needle.GroupApp,
 			"VS Code's workbench once its onboarding is dismissed: the title bar and the editor on g, the side and status bars on f, from the palette's construct-theme",
 			[]string{"X1", "S3"}}, nil)
@@ -1599,6 +1598,30 @@ func (l *lf) app(id, shot string) {
 		return
 	}
 	l.appSurfaces(id, img, r)
+}
+
+// dismissCodeOnboarding presses Escape until the scrim is gone, read off the side bar, which is f
+// once nothing dims it: on a loaded machine the modal takes the focus after a first key arrived,
+// and that key closes nothing. Escape over the bare workbench does nothing either.
+func (l *lf) dismissCodeOnboarding(id, shot string) {
+	f := l.c("neutral-f")
+	for range 5 {
+		_ = l.v.Key("esc")
+		time.Sleep(2 * time.Second)
+		l.r.shot(l.v, shot)
+		img, ok := l.img(shot)
+		if !ok {
+			return
+		}
+		r, err := l.appWindow(id)
+		if err != nil {
+			return
+		}
+		side, _ := pixels.ModeColor(img, l.px(pixels.Rect{X: r.X + 4, Y: r.Y + r.H/3, W: 36, H: r.H / 3}))
+		if pixels.Near(side, f, lfSurfaceTol) {
+			return
+		}
+	}
 }
 
 // appSurfaces is app's check on an app's window at r, a stage rectangle.
