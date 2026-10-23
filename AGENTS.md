@@ -167,7 +167,7 @@ the change when one applies.
 | changed | run | and look at |
 |---|---|---|
 | Go | `task check` (what CI runs on a pull request) | a test for the behaviour, not for the lines |
-| a recipe | `task build -- <name>`, `task lock`, `task rootfs`, `go run ./cmd/image disk -test && go run ./cmd/image check` | the package's files, `.PKGINFO` depends/provides, and the lock's diff: the recipe's package and nothing of Wolfi's |
+| a recipe | `task build -- <name>`, `task lock` (which builds both roots), `task disk -- -test && go run ./cmd/image check` | the package's files, `.PKGINFO` depends/provides, and the lock's diff: the recipe's package and nothing of Wolfi's |
 | an affected image or package behaviour | `task test` (ext4 disk, kernel given directly) | the report and relevant screenshots in `_output/test`: a PASS means a window opened, not that it looks right |
 | a shell extension, or the shell itself | `task test` | `shell-startup.txt` (the session's shell from its unit to the last extension loaded, each extension's own load) and `idle.txt` (the session at rest: CPU, wakeups, what is busy), against the last build's |
 | boot, the initrd, `/var`, `/etc`, units, the read-only root | `task test:usb` (UEFI, a USB stick, the verified root) | the same, on the disk a machine boots, and `boot.txt` against the last build's |
