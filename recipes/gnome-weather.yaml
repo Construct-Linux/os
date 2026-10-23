@@ -1,7 +1,7 @@
 package:
   name: gnome-weather
   version: "50.0"
-  epoch: 0
+  epoch: 1
   description: Weather application for GNOME
   copyright:
     - license: GPL-2.0-or-later
@@ -49,6 +49,12 @@ pipeline:
   - uses: patch
     with:
       patches: gnome-weather/tsconfig.patch
+
+  # TypeScript 7 reports a mismatched overload on its argument, not on the call: the
+  # @ts-expect-error each bind_property_full() carries moves onto the argument it reports.
+  - uses: patch
+    with:
+      patches: gnome-weather/ts-expect-error-on-argument.patch
 
   # No GNOME 51 release of Weather exists yet; 50.0 is the newest stable.
   - uses: meson/configure

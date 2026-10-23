@@ -1,0 +1,102 @@
+From: Construct <release@constructlinux.org>
+Subject: Expect the transform functions' type error where TypeScript 7 reports it
+
+bind_property_full()'s transform functions return what gi-types does not
+type, which each call marks with @ts-expect-error on the line before it.
+TypeScript 7 reports the mismatched overload on its last argument, null,
+instead of on the call: the directive found no error on its line ("Unused
+'@ts-expect-error' directive") and the error went unexpected. The
+directive moves to the argument it reports on; no code changes.
+
+diff --git a/src/playback-rate-button.ts b/src/playback-rate-button.ts
+index afef452..0f8f43d 100644
+--- a/src/playback-rate-button.ts
++++ b/src/playback-rate-button.ts
+@@ -36,7 +36,6 @@ export class APPlaybackRateButton extends Adw.Bin {
+       GObject.BindingFlags.SYNC_CREATE,
+     );
+ 
+-    // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+     window.stream.bind_property_full(
+       "rate",
+       this._label,
+@@ -46,6 +45,7 @@ export class APPlaybackRateButton extends Adw.Bin {
+         const rounded = from.toFixed(1);
+         return [true, `× ${rounded}`];
+       },
++      // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+       null,
+     );
+   }
+diff --git a/src/player.ts b/src/player.ts
+index 2f92b0a..bc2f4f2 100644
+--- a/src/player.ts
++++ b/src/player.ts
+@@ -68,7 +68,6 @@ export class APPlayerState extends Adw.Bin {
+       widget.set_direction(Gtk.TextDirection.LTR);
+     }
+ 
+-    // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+     window.stream.bind_property_full(
+       "duration",
+       this._duration_label,
+@@ -77,10 +76,10 @@ export class APPlayerState extends Adw.Bin {
+       () => {
+         return [true, micro_to_string(window.stream.get_duration())];
+       },
++      // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+       null,
+     );
+ 
+-    // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+     window.stream.bind_property_full(
+       "timestamp",
+       this._timestamp_label,
+@@ -89,6 +88,7 @@ export class APPlayerState extends Adw.Bin {
+       (_binding, from: number) => {
+         return [true, micro_to_string(from)];
+       },
++      // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+       null,
+     );
+ 
+@@ -105,7 +105,6 @@ export class APPlayerState extends Adw.Bin {
+       },
+     );
+ 
+-    // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+     window.stream.bind_property_full(
+       "playing",
+       this._playback_image,
+@@ -114,10 +113,10 @@ export class APPlayerState extends Adw.Bin {
+       (_binding, from: boolean) => {
+         return [true, from ? "pause-large-symbolic" : "play-large-symbolic"];
+       },
++      // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+       null,
+     );
+ 
+-    // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+     window.stream.bind_property_full(
+       "playing",
+       this._playback_button,
+@@ -126,10 +125,10 @@ export class APPlayerState extends Adw.Bin {
+       (_binding, from: boolean) => {
+         return [true, from ? _("Pause") : _("Play")];
+       },
++      // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+       null,
+     );
+ 
+-    // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+     window.stream.bind_property_full(
+       "timestamp",
+       this._waveform,
+@@ -145,6 +144,7 @@ export class APPlayerState extends Adw.Bin {
+           Math.max(Math.min(from / window.stream.get_duration() || 0, 1), 0),
+         ];
+       },
++      // @ts-expect-error GObject.BindingTransformFunc return arguments are not correctly typed
+       null,
+     );
+ 

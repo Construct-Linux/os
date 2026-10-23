@@ -1,0 +1,38 @@
+From: Construct <release@constructlinux.org>
+Subject: Expect bind_property_full()'s type error where TypeScript 7 reports it
+
+The thermometer's bind_property_full() calls return what ts-for-gir does
+not type, which each marks with @ts-expect-error on the line before it.
+TypeScript 7 reports the mismatched overload on its first argument instead
+of on the call: the directive found no error on its line ("Unused
+'@ts-expect-error' directive") and the error went unexpected. The comments
+move onto the argument it reports on; no code changes.
+
+diff --git a/src/app/thermometer.ts b/src/app/thermometer.ts
+index f39d426..016a749 100644
+--- a/src/app/thermometer.ts
++++ b/src/app/thermometer.ts
+@@ -287,10 +287,10 @@ export class Thermometer extends Gtk.Widget {
+             GObject.BindingFlags.DEFAULT
+         );
+ 
+-        // @ts-expect-error ts-for-gir does not `bind_property_full` correctly. In GJS it actually returns a
+-        // tuple of [boolean, value] where the boolean is whether the transformation succeeded, and the value
+-        // is the transformed value.
+         this.bind_property_full(
++            // @ts-expect-error ts-for-gir does not `bind_property_full` correctly. In GJS it actually returns a
++            // tuple of [boolean, value] where the boolean is whether the transformation succeeded, and the value
++            // is the transformed value.
+             'range',
+             this.lowLabel,
+             'label',
+@@ -301,8 +301,8 @@ export class Thermometer extends Gtk.Widget {
+             null
+         );
+ 
+-        // @ts-expect-error Same as the above.
+         this.bind_property_full(
++            // @ts-expect-error Same as the above.
+             'range',
+             this.highLabel,
+             'label',

@@ -32,8 +32,8 @@ contents:
     - cups-pk-helper=0.2.7-r0
     - cups-pk-helper-lang=0.2.7-r0
     - dconf=51.0-r0
-    - decibels=49.6.1-r0
-    - decibels-lang=49.6.1-r0
+    - decibels=49.6.1-r1
+    - decibels-lang=49.6.1-r1
     - desktop-file-utils=0.28-r0
     - device-mapper=2.03.43-r1
     - device-mapper-event-libs=2.03.43-r1
@@ -135,8 +135,8 @@ contents:
     - gnome-system-monitor-lang=51.0-r0
     - gnome-text-editor=51.0-r0
     - gnome-text-editor-lang=51.0-r0
-    - gnome-weather=50.0-r0
-    - gnome-weather-lang=50.0-r0
+    - gnome-weather=50.0-r1
+    - gnome-weather-lang=50.0-r1
     - gom=0.5.6-r0
     - grilo=0.3.19-r0
     - grilo-lang=0.3.19-r0

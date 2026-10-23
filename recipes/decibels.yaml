@@ -1,7 +1,7 @@
 package:
   name: decibels
   version: 49.6.1
-  epoch: 0
+  epoch: 1
   description: Play audio files
   copyright:
     - license: GPL-3.0-or-later
@@ -49,6 +49,12 @@ pipeline:
   - uses: patch
     with:
       patches: decibels/typescript-7.patch
+
+  # TypeScript 7 reports a mismatched overload on its argument, not on the call: the
+  # @ts-expect-error each bind_property_full() carries moves onto the argument it reports.
+  - uses: patch
+    with:
+      patches: decibels/ts-expect-error-on-argument.patch
 
   - uses: meson/configure
 
