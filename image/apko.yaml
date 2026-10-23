@@ -321,6 +321,7 @@ contents:
     - coreutils-doc
     - cryptsetup-doc
     - cups-doc
+    - cups-filters-doc
     - curl-doc
     - dbus-doc
     - dmidecode-doc
@@ -334,7 +335,6 @@ contents:
     - gdbm-doc
     - gdk-pixbuf-doc
     - gettext-doc
-    - ghostscript-doc
     - git-doc
     - glib-doc
     - gpgme-doc

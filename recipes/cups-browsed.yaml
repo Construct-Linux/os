@@ -1,5 +1,5 @@
-# Printing, part 4: the printers avahi announces on the network appear in GNOME's print dialogs
-# without anyone adding them.
+# The printers avahi announces on the network appear in GNOME's print dialogs without anyone
+# adding them. Wolfi has CUPS and OpenPrinting's libraries and filters, and not this.
 package:
   name: cups-browsed
   version: 2.1.1
