@@ -1,7 +1,7 @@
 package:
   name: volume_key
   version: 0.3.12
-  epoch: 2
+  epoch: 3
   description: Library for manipulating storage volume encryption keys
   copyright:
     - license: GPL-2.0-or-later
@@ -29,9 +29,11 @@ environment:
       - util-linux-dev
 
 pipeline:
+  # releases.pagure.org answers 404 now that Pagure is shut down: Fedora's lookaside cache keeps
+  # the same tarball, under its SHA512 (rpms/volume_key, sources).
   - uses: fetch
     with:
-      uri: https://releases.pagure.org/volume_key/volume_key-${{package.version}}.tar.xz
+      uri: https://src.fedoraproject.org/repo/pkgs/volume_key/volume_key-${{package.version}}.tar.xz/sha512/d056154c9b9d23e4eb661946dd59ed97e116903a3afcff9d9e29258408082f33dcbb69958724143f6bf191a3da488a03b6c02af287790990ed6459e29d66553c/volume_key-${{package.version}}.tar.xz
       expected-sha256: 6ca3748fc1dad22c450bbf6601d4e706cb11c5e662d11bb4aeb473a9cd77309b
 
   - runs: autoreconf -vif

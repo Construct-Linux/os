@@ -300,7 +300,7 @@ contents:
     - udisks2-lang=2.11.2-r0
     - upower=1.91.4-r0
     - usbutils=019-r0
-    - volume_key=0.3.12-r2
+    - volume_key=0.3.12-r3
     - vte3=0.84.1-r1
     - vte3-lang=0.84.1-r1
     - wireless-regdb=2026.09.03-r0
