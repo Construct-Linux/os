@@ -321,6 +321,9 @@ func (r *report) systemChecks(g *guest) {
 	// Tailscale's agent runs, waiting for someone to log in (no tailnet in the harness).
 	ts, _ := g.run(`systemctl is-active tailscaled; tailscale status --json 2>/dev/null | grep -o '"BackendState": *"[A-Za-z]*"'`, "")
 	r.add("tailscale", strings.HasPrefix(ts, "active") && strings.Contains(ts, "NeedsLogin"), oneLine(ts))
+	// What it logs stays here, and a retry loop does not fill the journal (tailscaled.service.d).
+	tsLogs, err := g.run(`tr '\0' '\n' < /proc/$(systemctl show -P MainPID tailscaled)/environ | grep '^TS_NO_LOGS'; systemctl show -p LogRateLimitBurst tailscaled`, "")
+	r.add("tailscale logs nowhere else", err == nil && strings.Contains(tsLogs, "TS_NO_LOGS_NO_SUPPORT=true") && strings.Contains(tsLogs, "LogRateLimitBurst=100"), oneLine(tsLogs)+errText(err))
 	// The firewall: a server listening on every address answers this machine, and not another on
 	// the network - a network namespace behind a veth stands in for one, its packets arriving on an
 	// interface that is neither loopback nor a container's bridge.
