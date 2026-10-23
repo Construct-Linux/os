@@ -6,7 +6,7 @@
 package:
   name: code
   version: 1.140.0
-  epoch: 3
+  epoch: 4
   description: Visual Studio Code, Microsoft's build
   copyright:
     - license: LicenseRef-Microsoft-VSCode
@@ -49,7 +49,18 @@ pipeline:
       # the browser.
       rm ${{targets.destdir}}/usr/share/code/resources/app/extensions/microsoft-authentication/dist/libmsalruntime.so \
         ${{targets.destdir}}/usr/share/code/resources/app/extensions/microsoft-authentication/dist/msal-node-runtime.node
-      ln -s ../share/code/bin/code ${{targets.destdir}}/usr/bin/code
+      # vsce-sign, which verifies every extension the marketplace sends, is .NET, and .NET looks
+      # for OpenSSL 3 or older by name: on a root with only OpenSSL 4 it aborts ("No usable version
+      # of libssl was found") and no extension installs. Told the version, .NET opens OpenSSL 4,
+      # and verifies as it did with 3: a genuine package passes, a changed one is refused. Code
+      # passes its environment to its children, so both ways in - the command and the desktop
+      # files - set it, and nothing else on the machine gets it: a Flatpak's .NET, whose runtime
+      # has OpenSSL 3, would not open it.
+      install -Dm755 /dev/stdin ${{targets.destdir}}/usr/bin/code <<'WRAPPER'
+      #!/bin/sh
+      export CLR_OPENSSL_VERSION_OVERRIDE=4
+      exec /usr/share/code/bin/code "$@"
+      WRAPPER
       install -Dm644 ${{targets.destdir}}/usr/share/code/resources/app/out/media/code-icon.svg \
         ${{targets.destdir}}/usr/share/icons/hicolor/scalable/apps/vscode.svg
       install -Dm644 /dev/stdin ${{targets.destdir}}/usr/share/applications/code.desktop <<'EOF'
@@ -57,7 +68,7 @@ pipeline:
       Name=Visual Studio Code
       Comment=Code Editing. Redefined.
       GenericName=Text Editor
-      Exec=/usr/share/code/code %F
+      Exec=env CLR_OPENSSL_VERSION_OVERRIDE=4 /usr/share/code/code %F
       Icon=vscode
       Type=Application
       StartupNotify=false
@@ -69,7 +80,7 @@ pipeline:
 
       [Desktop Action new-empty-window]
       Name=New Empty Window
-      Exec=/usr/share/code/code --new-window %F
+      Exec=env CLR_OPENSSL_VERSION_OVERRIDE=4 /usr/share/code/code --new-window %F
       Icon=vscode
       EOF
       install -Dm644 /dev/stdin ${{targets.destdir}}/usr/share/applications/code-url-handler.desktop <<'EOF'
@@ -77,7 +88,7 @@ pipeline:
       Name=Visual Studio Code - URL Handler
       Comment=Code Editing. Redefined.
       GenericName=Text Editor
-      Exec=/usr/share/code/code --open-url %U
+      Exec=env CLR_OPENSSL_VERSION_OVERRIDE=4 /usr/share/code/code --open-url %U
       Icon=vscode
       Type=Application
       NoDisplay=true
@@ -87,3 +98,4 @@ pipeline:
       Keywords=vscode;
       EOF
       test -x ${{targets.destdir}}/usr/share/code/code
+      test "$(grep -c '^Exec=env CLR_OPENSSL_VERSION_OVERRIDE=4 ' ${{targets.destdir}}/usr/share/applications/code*.desktop | awk -F: '{n+=$2} END {print n}')" = 3
