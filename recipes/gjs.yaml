@@ -1,6 +1,6 @@
 package:
   name: gjs
-  version: 1.90.0
+  version: 1.90.1
   epoch: 0
   description: GNOME JavaScript bindings
   copyright:
@@ -31,7 +31,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/gjs/${{vars.series}}/gjs-${{package.version}}.tar.xz
-      expected-sha256: 47e9f22b1d4aca841c6c492b449b6de32ff680972183e26fe7b98a45c5c3fee1
+      expected-sha256: 05ceaa80f48e3782e5c44938572fad863e02b8c4a6c55657a99aa81db8ce9efa
 
   # profiler needs sysprof, which is not available.
   - uses: meson/configure
