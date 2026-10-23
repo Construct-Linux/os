@@ -5,7 +5,7 @@
 package:
   name: fwupd
   version: 2.1.8
-  epoch: 0
+  epoch: 1
   description: Firmware updates from LVFS
   copyright:
     - license: LGPL-2.1-or-later
@@ -46,6 +46,12 @@ pipeline:
       repository: https://github.com/fwupd/fwupd
       tag: ${{package.version}}
       expected-commit: 3b7eca282bbe6cb4e8d5b4e42f984d2a1679977f
+
+  # The plugins, the daemon and the tools compiled against libfwupd's generated headers without
+  # waiting for them: a build that reached a plugin first failed on fwupd-bios-setting-struct.h.
+  - uses: patch
+    with:
+      patches: fwupd/order-after-libfwupd-headers.patch
 
   - uses: meson/configure
     with:

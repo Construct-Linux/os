@@ -58,8 +58,8 @@ contents:
     - fprintd=1.94.5-r1
     - fprintd-lang=1.94.5-r1
     - freerdp-3-libs=3.32.2-r1
-    - fwupd=2.1.8-r0
-    - fwupd-lang=2.1.8-r0
+    - fwupd=2.1.8-r1
+    - fwupd-lang=2.1.8-r1
     - gcr=3.41.2-r0
     - gcr4=4.4.1-r0
     - gcr4-lang=4.4.1-r0

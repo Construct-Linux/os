@@ -1,0 +1,60 @@
+From: Construct <release@constructlinux.org>
+Subject: libfwupdplugin: Order what includes its headers after libfwupd's generated ones
+
+libfwupdplugin's headers include libfwupd's, and libfwupd's include the
+headers rustgen.py generates (fwupd-bios-setting.h includes
+fwupd-bios-setting-struct.h). libfwupdplugin, and the plugins, the daemon
+and the tools through fwupdplugin_rs_dep, only link_with libfwupd, which
+orders nothing before their objects: a build that compiled one of them
+before libfwupd's custom targets ran failed with
+"fwupd-bios-setting-struct.h: No such file or directory".
+
+libfwupd keeps its generated headers apart, fwupd_rs_h, and libfwupdplugin
+and fwupdplugin_rs_dep take them as sources, as meson's FAQ says to: the
+headers alone, since the generated .c files are libfwupd's to compile.
+
+diff --git a/libfwupd/meson.build b/libfwupd/meson.build
+index 852f82a..844f9d1 100644
+--- a/libfwupd/meson.build
++++ b/libfwupd/meson.build
+@@ -29,8 +29,9 @@ fwupd_structs = [
+ 
+ # do not use structgen as these are referenced in headers too...
+ fwupd_rs_targets = []
++fwupd_rs_h = []
+ foreach fwupd_struct : fwupd_structs
+-  fwupd_rs_targets += custom_target(
++  fwupd_rs_h += custom_target(
+     'lib' + fwupd_struct + '.h',
+     input: fwupd_struct,
+     output: fwupd_struct.replace('.rs', '-struct.h'),
+@@ -46,6 +47,7 @@ foreach fwupd_struct : fwupd_structs
+     install: true,
+     install_dir: join_paths(includedir, base_dir, 'libfwupd'),
+   )
++  fwupd_rs_targets += fwupd_rs_h[-1]
+   fwupd_rs_targets += custom_target(
+     'lib' + fwupd_struct + '.c',
+     input: fwupd_struct,
+diff --git a/libfwupdplugin/meson.build b/libfwupdplugin/meson.build
+index 7245d2e..cfe6475 100644
+--- a/libfwupdplugin/meson.build
++++ b/libfwupdplugin/meson.build
+@@ -436,7 +436,7 @@ fwupdplugin = library(
+   fwupdplugin_rs_targets,
+   sources: [fwupdplugin_src, fwupdplugin_headers],
+   include_directories: [root_incdir, fwupd_incdir],
+-  dependencies: [library_deps],
++  dependencies: [library_deps, declare_dependency(sources: fwupd_rs_h)],
+   link_with: [fwupd],
+   install_dir: libdir_pkg,
+   install: true,
+@@ -449,7 +449,7 @@ foreach fwupdplugin_rs_target : fwupdplugin_rs_targets
+ endforeach
+ fwupdplugin_rs_dep = declare_dependency(
+   link_with: fwupdplugin,
+-  sources: fwupdplugin_rs_headers,
++  sources: [fwupd_rs_h, fwupdplugin_rs_headers],
+ )
+ 
+ fwupdplugin_gir_includes = []
