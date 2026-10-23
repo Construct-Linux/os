@@ -1,7 +1,7 @@
 package:
   name: ibus
   version: 1.5.34
-  epoch: 0
+  epoch: 1
   description: Next Generation Input Bus for Linux
   copyright:
     - license: LGPL-2.1-or-later
@@ -39,6 +39,13 @@ pipeline:
     with:
       uri: https://github.com/ibus/ibus/releases/download/${{package.version}}/ibus-${{package.version}}.tar.gz
       expected-sha256: 12a72210ce5250f8a66df562a75e034e67b2bce74c4df2983dc86d1154894943
+
+  # A converted preedit's attribute list was a floating reference that gjs took as its own, so
+  # gnome-shell freed it twice and crashed with the session (ibus#2889). Upstream's fix, until a
+  # release carries it.
+  - uses: patch
+    with:
+      patches: ibus/attr-list-owned-reference.patch
 
   # GNOME Shell is the panel and candidate window, so ibus's own Vala UI, emoji/unicode pickers
   # and setup tool are off; the UCD and Unicode emoji data they need are not in Wolfi either.

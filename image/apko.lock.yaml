@@ -157,8 +157,8 @@ contents:
     - gvfs-lang=1.62.0-r2
     - gweather-locations=2026.2-r0
     - i2c-tools=4.4-r14
-    - ibus=1.5.34-r0
-    - ibus-lang=1.5.34-r0
+    - ibus=1.5.34-r1
+    - ibus-lang=1.5.34-r1
     - iio-sensor-proxy=3.9-r0
     - intel-lpmd=0.1.0-r0
     - intel-media-driver=26.3.5-r0

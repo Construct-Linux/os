@@ -1,0 +1,93 @@
+From: Construct <release@constructlinux.org>
+Subject: src: Keep a converted IBusAttrList an owned reference of its IBusText
+
+Upstream's 5bbe88a1 ("src: make an IBusText own an updated IBusAttrList
+reference", ibus#2889) and 1a331e69 ("src: Fix IBusAttrList leak when
+converting text", ibus#2941), first released in 1.5.35-beta1.
+
+ibus_input_context_convert_text() and ibus_panel_convert_text() stored the
+floating list ibus_attr_list_copy_format_to_*() returns in text->attrs
+without sinking it. GNOME Shell asks for the HINT format and reads
+text.get_attributes() on every preedit update; gjs sinks the object it
+wraps, which turns that floating reference into its own, so the text and
+the wrapper shared one reference. Whichever the garbage collector freed
+first left the other dangling, and freeing the text then unreffed freed
+memory: gnome-shell died with SIGSEGV in ibus_text_destroy, taking the
+session with it.
+
+diff --git a/src/ibusinputcontext.c b/src/ibusinputcontext.c
+index 68d12fb..d0e162f 100644
+--- a/src/ibusinputcontext.c
++++ b/src/ibusinputcontext.c
+@@ -570,8 +570,14 @@ ibus_input_context_convert_text (IBusInputContext *context,
+             g_error_free (error);
+         }
+         if (new_attrs) {
+-            g_object_unref (text->attrs);
+-            text->attrs = new_attrs;
++#if GLIB_CHECK_VERSION (2, 70, 0)
++            g_object_take_ref (new_attrs);
++#else
++            if (g_object_is_floating (new_attrs)
++                g_object_ref_sink (new_attrs);
++#endif
++            ibus_text_set_attributes (text, new_attrs);
++            g_object_unref (new_attrs);
+         }
+         break;
+     case IBUS_PREEDIT_FORMAT_HINT:
+@@ -582,8 +588,14 @@ ibus_input_context_convert_text (IBusInputContext *context,
+             g_error_free (error);
+         }
+         if (new_attrs) {
+-            g_object_unref (text->attrs);
+-            text->attrs = new_attrs;
++#if GLIB_CHECK_VERSION (2, 70, 0)
++            g_object_take_ref (new_attrs);
++#else
++            if (g_object_is_floating (new_attrs)
++                g_object_ref_sink (new_attrs);
++#endif
++            ibus_text_set_attributes (text, new_attrs);
++            g_object_unref (new_attrs);
+         }
+         break;
+     default:
+diff --git a/src/ibuspanelservice.c b/src/ibuspanelservice.c
+index 1622982..3d59a21 100644
+--- a/src/ibuspanelservice.c
++++ b/src/ibuspanelservice.c
+@@ -1204,8 +1204,14 @@ ibus_panel_convert_text (IBusPanelService *panel,
+             g_error_free (error);
+         }
+         if (new_attrs) {
+-            g_object_unref (text->attrs);
+-            text->attrs = new_attrs;
++#if GLIB_CHECK_VERSION (2, 70, 0)
++            g_object_take_ref (new_attrs);
++#else
++            if (g_object_is_floating (new_attrs)
++                g_object_ref_sink (new_attrs);
++#endif
++            ibus_text_set_attributes (text, new_attrs);
++            g_object_unref (new_attrs);
+         }
+         break;
+     case IBUS_PREEDIT_FORMAT_HINT:
+@@ -1216,8 +1222,14 @@ ibus_panel_convert_text (IBusPanelService *panel,
+             g_error_free (error);
+         }
+         if (new_attrs) {
+-            g_object_unref (text->attrs);
+-            text->attrs = new_attrs;
++#if GLIB_CHECK_VERSION (2, 70, 0)
++            g_object_take_ref (new_attrs);
++#else
++            if (g_object_is_floating (new_attrs)
++                g_object_ref_sink (new_attrs);
++#endif
++            ibus_text_set_attributes (text, new_attrs);
++            g_object_unref (new_attrs);
+         }
+         break;
+     default:
