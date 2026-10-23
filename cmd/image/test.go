@@ -159,7 +159,7 @@ func test(args []string) (err error) {
 
 	want, unknown := parseOnly(*only)
 	for _, n := range unknown {
-		r.add("-only "+n, false, "no app, panel:<name>, views, type, bench or suspend is called that")
+		r.add("-only "+n, false, "no app, panel:<name>, views, type, input, bench or suspend is called that")
 	}
 	for _, a := range apps {
 		if len(want) > 0 && !want[a.id] {
@@ -209,6 +209,10 @@ func test(args []string) (err error) {
 	if len(want) == 0 || want["type"] {
 		r.typeMatrix(v, g, l)
 	}
+	// After the views: the layout it switches to would be the views' too.
+	if len(want) == 0 || want["input"] {
+		r.deadKeys(v, g)
+	}
 	// What the run needed, before the bench asks for more than there is.
 	r.memory(g)
 	r.console(g)
@@ -232,7 +236,7 @@ func parseOnly(only string) (want map[string]bool, unknown []string) {
 			want[n] = true
 		}
 	}
-	known := map[string]bool{"views": true, "type": true, "bench": true, "suspend": true}
+	known := map[string]bool{"views": true, "type": true, "input": true, "bench": true, "suspend": true}
 	for _, a := range apps {
 		known[a.id] = true
 	}
@@ -841,6 +845,56 @@ func (r *report) unlockLeaves(v *qemu.VM, g *guest) {
 	})
 	r.add("unlock leaves nothing open", before > 0 && after <= before,
 		fmt.Sprintf("the session's gdm-session-worker: %d files open, %d after three locks, prompts, dropped channels and unlocks", before, after))
+}
+
+// deadKeys types accents as a Latin American keyboard does, a dead key and then its letter, into
+// the overview's search, and has the shell collect its garbage. Each accent passes through IBus
+// as a preedit with an underline: ibus 1.5.34 handed gjs that attribute list as a floating
+// reference the text also held, and a collection freed it under the text, killing the session
+// (ibus#2889, recipes/ibus). The composed letters say the keys went through IBus at all.
+func (r *report) deadKeys(v *qemu.VM, g *guest) {
+	const sources = "org.gnome.desktop.input-sources sources"
+	const n = 20
+	shell := func() string {
+		out, _ := g.run(`pgrep -u live -x gnome-shell`, "")
+		return strings.TrimSpace(out)
+	}
+	before := shell()
+	saved, err := g.run(asLive+"gsettings get "+sources, "")
+	if err == nil {
+		_, err = g.run(asLive+`gsettings set `+sources+` "[('xkb', 'latam')]"`, "")
+	}
+	time.Sleep(3 * time.Second)
+	if err == nil {
+		_, err = g.eval(`Main.overview.show(); true`)
+	}
+	time.Sleep(2 * time.Second)
+	if err == nil {
+		_, err = g.eval(`global.stage.set_key_focus(Main.overview.searchEntry); true`)
+	}
+	// latam's <AD11>, QEMU's bracket_left, is dead_acute.
+	for i := 0; i < n && err == nil; i++ {
+		if err = v.Key("bracket_left"); err == nil {
+			err = v.Key("a")
+		}
+	}
+	time.Sleep(time.Second)
+	typed := ""
+	if err == nil {
+		typed, err = g.eval(fmt.Sprintf(`Main.overview.searchEntry.get_text() === 'á'.repeat(%d)`, n))
+	}
+	_, _ = g.eval(`Main.overview.hide(); true`)
+	time.Sleep(2 * time.Second)
+	// The preedits' texts and lists are held by nothing but their wrappers now: each collection
+	// frees what it finds dead.
+	for range 3 {
+		_, _ = g.eval(`imports.system.gc(); true`)
+		time.Sleep(time.Second)
+	}
+	after := shell()
+	_, _ = g.run(asLive+`gsettings set `+sources+` "$(cat)"`, strings.TrimSpace(saved))
+	r.add("dead keys", err == nil && typed == "true" && before != "" && after == before,
+		fmt.Sprintf("%d accents typed on latam into the overview's search: composed %s; gnome-shell %s, after collecting %s", n, typed, before, after)+errText(err))
 }
 
 // lockScreenRoles are the panel's own indicators the lock screen shows (gnome-shell's
