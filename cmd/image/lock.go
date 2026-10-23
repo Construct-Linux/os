@@ -25,9 +25,11 @@ import (
 //
 // The pins come from apko's resolution (task lock: apko lock writes it as JSON, image lock write
 // reads it): the recipes' packages at their build in packages/, and Wolfi's at the lock's
-// versions, or at Wolfi's newest with -all. Between locks, the lock workflow bumps Wolfi's lines
-// to its index every Monday, in a pull request (image lock index), without resolving: resolving
-// needs packages/, which no runner has.
+// versions, or at Wolfi's newest with -all. Nothing else writes a pin: a version taken from Wolfi's
+// index without resolving can need what no other pin satisfies (nettle 4.0 beside a gnutls built
+// for nettle~3) or bring a dependency no pin carries, and the builder finds that out two hours
+// later. image lock outdated, which the lock workflow runs every Monday, says what task lock -all
+// would move, and moves nothing.
 
 // lockFile is image/apko.lock.yaml or image/initrd/apko.lock.yaml: the configuration it
 // includes, its pins in two parts, the packages recipes/ builds and Wolfi's, and the names the
@@ -53,10 +55,10 @@ var lockedRoots = map[string]lockedRoot{
 	"initrd.tar": {"initrd", "image/initrd/apko.yaml", "image/initrd/apko.lock.yaml", "initrd"},
 }
 
-// The marks that open the lock's two parts; image lock index reads them to bump Wolfi's alone.
+// The marks that open the lock's two parts.
 const (
 	oursMark     = "    # recipes/' packages, at their build in packages/."
-	wolfiMark    = "    # Wolfi's: bumped by the lock workflow, or task lock -- -all."
+	wolfiMark    = "    # Wolfi's: as pinned, or at Wolfi's newest with task lock -- -all."
 	providedMark = "    # Named by the configuration, provided by a package above under another name:"
 )
 
@@ -100,9 +102,8 @@ func (l lockFile) write(root lockedRoot) error {
 	fmt.Fprintf(&b, `# Every package this root installs, pinned to the version it installs. Written by task lock;
 # built by apko in task %s, in place of the configuration it includes, where a package comes
 # and goes - task lock pins what follows. Never edited by hand. A Wolfi bump reaches a build only
-# here: the lock workflow bumps Wolfi's lines to its index every Monday, in a pull request; task
-# lock resolves the set again with apko, takes a bumped recipe's package and keeps Wolfi's lines,
-# or with -- -all takes Wolfi's newest too.
+# here, through task lock: it resolves the set again with apko, takes a bumped recipe's package
+# and keeps Wolfi's lines, or with -- -all takes Wolfi's newest too, and builds both roots.
 include: %s
 contents:
   packages:
@@ -267,24 +268,35 @@ func changes(old, new lockFile) []string {
 	return out
 }
 
-// bumped is the lock with Wolfi's lines at the newest version index has of each; a package the
-// index no longer has keeps its line.
-func bumped(l lockFile, index []apkPackage) lockFile {
+// outdated are the lines of what task lock -all would look at: each of l's Wolfi pins the index
+// has a newer version of, "name pinned newest", and each recipe Wolfi's own package has climbed
+// above, which task lock refuses until the recipe's version or epoch is above it. Sorted. Only
+// apko's resolution says which of the newer versions a lock can take together.
+func outdated(l lockFile, recipes []recipe, index []apkPackage) (pins, over []string) {
 	newest := map[string]string{}
+	byOrigin := map[string]string{}
 	for _, p := range index {
-		if cur, ok := newest[p.Name]; ok && apkver.Compare(p.Version, cur) <= 0 {
-			continue
+		if cur, ok := newest[p.Name]; !ok || apkver.Compare(p.Version, cur) > 0 {
+			newest[p.Name] = p.Version
 		}
-		newest[p.Name] = p.Version
+		if cur, ok := byOrigin[p.Origin]; !ok || apkver.Compare(p.Version, cur) > 0 {
+			byOrigin[p.Origin] = p.Version
+		}
 	}
-	out := lockFile{Config: l.Config, Ours: l.Ours, Provided: l.Provided}
 	for _, p := range l.Wolfi {
-		if v := newest[p.Name]; v != "" {
-			p.Version = v
+		if v := newest[p.Name]; v != "" && apkver.Compare(v, p.Version) > 0 {
+			pins = append(pins, p.Name+" "+p.Version+" "+v)
 		}
-		out.Wolfi = append(out.Wolfi, p)
 	}
-	return out
+	for _, r := range recipes {
+		want := fmt.Sprintf("%s-r%d", r.Version, r.Epoch)
+		if v := byOrigin[r.Name]; v != "" && apkver.Compare(v, want) > 0 {
+			over = append(over, r.File+" "+want+" "+v)
+		}
+	}
+	sort.Strings(pins)
+	sort.Strings(over)
+	return pins, over
 }
 
 // unlocked are the packages of db the lock does not pin at their version: what came in without
@@ -313,37 +325,15 @@ func readIndex(src string) ([]apkPackage, error) {
 }
 
 // lockCmd is image lock write [-all], which writes the locks from what apko lock resolved into
-// _output/lock and says what changed, or image lock index, which bumps Wolfi's lines to its
-// index and says what changed, as Markdown for the pull request.
+// _output/lock and says what changed, or image lock outdated, which says as Markdown what Wolfi
+// has newer than the locks and writes nothing.
 func lockCmd(args []string) error {
-	if len(args) == 0 || (args[0] != "write" && args[0] != "index") {
-		return errors.New("lock write [-all] | lock index")
+	if len(args) == 0 || (args[0] != "write" && args[0] != "outdated") {
+		return errors.New("lock write [-all] | lock outdated")
 	}
 	roots := []lockedRoot{lockedRoots["rootfs.tar"], lockedRoots["initrd.tar"]}
-	if args[0] == "index" {
-		index, err := readIndex(wolfiIndex)
-		if err != nil {
-			return fmt.Errorf("%s: %w", wolfiIndex, err)
-		}
-		fmt.Printf("Wolfi's packages, at its index on %s.\n", time.Now().UTC().Format("2006-01-02"))
-		for _, root := range roots {
-			old, err := readLockFile(root.Lock)
-			if err != nil {
-				return err
-			}
-			l := bumped(old, index)
-			if err := l.write(root); err != nil {
-				return err
-			}
-			if ch := changes(old, l); len(ch) > 0 {
-				fmt.Printf("\n### %s\n\n| package | from | to |\n|---|---|---|\n", root.Lock)
-				for _, c := range ch {
-					f := strings.Fields(c)
-					fmt.Printf("| %s | %s | %s |\n", f[0], f[1], f[3])
-				}
-			}
-		}
-		return nil
+	if args[0] == "outdated" {
+		return lockOutdated(roots)
 	}
 	all := len(args) > 1 && args[1] == "-all"
 	recipes, err := readRecipes("recipes")
@@ -382,6 +372,40 @@ func lockCmd(args []string) error {
 			fmt.Println(c)
 		}
 	}
+	return nil
+}
+
+// lockOutdated prints what outdated finds in each lock against Wolfi's index of now.
+func lockOutdated(roots []lockedRoot) error {
+	index, err := readIndex(wolfiIndex)
+	if err != nil {
+		return fmt.Errorf("%s: %w", wolfiIndex, err)
+	}
+	recipes, err := readRecipes("recipes")
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Wolfi's index on %s, against the locks. task lock -- -all resolves what can move together; task build -- <recipe> first for a recipe Wolfi passed.\n", time.Now().UTC().Format("2006-01-02"))
+	table := func(title, head string, rows []string) {
+		if len(rows) == 0 {
+			return
+		}
+		fmt.Printf("\n### %s\n\n| %s |\n|---|---|---|\n", title, head)
+		for _, r := range rows {
+			fmt.Printf("| %s |\n", strings.Join(strings.Fields(r), " | "))
+		}
+	}
+	var over []string
+	for _, root := range roots {
+		l, err := readLockFile(root.Lock)
+		if err != nil {
+			return err
+		}
+		var pins []string
+		pins, over = outdated(l, recipes, index)
+		table(root.Lock, "package | pinned | Wolfi's newest", pins)
+	}
+	table("recipes Wolfi's package passed", "recipe | ours | Wolfi's", over)
 	return nil
 }
 

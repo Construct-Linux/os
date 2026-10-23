@@ -1,9 +1,8 @@
 # Every package this root installs, pinned to the version it installs. Written by task lock;
 # built by apko in task initrd, in place of the configuration it includes, where a package comes
 # and goes - task lock pins what follows. Never edited by hand. A Wolfi bump reaches a build only
-# here: the lock workflow bumps Wolfi's lines to its index every Monday, in a pull request; task
-# lock resolves the set again with apko, takes a bumped recipe's package and keeps Wolfi's lines,
-# or with -- -all takes Wolfi's newest too.
+# here, through task lock: it resolves the set again with apko, takes a bumped recipe's package
+# and keeps Wolfi's lines, or with -- -all takes Wolfi's newest too, and builds both roots.
 include: image/initrd/apko.yaml
 contents:
   packages:
@@ -27,7 +26,7 @@ contents:
     - systemd-boot=262.1-r1
     - systemd-systemctl=262.1-r1
     - udev=262.1-r1
-    # Wolfi's: bumped by the lock workflow, or task lock -- -all.
+    # Wolfi's: as pinned, or at Wolfi's newest with task lock -- -all.
     - bash=5.3-r14
     - bash-binsh=5.3-r14
     - blkid=2.42.4-r1

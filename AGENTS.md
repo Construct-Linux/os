@@ -115,11 +115,15 @@ falling back from a release that does not come up.
   lacks. After a pull that bumps recipes, build each one it names first.
 - **Every package is pinned in a lock, and a changed recipe goes through it.** `image/apko.lock.yaml`
   and `image/initrd/apko.lock.yaml` are what apko builds: the hand-written configuration plus
-  every package at a version, recipes' first, Wolfi's after. `task lock` writes them (a bumped
-  recipe at its build, Wolfi's as pinned, or Wolfi's newest with `-all`; the `lock` workflow bumps
-  Wolfi's weekly in a pull request). `image check-lock` refuses a root that installs what the lock
-  does not pin, or Wolfi's package where a recipe's should be: apko takes the newest version across
-  repositories, so a Wolfi bump above an override silently replaces it and everything it carried.
+  every package at a version, recipes' first, Wolfi's after. **Only `task lock` writes them** (a
+  bumped recipe at its build, Wolfi's as pinned, or Wolfi's newest with `-all`), and it builds both
+  roots from what it wrote: a version taken from Wolfi's index without resolving can need what no
+  other pin satisfies, and the builder found that out instead (nettle 4.0 beside a gnutls for
+  nettle~3). The `lock` workflow runs `task lock:outdated`, which says what Wolfi has newer and
+  changes nothing. `image check-lock` refuses a root that installs what the lock does not pin, or
+  Wolfi's package where a recipe's should be: apko takes the newest version across repositories,
+  so a Wolfi bump above an override silently replaces it and everything it carried. `task usb`
+  refuses roots not built from the checkout's locks, and `test:usb` builds them as the release does.
 - **A recipe whose produced package can change takes a new version or epoch**: the builder's cache
   knows a package by its apk's name. `go test ./cmd/image` fails a changed recipe that can make the
   same apk as origin/main; comments outside build blocks are not a change. An **override of a

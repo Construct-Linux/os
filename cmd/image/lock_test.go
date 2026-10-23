@@ -67,18 +67,25 @@ func TestLockResolution(t *testing.T) {
 	}
 }
 
-// Wolfi's lines are bumped to the newest version the index has, as apk orders versions; the
-// recipes' lines and a line the index no longer has stay.
-func TestBumped(t *testing.T) {
-	l := lockFile{Ours: []pin{{"pcsc-lite", "2.5.3-r1"}}, Wolfi: []pin{{"zlib", "1.3.2.1_rc20260917-r0"}, {"mesa-libs", "18.0_rc20260919-r0"}, {"gone", "1-r0"}}}
+// What Wolfi has newer, as apk orders versions: a Wolfi pin below its newest, a recipe below
+// Wolfi's own package of it (by origin, a subpackage too); a recipe's pin is the recipe's, and a
+// line the index no longer has is no news.
+func TestOutdated(t *testing.T) {
+	l := lockFile{Ours: []pin{{"pcsc-lite", "2.5.3-r1"}}, Wolfi: []pin{{"zlib", "1.3.2.1_rc20260917-r0"}, {"mesa-libs", "18.0_rc20260919-r0"}, {"gone", "1-r0"}, {"nettle", "3.10.2-r2"}}}
+	recipes := []recipe{{File: "pcsc-lite", Name: "pcsc-lite", Version: "2.5.3", Epoch: 1}, {File: "gdm", Name: "gdm", Version: "49.1", Epoch: 2}}
 	index := []apkPackage{
-		{Name: "zlib", Version: "1.3.2.1_rc20260921-r0"}, {Name: "zlib", Version: "1.3.2.1_rc20260917-r0"},
-		{Name: "mesa-libs", Version: "18.0-r0"}, {Name: "mesa-libs", Version: "18.0_rc20260919-r0"},
-		{Name: "pcsc-lite", Version: "2.5.4-r0"},
+		{Name: "zlib", Version: "1.3.2.1_rc20260921-r0", Origin: "zlib"}, {Name: "zlib", Version: "1.3.2.1_rc20260917-r0", Origin: "zlib"},
+		{Name: "mesa-libs", Version: "18.0-r0", Origin: "mesa"}, {Name: "mesa-libs", Version: "18.0_rc20260919-r0", Origin: "mesa"},
+		{Name: "nettle", Version: "3.10.2-r2", Origin: "nettle"},
+		{Name: "pcsc-lite-doc", Version: "2.5.4-r0", Origin: "pcsc-lite"},
+		{Name: "gdm", Version: "49.1-r1", Origin: "gdm"},
 	}
-	want := "  mesa-libs 18.0_rc20260919-r0 -> 18.0-r0\n  zlib 1.3.2.1_rc20260917-r0 -> 1.3.2.1_rc20260921-r0"
-	if got := strings.Join(changes(l, bumped(l, index)), "\n"); got != want {
-		t.Errorf("bumped:\n%s\nwant:\n%s", got, want)
+	pins, over := outdated(l, recipes, index)
+	if got, want := strings.Join(pins, "\n"), "mesa-libs 18.0_rc20260919-r0 18.0-r0\nzlib 1.3.2.1_rc20260917-r0 1.3.2.1_rc20260921-r0"; got != want {
+		t.Errorf("pins:\n%s\nwant:\n%s", got, want)
+	}
+	if got, want := strings.Join(over, "\n"), "pcsc-lite 2.5.3-r1 2.5.4-r0"; got != want {
+		t.Errorf("recipes:\n%s\nwant:\n%s", got, want)
 	}
 }
 

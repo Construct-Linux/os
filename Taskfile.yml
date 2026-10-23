@@ -132,7 +132,7 @@ tasks:
       - go run ./cmd/image check-lock initrd.tar
 
   lock:
-    desc: "Pin every package the root and the initrd install, in image/apko.lock.yaml and image/initrd/apko.lock.yaml, as apko resolves them: recipes/' packages at their build in packages/, Wolfi's as pinned - or at Wolfi's newest with -- -all. The lock workflow bumps Wolfi's every Monday in a pull request."
+    desc: "Pin every package the root and the initrd install, in image/apko.lock.yaml and image/initrd/apko.lock.yaml, as apko resolves them: recipes/' packages at their build in packages/, Wolfi's as pinned - or at Wolfi's newest with -- -all - then build both roots from the locks. The only way a pin changes."
     deps: [keygen]
     cmds:
       - mkdir -p _output/lock
@@ -140,6 +140,15 @@ tasks:
       - docker run --rm -v {{.ROOT_DIR}}:/work -w /work {{.APKO}} lock image/initrd/apko.yaml --arch x86_64 --output _output/lock/initrd.lock.json
       - docker run --rm -v {{.ROOT_DIR}}:/work cgr.dev/chainguard/wolfi-base chown -R {{.UID}}:{{.UID}} /work/_output/lock
       - go run ./cmd/image lock write {{.CLI_ARGS}}
+      # A lock is written only to be built: apko installs it and check-lock finds every package it
+      # installs pinned, or the lock is no lock to commit.
+      - task: rootfs
+      - task: initrd
+
+  lock:outdated:
+    desc: "Say, as Markdown, what Wolfi's index has newer than the locks and which recipes Wolfi's own package passed. Writes nothing: task lock -- -all moves the pins. The lock workflow runs it every Monday."
+    cmds:
+      - go run ./cmd/image lock outdated
 
   tools:
     desc: The container the root is laid in, and this repository's programs for it (cmd/image) and for the root (cmd/construct).
@@ -251,6 +260,10 @@ tasks:
       - sh: '{{if .KMS}}test -n "{{.CONSTRUCT_KMS_RELEASE}}" -a -n "{{.CONSTRUCT_KMS_PCR}}" -a -n "{{.CONSTRUCT_KMS_SECUREBOOT_DB}}"{{else}}true{{end}}'
         msg: KMS=true needs CONSTRUCT_KMS_RELEASE, CONSTRUCT_KMS_PCR and CONSTRUCT_KMS_SECUREBOOT_DB (the builder sets them)
     cmds:
+      # Roots built from these locks, or no stick: one from an older lock would carry packages
+      # this commit does not pin.
+      - go run ./cmd/image check-lock rootfs.tar
+      - go run ./cmd/image check-lock initrd.tar
       - mkdir -p _output/release-key/usr/share/construct
       - cp {{.PUBLIC}}/release.pgp _output/release-key/usr/share/construct/release.pgp
       # Releases are Ed25519 alone: gpg checks them on the machine (systemd-sysupdate), so the
@@ -307,6 +320,10 @@ tasks:
     desc: Build the USB disk with the test layer, signed by a throwaway key, and run the harness on it, booted by UEFI from a USB stick.
     deps: [keygen:test]
     cmds:
+      # The roots from the commit's locks, as release:build builds them: a stick made from an
+      # older _output/rootfs.tar tests a root the release will not have.
+      - task: rootfs
+      - task: initrd
       - task: usb
         vars: {CLI_ARGS: -test, SIGNING_HOME: .cache/test-keys}
       - go run ./cmd/image test -usb -needles "{{.NEEDLES}}" {{.CLI_ARGS}}
@@ -419,9 +436,8 @@ tasks:
       # The cache goes back however the job ends: what a failed release built is not built again.
       - defer: go run ./cmd/image cache push
       - task: release:inputs
-      - task: rootfs
-      - task: initrd
-      # The harness on a test build of the same commit: a release whose checks fail is not built.
+      # The harness on a test build of the same commit, its roots built from the locks: a release
+      # whose checks fail is not built, and the release's stick is made from the same roots.
       - task: test:usb
       - task: test:lifecycle
       - task: usb
