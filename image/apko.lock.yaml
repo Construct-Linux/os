@@ -109,7 +109,7 @@ contents:
     - gnome-session=51.0-r0
     - gnome-session-lang=51.0-r0
     - gnome-settings-daemon=51.0-r2
-    - gnome-shell=51.0-r3
+    - gnome-shell=51.0-r4
     - gnome-shell-extension-appindicator=66-r4
     - gnome-shell-extension-appindicator-lang=66-r4
     - gnome-shell-extension-caffeine=60_git20261002-r2
@@ -128,7 +128,7 @@ contents:
     - gnome-shell-extension-vitals=84.0.0-r5
     - gnome-shell-extension-workspace-indicator=51.0-r0
     - gnome-shell-extensions=51.0-r0
-    - gnome-shell-lang=51.0-r3
+    - gnome-shell-lang=51.0-r4
     - gnome-software=51.0-r2
     - gnome-software-lang=51.0-r2
     - gnome-system-monitor=51.0-r0

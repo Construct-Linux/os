@@ -1,0 +1,29 @@
+From: Construct <release@constructlinux.org>
+Subject: appDisplay: Order apps that match a search equally by their IDs
+
+Shell.AppSystem.search() gives the apps that match a query equally well
+in one group, in the order GLib's desktop file index has them, which is
+unspecified: g_desktop_app_info_search() says the inner lists have no
+set order. The provider sorted each group by usage alone, so apps used
+as much - every app, on a fresh session - kept that order, and it
+changed between sessions: searching "se" showed Firefox before Google
+Chrome after one boot and after it after the next.
+
+Break the tie by the apps' IDs, so equal results come in the same order
+at every search.
+
+--- a/js/ui/appDisplay.js
++++ b/js/ui/appDisplay.js
+@@ -1822,8 +1822,11 @@ export class AppSearchProvider {
+                 const app = this._appSys.lookup_app(appID);
+                 return app && this._parentalControlsManager.shouldShowApp(app.app_info);
+             });
++            // Apps of a group match equally well, and GLib gives them in no set
++            // order: those used as much are in their IDs' order, the same at
++            // every search.
+             results = results.concat(group.sort(
+-                (a, b) => usage.compare(a, b)));
++                (a, b) => usage.compare(a, b) || a.localeCompare(b)));
+         });
+ 
+         results = results.concat(this._systemActions.getMatchingActions(terms));
