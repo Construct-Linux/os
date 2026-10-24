@@ -132,6 +132,10 @@ func test(args []string) (err error) {
 	// The run takes longer than GNOME's idle delay: with the display blanked, every screenshot
 	// after it is a black "Display output is not active".
 	_, _ = g.run(asLive+`gsettings set org.gnome.desktop.session idle-delay 0`, "")
+	// The overview's search orders each group's apps by how long each was focused, which the
+	// run's own windows set by how fast they drew: Firefox and Chrome traded places run to run.
+	// Unrecorded, the order is the search's own.
+	_, _ = g.run(asLive+`gsettings set org.gnome.desktop.privacy remember-app-usage false`, "")
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
 	r.installer(v, g, l, *stick)
