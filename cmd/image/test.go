@@ -1267,6 +1267,10 @@ func (r *report) gtkViews(v *qemu.VM, g *guest, l *lf, light bool) {
 			_, _ = g.run(`kill `+pids, "")
 		}
 		time.Sleep(2 * time.Second)
+		// Killed, the editor sometimes saves its session and the unsaved document first, and the
+		// next start restores them under a "Draft Changes Restored" banner: gtk-destructive-light
+		// had it in one run and not the next. Each start is a fresh editor.
+		_, _ = g.run(`rm -rf /var/home/live/.local/share/org.gnome.TextEditor`, "")
 	}
 	// A destructive confirmation: a new document typed into, Text Editor asked to quit asks first,
 	// a libadwaita alert with Discard as the destructive response; Escape answers Cancel. A fresh
