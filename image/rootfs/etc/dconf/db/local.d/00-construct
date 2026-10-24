@@ -43,6 +43,12 @@ enabled-extensions=['appindicatorsupport@rgcjonas.gmail.com', 'clipboard-indicat
 # The dock: Files, the browser, the editor, the terminal, Software, Calendar.
 favorite-apps=['org.gnome.Nautilus.desktop', 'firefox.desktop', 'code.desktop', 'com.mitchellh.ghostty.desktop', 'org.gnome.Software.desktop', 'org.gnome.Calendar.desktop']
 
+# The app grid's first page, every app the image has outside the dock, in its place. GNOME's own
+# layout names Geary first, which the image lacks, and 1Password, which that layout lacks, took
+# Geary's place before or after Contacts by the order the icons were laid out in: the grid
+# differed boot to boot. A person's own arrangement is saved over it.
+app-picker-layout=[{'org.gnome.Contacts.desktop': <{'position': <0>}>, 'com.onepassword.OnePassword.desktop': <{'position': <1>}>, 'org.gnome.Weather.desktop': <{'position': <2>}>, 'org.gnome.clocks.desktop': <{'position': <3>}>, 'org.gnome.Maps.desktop': <{'position': <4>}>, 'org.gnome.Music.desktop': <{'position': <5>}>, 'org.gnome.Calculator.desktop': <{'position': <6>}>, 'org.gnome.Settings.desktop': <{'position': <7>}>, 'io.github.construct_linux.Construct.desktop': <{'position': <8>}>, 'org.gnome.Snapshot.desktop': <{'position': <9>}>, 'org.gnome.Characters.desktop': <{'position': <10>}>, 'Utilities': <{'position': <11>}>, 'System': <{'position': <12>}>, 'com.google.Chrome.desktop': <{'position': <13>}>, 'io.github.construct_linux.Installer.desktop': <{'position': <14>}>, 'org.gnome.Ptyxis.desktop': <{'position': <15>}>, 'org.gnome.TextEditor.desktop': <{'position': <16>}>, 'vim.desktop': <{'position': <17>}>}]
+
 # Ptyxis: the machine, and a tab in the Wolfi container (etc/distrobox/distrobox.conf), whose
 # first use creates it.
 [org/gnome/Ptyxis]
