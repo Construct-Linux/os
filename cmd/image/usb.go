@@ -489,6 +489,17 @@ func bake(root, version string) error {
 			return err
 		}
 	}
+	// An installed machine's /etc is an overlay over /var: a service that sets its own files'
+	// owner or mode at start copies the image's file up unchanged, and the copy hides every later
+	// release's (the harness's etcCopies). cupsd gives its configuration to its group as it
+	// starts, so the image does; shadow's lock, which systemd-sysusers left, is made where it is
+	// next taken instead of carried.
+	if err := chroot(root,
+		"chgrp lp /etc/cups/cupsd.conf /etc/cups/cups-files.conf",
+		"rm -f /etc/.pwd.lock",
+	); err != nil {
+		return err
+	}
 	if err := rootLocked(root); err != nil {
 		return err
 	}
