@@ -1,11 +1,15 @@
 # Firmware updates from LVFS for what supports them - NVMe disks, Thunderbolt, docks, USB
-# devices, many peripherals - which GNOME Software lists and installs. Wolfi has no recipe.
-# Without the EFI capsule binary (fwupd-efi, a project of its own, which BIOS updates need and
-# Secure Boot will have to sign); Passim and ModemManager are not in the image. GnuTLS alone.
+# devices, many peripherals, the system firmware - which GNOME Software lists and installs. Wolfi
+# has no recipe. Passim and ModemManager are not in the image. GnuTLS alone.
+#
+# With fwupdx64.efi, the UEFI program that hands a capsule to firmware without capsule-on-disk
+# (most PCs' BIOS updates): fwupd-efi, built as fwupd's subproject at a pinned commit, since
+# melange's meson downloads none. task usb signs it for Secure Boot into the root beside it,
+# fwupdx64.efi.signed, which fwupd copies to the ESP when Secure Boot is on (cmd/image usb.go).
 package:
   name: fwupd
   version: 2.1.8
-  epoch: 1
+  epoch: 2
   description: Firmware updates from LVFS
   copyright:
     - license: LGPL-2.1-or-later
@@ -19,6 +23,7 @@ environment:
       - gettext
       - glib-dev
       - glib-gir
+      - gnu-efi
       - gobject-introspection-dev
       - gnutls-dev
       - json-glib-dev
@@ -34,6 +39,8 @@ environment:
       - polkit-dev
       - protobuf-c-dev
       - py3.13-jinja2
+      # fwupd-efi marks fwupdx64.efi NX-compatible with it, as firmware enforcing NX requires.
+      - py3.13-pefile
       - python-3.13
       - sqlite-dev
       - systemd-dev
@@ -47,6 +54,13 @@ pipeline:
       tag: ${{package.version}}
       expected-commit: 3b7eca282bbe6cb4e8d5b4e42f984d2a1679977f
 
+  - uses: git-checkout
+    with:
+      repository: https://github.com/fwupd/fwupd-efi
+      tag: "1.8"
+      expected-commit: 8572a93e81e7110b88445d1907fdd73982557347
+      destination: subprojects/fwupd-efi
+
   # The plugins, the daemon and the tools compiled against libfwupd's generated headers without
   # waiting for them: a build that reached a plugin first failed on fwupd-bios-setting-struct.h.
   - uses: patch
@@ -55,11 +69,13 @@ pipeline:
 
   - uses: meson/configure
     with:
-      opts: -Dbuild=all -Dsystemd=enabled -Dpolkit=enabled -Dlogind=enabled -Dgnutls=enabled -Dopenssl=disabled -Dhsi=enabled -Dlvfs=true -Dlibdrm=enabled -Dlibmnl=enabled -Dbluez=enabled -Dintrospection=enabled -Dpassim=disabled -Dplugin_modem_manager=disabled -Defi_binary=false -Dplugin_uefi_capsule_splash=false -Dfirmware-packager=false -Ddocs=disabled -Dman=false -Dtests=false -Dumockdev_tests=disabled -Dvalgrind=disabled -Dfish_completion=false -Dqubes=false -Dsupported_build=enabled
+      opts: -Dbuild=all -Dsystemd=enabled -Dpolkit=enabled -Dlogind=enabled -Dgnutls=enabled -Dopenssl=disabled -Dhsi=enabled -Dlvfs=true -Dlibdrm=enabled -Dlibmnl=enabled -Dbluez=enabled -Dintrospection=enabled -Dpassim=disabled -Dplugin_modem_manager=disabled -Defi_binary=true -Dfwupd-efi:efi_sbat_distro_id=construct -Dfwupd-efi:efi_sbat_distro_summary=Construct -Dfwupd-efi:efi_sbat_distro_pkgname=fwupd -Dfwupd-efi:efi_sbat_distro_version=${{package.version}}-r${{package.epoch}} -Dfwupd-efi:efi_sbat_distro_url=https://github.com/Construct-Linux/os -Dplugin_uefi_capsule_splash=false -Dfirmware-packager=false -Ddocs=disabled -Dman=false -Dtests=false -Dumockdev_tests=disabled -Dvalgrind=disabled -Dfish_completion=false -Dqubes=false -Dsupported_build=enabled
 
   - uses: meson/compile
 
   - uses: meson/install
+
+  - runs: test -e ${{targets.destdir}}/usr/libexec/fwupd/efi/fwupdx64.efi
 
   - uses: strip
 
