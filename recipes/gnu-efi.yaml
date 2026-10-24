@@ -1,0 +1,32 @@
+# The headers, libraries and linker script UEFI programs are built with, which Wolfi has no recipe
+# for: fwupd builds its capsule loader, fwupdx64.efi, against them (fwupd.yaml). Nothing in the
+# image installs it. Its Makefile keeps AVX out (-mno-avx, which -march does not undo), whose registers
+# firmware need not have enabled; SSE the UEFI specification enables on x64, and what else
+# x86-64-v3 adds (BMI2, SSE4) needs no enabling and every CPU Construct runs on has.
+package:
+  name: gnu-efi
+  version: "4.0.4"
+  epoch: 0
+  description: Development libraries and headers for EFI
+  copyright:
+    - license: BSD-2-Clause
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://github.com/ncroxon/gnu-efi
+      tag: ${{package.version}}
+      expected-commit: 37cd8f069bde6715eebdc5e38a8f15ee6de5edcf
+
+  - runs: |
+      make PREFIX=/usr
+      make PREFIX=/usr INSTALLROOT="${{targets.destdir}}" install
+      test -e ${{targets.destdir}}/usr/lib/libgnuefi.a
+      test -e ${{targets.destdir}}/usr/lib/elf_x86_64_efi.lds
+      test -e ${{targets.destdir}}/usr/include/efi/x86_64/efibind.h
