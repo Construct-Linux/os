@@ -139,7 +139,6 @@ func test(args []string) (err error) {
 	r.keyd(v, g)
 	r.usbStick(v, g)
 	r.appFolder(g)
-	r.screencast(g)
 	r.screenReader(g)
 	// The live user's login keyring has no password (construct live): a secret is kept and read back
 	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
@@ -161,6 +160,14 @@ func test(args []string) (err error) {
 	want, unknown := parseOnly(*only)
 	for _, n := range unknown {
 		r.add("-only "+n, false, "no app, panel:<name>, views, type, input, bench or suspend is called that")
+	}
+	// Every view from here is shot at viewsTime and with the bar's readings held: Calendar's
+	// month is the views' month, and the date menu hangs under a clock that stays where it was.
+	if err := g.fixClock(); err != nil {
+		r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
+	}
+	if err := g.holdReadings(); err != nil {
+		r.add("views' readings", false, err.Error())
 	}
 	for _, a := range apps {
 		if len(want) > 0 && !want[a.id] {
@@ -196,9 +203,6 @@ func test(args []string) (err error) {
 	}
 	g.quitApp(settingsApp)
 	if len(want) == 0 || want["views"] {
-		if err := g.fixClock(); err != nil {
-			r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
-		}
 		r.gtkViews(v, g, l, false)
 		r.gtkViews(v, g, l, true)
 		r.shellViews(v, g, l)
@@ -214,6 +218,9 @@ func test(args []string) (err error) {
 	if len(want) == 0 || want["input"] {
 		r.deadKeys(v, g)
 	}
+	// After every view: the recording's errors - PipeWire refusing the DMA-BUF formats a VM
+	// without a GPU cannot give (withoutCastFormats) - are in the journal Logs shows.
+	r.screencast(g)
 	// What the run needed, before the bench asks for more than there is.
 	r.memory(g)
 	r.console(g)
@@ -983,6 +990,10 @@ func (r *report) installer(v *qemu.VM, g *guest, l *lf, stick bool) {
 		r.guestFile("/run/user/1000/construct-test/"+page+".png", page+".png", g)
 	}
 	if stick && n == 1 {
+		// Centred in the work area as mutter places a window once the bars are there: it maps at
+		// login, while they may still be reserving their room, and landed 12 px apart run to run.
+		_, _ = g.eval(installerWindows + `.forEach(w => { const a = w.get_work_area_current_monitor(), f = w.get_frame_rect(); ` +
+			`w.move_frame(true, a.x + Math.floor((a.width - f.width) / 2), a.y + Math.floor((a.height - f.height) / 2)); }); true`)
 		time.Sleep(2 * time.Second)
 		l.shot(viewMeta{"installer", needle.GroupInstaller,
 			"The graphical installer as a stick's live session offers it: its body f, its headerbar g with one rule under it, the ring outside it",
@@ -1271,6 +1282,29 @@ func (r *report) gtkViews(v *qemu.VM, g *guest, l *lf, light bool) {
 // every run, so a view differs from its needle by what changed in the image and not by the day.
 // Within the hour the clock keeps its width: the top bar's figures are tabular.
 const viewsTime = "2026-10-05 10:10:00"
+
+// holdReadings stops Vitals' readings in the top bar and sets each to the same text: they change
+// width as they change value (fixed-widths is off), and every item left of them - the clock, and
+// the date menu hung under it - moves with them, so a view differed from its needle by how busy
+// the machine was. What the readings say is left out of every comparison (needleActors).
+func (g *guest) holdReadings() error {
+	var held int
+	err := g.evalJSON(`const v = Main.panel.statusArea.vitalsMenu;
+if (!v)
+    return -1;
+v._destroyTimer();
+v._querySensors = () => {};
+const labels = Object.values(v._hotLabels);
+labels.forEach(l => l.set_text('00'));
+return labels.length;`, &held)
+	switch {
+	case err != nil:
+		return fmt.Errorf("holding Vitals' readings: %w", err)
+	case held < 1:
+		return fmt.Errorf("holding Vitals' readings: %d in the bar", held)
+	}
+	return nil
+}
 
 // fixClock sets the guest's clock to viewsTime, NTP off so nothing sets it back.
 func (g *guest) fixClock() error {
