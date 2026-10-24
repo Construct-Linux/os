@@ -42,7 +42,7 @@ import (
 // signs every distribution's shim, so a boot loader Microsoft has revoked (BootHole's) boots here
 // until its revocation is in dbx, and Microsoft's dbx updates are signed under its KEK CAs - the
 // 2011 one so far, its 2023 successor next. fwupd applies them (uefi_dbx). The same CAs sign
-// Microsoft's db additions, which fwupd is told not to apply (image/rootfs/etc/fwupd/fwupd.conf):
+// Microsoft's db additions, which fwupd is told not to apply (image/rootfs/usr/lib/construct/fwupd.conf):
 // what they would add, root could enroll with any shim of today's db already.
 //
 // From github.com/microsoft/secureboot_objects (PreSignedObjects/{DB,KEK}/Certificates,
