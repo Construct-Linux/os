@@ -221,6 +221,9 @@ func test(args []string) (err error) {
 	// After every view: the recording's errors - PipeWire refusing the DMA-BUF formats a VM
 	// without a GPU cannot give (withoutCastFormats) - are in the journal Logs shows.
 	r.screencast(g)
+	if *stick {
+		r.etcCopies(g)
+	}
 	// What the run needed, before the bench asks for more than there is.
 	r.memory(g)
 	r.console(g)
@@ -955,6 +958,18 @@ func (r *report) efiPrograms(g *guest) {
 func (r *report) loaderCache(g *guest) {
 	out, _ := g.run(`rm /etc/.updated && systemctl start ldconfig.service && readlink /etc/ld.so.cache`, "")
 	r.add("the loader's cache stays in /usr", strings.TrimSpace(out) == "../usr/lib/ld.so.cache", oneLine(out))
+}
+
+// etcCopies checks no file of the image's /etc was copied into /var as it was - /etc is an
+// overlay over /var, and a chmod or chown of the image's file copies it up unchanged, where it
+// hides every later release's version of it: fwupd's 0640 on its config kept a machine's first
+// release's, and the capsule loader's setting never arrived. A file changed in content is a
+// person's or a service's own and stays. Checked once the run has started what it starts.
+func (r *report) etcCopies(g *guest) {
+	out, err := g.run(`set -e; mkdir -p /run/construct-lower; mount --bind / /run/construct-lower; `+
+		`cd /var/lib/construct/etc/upper; find . -type f | while read -r f; do l=/run/construct-lower/etc/${f#./}; `+
+		`if [ -f "$l" ] && cmp -s "$f" "$l"; then echo "/etc/${f#./}"; fi; done; umount /run/construct-lower`, "")
+	r.add("/etc's files stay the image's", err == nil && strings.TrimSpace(out) == "", "copied into /var unchanged: "+oneLine(out)+errText(err))
 }
 
 // installerWindows counts the graphical installer's windows on the live session's screen.
