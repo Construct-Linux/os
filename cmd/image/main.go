@@ -7,7 +7,9 @@
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
 //	image tested [-usb]                         whether the harness's last run was of HEAD, whole, and passed (cmd/image/tested.go)
-//	image usb   -pcr-public pem -secureboot dir [-test] [-append opt]  the stick's verified root and kernel image, in build/tools as root
+//	image usb   [-test] [-append opt] [-version v]  the stick's baked root, in build/tools as root
+//	image sign-efi -key ref -cert db.crt        on the host: the root's EFI programs signed for Secure Boot (cmd/image/usb.go)
+//	image usb-seal -pcr-public pem -secureboot dir  the signed programs in the root, the root sealed and the kernel image, in build/tools
 //	image sign-pcr -key ref                     on the host: sign the kernel image's PCR 11 policy (cmd/image/pcrsig.go)
 //	image usb-join                              the kernel image with its signed policy, in build/tools
 //	image usb-sign -key ref -cert db.crt        on the host: Secure Boot signatures, and the release (cmd/image/secureboot.go)
@@ -70,6 +72,10 @@ func main() {
 		err = testedCheck(os.Args[2:])
 	case "usb":
 		err = usb(os.Args[2:])
+	case "sign-efi":
+		err = signEFI(os.Args[2:])
+	case "usb-seal":
+		err = usbSeal(os.Args[2:])
 	case "sign-pcr":
 		err = signPCR(os.Args[2:])
 	case "usb-join":

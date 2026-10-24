@@ -114,7 +114,7 @@ func newRSA(t *testing.T) *rsa.PrivateKey {
 	return k
 }
 
-// sign-pcr and usb-sign refuse a release's key (KMS) for a test build, or for a build without a
+// sign-efi, sign-pcr and usb-sign refuse a release's key (KMS) for a test build, or for a build without a
 // release's version, before they open the key: nothing is asked of KMS and nothing is written.
 func TestATestBuildIsNotSignedWithAReleasesKey(t *testing.T) {
 	const kms = "kms:alias/construct-db"
@@ -123,6 +123,7 @@ func TestATestBuildIsNotSignedWithAReleasesKey(t *testing.T) {
 		"a build's time": {Version: "20261004.150701"},
 	} {
 		for cmd, run := range map[string]func() error{
+			"sign-efi": func() error { return signEFI([]string{"-key", kms, "-cert", "db.crt"}) },
 			"sign-pcr": func() error { return signPCR([]string{"-key", kms}) },
 			"usb-sign": func() error { return usbSign([]string{"-key", kms, "-cert", "db.crt"}) },
 		} {

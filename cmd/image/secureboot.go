@@ -14,16 +14,16 @@ import (
 	"github.com/Construct-Linux/os/internal/sign"
 )
 
-// Secure Boot. The firmware runs only EFI binaries a certificate in its db signed: systemd-boot
-// and the kernel image, whose command line names the root's dm-verity hash, so one signature
-// holds the whole boot to Construct's. The keys are RSA-2048, PKCS #1 v1.5 over SHA-256 - the one
-// algorithm firmware and Authenticode agree on. Each key's certificate is made once (image
-// secureboot-keys) and kept: it is what machines hold, and a signature under another certificate
-// for the same key is refused (internal/sign/secureboot.go). The three variables - PK signs its
-// own and KEK's, KEK signs db's - are signed again, under the same certificates, whenever what
-// they hold changes. db's key signs every release, on the host (image usb-sign), never in a
-// container. The keys are files for the harness's throwaway set and KMS keys for a release's
-// (internal/sign); the certificates and the signed variables are public.
+// Secure Boot. The firmware runs only EFI binaries a certificate in its db signed: systemd-boot,
+// fwupd's capsule loader, and the kernel image, whose command line names the root's dm-verity hash,
+// so one signature holds the whole boot to Construct's. The keys are RSA-2048, PKCS #1 v1.5 over
+// SHA-256 - the one algorithm firmware and Authenticode agree on. Each key's certificate is made
+// once (image secureboot-keys) and kept: it is what machines hold, and a signature under another
+// certificate for the same key is refused (internal/sign/secureboot.go). The three variables - PK
+// signs its own and KEK's, KEK signs db's - are signed again, under the same certificates, whenever
+// what they hold changes. db's key signs every release, on the host (image sign-efi, usb-sign),
+// never in a container. The keys are files for the harness's throwaway set and KMS keys for a
+// release's (internal/sign); the certificates and the signed variables are public.
 //
 // systemd-boot enrolls the three variables from the ESP's loader/keys/auto while the firmware is
 // in setup mode: by itself in a VM, from its menu on a machine - hidden until a key is held

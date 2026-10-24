@@ -1,0 +1,22 @@
+# Brings systemd-boot on the ESP up to the root's signed copy when the root's is newer (bootctl
+# update), as systemd-boot-update.service does - but once this release's boot came up, not before
+# sysinit.target: systemd's unit mounted the ESP there and held every boot 2.2 s on a stick
+# (test:usb's boot.txt), and wrote a release's loader before the release had proved it boots.
+# DefaultDependencies=no keeps multi-user.target from waiting for it.
+[Unit]
+Description=Bring systemd-boot on the ESP up to the root's
+Documentation=man:bootctl(1)
+ConditionFirmware=uefi
+DefaultDependencies=no
+Requires=boot-complete.target
+After=boot-complete.target
+Conflicts=shutdown.target
+Before=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=bootctl --variables=no --graceful update
+
+[Install]
+WantedBy=multi-user.target

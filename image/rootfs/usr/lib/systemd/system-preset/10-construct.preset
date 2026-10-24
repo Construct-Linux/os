@@ -39,8 +39,10 @@ enable construct-1password-update.timer
 enable nftables.service
 # Tailscale's agent: idle until someone logs in, then the machine is on their tailnet from boot.
 enable tailscaled.service
-# Construct's own.
+# Construct's own. construct-boot-update brings systemd-boot on the ESP up to the root's signed
+# copy (cmd/image usb.go) once a boot came up, in place of systemd-boot-update.service.
 enable construct-boot-check.service
+enable construct-boot-update.service
 enable construct-ssh-hostkeys.service
 enable construct-live.service
 enable construct-update.timer

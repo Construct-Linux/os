@@ -202,7 +202,7 @@ tasks:
         vars: {SIGNING_HOME: .cache/test-keys}
 
   keygen:secureboot:
-    desc: "The Secure Boot keys as files, {{.SIGNING_HOME}}/secureboot: PK's, KEK's and db's keys and certificates - db's signs systemd-boot and the kernel images - and the PK, KEK and db variables systemd-boot enrolls (cmd/image/secureboot.go). RSA-2048: UEFI verifies nothing else. Once; --force signs the variables again, under the same certificates, when what they hold changes."
+    desc: "The Secure Boot keys as files, {{.SIGNING_HOME}}/secureboot: PK's, KEK's and db's keys and certificates - db's signs systemd-boot, fwupd's capsule loader and the kernel images - and the PK, KEK and db variables systemd-boot enrolls (cmd/image/secureboot.go). RSA-2048: UEFI verifies nothing else. Once; --force signs the variables again, under the same certificates, when what they hold changes."
     status: ['test -f {{.SIGNING_HOME}}/secureboot/db.crt']
     vars:
       SB: '{{.SIGNING_HOME}}/secureboot'
@@ -275,13 +275,20 @@ tasks:
       # The Secure Boot variables the ESP carries for systemd-boot to enroll: signed, public.
       - mkdir -p _output/release-key/secureboot
       - cp {{.PUBLIC}}/secureboot/PK.auth {{.PUBLIC}}/secureboot/KEK.auth {{.PUBLIC}}/secureboot/db.auth _output/release-key/secureboot/
+      # The baked root keeps its owners for usb-seal: only what the host reads and writes is
+      # handed to it.
       - >-
         docker run --rm --privileged -e CONSTRUCT_UPDATE_URL -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work construct-tools -c
-        '_output/bin/image usb -pcr-public _output/release-key/pcr-public.pem -secureboot _output/release-key/secureboot {{.CLI_ARGS}};
-        rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb _output/root.tar; exit $rc'
-      # The keys sign here, on the host: they never enter a container. The PCR policy first, which
-      # ukify joins to the kernel image; then Secure Boot's signatures over the kernel image and
-      # systemd-boot, and the release.
+        '_output/bin/image usb {{.CLI_ARGS}};
+        rc=$?; chown {{.UID}}:{{.UID}} _output/usb _output/usb/built.json _output/root.tar; chown -R {{.UID}}:{{.UID}} _output/usb/efi; exit $rc'
+      # The keys sign here, on the host: they never enter a container. The root's EFI programs
+      # first, which go into the root before it is sealed; then the PCR policy, which ukify joins
+      # to the kernel image; then Secure Boot's signature over the kernel image, and the release.
+      - go run ./cmd/image sign-efi -key {{.DB_KEY}} -cert {{.PUBLIC}}/secureboot/db.crt
+      - >-
+        docker run --rm --privileged -v /dev:/dev -v {{.ROOT_DIR}}:/work -w /work construct-tools -c
+        '_output/bin/image usb-seal -pcr-public _output/release-key/pcr-public.pem -secureboot _output/release-key/secureboot;
+        rc=$?; chown -R {{.UID}}:{{.UID}} _output/usb; exit $rc'
       - go run ./cmd/image sign-pcr -key {{.PCR_KEY}}
       - >-
         docker run --rm --privileged -v {{.ROOT_DIR}}:/work -w /work construct-tools -c

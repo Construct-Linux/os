@@ -58,8 +58,9 @@ falling back from a release that does not come up.
 - **The release, PCR and Secure Boot keys never enter the repository or a container.** A release
   signs with AWS KMS keys that never leave KMS; a person's own builds with files in
   `SIGNING_HOME`, outside the repo. Every key is a `crypto.Signer` named by a reference
-  (internal/sign), and `task usb` signs on the host: the PCR policy, Secure Boot's db over
-  systemd-boot and the kernel image, and `SHA256SUMS`. Public halves live in `keys/`.
+  (internal/sign), and `task usb` signs on the host: Secure Boot's db over the root's EFI
+  programs (systemd-boot, fwupd's capsule loader) before the root is sealed, the PCR policy, db
+  over the kernel image, and `SHA256SUMS`. Public halves live in `keys/`.
 - **A certificate is made once and never again**: firmware holds the certificate, not the key, and
   refuses a signature under a new certificate for the same key. A KEK or db that must hold
   something new is signed again under the same certificates (`task keys:kms --force`);

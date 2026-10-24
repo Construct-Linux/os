@@ -148,6 +148,7 @@ func test(args []string) (err error) {
 	r.add("the login keyring is open", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
 	if *stick {
 		r.secureBoot(g)
+		r.efiPrograms(g)
 		r.loaderCache(g)
 	}
 	l.shot(viewMeta{"desktop", needle.GroupDesktop,
@@ -929,6 +930,16 @@ func keyringRoundTrip(user string, uid int) string {
 func (r *report) secureBoot(g *guest) {
 	out, _ := g.run(`bootctl status 2>/dev/null | grep -E 'Secure Boot:'; cat /sys/kernel/security/lockdown`, "")
 	r.add("secure boot", strings.Contains(out, "Secure Boot: enabled (user)") && strings.Contains(out, "[integrity]"), oneLine(out))
+}
+
+// efiPrograms checks the root's EFI programs are the signed ones the firmware runs: systemd-boot on
+// the ESP is the root's .signed, which construct-boot-update.service keeps it at, and fwupd's capsule
+// loader has its signed copy beside it, which fwupd copies to the ESP with Secure Boot on.
+func (r *report) efiPrograms(g *guest) {
+	out, _ := g.run(`systemctl is-active construct-boot-update.service; esp=$(bootctl --print-esp-path) && `+
+		`cmp $esp/EFI/systemd/systemd-bootx64.efi /usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed && echo boot-signed; `+
+		`f=/usr/libexec/fwupd/efi/fwupdx64.efi; test -s $f.signed && ! cmp -s $f $f.signed && echo fwupd-signed`, "")
+	r.add("the root's EFI programs, signed", strings.Contains(out, "active") && strings.Contains(out, "boot-signed") && strings.Contains(out, "fwupd-signed"), oneLine(out))
 }
 
 // loaderCache checks that the first boot of a new release leaves /etc's link to the loader's cache
