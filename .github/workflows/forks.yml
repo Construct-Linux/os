@@ -1,0 +1,125 @@
+# Once a week, after watch has filed which forks lag: each fork a recipe builds from is cloned
+# beside the checkout, its upstream merged by cmd/fork, the tree checked, and the reports put in
+# the job's summary and an artifact. A clean merge is pushed to the fork's upstream-merge branch
+# and its recipe's pin opened as a pull request when FORKS_TOKEN - a token that writes to the
+# Construct-Linux forks and this repository's pull requests - is set; without it the workflow
+# changes nothing. A conflict is never resolved here: the report is for a person or the
+# fork-merge skill.
+name: forks
+
+on:
+  schedule:
+    - cron: "0 8 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: forks
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: os
+          persist-credentials: false
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: os/go.mod
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+
+      # fork check compiles the extensions' schemas as the image does.
+      - name: Install glib-compile-schemas
+        run: sudo apt-get install -y --no-install-recommends libglib2.0-bin
+
+      - name: Configure git
+        run: |
+          git config --global user.name "construct-forks"
+          git config --global user.email "forks@construct-linux.invalid"
+
+      # Each fork beside os/, as a person's checkout is, with upstream as GitHub names the parent.
+      - name: Clone the forks with their upstream
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: os
+        run: |
+          set -euo pipefail
+          go run ./cmd/fork list | while read -r recipe name branch commit; do
+            git clone -q -b "$branch" "https://github.com/Construct-Linux/$name" "../$name"
+            parent=$(gh api "repos/Construct-Linux/$name" --jq '.parent.clone_url // ""')
+            if [ -z "$parent" ]; then
+              echo "::notice::$name has no upstream (not a fork): skipped"
+              continue
+            fi
+            git -C "../$name" remote add upstream "$parent"
+          done
+
+      - name: Sync each fork and check the clean merges
+        id: sync
+        working-directory: os
+        run: |
+          set -uo pipefail
+          mkdir -p _output/fork
+          : > _output/fork/summary.md
+          go run ./cmd/fork list | while read -r recipe name branch commit; do
+            git -C "../$name" remote get-url upstream > /dev/null 2>&1 || continue
+            if ! go run ./cmd/fork sync "$recipe" > "_output/fork/$name.sync.txt" 2>&1; then
+              echo "## $name: sync failed" >> _output/fork/summary.md
+              cat "_output/fork/$name.sync.txt" >> _output/fork/summary.md
+              continue
+            fi
+            result=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['result'])" "_output/fork/$name/report.json")
+            if [ "$result" = merged ]; then
+              if ! go run ./cmd/fork check "$recipe" > "_output/fork/$name.check.txt" 2>&1; then
+                result="merged, check failed"
+              fi
+            fi
+            echo "$recipe $name $branch $result" >> _output/fork/results.txt
+            echo "## $name: $result" >> _output/fork/summary.md
+            [ -f "_output/fork/$name.check.txt" ] && cat "_output/fork/$name.check.txt" >> _output/fork/summary.md
+            sed -n '1,40p' "_output/fork/$name/report.md" >> _output/fork/summary.md
+            echo >> _output/fork/summary.md
+          done
+          cat _output/fork/summary.md >> "$GITHUB_STEP_SUMMARY"
+          touch _output/fork/results.txt
+
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v4.6.2
+        with:
+          name: fork-reports
+          path: os/_output/fork
+          retention-days: 30
+
+      # The clean merges, pushed and pinned: the fork's upstream-merge branch, and one pull
+      # request in this repository per fork with its pin, its recipe comment left for the review.
+      - name: Push the clean merges and open their pull requests
+        if: ${{ env.FORKS_TOKEN != '' }}
+        env:
+          FORKS_TOKEN: ${{ secrets.FORKS_TOKEN }}
+          GH_TOKEN: ${{ secrets.FORKS_TOKEN }}
+        working-directory: os
+        run: |
+          set -euo pipefail
+          git remote set-url origin "https://x-access-token:${FORKS_TOKEN}@github.com/${GITHUB_REPOSITORY}"
+          while read -r recipe name branch result; do
+            [ "$result" = merged ] || continue
+            git -C "../$name" push -q -f "https://x-access-token:${FORKS_TOKEN}@github.com/Construct-Linux/$name" "$branch:upstream-merge"
+            head=$(git -C "../$name" rev-parse HEAD)
+            git checkout -q -B "fork/$name" origin/main
+            # The recipe builds the branch it names; the pull request moves the pin to the
+            # merge, which lands on gnome-51 when the person pushes upstream-merge there.
+            go run ./cmd/fork pin "$recipe"
+            git add "recipes/$recipe.yaml"
+            msg=$(printf '%s: upstream merged into the fork\n\nThe forks workflow merged upstream into Construct-Linux/%s cleanly (its upstream-merge branch, %s). The pin moves to it; the comment above git-checkout still describes the previous pin and is the review'"'"'s to write.\n\nBefore merging: fast-forward the fork'"'"'s %s to upstream-merge, task build -- %s, task lock, task test.\n' "$recipe" "$name" "$head" "$branch" "$recipe")
+            git commit -q -m "$msg"
+            git push -q -f origin "fork/$name"
+            gh pr create --fill --base main --head "fork/$name" --label update 2>/dev/null || gh pr edit "fork/$name" --body "$(git log -1 --format=%b)" > /dev/null
+          done < _output/fork/results.txt
