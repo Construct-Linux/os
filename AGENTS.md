@@ -203,5 +203,5 @@ initrd, whose units log to the journal.
   machines take it. The criterion may be elapsed time, successful boots, a cohort, or a combination
   appropriate to the release's risk.
 - **Issues are where problems go**, and where open work goes: the issue forms ask for
-  `construct report`, the weekly `watch` workflow files security fixes and pins behind upstream,
+  `construct report`, the weekly `watch` workflow files security fixes, and pins and forks behind upstream,
   Dependabot opens the Go modules' and the actions' bumps.

@@ -157,6 +157,7 @@ func runCmd(ctx context.Context, args []string, out io.Writer) error {
 		src.gnomeCheck(recipes),
 		src.microcodeCheck(pinned["INTEL_MICROCODE_VERSION"]),
 		src.pinsCheck(pinned),
+		src.forksCheck(recipes),
 	}
 	if *grypeJSON != "" {
 		checks = append([]check{securityCheck(*grypeJSON, *release, recipes)}, checks...)

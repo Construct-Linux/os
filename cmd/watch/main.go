@@ -5,8 +5,9 @@
 //
 // run opens an issue only for what a person must act on: a Critical or High vulnerability a
 // version fixes in the latest release (Grype's report of its SBOM), a new kernel series or the
-// pinned one's end, a new GNOME major, and Intel's microcode, whose releases are security fixes.
-// Each issue carries a hidden marker, so the next run updates it, and closes it once its finding
+// pinned one's end, a new GNOME major, Intel's microcode, whose releases are security fixes, the
+// pins in build/ behind upstream's release, and a fork a recipe builds from behind its upstream's
+// default branch. Each issue carries a hidden marker, so the next run updates it, and closes it once its finding
 // is gone.
 //
 // It talks to the repository GITHUB_REPOSITORY names with GITHUB_TOKEN, the two a workflow's job
