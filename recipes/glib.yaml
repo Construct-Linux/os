@@ -1,0 +1,159 @@
+#nolint:unused-var-transform
+# Wolfi's glib (wolfi-dev/os glib.yaml, 2.90.1 epoch 0), with one fix: an app that matches a
+# search token more than once kept whichever of its matches qsort() left first, so it moved
+# between g_desktop_app_info_search()'s groups from one search to the next - GNOME Shell's search
+# put Firefox before or after Google Chrome by the session (patch upstream-ready, in glib/).
+# Its package tests are left out: they use Wolfi's own test pipelines, which melange build does
+# not run.
+package:
+  name: glib
+  version: "2.90.1"
+  epoch: 1
+  description: Common C routines used by Gtk+ and other libs
+  copyright:
+    - license: LGPL-2.1-or-later
+  resources:
+    cpu: "2"
+    memory: 4Gi
+  test-resources:
+    cpu: "1"
+    memory: 1Gi
+
+vars:
+  # build uses rst2man from py3-docutils and also invokes 'python3'
+  # installed /usr/bin/gtester-report gets correct shbang (/usr/bin/python3.XX)
+  python-version: 3.13
+
+environment:
+  contents:
+    packages:
+      - autoconf
+      - automake
+      - build-base
+      - busybox
+      - bzip2-dev
+      - ca-certificates-bundle
+      - docbook-xml
+      - gettext-dev
+      - glibc-2.44-dev
+      - libffi-dev
+      - libmount
+      - libxml2-utils
+      - libxslt
+      - libxslt-dev
+      - meson
+      - pcre2-dev
+      - py${{vars.python-version}}-docutils-bin
+      - python-${{vars.python-version}}
+      - util-linux-dev
+      - zlib-dev
+
+# creates a new var that contains only the major and minor version to be used in the fetch URL
+# e.g. 2.74.3 will create a new var mangled-package-version=2.74
+var-transforms:
+  - from: ${{package.version}}
+    match: (\d+\.\d+)\.\d+
+    replace: $1
+    to: mangled-package-version
+
+pipeline:
+  - uses: git-checkout
+    with:
+      repository: https://gitlab.gnome.org/GNOME/glib.git
+      tag: ${{package.version}}
+      expected-commit: e05063ccc6c8f222465a1080927f4c14349f3de6
+
+  - uses: patch
+    with:
+      patches: glib/search-keep-earliest-match.patch
+
+  - uses: meson/configure
+    with:
+      opts: |
+        --default-library=both \
+        -Dman=true \
+        -Dtests=false
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+  - name: update shbang
+    runs: |
+      # replace usr/bin/env python3
+      d=${{targets.destdir}}/usr/bin
+      # change '/usr/bin/env python3' or '/usr/bin/python3' to /usr/bin/python3.XX
+      op='1s,^#!/usr/bin/\(env python3\|python3\)$,#!/usr/bin/python${{vars.python-version}},'
+      for f in "$d"/*; do
+         [ -f "$f" ] || continue
+         sed -i -e "$op" "$f";
+      done
+
+  - uses: strip
+
+subpackages:
+  - name: glib-doc
+    description: glib docs
+    pipeline:
+      - uses: split/manpages
+  - name: glib-static
+    pipeline:
+      - uses: split/static
+    dependencies:
+      runtime:
+        - gettext-static
+        - zlib-static
+    description: glib static
+
+  - name: glib-dev
+    pipeline:
+      - uses: split/dev
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/bin
+          mkdir -p ${{targets.subpkgdir}}/usr/share
+          find ${{targets.destdir}}/usr/bin ! -name "glib-compile-schemas" -a \( \
+              -name "gdbus-codegen" -o \
+              -name "gobject-query" -o \
+              -name "gresource" -o \
+              -name "gtester*" -o \
+              -name "glib-*" \) \
+              -exec mv {} ${{targets.subpkgdir}}/usr/bin \;
+          mv ${{targets.destdir}}/usr/share/gdb ${{targets.subpkgdir}}/usr/share/
+          mv ${{targets.destdir}}/usr/share/glib-2.0 ${{targets.subpkgdir}}/usr/share/
+    dependencies:
+      runtime:
+        - glib
+        - bzip2-dev
+        - gettext-dev
+        - libxml2-utils
+        - libxslt
+        - libffi-dev # needed by gobject-2.0 when building gobject-introspection
+        - pcre2-dev # needed by glib-2.0 when building gobject-introspection
+        - util-linux-dev # needed by gio-2.0 when building gobject-introspection
+        - docbook-xml
+      provides:
+        - gio=${{package.full-version}}
+        - gobject=${{package.full-version}}
+        - gthread=${{package.full-version}}
+    description: glib dev
+  - name: glib-lang
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.subpkgdir}}/usr/share
+          mv ${{targets.destdir}}/usr/share/locale ${{targets.subpkgdir}}/usr/share/
+    description: glib lang
+update:
+  enabled: true
+  git: {}
+  ignore-regex-patterns:
+    - GLIB.* # Not relevant tags
+    - ^FOR_GNOME_.*
+    - ^gobject_.*
+    - ^glib-.*-branchpoint$
+    - ^glib-2\.25\.7$
+    - ^GTK_.*
+    - ^start$
+    - ^EAZEL-.*
+    - ^R_.*_core$
+    - ^GOBJECT_.*
+    - ^GNOME_PRINT_.*

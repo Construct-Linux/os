@@ -1,0 +1,32 @@
+From: Construct <release@constructlinux.org>
+Subject: gdesktopappinfo: Keep an app's earliest match when it matches a token more than once
+
+When an app matches a search token several times with the same match
+type and category - "se" in more than one of Firefox's keywords -
+merge_token_results() keeps the entry compare_results() sorts first,
+and compare_results() did not order those entries: qsort() is not
+stable, so which token position survived changed from one search to the
+next. g_desktop_app_info_search() groups results by token position too,
+so the app moved between groups: GNOME Shell's search showed Firefox
+before Google Chrome in one session and after it in the next.
+
+Order an app's entries by token position as well, so its earliest match
+is the one kept, as compare_categories() already prefers.
+
+--- a/gio/gdesktopappinfo.c
++++ b/gio/gdesktopappinfo.c
+@@ -574,7 +574,13 @@ compare_results (gconstpointer a,
+       if (ra->match_type != rb->match_type)
+         return ra->match_type - rb->match_type;
+ 
+-      return ra->category - rb->category;
++      if (ra->category != rb->category)
++        return ra->category - rb->category;
++
++      /* The earliest match of the best kind is the one kept: qsort() is not
++       * stable, and which of several left first changed between searches.
++       */
++      return ra->token_pos - rb->token_pos;
+     }
+ }
+ 
