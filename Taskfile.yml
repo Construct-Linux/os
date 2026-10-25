@@ -393,6 +393,41 @@ tasks:
     cmds:
       - go run ./cmd/watch labels {{.CLI_ARGS}}
 
+  # The forks the recipes build from (the theme, the icons, the cursor, the extensions) follow
+  # their upstream through cmd/fork: sync merges, check verifies the tree, pin moves the recipe.
+  # The checkouts sit beside this repository, one per Construct-Linux repository, with upstream
+  # as their upstream remote. What needs judgement - a conflict, the recipe's comment, what to
+  # keep of the fork's own fixes - is the fork-merge skill's (.claude/skills/fork-merge).
+
+  fork:sync:
+    desc: "Fetch a fork's upstream and merge its default branch into the fork's branch: task fork:sync -- gnome-shell-extension-vitals. Committed when clean; left in progress with _output/fork/<fork>/report.md when not. -- <recipe> -ours records upstream's head keeping the fork's tree."
+    cmds:
+      - go run ./cmd/fork sync {{.CLI_ARGS}}
+
+  fork:check:
+    desc: "A fork's tree holds: no conflict left, every .js and .ts parses, the schemas compile, JSON and XML parse, metadata declares GNOME Shell 51 alone, the recipe's patches apply: task fork:check -- gnome-shell-extension-vitals"
+    cmds:
+      - go run ./cmd/fork check {{.CLI_ARGS}}
+
+  fork:pin:
+    desc: "Move a recipe to its fork's head, which must carry upstream's: upstream's version when newer, a new epoch otherwise: task fork:pin -- gnome-shell-extension-vitals. The comment above git-checkout is then a person's to update."
+    cmds:
+      - go run ./cmd/fork pin {{.CLI_ARGS}}
+
+  fork:update:
+    desc: "sync, check and pin one fork in a row: task fork:update -- gnome-shell-extension-vitals. Stops at a conflict, leaving the report for task fork:resolve."
+    cmds:
+      - go run ./cmd/fork sync {{.CLI_ARGS}}
+      - go run ./cmd/fork check {{.CLI_ARGS}}
+      - go run ./cmd/fork pin {{.CLI_ARGS}}
+
+  fork:resolve:
+    desc: "Hand a fork's merge report to Claude Code with the fork-merge skill, to resolve the conflicts and write the recipe's comment: task fork:resolve -- gnome-shell-extension-vitals. Needs claude on PATH; it commits in the fork's checkout and pushes nothing."
+    cmds:
+      - >-
+        claude -p "Use the fork-merge skill on the recipe {{.CLI_ARGS}}; its merge report is in _output/fork/.
+        Resolve, check, commit the merge, pin, and update the recipe's comment. Push nothing."
+
   watch:
     desc: "Open, update or close the issues of what needs a person: a Critical or High a version fixes in the latest release (-grype FILE, Grype's report of its SBOM), a new kernel series or point release, a new GNOME major, Intel's microcode, the pins in build/versions.env and build/host.env behind upstream, the forks the recipes build from behind their upstream. GITHUB_REPOSITORY and GITHUB_TOKEN; task watch -- -dry-run changes nothing."
     cmds:

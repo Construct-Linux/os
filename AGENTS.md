@@ -137,6 +137,12 @@ falling back from a release that does not come up.
   libraries the root lacks.
 - A Wolfi package that is stale, broken or built without what the desktop needs is a recipe here,
   with the reason in its comments, not a workaround in the image.
+- **A fork follows its upstream through `task fork:sync`, `fork:check` and `fork:pin`** (cmd/fork):
+  the merge, the tree's checks and the pin's move are a program's; a conflict, what of the fork's
+  own fixes to keep and the recipe's comment are a person's or the fork-merge skill's
+  (`.claude/skills/fork-merge`). The weekly `watch` files a fork behind its upstream; the weekly
+  `forks` workflow merges the clean ones. A fork's branch is pushed by a person: the recipe
+  clones it from GitHub.
 - `build/versions.env` pins what every build fetches from outside (the Wolfi base image, the
   kernel, linux-firmware, microcode, Grype); a bump is checked like any other change.
 

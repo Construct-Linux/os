@@ -152,7 +152,7 @@ task play                                          # the stick in a window, with
 checked with. `task check` is what CI runs on a pull request; a pull request from outside the
 organization waits for a maintainer to approve its CI run. A fix to the theme, the icons, the
 cursor or an extension belongs in its [fork](https://github.com/Construct-Linux), on its
-`gnome-51` branch.
+`gnome-51` branch; `task fork:sync` brings upstream into it.
 
 ## License
 
