@@ -1,7 +1,7 @@
 package:
   name: bibata-cursor-theme
   version: 2.0.7
-  epoch: 4
+  epoch: 5
   description: Bibata Modern cursors in Construct's colours (Bibata-Modern-Construct)
   copyright:
     - license: GPL-3.0-or-later
@@ -22,7 +22,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/Bibata_Cursor
       branch: gnome-51
-      expected-commit: 2e382aac7957772311a6f0a36e429cdd00f7959b
+      expected-commit: e602d9a4e06d4745fc8eed315289ddf4708bdcbd
 
   - runs: |
       python3 build.py -o ${{targets.destdir}}/usr/share/icons

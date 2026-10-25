@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-dash-to-panel
   version: "74"
-  epoch: 8
+  epoch: 9
   description: GNOME Shell extension that merges the dash into the top panel
   copyright:
     - license: GPL-2.0-or-later
@@ -18,8 +18,8 @@ environment:
       - glib
 
 pipeline:
-  # v74 and upstream master to 803d950 (badge border, top panel size) plus, on the fork's
-  # gnome-51 branch: a drag over the panel no longer opens the overview
+  # v74 and upstream master to c3aed93 (badge border, top panel size, intellihide freed after
+  # fullscreen) plus, on the fork's gnome-51 branch: a drag over the panel no longer opens the overview
   # (upstream #2087), Super+I is free unless intellihide is on (#2416), a long left click activates
   # (#2561), a quit app's badge clears (#2560), file modes (#2433), the extension-version
   # default at the packaged version, so a new account is not told "has been updated", and the
@@ -28,7 +28,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/dash-to-panel
       branch: gnome-51
-      expected-commit: 7e0a33a0be5fe84ce40b0b7660e0111ffedaf86e
+      expected-commit: de94e38af6519485b9ddceac821586c1f144d92d
 
   # A DESTDIR install is the system one: the schema goes to /usr/share/glib-2.0/schemas, compiled
   # with the image, and no gschemas.compiled stays in the extension directory. VERSION keeps the
