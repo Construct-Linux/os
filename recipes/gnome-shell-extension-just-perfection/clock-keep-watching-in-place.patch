@@ -1,0 +1,35 @@
+From: Construct <release@constructlinux.org>
+Subject: API: Keep watching the panel when the clock is already in place
+
+clockMenuPositionSet() keeps the date menu at its offset by watching the
+panel boxes' child-added, and dropped that watch first thing on every
+call: when the clock was already where it should be, it returned before
+connecting it again. An item an extension added after that - Vitals,
+which inserts itself at the right box's start - then sat before the
+clock for good, and whether it did depended on the order the shell's
+extensions happened to come up in: one boot had the clock before Vitals'
+readings, the next after them.
+
+Drop the watch only when the clock is moved, which connects it again.
+
+--- a/src/lib/API.js
++++ b/src/lib/API.js
+@@ -1480,8 +1480,6 @@ export class API
+             this._main.panel._leftBox,
+         ];
+ 
+-        this.#disconnectClockMenuPositionSignals();
+-
+         let fromPos = -1;
+         let fromIndex = -1;
+         let toIndex = -1;
+@@ -1507,6 +1505,9 @@ export class API
+             return;
+         }
+ 
++        // Watched again once moved: a clock already in its place keeps the
++        // watch, so an item a later extension inserts before it is undone.
++        this.#disconnectClockMenuPositionSignals();
+         panelBoxes[fromPos].remove_child(dateMenu.container);
+         panelBoxes[pos].insert_child_at_index(dateMenu.container, toIndex);
+ 

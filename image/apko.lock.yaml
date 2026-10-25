@@ -120,8 +120,8 @@ contents:
     - gnome-shell-extension-drive-menu=51.0-r0
     - gnome-shell-extension-gtk4-ding=100.29_git20261002-r3
     - gnome-shell-extension-gtk4-ding-lang=100.29_git20261002-r3
-    - gnome-shell-extension-just-perfection=37.0-r0
-    - gnome-shell-extension-just-perfection-lang=37.0-r0
+    - gnome-shell-extension-just-perfection=37.0-r1
+    - gnome-shell-extension-just-perfection-lang=37.0-r1
     - gnome-shell-extension-night-theme-switcher=84-r0
     - gnome-shell-extension-tiling-shell=18.0_rc20260919-r6
     - gnome-shell-extension-user-theme=51.0-r0

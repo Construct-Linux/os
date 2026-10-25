@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-just-perfection
   version: "37.0"
-  epoch: 0
+  epoch: 1
   description: GNOME Shell extension to tweak and hide parts of the shell
   copyright:
     - license: GPL-3.0-only
@@ -23,6 +23,12 @@ pipeline:
       repository: https://gitlab.gnome.org/jrahmatzadeh/just-perfection.git
       tag: ${{package.version}}
       expected-commit: ae48fd2d75a5747bbda1bdb2b039e9a3384ddf4c
+
+  # The clock stays where clock-menu-position puts it whatever order the extensions come up in:
+  # Vitals' readings were before it one boot and after it the next.
+  - uses: patch
+    with:
+      patches: gnome-shell-extension-just-perfection/clock-keep-watching-in-place.patch
 
   # Installed by hand, the layout scripts/build.sh's `gnome-extensions pack` produces, except that
   # the schema and the translations go system-wide: the image compiles schemas at build, and the
