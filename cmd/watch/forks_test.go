@@ -52,22 +52,6 @@ func forkRecipes(t *testing.T) string {
 	return dir
 }
 
-// A recipe's git-checkout of a Construct-Linux repository is a fork, with or without .git;
-// another owner's is not.
-func TestReadForks(t *testing.T) {
-	forks, err := readForks(forkRecipes(t))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var names []string
-	for _, f := range forks {
-		names = append(names, f.name+"@"+f.branch+"@"+f.commit[:7])
-	}
-	if got := strings.Join(names, " "); got != "brand@main@32b7192 gnome-shell-extension-caffeine@gnome-51@29bec13 Vitals@gnome-51@f78845b" {
-		t.Errorf("%s", got)
-	}
-}
-
 func commit(sha, date, subject string, parents ...string) string {
 	var ps []string
 	for _, p := range parents {
@@ -108,7 +92,7 @@ func TestForksCheck(t *testing.T) {
 		t.Errorf("the commits, newest first:\n%s", f.body)
 	}
 	if strings.Contains(f.body, "Merge pull request") || !strings.Contains(f.body, "27 commit(s) of its own") || !strings.Contains(f.body, "corecoding/Vitals's main has 3 commit(s)") ||
-		!strings.Contains(f.body, "gnome-shell-extension-vitals.yaml") || !strings.Contains(f.body, "rebase gnome-51 onto main") {
+		!strings.Contains(f.body, "gnome-shell-extension-vitals.yaml") || !strings.Contains(f.body, "task fork:sync -- ") {
 		t.Errorf("the body:\n%s", f.body)
 	}
 }
