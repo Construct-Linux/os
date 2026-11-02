@@ -1,6 +1,6 @@
 package:
   name: gnome-shell-extension-night-theme-switcher
-  version: "84"
+  version: "86"
   epoch: 0
   description: GNOME Shell extension that switches the color scheme, background and commands at sunset and sunrise
   copyright:
@@ -24,7 +24,7 @@ pipeline:
     with:
       repository: https://gitlab.com/rmnvgr/nightthemeswitcher-gnome-shell-extension
       tag: ${{package.version}}
-      expected-commit: 5413ac8cf4f8d8e726cd9925b6cb4e66eeddafc6
+      expected-commit: 04d2aaa9286427a2281116c1ff98e4db03903e56
 
   - uses: meson/configure
 

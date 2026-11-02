@@ -1,6 +1,6 @@
 package:
   name: wireplumber
-  version: 0.5.18
+  version: 0.5.19
   epoch: 0
   description: Session and policy manager for PipeWire
   copyright:
@@ -24,7 +24,7 @@ pipeline:
     with:
       repository: https://gitlab.freedesktop.org/pipewire/wireplumber.git
       tag: ${{package.version}}
-      expected-commit: 81606cbb32d29df20147d1b68b662c1082654d81
+      expected-commit: 4ab992fa2931ae2b17ef73508b1370030b7878c3
 
   # Introspection off: nothing in the session loads the Wp typelib, and its gir is generated
   # from doxygen XML.

@@ -1,7 +1,7 @@
 package:
   name: cracklib
-  version: 2.10.3
-  epoch: 1
+  version: 2.10.4
+  epoch: 0
   description: Library used to enforce strong passwords
   copyright:
     - license: LGPL-2.1-or-later
@@ -20,7 +20,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://github.com/cracklib/cracklib/releases/download/v${{package.version}}/cracklib-${{package.version}}.tar.xz
-      expected-sha256: 1d1b83676b5673051b9373e1ca0db81c1fa88faf9a195a3c1af984fd9c250d66
+      expected-sha256: 503573391cfea3e1fca0b7ea0011c887f87f49cf2a97db9a54f92094e604b82b
 
   # Python bindings off: libpwquality only links the C library. Its messages ("it is based on a
   # dictionary word") reach the person through GNOME's password dialogs, translated.
