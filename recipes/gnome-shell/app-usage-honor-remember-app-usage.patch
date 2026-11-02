@@ -1,0 +1,33 @@
+From: Construct <release@constructlinux.org>
+Subject: app-usage: Do not collect usage with remember-app-usage off
+
+update_enable_monitoring() says that with monitoring disabled the shell
+reports usage from saved data but collects none. It only cleared the
+watched app, though: the focus-app handler stays connected, so the next
+focus change watched the new app again and counted its focused time,
+and saved it. A person who turned off "App Usage" in Settings still had
+it recorded.
+
+Return early from the handler while monitoring is off. It must be on
+before the handler runs when it is turned on, for the same reason.
+
+--- a/src/shell-app-usage.c
++++ b/src/shell-app-usage.c
+@@ -219,6 +219,9 @@
+                       GParamSpec         *spec,
+                       ShellAppUsage      *self)
+ {
++  if (!self->enable_monitoring)
++    return;
++
+   if (self->watched_app != NULL)
+     increment_usage_for_app (self, self->watched_app);
+ 
+@@ -734,6 +737,7 @@
+   /* Be sure not to start the timers if they were already set */
+   if (enable && !self->enable_monitoring)
+     {
++      self->enable_monitoring = TRUE;
+       on_focus_app_changed (shell_window_tracker_get_default (), NULL, self);
+     }
+   /* ...and don't try to stop them if they were not running */
