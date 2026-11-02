@@ -318,9 +318,9 @@ tasks:
       - mkdir -p _output/scan/grype-db _output/scan/tmp
       # The report is written whether the scan passed or not; the scan's status is the task's.
       - >-
-        docker run --rm -u {{.UID}} -v {{.ROOT_DIR}}/_output/usb/root:/root:ro -v {{.ROOT_DIR}}/_output/scan:/scan
+        rc=0; docker run --rm -u {{.UID}} -v {{.ROOT_DIR}}/_output/usb/root:/root:ro -v {{.ROOT_DIR}}/_output/scan:/scan
         -v {{.ROOT_DIR}}/build/grype.yaml:/grype.yaml:ro -e GRYPE_DB_CACHE_DIR=/scan/grype-db -e TMPDIR=/scan/tmp
-        {{.GRYPE_IMAGE}} -c /grype.yaml -q dir:/root -o json=/scan/grype.json; rc=$?;
+        {{.GRYPE_IMAGE}} -c /grype.yaml -q dir:/root -o json=/scan/grype.json || rc=$?;
         go run ./cmd/image scan-report || exit 1; exit $rc
 
   test:usb:
