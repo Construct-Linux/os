@@ -4,7 +4,7 @@
 package:
   name: task
   version: 3.54.0
-  epoch: 5
+  epoch: 6
   description: A task runner and build tool (Taskfile.yml)
   copyright:
     - license: MIT
@@ -21,6 +21,12 @@ pipeline:
       repository: https://github.com/go-task/task
       tag: v${{package.version}}
       expected-commit: b5aef1c287a9be8038347a17646bdf4bc7185bce
+
+  # v3.54.0 pins go-jose 4.1.4, which GHSA-mgcc-cww5-fp2q (High) names; drop this when a release of
+  # Task's pins 4.1.6 or newer.
+  - uses: go/bump
+    with:
+      deps: github.com/go-jose/go-jose/v4@v4.1.6
 
   # The version is internal/version/version.txt, embedded; -buildvcs=false keeps a commit and
   # "dirty" out of it, which the checkout's own state would add.
