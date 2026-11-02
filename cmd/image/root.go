@@ -133,8 +133,10 @@ func rootLayers(test bool) []layer {
 }
 
 func disk(args []string) error {
-	// The ext4 image's size.
-	const size = "12G"
+	// The ext4 image's size: the root's 6.5 GiB, the 3.3 GiB the harness adds in /var (Flathub's
+	// Chrome and a container image, whose sizes are upstream's), and the 2.25 GiB construct bench's
+	// fio lays out after them.
+	const size = "16G"
 	fl := flag.NewFlagSet("disk", flag.ExitOnError)
 	test := fl.Bool("test", false, "add image/test/rootfs: what lets cmd/image test drive the session")
 	_ = fl.Parse(args)
