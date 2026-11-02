@@ -1,6 +1,6 @@
 package:
   name: upower
-  version: 1.91.4
+  version: 1.91.5
   epoch: 0
   description: Power management service
   copyright:
@@ -25,7 +25,7 @@ pipeline:
     with:
       repository: https://gitlab.freedesktop.org/upower/upower.git
       tag: v${{package.version}}
-      expected-commit: af22b0bb6a97fff89b0e11101de9fc4937832864
+      expected-commit: 233615a1505166ef4a28c959836fe8c7781f5697
 
   # idevice off: iPhone battery reporting needs libimobiledevice, which Wolfi has not.
   - uses: meson/configure

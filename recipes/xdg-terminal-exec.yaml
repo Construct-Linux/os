@@ -4,7 +4,7 @@
 # Wolfi has no recipe. The manual page needs scdoc and is left out.
 package:
   name: xdg-terminal-exec
-  version: 0.14.3
+  version: 0.14.4
   epoch: 0
   description: The default terminal, by the proposed xdg-terminal-exec specification
   copyright:
@@ -24,7 +24,7 @@ pipeline:
     with:
       repository: https://github.com/Vladimir-csp/xdg-terminal-exec
       tag: v${{package.version}}
-      expected-commit: 065925df9f419008159258ae169018bfd23df71b
+      expected-commit: 80d6ea72054089b59356919e0391a1395460788d
 
   - runs: |
       make prefix=/usr DESTDIR=${{targets.destdir}} install-bin install-conf
