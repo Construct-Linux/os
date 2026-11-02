@@ -1,6 +1,6 @@
 package:
   name: gnome-calculator
-  version: "51.0"
+  version: "51.1"
   epoch: 0
   description: Calculator for solving mathematical equations
   copyright:
@@ -34,7 +34,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/gnome-calculator/${{vars.series}}/gnome-calculator-${{package.version}}.tar.xz
-      expected-sha256: 5bfb4c53eec61feb6c03faf85218804e87413ecb647e08fde6379bf2b1839190
+      expected-sha256: 03edf5972adc020b7e872233caba42f759e9879fc4b96f014580f136179c4fa0
 
   # The app is written in Vala, but our libadwaita and gtksourceview5 ship no vapi, and the
   # libsoup-3.0.vapi bundled with vala predates Session.send_and_splice: generate all three from

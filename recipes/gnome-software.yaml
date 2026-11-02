@@ -1,7 +1,7 @@
 package:
   name: gnome-software
-  version: "51.0"
-  epoch: 2
+  version: "51.1"
+  epoch: 0
   description: Install and update applications (Flatpak)
   copyright:
     - license: GPL-2.0-or-later
@@ -44,13 +44,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/gnome-software/${{vars.series}}/gnome-software-${{package.version}}.tar.xz
-      expected-sha256: 834b6035e61e36dd72339eb3e15d299b472ae0b393467a5bb36bb0045e0ba123
-
-  # Upstream's (59a8a9c3, after 51.0): started as a D-Bus service, the CPU priority is set before
-  # the icon downloader exists, and its NULL logged a CRITICAL at every login.
-  - uses: patch
-    with:
-      patches: gnome-software/icon-downloader-before-setup.patch
+      expected-sha256: 6501b1d7e499bfb8009f08efa3339ca6369bc38ee335cc3dfb67da7b2ab71289
 
   # No plugin here lists distribution upgrades or keeps offline updates: systemd-sysupdate's are
   # updates, applied at the next boot by themselves. Asked for either, the loader answered "no
