@@ -1,11 +1,11 @@
 package:
   name: libfido2
   version: "1.17.0"
-  # Replaces Wolfi's libfido2 1.17.0 (epoch 6), built without PC/SC: a security key held to a USB
+  # Replaces Wolfi's libfido2 1.17.0 (epoch 8), built without PC/SC: a security key held to a USB
   # NFC reader (CCID, through pcscd - the X9 has no NFC of its own) reached nothing in the session.
   # Wolfi's recipe with -DUSE_PCSC=ON, which upstream still calls experimental; the kernel's own
   # NFC transport (NFC_LINUX) stays on. The initrd has no pcscd: the disk opens with a key over USB.
-  epoch: 7
+  epoch: 9
   description: library for FIDO 2.0 functionality
   copyright:
     - license: BSD-2-Clause

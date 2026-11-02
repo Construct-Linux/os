@@ -1,8 +1,8 @@
 package:
   name: pipewire
-  version: "1.6.10"
-  # Replaces Wolfi's pipewire 1.6.10 (epoch 0), which lacks the bluez5 and GStreamer plugins.
-  epoch: 1
+  version: "1.6.11"
+  # Replaces Wolfi's pipewire 1.6.11 (epoch 1), which lacks the bluez5 and GStreamer plugins.
+  epoch: 2
   description: Server and user space API to deal with multimedia pipelines
   copyright:
     - license: MIT
@@ -36,7 +36,7 @@ pipeline:
     with:
       repository: https://gitlab.freedesktop.org/pipewire/pipewire
       tag: ${{package.version}}
-      expected-commit: f9d6cbc99c354b9b0ad1d37245dc3ab0fb9f9171
+      expected-commit: 4287f31510771fc999f8a58a024c81ca10b8d55f
 
   # Bluetooth codecs: SBC and Opus only; Wolfi has no libldac, libfreeaptx, fdk-aac or liblc3.
   # bluez5-backend-native-mm needs ModemManager, which the desktop does not ship.
