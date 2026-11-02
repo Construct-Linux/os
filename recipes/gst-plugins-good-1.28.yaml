@@ -1,20 +1,31 @@
-# Replaces Wolfi's gst-plugins-good 1.29.2 (epoch 1), built with -Dvpx=disabled: GNOME Shell's
+# Replaces Wolfi's gst-plugins-good-1.28 1.28.8 (epoch 0), built with -Dvpx=disabled: GNOME Shell's
 # screencast service needs vp8enc for the fallback pipeline it requires before it registers at
 # all (js/dbusServices/screencast canScreencast), so screen recording never started - the shell
 # waited out its D-Bus activation ("Error connecting to the screencast service"). Wolfi's recipe
 # with vpx on, against Wolfi's libvpx; its melange tests are out, as the harness is the test.
 package:
-  name: gst-plugins-good
-  version: "1.29.2"
-  epoch: 2
+  name: gst-plugins-good-1.28
+  version: "1.28.8"
+  epoch: 1
   description: GStreamer streaming media framework good plug-ins
   copyright:
     - license: LGPL-2.1
+  dependencies:
+    provides:
+      - gst-plugins-good=${{package.full-version}}
+    runtime:
+      - gst-plugins-base-${{vars.major-minor-version}}
   resources:
     cpu: "2"
     memory: 5Gi
   test-resources:
     memory: 1Gi
+
+var-transforms:
+  - from: ${{package.version}}
+    match: ^(\d+\.\d+)\.\d+$
+    replace: "$1"
+    to: major-minor-version
 
 environment:
   contents:
@@ -33,8 +44,8 @@ environment:
       - glib-gir
       - glibc-2.44-dev
       - gobject-introspection-dev
-      - gst-plugins-base-dev
-      - gstreamer-dev
+      - gst-plugins-base-${{vars.major-minor-version}}-dev
+      - gstreamer-${{vars.major-minor-version}}-dev
       - libjpeg-turbo-dev
       - libogg-dev
       - libpng-dev
@@ -57,7 +68,7 @@ pipeline:
     with:
       repository: https://github.com/GStreamer/gstreamer
       tag: ${{package.version}}
-      expected-commit: badd9563b2ac3117ea2a99348bbe46298d6992ec
+      expected-commit: 1b2a95a1b72787cda146b46df9605b168e5b683b
 
   - working-directory: subprojects/gst-plugins-good
     pipeline:
@@ -92,6 +103,8 @@ pipeline:
 subpackages:
   - name: ${{package.name}}-dev
     dependencies:
+      provides:
+        - gst-plugins-good-dev=${{package.full-version}}
       runtime:
         - ${{package.name}}
     pipeline:
@@ -102,3 +115,4 @@ update:
   github:
     identifier: GStreamer/gstreamer
     use-tag: true
+    tag-filter-prefix: "1.28."

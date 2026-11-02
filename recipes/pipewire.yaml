@@ -2,7 +2,7 @@ package:
   name: pipewire
   version: "1.6.11"
   # Replaces Wolfi's pipewire 1.6.11 (epoch 1), which lacks the bluez5 and GStreamer plugins.
-  epoch: 2
+  epoch: 3
   description: Server and user space API to deal with multimedia pipelines
   copyright:
     - license: MIT
