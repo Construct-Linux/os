@@ -1,6 +1,6 @@
 package:
   name: glib-networking
-  version: 2.90.0
+  version: 2.90.1
   epoch: 0
   description: Networking support for GLib (TLS backend and proxy resolvers)
   copyright:
@@ -28,7 +28,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/glib-networking/${{vars.series}}/glib-networking-${{package.version}}.tar.xz
-      expected-sha256: 83a75e3d9c36b66ee86d3281c2fc997816101968a5126ba322b2acb9a74dd8c0
+      expected-sha256: ea95636590098355a05e3027579dba1a9a950b05e456b2488ea03d82e4b6c18a
 
   # GnuTLS is the upstream default backend; OpenSSL would duplicate it. libproxy covers
   # environment proxies, so the separate environment backend is off.

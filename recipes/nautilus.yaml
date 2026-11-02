@@ -1,6 +1,6 @@
 package:
   name: nautilus
-  version: 51.0.1
+  version: "51.1"
   epoch: 0
   description: GNOME file manager
   copyright:
@@ -41,7 +41,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/nautilus/${{vars.series}}/nautilus-${{package.version}}.tar.xz
-      expected-sha256: a00db908fd65026cbd5dc634e12d189de8eba2b03f105d2425341768a5ee92fb
+      expected-sha256: a703bc152d18d161d9dab957e2390a36e6246bb5c24de7b15c9624fcfa2f2816
 
   # extensions off: the image/audio-video property pages need gexiv2, which Wolfi lacks.
   # cloudproviders off: libcloudproviders is not in Wolfi. selinux off: the desktop runs without SELinux.

@@ -1,6 +1,6 @@
 package:
   name: gnome-control-center
-  version: "51.0"
+  version: "51.1"
   epoch: 0
   description: GNOME control center
   copyright:
@@ -64,7 +64,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/gnome-control-center/${{vars.series}}/gnome-control-center-${{package.version}}.tar.xz
-      expected-sha256: c8ca5b6a0ae44fd0d64aac5aa3b79a83c2445095b159a9d13d1c9cc172ac4fb9
+      expected-sha256: 1054976c2f1977f770ba134b872f547c89db7005e4422f09a96d521379c083cb
 
   # ModemManager is not part of this desktop; upstream requires it on Linux for the Mobile Network
   # panel, so the patch makes that panel optional and leaves modems in the Network panel on NM data.

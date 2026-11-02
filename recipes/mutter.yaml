@@ -1,7 +1,7 @@
 package:
   name: mutter
-  version: "51.0"
-  epoch: 2
+  version: "51.1"
+  epoch: 0
   description: Wayland display server and window manager behind GNOME Shell
   copyright:
     - license: GPL-2.0-or-later
@@ -82,7 +82,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/mutter/${{vars.series}}/mutter-${{package.version}}.tar.xz
-      expected-sha256: 5d28f3ae225692428fcafb96500d673f34328b698b86960c9c1460d0b1d983b3
+      expected-sha256: 0d311d87901dbcb94518fb89304febe30852ce5d8a4befa9f87e85c68eceefde
 
   # The man pages are built unconditionally and need rst2man (docutils).
   - runs: sed -i "/subdir('doc\/man')/d" meson.build

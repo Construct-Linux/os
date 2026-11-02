@@ -1,7 +1,7 @@
 package:
   name: papers
-  version: "51.0"
-  epoch: 1
+  version: "51.1"
+  epoch: 0
   description: GNOME document viewer
   copyright:
     - license: GPL-2.0-or-later
@@ -37,7 +37,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/papers/${{vars.series}}/papers-${{package.version}}.tar.xz
-      expected-sha256: 4b8caf527d85f7eabc63ebe9d2320e0490653c2e138b88fbf42e6f41dd3e451c
+      expected-sha256: ac0db229883b3d2aacbbda1700dc12aa69716664df201120926096f066e4796b
 
   # nautilus: the document properties tab in Files. djvu (djvulibre) and PostScript are formats
   # left out to keep the image small; sysprof is not shipped; docs and tests are not part of the

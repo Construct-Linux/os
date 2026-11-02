@@ -1,6 +1,6 @@
 package:
   name: gnome-maps
-  version: "51.1"
+  version: "51.2"
   epoch: 0
   description: Map application for GNOME
   copyright:
@@ -57,7 +57,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/gnome-maps/${{vars.series}}/gnome-maps-${{package.version}}.tar.xz
-      expected-sha256: bae1be7db6766b33ab55f9b3e9acb6a1bbd89e72fedfa12e972a3f75178570e6
+      expected-sha256: 81038882a057702bad0991ab9faa2e2f0d621fbefb22f49013710425ff38fd5a
 
   - uses: meson/configure
 

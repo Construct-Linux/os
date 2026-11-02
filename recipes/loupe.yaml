@@ -1,6 +1,6 @@
 package:
   name: loupe
-  version: "51.0"
+  version: "51.1"
   epoch: 0
   description: GNOME image viewer
   copyright:
@@ -31,7 +31,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/loupe/${{vars.series}}/loupe-${{package.version}}.tar.xz
-      expected-sha256: 13fa9990565ef917902f777cfce091ab60adb8a114a9f6cca274dfc5c0aae661
+      expected-sha256: a38907d01bb6e027aeb772d10bc6cc2f92fde54d2090f6352dca8e84606e7730
 
   # The user help is docs; it has no option, so its subdir goes.
   - runs: sed -i "/^subdir('help')/d" meson.build

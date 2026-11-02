@@ -1,7 +1,7 @@
 package:
   name: evolution-data-server
-  version: 3.62.0
-  epoch: 3
+  version: 3.62.1
+  epoch: 0
   description: Unified backend for address books, calendars and tasks
   copyright:
     - license: LGPL-2.0-or-later
@@ -46,7 +46,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/evolution-data-server/${{vars.series}}/evolution-data-server-${{package.version}}.tar.xz
-      expected-sha256: 78be88e9a511f5afe7ff2e363eade84b622dd0282647fc576edb2d4ff2962cba
+      expected-sha256: b75c823445d7d30bca797eee929809e8d389abbb8d471f68ae2af60972779f26
 
   # libedataserverui4 (GTK 4) on: GNOME Calendar asks for account passwords and TLS trust through it.
   # The GTK 3 one is Evolution's alone, and the OAuth2 dialogs of both need webkitgtk, which is not

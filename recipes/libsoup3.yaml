@@ -1,6 +1,6 @@
 package:
   name: libsoup3
-  version: 3.8.0
+  version: 3.8.1
   epoch: 0
   description: GNOME HTTP client/server library
   copyright:
@@ -33,7 +33,7 @@ pipeline:
   - uses: fetch
     with:
       uri: https://download.gnome.org/sources/libsoup/${{vars.series}}/libsoup-${{package.version}}.tar.xz
-      expected-sha256: bbf08fa3e03a88c31a3d27a0d87cb422e9490f2d08e149211103df6d638a2238
+      expected-sha256: 5013dcef9136f6f861e6529fca578af50c1f52a39219027fb5aff652d1371a04
 
   # glib-networking is a runtime dependency, not a build one, so the TLS probe is off.
   # NTLM needs Samba's ntlm_auth at runtime; sysprof is not shipped.
