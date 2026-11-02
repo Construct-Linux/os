@@ -1,7 +1,7 @@
 package:
   name: xdg-desktop-portal
   version: 1.22.1
-  epoch: 0
+  epoch: 1
   description: Desktop integration portal
   copyright:
     - license: LGPL-2.1-or-later
