@@ -7,8 +7,8 @@
 # upstream) and its install then fails on the one translation it names.
 package:
   name: lvm2
-  version: "2.03.43"
-  # Replaces Wolfi's lvm2 2.03.43 (epoch 0): see the header.
+  version: 2.03.44
+  # Replaces Wolfi's lvm2 2.03.44 (epoch 0): see the header.
   epoch: 1
   description: Logical Volume Manager 2 utilities
   copyright:
@@ -52,7 +52,7 @@ pipeline:
     with:
       repository: https://gitlab.com/lvmteam/lvm2.git
       tag: v${{vars.mangled-package-version}}
-      expected-commit: 7b0bce6909611966bdc1e17c2408e1ec3b0f8c17
+      expected-commit: 78606201edbdb0d1a47d622dd4a58fd52aaae4a1
 
   - runs: |
       # during cross-compilation malloc test goes wrong

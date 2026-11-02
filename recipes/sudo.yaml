@@ -1,11 +1,11 @@
 package:
   name: sudo
   version: 1.9.17_p2
-  # Replaces Wolfi's sudo 1.9.17_p2 (epoch 10), built --without-pam: it checked /etc/shadow itself
+  # Replaces Wolfi's sudo 1.9.17_p2 (epoch 12), built --without-pam: it checked /etc/shadow itself
   # and never read /etc/pam.d/sudo, so a security key's touch (etc/pam.d/construct-key) could not
   # stand beside the password there. Wolfi's recipe, CVE cherry-pick included, with PAM; sudo's
   # PAM service is etc/pam.d/sudo.
-  epoch: 11
+  epoch: 13
   description: Give certain users the ability to run some commands as root
   copyright:
     - license: BSD-2-Clause AND BSD-2-Clause-NetBSD AND Zlib AND BSD-3-Clause AND BSD-2-Clause AND ISC

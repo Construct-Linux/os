@@ -1,12 +1,12 @@
 package:
   name: pcsc-lite
   version: "2.5.3"
-  # Replaces Wolfi's pcsc-lite 2.5.3 (epoch 0), whose pcscd units are user units and whose sysusers
+  # Replaces Wolfi's pcsc-lite 2.5.3 (epoch 2), whose pcscd units are user units and whose sysusers
   # file is in /usr/sysusers.d, which systemd never reads: a smart card reader or a security key
   # over CCID (a YubiKey's PIV and OATH, an NFC reader) reached no system pcscd. Built as Wolfi's,
   # with system units, systemd's socket activation and directories, and polkit deciding who may
   # use a card (org.debian.pcsc-lite.access_pcsc: the active local session).
-  epoch: 1
+  epoch: 3
   description: Middleware to access a smart card using SCard API (PC/SC)
   copyright:
     - license: GPL-3.0-or-later
