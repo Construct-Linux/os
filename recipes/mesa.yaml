@@ -1,7 +1,7 @@
 package:
   name: mesa
-  version: "26.2.5"
-  # Replaces Wolfi's mesa 26.2.5 (epoch 0), which has no Intel drivers (iris, crocus, anv).
+  version: "26.2.6"
+  # Replaces Wolfi's mesa 26.2.6 (epoch 0), which has no Intel drivers (iris, crocus, anv).
   epoch: 1
   description: Mesa DRI OpenGL library
   copyright:
@@ -14,7 +14,7 @@ package:
       - spirv-tools
 
 vars:
-  llvm-version: 22
+  llvm-version: 23
   python-version: "3.13"
   # Drivers keep Wolfi's DRI path so libva and Xwayland find them where Wolfi's builds look.
   dri-driverdir: /usr/lib/xorg/modules/dri
@@ -75,19 +75,29 @@ pipeline:
   - uses: fetch
     with:
       uri: https://mesa.freedesktop.org/archive/mesa-${{package.version}}.tar.xz
-      expected-sha256: 794b3d1729075dae7ebd47c7283b7ca0cdb5dec668f7f11cc0a5d82f6138a0a5
+      expected-sha256: b9436b3e1a8be76fbd4823dc884f90596ab7c6ac5e1867a305e66ffccfb31a92
 
   # iris, crocus and anv compile their OpenCL kernels with mesa_clc, which needs LLVMSPIRVLib;
   # Wolfi has no SPIRV-LLVM-Translator. Its major.minor must match LLVM's.
   - uses: git-checkout
     with:
       repository: https://github.com/KhronosGroup/SPIRV-LLVM-Translator
-      tag: v22.1.7
-      expected-commit: b4c9189bcba7ed9a1189d6a2c27edc3d9a3d5277
+      tag: v23.1.3
+      expected-commit: db5855d76a0ff33228bcf48032b350b25dcdbcf2
       destination: _translator
 
+  # The headers the translator names in spirv-headers-tag.conf: Wolfi's, from the Vulkan SDK, can
+  # lag them, and v23.1.3 uses opcodes (OpSubgroupBitcastShuffleINTEL) Wolfi's 1.4.363.0 lacks.
+  # Only this build-time translator reads them; mesa itself keeps Wolfi's.
+  - uses: git-checkout
+    with:
+      repository: https://github.com/KhronosGroup/SPIRV-Headers
+      branch: main
+      expected-commit: cb42dec3830d3ac67fa449ecdc0c0f73d5e74498
+      destination: _spirv-headers
+
   - runs: |
-      cmake -S _translator -B _translator/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{vars.spirv-prefix}} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DLLVM_DIR=/usr/lib/llvm-${{vars.llvm-version}}/lib/cmake/llvm -DLLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR=/usr -DLLVM_SPIRV_INCLUDE_TESTS=OFF
+      cmake -S _translator -B _translator/build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=${{vars.spirv-prefix}} -DCMAKE_INSTALL_LIBDIR=lib -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DLLVM_DIR=/usr/lib/llvm-${{vars.llvm-version}}/lib/cmake/llvm -DLLVM_EXTERNAL_SPIRV_HEADERS_SOURCE_DIR=$PWD/_spirv-headers -DLLVM_SPIRV_INCLUDE_TESTS=OFF
       ninja -C _translator/build install
 
   # Gallium: Wolfi's set for x86 (v3d and vc4 are Raspberry Pi only) plus Intel iris and crocus.
