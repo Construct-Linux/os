@@ -275,6 +275,9 @@ tasks:
       # The Secure Boot variables the ESP carries for systemd-boot to enroll: signed, public.
       - mkdir -p _output/release-key/secureboot
       - cp {{.PUBLIC}}/secureboot/PK.auth {{.PUBLIC}}/secureboot/KEK.auth {{.PUBLIC}}/secureboot/db.auth _output/release-key/secureboot/
+      # The dbx a test stick enrolls beside them: espTree takes it for a test build alone. What it is,
+      # and when it moves, is where the harness checks it (cmd/image/test.go, secureBoot).
+      - cp build/dbx.auth _output/release-key/secureboot/
       # The baked root keeps its owners for usb-seal: only what the host reads and writes is
       # handed to it.
       - >-

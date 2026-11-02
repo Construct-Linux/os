@@ -944,6 +944,11 @@ func keyringRoundTrip(user string, uid int) string {
 func (r *report) secureBoot(g *guest) {
 	out, _ := g.run(`bootctl status 2>/dev/null | grep -E 'Secure Boot:'; cat /sys/kernel/security/lockdown`, "")
 	r.add("secure boot", strings.Contains(out, "Secure Boot: enabled (user)") && strings.Contains(out, "[integrity]"), oneLine(out))
+	// The stick's dbx (espTree), and fwupd finding it current. A newer dbx from Microsoft fails this at
+	// once, rather than as a notification over the views on the runs GNOME Software is quick enough:
+	// build/dbx.auth moves, to the .bin of LVFS's newest com.microsoft.dbx.x64-kek2023.firmware cabinet.
+	dbx, _ := g.run(`test -s /sys/firmware/efi/efivars/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f && echo enrolled; fwupdmgr get-updates --no-unreported-check --json 2>&1 | grep -c '"UEFI dbx"'`, "")
+	r.add("dbx current", strings.Contains(dbx, "enrolled") && strings.TrimSpace(lastLine(dbx)) == "0", oneLine(dbx))
 }
 
 // efiPrograms checks the root's EFI programs are the signed ones the firmware runs: systemd-boot on

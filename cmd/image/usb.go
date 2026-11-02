@@ -139,7 +139,7 @@ func signEFI(args []string) error {
 func usbSeal(args []string) error {
 	fl := flag.NewFlagSet("usb-seal", flag.ExitOnError)
 	pcrPub := fl.String("pcr-public", "", "the PCR key's public half, PEM (pcrsig.go)")
-	sbKeys := fl.String("secureboot", "", "the Secure Boot variables to enroll, PK.auth, KEK.auth and db.auth (secureboot.go)")
+	sbKeys := fl.String("secureboot", "", "the Secure Boot variables to enroll, PK.auth, KEK.auth and db.auth, and a test build's dbx.auth (secureboot.go)")
 	_ = fl.Parse(args)
 	if *pcrPub == "" || *sbKeys == "" {
 		return fmt.Errorf("usb-seal: -pcr-public and -secureboot are required")
@@ -825,7 +825,7 @@ const (
 // (buildInitrd), and pcrPub, the PCR key's public half - is left in the stage unsigned, with its
 // PCR 11 policy's digests, for the host to sign (pcrsig.go); image usb-sign signs it and puts it
 // in the ESP.
-func espTree(root, esp, label string, v verity, serial bool, extra, pcrPub, sbKeys string) error {
+func espTree(root, esp, label string, v verity, test bool, extra, pcrPub, sbKeys string) error {
 	boot, err := os.ReadFile(filepath.Join(root, "usr/lib/systemd/boot/efi/systemd-bootx64.efi.signed"))
 	if err != nil {
 		return fmt.Errorf("the image's systemd-boot: %w", err)
@@ -853,7 +853,14 @@ func espTree(root, esp, label string, v verity, serial bool, extra, pcrPub, sbKe
 	if err := os.MkdirAll(keys, 0o755); err != nil {
 		return err
 	}
-	for _, name := range sign.SecureBootVariables() {
+	vars := sign.SecureBootVariables()
+	// A release leaves dbx to fwupd, which applies Microsoft's on the machine. A test machine starts
+	// from QEMU's firmware, with none: enrolled here, it is up to date as a PC's would be, and fwupd
+	// has nothing for GNOME Software to announce over the views.
+	if test {
+		vars = append(vars, "dbx.auth")
+	}
+	for _, name := range vars {
 		b, err := os.ReadFile(filepath.Join(sbKeys, name))
 		if err != nil {
 			return err
@@ -889,14 +896,14 @@ func espTree(root, esp, label string, v verity, serial bool, extra, pcrPub, sbKe
 	}
 	defer digests.Close()
 	noSplash := filepath.Join(stage, noSplashPE)
-	if err := run("ukify", "build", "--profile", noSplashProfile, "--cmdline", v.cmdline(serial, false, extra), "--output", noSplash); err != nil {
+	if err := run("ukify", "build", "--profile", noSplashProfile, "--cmdline", v.cmdline(test, false, extra), "--output", noSplash); err != nil {
 		return err
 	}
 	cmd := exec.Command("ukify", "build",
 		"--linux", filepath.Join(out, "kernel", "bzImage"),
 		// The microcode first: the kernel looks for it at the start of the initrds.
 		"--initrd", ucode, "--initrd", initrd,
-		"--cmdline", v.cmdline(serial, true, extra),
+		"--cmdline", v.cmdline(test, true, extra),
 		"--profile", mainProfile, "--join-profile", noSplash,
 		"--os-release", "@"+filepath.Join(root, "usr/lib/os-release"),
 		"--uname", strings.TrimSpace(string(uname)),
