@@ -1,7 +1,7 @@
 package:
   name: gnome-shell
   version: "51.1"
-  epoch: 0
+  epoch: 1
   description: GNOME Shell, the core user interface of the GNOME desktop
   copyright:
     - license: GPL-2.0-or-later
@@ -99,12 +99,16 @@ pipeline:
   # cancelling it: GDM kept the conversation, a gdm-password worker and 5 files in the session's
   # worker, until the next prompt replaced it (task test:usb, "unlock leaves nothing open"). The
   # prompt cancels a verification it finishes without.
+  # The focus-app handler stayed connected with remember-app-usage off, so usage was still counted
+  # and saved: a person's setting ignored, and the harness's search order following which of Firefox
+  # and Chrome drew faster. The handler returns while monitoring is off.
   - uses: patch
     with:
       patches: |
         gnome-shell/workspace-cancel-pending-adds-on-destroy.patch
         gnome-shell/authprompt-cancel-on-finish.patch
         gnome-shell/search-order-equal-apps-by-id.patch
+        gnome-shell/app-usage-honor-remember-app-usage.patch
 
   # portal_helper off: the captive-portal login window is a WebKitGTK browser, not shipped
   - uses: meson/configure
