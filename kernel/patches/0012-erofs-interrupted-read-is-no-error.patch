@@ -1,0 +1,49 @@
+construct: not upstream yet, to be sent to linux-erofs. A read of a block not yet in the page cache
+waits killably, so a process killed meanwhile gets -EINTR, and erofs logged that as a filesystem
+error: at every app that exits while its page faults are in flight (VS Code closing, about 3 harness
+runs in 10, on the journal and in GNOME Logs). The filesystem is fine, and dm-verity would have said
+otherwise: corruption is -EIO, and panics here. The other errors keep their message.
+
+Subject: [PATCH] erofs: Do not log a read interrupted by a fatal signal as an error
+
+--- a/fs/erofs/dir.c
++++ b/fs/erofs/dir.c
+@@ -83,9 +83,10 @@
+ 
+ 		de = erofs_bread(&buf, dbstart, true);
+ 		if (IS_ERR(de)) {
+-			erofs_err(sb, "failed to readdir of logical block %llu of nid %llu",
+-				  erofs_blknr(sb, dbstart), EROFS_I(dir)->nid);
+ 			err = PTR_ERR(de);
++			if (err != -EINTR)
++				erofs_err(sb, "failed to readdir of logical block %llu of nid %llu",
++					  erofs_blknr(sb, dbstart), EROFS_I(dir)->nid);
+ 			break;
+ 		}
+ 
+--- a/fs/erofs/inode.c
++++ b/fs/erofs/inode.c
+@@ -52,8 +52,9 @@
+ 	ptr = erofs_read_metabuf(&buf, sb, erofs_pos(sb, blkaddr), in_mbox);
+ 	if (IS_ERR(ptr)) {
+ 		err = PTR_ERR(ptr);
+-		erofs_err(sb, "failed to read inode meta block (nid: %llu): %d",
+-			  vi->nid, err);
++		if (err != -EINTR)
++			erofs_err(sb, "failed to read inode meta block (nid: %llu): %d",
++				  vi->nid, err);
+ 		goto err_out;
+ 	}
+ 
+@@ -91,8 +92,9 @@
+ 					erofs_pos(sb, blkaddr + 1), in_mbox);
+ 			if (IS_ERR(ptr)) {
+ 				err = PTR_ERR(ptr);
+-				erofs_err(sb, "failed to read inode payload block (nid: %llu): %d",
+-					  vi->nid, err);
++				if (err != -EINTR)
++					erofs_err(sb, "failed to read inode payload block (nid: %llu): %d",
++						  vi->nid, err);
+ 				goto err_out;
+ 			}
+ 			ofs = vi->inode_isize - gotten;
