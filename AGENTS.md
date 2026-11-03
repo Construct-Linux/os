@@ -148,7 +148,8 @@ falling back from a release that does not come up.
 
 ## The kernel and firmware
 
-- The base is Arch Linux's configuration for the same kernel (`kernel/Dockerfile`), with general-PC
+- The base is Arch Linux's configuration for the same kernel, or its newest tag's while Arch has none
+  for a kernel we adopt first (`kernel/Dockerfile` says what that leaves out), with general-PC
   drivers as modules unless the supported-hardware policy and measured image or boot budgets say
   otherwise. Adopt an Arch kernel tag after its configuration assertions and relevant compatibility
   and performance checks pass; availability alone is not a release criterion.
