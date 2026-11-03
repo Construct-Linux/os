@@ -480,6 +480,10 @@ tasks:
       - go run ./cmd/image cache pull
       # The cache goes back however the job ends: what a failed release built is not built again.
       - defer: go run ./cmd/image cache push
+      # Every build no recipe makes goes first, and the index with it: a recipe renamed since the
+      # cache was stored leaves an older package of the name others ask for, or of a higher version,
+      # and the build that resolves to it fails.
+      - task: packages:prune
       - task: release:inputs
       # The harness on a test build of the same commit, its roots built from the locks: a release
       # whose checks fail is not built, and the release's stick is made from the same roots.
@@ -490,8 +494,6 @@ tasks:
       - task: scan
       - task: release:publish
         vars: {VERSION: '{{.VERSION}}', NEW: '{{.NEW}}'}
-      # Every build no recipe makes goes before the cache takes packages/ back (the deferred push).
-      - task: packages:prune
 
   packages:prune:
     desc: "Remove every apk in packages/ that no recipe makes now, and index again: old versions, and a build of a recipe never committed, which apko would take over the recipe's own."
