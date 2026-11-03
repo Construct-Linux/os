@@ -950,11 +950,12 @@ func (r *report) secureBoot(g *guest) {
 // dbxCurrent checks the stick's dbx (espTree) is the one fwupd finds current. A newer dbx from
 // Microsoft fails this at once, rather than as a notification over the views on the runs GNOME
 // Software is quick enough: build/dbx.auth moves, to the .bin of LVFS's newest
-// com.microsoft.dbx.x64-kek2023.firmware cabinet. It waits for LVFS's metadata, of megabytes where a
-// machine's own remotes' are not: without it fwupd offers nothing, whatever the dbx.
+// com.microsoft.dbx.x64-kek2023.firmware cabinet. It fetches LVFS's metadata itself, because fwupd
+// offers nothing without it, whatever the dbx, and the machine's own refresh is an hourly timer with
+// an hour's random delay, or GNOME Software when it gets there.
 func (r *report) dbxCurrent(g *guest) {
 	out, _ := g.run(`test -s /sys/firmware/efi/efivars/dbx-d719b2cb-3d3a-4596-a3bc-dad00e67656f && echo enrolled; `+
-		`for i in $(seq 180); do test -n "$(find /var/cache/fwupd/metadata.xmlb -size +1M 2>/dev/null)" && { echo metadata; break; }; sleep 1; done; `+
+		`fwupdmgr refresh --force >/dev/null 2>&1 && echo metadata; `+
 		`fwupdmgr get-updates --no-unreported-check --json 2>&1 | grep -c '"UEFI dbx"'`, "")
 	r.add("dbx current", strings.Contains(out, "enrolled") && strings.Contains(out, "metadata") && strings.TrimSpace(lastLine(out)) == "0", oneLine(out))
 }
