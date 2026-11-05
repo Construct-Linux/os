@@ -1373,7 +1373,8 @@ func sandboxedOK(out string) bool {
 // firewall's check, under names of its own since deleting that one's is asynchronous - what the
 // firewall lets through and logs, and sshd.service: off until started, then answering on port 22
 // with the one key, Ed25519. A broadcast and an unasked port come first, so that the log's verdict
-// on each is about this script's packets.
+// on each is about this script's packets. sshd_config's keywords have no case, and OpenSSH's -T has
+// printed them in both.
 const sshOnNetworkScript = `echo enabled=$(systemctl is-enabled sshd.service); ` +
 	`nft list chain inet construct input | grep -q 3389; echo rdp=$?; ` +
 	`ip netns add sshtest && ip link add ssh0 type veth peer name ssh1 netns sshtest && ` +
@@ -1388,7 +1389,7 @@ const sshOnNetworkScript = `echo enabled=$(systemctl is-enabled sshd.service); `
 	`systemctl start sshd.service; echo start=$?; ` +
 	`ip netns exec sshtest timeout 5 bash -c 'exec 3<>/dev/tcp/10.99.1.1/22; head -1 <&3'; ` +
 	`echo keys=$(ls /etc/ssh/ssh_host_*_key); ` +
-	`sshd -T | grep -E '^(hostkeyalgorithms|passwordauthentication) '; ` +
+	`sshd -T | tr A-Z a-z | grep -E '^(hostkeyalgorithms|passwordauthentication) '; ` +
 	`systemctl stop sshd.service; ip netns del sshtest`
 
 // sshOnNetworkOK is the verdict on what sshOnNetworkScript wrote.
