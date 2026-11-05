@@ -85,9 +85,11 @@ falling back from a release that does not come up.
   (`cmd/image/transfers.go`), never hand-written.
 - **Nothing reaches the machine that it did not ask for.** The firewall
   (`usr/lib/construct/firewall.nft`, before any network) drops what comes in but replies, what
-  IPv4/IPv6, DHCP and mDNS need, the containers' bridges, and SSH and RDP when a person turned them
-  on; Docker publishes on 127.0.0.1 unless given an address. Open a port with its reason, never by
-  widening a rule; `task test` checks that a network cannot reach a server on every address.
+  IPv4/IPv6, DHCP and mDNS need, the containers' bridges, Tailscale, and SSH when a person turned it
+  on; Docker publishes on 127.0.0.1 unless given an address. What it drops is logged to the kernel's
+  journal under `firewall-drop`, rate limited, but for broadcasts and multicast. Open a port with its
+  reason, never by widening a rule; `task test` checks that a network cannot reach a server on every
+  address, that sshd answers only once enabled and with its Ed25519 key alone, and the log.
 - **No person, password or private key in the image or the repository.** `construct install` adds
   the person to the installed `/etc` on `/var` (internal/account); a root with nobody installed
   boots the passwordless `live` user. root stays locked.

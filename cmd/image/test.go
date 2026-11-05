@@ -357,6 +357,8 @@ func (r *report) systemChecks(g *guest) {
 		`ip netns exec fwtest curl -s -o /dev/null -m 3 http://10.99.0.1:8765/; echo network=$?; kill $p; }; `+
 		`ip netns del fwtest`, "")
 	r.add("firewall", strings.HasPrefix(fw, "1\n") && strings.Contains(fw, "local=0") && strings.Contains(fw, "network=28"), oneLine(fw))
+	sshOn, sshErr := g.run(sshOnNetworkScript, "")
+	r.add("ssh on the network", sshErr == nil && sshOnNetworkOK(sshOn), oneLine(sshOn)+errText(sshErr))
 	dock, err := g.run(asLive+`docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
@@ -1361,6 +1363,41 @@ func sandboxedOK(out string) bool {
 			return false
 		}
 		if v, err := strconv.ParseFloat(f[2], 64); err != nil || v > 2.0 {
+			return false
+		}
+	}
+	return true
+}
+
+// sshOnNetworkScript sees, as a machine on the network does - a namespace behind a veth, as the
+// firewall's check, under names of its own since deleting that one's is asynchronous - what the
+// firewall lets through and logs, and sshd.service: off until started, then answering on port 22
+// with the one key, Ed25519. A broadcast and an unasked port come first, so that the log's verdict
+// on each is about this script's packets.
+const sshOnNetworkScript = `echo enabled=$(systemctl is-enabled sshd.service); ` +
+	`nft list chain inet construct input | grep -q 3389; echo rdp=$?; ` +
+	`ip netns add sshtest && ip link add ssh0 type veth peer name ssh1 netns sshtest && ` +
+	`ip addr add 10.99.1.1/24 dev ssh0 && ip link set ssh0 up && ` +
+	`ip -n sshtest addr add 10.99.1.2/24 dev ssh1 && ip -n sshtest link set ssh1 up; ` +
+	`ip netns exec sshtest curl -s -o /dev/null -m 3 telnet://10.99.1.1:22; echo before=$?; ` +
+	`ip netns exec sshtest python3 -c "import socket; s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM); ` +
+	`s.setsockopt(socket.SOL_SOCKET,socket.SO_BROADCAST,1); s.sendto(b'x',('10.99.1.255',9997))"; ` +
+	`ip netns exec sshtest curl -s -o /dev/null -m 3 telnet://10.99.1.1:9998; sleep 1; ` +
+	`journalctl -q -k -b -g 'firewall-drop.*DPT=9998' -o cat | grep -q .; echo logged=$?; ` +
+	`journalctl -q -k -b -g 'firewall-drop.*DPT=9997' -o cat | grep -q .; echo broadcast=$?; ` +
+	`systemctl start sshd.service; echo start=$?; ` +
+	`ip netns exec sshtest timeout 5 bash -c 'exec 3<>/dev/tcp/10.99.1.1/22; head -1 <&3'; ` +
+	`echo keys=$(ls /etc/ssh/ssh_host_*_key); ` +
+	`sshd -T | grep -E '^(hostkeyalgorithms|passwordauthentication) '; ` +
+	`systemctl stop sshd.service; ip netns del sshtest`
+
+// sshOnNetworkOK is the verdict on what sshOnNetworkScript wrote.
+func sshOnNetworkOK(out string) bool {
+	for _, want := range []string{
+		"enabled=disabled\n", "rdp=1\n", "before=7\n", "logged=0\n", "broadcast=1\n", "start=0\n", "SSH-2.0-",
+		"keys=/etc/ssh/ssh_host_ed25519_key\n", "hostkeyalgorithms ssh-ed25519\n", "passwordauthentication no\n",
+	} {
+		if !strings.Contains(out, want) {
 			return false
 		}
 	}

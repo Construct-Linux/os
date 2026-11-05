@@ -39,10 +39,17 @@ table inet construct {
 		iifname "tailscale0" accept
 		udp dport 41641 accept
 
-		# What a person turns on in Settings or with systemctl - SSH, GNOME's Remote Desktop
-		# (RDP) - answers only while it listens, and nothing does unless they did.
-		tcp dport { 22, 3389 } accept
+		# SSH answers only while sshd listens, which it does once a person ran systemctl enable
+		# --now sshd.
+		tcp dport 22 accept
 
 		include "/etc/nftables.d/*.nft"
+
+		# What is left is dropped, and said in the kernel's log: journalctl -k -g firewall-drop.
+		# A network's broadcasts and multicast are other machines talking, not addressed to this
+		# one, and would spend the log's rate before a probe of this machine is seen. By address:
+		# an access point can deliver them to this machine's own MAC.
+		fib daddr type { broadcast, multicast } drop
+		limit rate 10/minute burst 20 packets log prefix "firewall-drop: " level info
 	}
 }
