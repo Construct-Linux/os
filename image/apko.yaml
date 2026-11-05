@@ -240,14 +240,15 @@ contents:
     - gst-plugins-bad
     # Apps Wolfi maintains itself.
     - firefox
-    # Development: Visual Studio Code, a compiler, make, git, Docker on containerd, and distrobox
-    # for languages and tools in a Wolfi container (etc/distrobox/distrobox.conf).
+    # Development: Visual Studio Code, a compiler, make, git, GitHub's CLI, Docker on containerd,
+    # and distrobox for languages and tools in a Wolfi container (etc/distrobox/distrobox.conf).
     - code
     - distrobox
     - build-base
     - make
     - gcc
     - git
+    - gh
     - openssh-client
     - curl
     - vim
@@ -336,6 +337,7 @@ contents:
     - gdbm-doc
     - gdk-pixbuf-doc
     - gettext-doc
+    - gh-doc
     - git-doc
     - glib-doc
     - gpgme-doc

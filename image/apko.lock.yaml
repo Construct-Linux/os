@@ -632,6 +632,8 @@ contents:
     - gettext-dev=1.0-r8
     - gettext-doc=1.0-r8
     - gettext-envsubst=1.0-r8
+    - gh=2.103.3-r1
+    - gh-doc=2.103.3-r1
     - giflib=6.1.3-r4
     - git=2.56.0-r3
     - git-doc=2.56.0-r3
