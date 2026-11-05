@@ -1,14 +1,18 @@
 # Wolfi's gst-plugins-bad, with the va plugin: GStreamer's VA-API decoders and encoders, which
 # Showtime, Snapshot and every GStreamer player use for hardware video (vah264dec, vaav1dec, ...).
 # Wolfi builds it without libva, and with SRT, which no desktop app here uses. Epoch above Wolfi's;
-# its test pipelines from Wolfi's CI (test/tw/*) are dropped, its own checks kept.
+# its test pipelines from Wolfi's CI (test/tw/*) are dropped, its own checks kept. Wolfi's openssl-dev
+# comes through libsrt, so the dtls plugin is not built here and its dtls-evp-keygen.patch is not
+# carried: nothing on the desktop uses WebRTC through GStreamer.
 package:
   name: gst-plugins-bad-1.28
   version: "1.28.8"
-  epoch: 1
+  epoch: 3
   description: GStreamer streaming media framework bad plug-ins
   copyright:
     - license: LGPL-2.1
+    # The x265 plugin (the -x265 subpackage) links GPL libx265.
+    - license: GPL-2.0-or-later
   dependencies:
     provides:
       - gst-plugins-bad=${{package.full-version}}
@@ -29,6 +33,7 @@ environment:
   contents:
     packages:
       - alsa-lib-dev
+      - aom-dev
       - build-base
       - busybox
       - ca-certificates-bundle
@@ -64,6 +69,7 @@ environment:
       - orc-dev
       - perl
       - python3
+      - x265-dev
 
 pipeline:
   - uses: git-checkout
@@ -83,11 +89,34 @@ pipeline:
             -Dintrospection=enabled \
             -Dsctp=enabled \
             -Dva=enabled \
+            -Daom=enabled \
+            -Dgpl=enabled \
+            -Dx265=enabled \
+            -Ddts=disabled \
+            -Dfaad=disabled \
+            -Diqa=disabled \
+            -Dmpeg2enc=disabled \
+            -Dmplex=disabled \
+            -Dresindvd=disabled \
       - uses: meson/compile
       - uses: meson/install
       - uses: strip
 
 subpackages:
+  # Wolfi's name, kept as an override keeps them; nothing in the image installs it.
+  - name: ${{package.name}}-x265
+    description: GStreamer x265 HEVC encoder plug-in
+    dependencies:
+      runtime:
+        - ${{package.name}}
+      provides:
+        - gst-plugins-bad-x265=${{package.full-version}}
+    pipeline:
+      - runs: |
+          mkdir -p ${{targets.contextdir}}/usr/lib/gstreamer-1.0
+          mv ${{targets.destdir}}/usr/lib/gstreamer-1.0/libgstx265.so \
+            ${{targets.contextdir}}/usr/lib/gstreamer-1.0/
+
   - name: ${{package.name}}-dev
     dependencies:
       provides:
@@ -111,3 +140,10 @@ test:
     - runs: |
         # The va plugin is what this override is for.
         test -f /usr/lib/gstreamer-1.0/libgstva.so
+    - runs: |
+        # Wolfi's: x265enc only in -x265, the AV1 plugin here.
+        if gst-inspect-1.0 x265enc; then
+          exit 1
+        fi
+        gst-inspect-1.0 aom | grep -E "^\s+av1enc:"
+        gst-inspect-1.0 aom | grep -E "^\s+av1dec:"

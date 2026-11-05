@@ -148,7 +148,7 @@ contents:
     - grilo-plugins-lang=0.3.18-r0
     - gsettings-desktop-schemas=51.0-r0
     - gsound=1.0.3-r0
-    - gst-plugins-bad-1.28=1.28.8-r1
+    - gst-plugins-bad-1.28=1.28.8-r3
     - gst-plugins-good-1.28=1.28.8-r1
     - gst-plugins-rs=0.15.4-r1
     - gtk-frdp=0.2.0_git20260724-r0
