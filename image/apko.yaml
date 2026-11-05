@@ -55,7 +55,8 @@ contents:
     - bash-binsh
     - kbd
     # sshd for systemd-ssh-generator, which listens only on AF_VSOCK in a VM, with keys only from
-    # a credential: the test harness's way in, and nothing on a machine that has neither.
+    # a credential: the test harness's way in, and nothing on a machine that has neither. On the
+    # network, sshd.service, once a person enables it; not openssh-service, which makes RSA keys.
     - openssh-server
     - sudo
     # Graphics, input and sound below the session.

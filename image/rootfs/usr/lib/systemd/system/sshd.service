@@ -1,0 +1,19 @@
+# sshd on the network's port 22, for a person who runs systemctl enable --now sshd: off until then
+# (system-preset). Arch's unit but for its key generation: openssh-service's and Arch's make RSA
+# and ECDSA host keys too, and the machine's one key is Ed25519 (construct-ssh-hostkeys.service).
+[Unit]
+Description=OpenSSH server
+Documentation=man:sshd(8)
+Wants=construct-ssh-hostkeys.service
+After=network.target construct-ssh-hostkeys.service
+
+[Service]
+Type=notify-reload
+ExecStart=/usr/sbin/sshd -D
+# A session outlives a restart of the server it came through.
+KillMode=process
+Restart=on-failure
+RestartPreventExitStatus=255
+
+[Install]
+WantedBy=multi-user.target
