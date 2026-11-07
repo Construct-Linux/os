@@ -381,6 +381,7 @@ contents:
     - pciutils-doc
     - pcsc-lite-doc
     - perl-doc
+    - pipewire-doc
     - pkgconf-doc
     - polkit-doc
     - powertop-doc
@@ -394,6 +395,7 @@ contents:
     - sqlite-doc
     - stress-ng-doc
     - sudo-doc
+    - systemd-doc
     - tiff-doc
     - vim-doc
     - wireguard-tools-doc
