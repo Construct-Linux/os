@@ -4,7 +4,7 @@
 package:
   name: task
   version: 3.54.0
-  epoch: 6
+  epoch: 7
   description: A task runner and build tool (Taskfile.yml)
   copyright:
     - license: MIT
@@ -22,11 +22,12 @@ pipeline:
       tag: v${{package.version}}
       expected-commit: b5aef1c287a9be8038347a17646bdf4bc7185bce
 
-  # v3.54.0 pins go-jose 4.1.4, which GHSA-mgcc-cww5-fp2q (High) names; drop this when a release of
-  # Task's pins 4.1.6 or newer.
+  # v3.54.0 pins go-jose 4.1.4, which GHSA-mgcc-cww5-fp2q (High) names, and klauspost/compress
+  # 1.19.2, which GO-2026-6865 (High) names; drop each when a release of Task's pins go-jose 4.1.6
+  # and compress 1.20.2 or newer (main has both).
   - uses: go/bump
     with:
-      deps: github.com/go-jose/go-jose/v4@v4.1.6
+      deps: github.com/go-jose/go-jose/v4@v4.1.6 github.com/klauspost/compress@v1.20.2
 
   # The version is internal/version/version.txt, embedded; -buildvcs=false keeps a commit and
   # "dirty" out of it, which the checkout's own state would add.
