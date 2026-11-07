@@ -305,7 +305,8 @@ contents:
     # nft, which loads the firewall (usr/lib/construct/firewall.nft).
     - nftables
     # Tailscale (usr/lib/systemd/system/tailscaled.service), and Trayscale for it from the tray
-    # (the AppIndicator extension shows the icon).
+    # (the AppIndicator extension shows the icon). Trayscale starts when the person opens it, not
+    # at login: no autostart entry in etc/xdg/autostart; starting it at login is their choice.
     - tailscale
     - trayscale
     # Manuals: man (man-db, its index baked at build: etc/man_db.conf) and the pages of every

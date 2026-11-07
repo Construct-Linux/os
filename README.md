@@ -14,7 +14,7 @@ rough edges, and say where they are.
 - **GNOME 51** on Wayland, with GNOME's core apps (Files, Text Editor, Calendar, Maps, Software,
   Papers, ...), Firefox, Ptyxis and Ghostty, and Flatpak with Flathub, where Chrome comes from.
   For work: Docker and containerd, VS Code (Microsoft's build, under its license), gcc, make and
-  git, Tailscale (with Trayscale in the tray), CUPS, OpenSSH.
+  git, Tailscale (Trayscale puts it in the tray when opened), CUPS, OpenSSH.
 - **Its own look**: Orchis in Construct's colours for the shell, GTK 3 and libadwaita apps alike,
   following the light/dark switch; Tela icons; Bibata's cursor. A top bar with the clock and
   indicators on the right, and a small centred dock. Extensions: AppIndicator, Caffeine, Clipboard
