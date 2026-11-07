@@ -118,8 +118,8 @@ contents:
     - gnome-shell-extension-appindicator-lang=66-r5
     - gnome-shell-extension-caffeine=61-r0
     - gnome-shell-extension-caffeine-lang=61-r0
-    - gnome-shell-extension-clipboard-indicator=71-r6
-    - gnome-shell-extension-clipboard-indicator-lang=71-r6
+    - gnome-shell-extension-clipboard-indicator=72-r0
+    - gnome-shell-extension-clipboard-indicator-lang=72-r0
     - gnome-shell-extension-dash-to-panel=74-r9
     - gnome-shell-extension-drive-menu=51.0-r0
     - gnome-shell-extension-gtk4-ding=100.29_git20261002-r3

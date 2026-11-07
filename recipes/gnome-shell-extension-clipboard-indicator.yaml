@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-clipboard-indicator
-  version: "71"
-  epoch: 6
+  version: "72"
+  epoch: 0
   description: Clipboard history manager in the GNOME Shell top bar
   copyright:
     - license: MIT
@@ -20,15 +20,18 @@ vars:
   uuid: clipboard-indicator@tudmotu.com
 
 pipeline:
-  # v71 predates GNOME 51. The fork's gnome-51 branch is v71 plus upstream PR #641's two
-  # commits (Clutter.get_default_backend() and St.BoxLayout's vertical are gone in 51), and fixes
-  # for upstream #589 (a corrupt cache killed it), #385 (favourites dropped with an oversize
-  # cache), #443 (Paste pasted the old clipboard) and #594 (a placeholder at every unlock).
+  # v72 and upstream master to 60368b1, which takes GNOME 51 and its own fixes for a corrupt or
+  # oversize cache (#589, #385), atomic registry writes, and move-to-top after the menu closes.
+  # The fork's gnome-51 keeps over it: history written once when idle instead of once per change,
+  # clearing on boot once per boot rather than at every unlock (#594's placeholder with it), and
+  # Paste pasting the new clipboard (#443). Upstream's history import and export is left out: it
+  # refuses the fork's SHA-256-named images, can lose an import to a pending write, and signals
+  # the shell through dconf.
   - uses: git-checkout
     with:
       repository: https://github.com/Construct-Linux/gnome-shell-extension-clipboard-indicator
       branch: gnome-51
-      expected-commit: 34203fbaa2a55e30ff6f11c3b3787276f1cd5303
+      expected-commit: 2eaeafc2771d78eb56392136f0b69ea6812cdc55
 
   - runs: |
       glib-compile-schemas --strict --dry-run schemas
