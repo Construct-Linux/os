@@ -412,9 +412,10 @@ func (r *report) systemChecks(g *guest) {
 	// cloud CLIs distrobox.conf installs into it.
 	box, err := g.run(`cd /tmp && `+asLive+`timeout 900 distrobox create --yes >/dev/null 2>&1 && `+asLive+`timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1; test -s /usr/share/terminfo/x/xterm-ghostty && echo ghostty-terminfo' 2>&1 | tail -4`, "")
 	r.add("wolfi container", err == nil && strings.Contains(box, "apk-tools") && strings.Contains(box, "aws-cli/2.") && strings.Contains(box, "Google Cloud SDK") && strings.Contains(box, "ghostty-terminfo"), oneLine(box)+errText(err))
-	// Ghostty's TERM, which ncurses programs (top, nano, htop) refuse to start without.
-	colors, err := g.run(`TERM=xterm-ghostty tput colors`, "")
-	r.add("ghostty's terminfo", err == nil && strings.TrimSpace(colors) == "256", oneLine(colors)+errText(err))
+	// Ghostty's TERM, which ncurses programs (top, nano, htop) refuse to start without, and the
+	// entry its ssh-terminfo feature sends a server with infocmp.
+	colors, err := g.run(`TERM=xterm-ghostty tput colors && infocmp -0 -x xterm-ghostty | grep -c '^xterm-ghostty|'`, "")
+	r.add("ghostty's terminfo", err == nil && strings.Join(strings.Fields(colors), " ") == "256 1", oneLine(colors)+errText(err))
 	tools, err := g.run(`task --version && ifconfig lo | head -1 && unpigz --version 2>&1 | head -1`, "")
 	r.add("command-line tools", err == nil && strings.Contains(tools, "3.54") && strings.Contains(tools, "lo:"), oneLine(tools)+errText(err))
 	// Their manuals (the -doc packages), and the index bake made in /usr (etc/man_db.conf), which

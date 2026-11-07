@@ -25,7 +25,12 @@ const themeStamp = ".construct-theme"
 // does not show, and raised-border gives the tab bar an edge. Balanced padding centres the grid
 // in what the cells leave over. The font is Ghostty's own JetBrains Mono at 11 pt - at its 12
 // the X9's 200% drew text near a quarter larger than a MacBook's terminal - and without
-// ligatures, which turned != >= -> in shell output into symbols.
+// ligatures, which turned != >= -> in shell output into symbols. Ghostty says it is xterm-ghostty,
+// which a server's terminfo seldom has: ncurses programs there refuse to start ("missing or
+// unsuitable terminal"). Its shell integration's ssh wrapper copies the entry over once with tic
+// (ssh-terminfo, remembered per host by ghostty +ssh-cache) and, where that fails, connects as
+// xterm-256color with COLORTERM kept (ssh-env). Locally the root carries the entry, so sudo needs
+// nothing.
 const ghosttySeed = `# Written once by construct theme; it is yours to change.
 theme = light:Construct Light,dark:Construct Dark
 font-family = JetBrains Mono
@@ -37,6 +42,7 @@ window-padding-x = 12
 window-padding-y = 8
 window-padding-balance = true
 gtk-toolbar-style = raised-border
+shell-integration-features = ssh-env,ssh-terminfo
 `
 
 // themeCmd copies the image's GTK themes where apps take them from: Orchis's light GTK 4 theme
