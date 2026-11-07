@@ -1,6 +1,6 @@
 ---
 name: fork-merge
-description: Bring a Construct-Linux fork (Orchis, Tela, Bibata, Vitals, Dash to Panel, Tiling Shell, AppIndicator, Caffeine, Clipboard Indicator) up to its upstream and move its recipe's pin, resolving what task fork:sync could not. Use when asked to update, sync or rebase a fork, port or review upstream's changes, resolve a fork's merge, or when a watch issue says "update: <fork> is N commit(s) behind".
+description: Bring a Construct-Linux fork (Orchis, Tela, Bibata, Vitals, Dash to Panel, Tiling Shell, AppIndicator, Caffeine, Clipboard Indicator, Trayscale) up to its upstream and move its recipe's pin, resolving what task fork:sync could not. Use when asked to update, sync or rebase a fork, port or review upstream's changes, resolve a fork's merge, or when a watch issue says "update: <fork> is N commit(s) behind".
 ---
 
 # Fork merge

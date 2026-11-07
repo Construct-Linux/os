@@ -14,16 +14,16 @@ rough edges, and say where they are.
 - **GNOME 51** on Wayland, with GNOME's core apps (Files, Text Editor, Calendar, Maps, Software,
   Papers, ...), Firefox, Ptyxis and Ghostty, and Flatpak with Flathub, where Chrome comes from.
   For work: Docker and containerd, VS Code (Microsoft's build, under its license), gcc, make and
-  git, Tailscale, CUPS, OpenSSH.
+  git, Tailscale (with Trayscale in the tray), CUPS, OpenSSH.
 - **Its own look**: Orchis in Construct's colours for the shell, GTK 3 and libadwaita apps alike,
   following the light/dark switch; Tela icons; Bibata's cursor. A top bar with the clock and
   indicators on the right, and a small centred dock. Extensions: AppIndicator, Caffeine, Clipboard
   Indicator, Dash to Panel, Desktop Icons, Drive Menu, Just Perfection, Night Theme Switcher,
   Tiling Shell, User Theme, Vitals, Workspace Indicator.
-- **Built for GNOME 51, fixed where it is not**: the theme, the icons, the cursor and six of the
-  extensions come from [forks](https://github.com/Construct-Linux) with a `gnome-51` branch -
-  upstream's issues triaged against this stack, one commit per fix - and each recipe pins its
-  commit and names the fixes it takes.
+- **Built for GNOME 51, fixed where it is not**: the theme, the icons, the cursor, six of the
+  extensions and Trayscale come from [forks](https://github.com/Construct-Linux) with a
+  `gnome-51` branch - upstream's issues triaged against this stack, one commit per fix - and each
+  recipe pins its commit and names the fixes it takes.
 - **What Wolfi lacks is built here**: 208 melange recipes in `recipes/` - the GNOME stack, and
   Wolfi packages rebuilt where Wolfi's fall short (mesa with Intel's drivers and Vulkan, PipeWire
   with Bluetooth audio, systemd with TPM2 and sysupdate, ...).
