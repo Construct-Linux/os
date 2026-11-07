@@ -66,6 +66,11 @@ custom-command='distrobox enter wolfi'
 [org/gnome/desktop/wm/preferences]
 button-layout='appmenu:minimize,maximize,close'
 
+# Tray icons with the top bar's own padding (Orchis's $panel_button_hpadding), like the other
+# buttons: compact mode, on by default, sets 10 px on each of them by hand.
+[org/gnome/shell/extensions/appindicator]
+compact-mode-enabled=false
+
 # The layout: GNOME's top bar stays, with the clock and every indicator on the right, and Dash to
 # Panel becomes a small dock, centred at the bottom and sized to its icons. Its per-monitor keys
 # are JSON by monitor id, falling back to the index: "0" to "2" cover three monitors whatever
