@@ -304,8 +304,10 @@ contents:
     - iptables-nft
     # nft, which loads the firewall (usr/lib/construct/firewall.nft).
     - nftables
-    # Tailscale (usr/lib/systemd/system/tailscaled.service).
+    # Tailscale (usr/lib/systemd/system/tailscaled.service), and Trayscale for it from the tray
+    # (the AppIndicator extension shows the icon).
     - tailscale
+    - trayscale
     # Manuals: man (man-db, its index baked at build: etc/man_db.conf) and the pages of every
     # command the root has, which Wolfi puts in <name>-doc and nothing installs unless it is named
     # here. go run ./cmd/image check-docs (in task rootfs) fails the build when one is missing, and
