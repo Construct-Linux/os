@@ -114,8 +114,8 @@ contents:
     - gnome-session-lang=51.0-r0
     - gnome-settings-daemon=51.1-r0
     - gnome-shell=51.1-r1
-    - gnome-shell-extension-appindicator=66-r5
-    - gnome-shell-extension-appindicator-lang=66-r5
+    - gnome-shell-extension-appindicator=66-r6
+    - gnome-shell-extension-appindicator-lang=66-r6
     - gnome-shell-extension-caffeine=61-r0
     - gnome-shell-extension-caffeine-lang=61-r0
     - gnome-shell-extension-clipboard-indicator=72-r0
