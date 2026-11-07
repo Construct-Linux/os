@@ -1,0 +1,43 @@
+package:
+  name: trayscale
+  version: "0.21.0"
+  epoch: 0
+  description: GTK 4 and libadwaita client for the Tailscale daemon, with a tray icon
+  copyright:
+    - license: MIT
+  dependencies:
+    # puregotk loads GTK and libadwaita with dlopen at run time, so melange sees no soname to
+    # derive them from.
+    runtime:
+      - gtk-4
+      - libadwaita
+
+environment:
+  contents:
+    packages:
+      # cgo: the GtkBuilder labels are translated through libintl (internal/locale).
+      - build-base
+      - busybox
+      - go
+
+pipeline:
+  # v0.21.0 and upstream master to 67266aa (meta: update dependencies) plus, on the fork's
+  # gnome-51 branch: macOS install paths dropped and the README's note that the tray icon needs
+  # the AppIndicator extension.
+  - uses: git-checkout
+    with:
+      repository: https://github.com/Construct-Linux/trayscale
+      branch: gnome-51
+      expected-commit: 5c4c505c59f2e1d6e8d3bab300229df62644eb7e
+
+  # What dist.sh build and install do, which needs bash. The fork carries no tags, so the version
+  # is given; -buildvcs=false keeps the checkout's state out of the binary. The translations are
+  # embedded (assets.go), so there is no -lang to split; the schema is compiled with all the
+  # others when the image is baked.
+  - runs: |
+      go build -trimpath -buildvcs=false -ldflags "-s -w -X 'deedles.dev/trayscale/internal/metadata.version=v${{package.version}}'" -o trayscale ./cmd/trayscale
+      install -Dm755 trayscale ${{targets.destdir}}/usr/bin/trayscale
+      install -Dm644 dev.deedles.Trayscale.png ${{targets.destdir}}/usr/share/icons/hicolor/256x256/apps/dev.deedles.Trayscale.png
+      install -Dm644 dev.deedles.Trayscale.desktop ${{targets.destdir}}/usr/share/applications/dev.deedles.Trayscale.desktop
+      install -Dm644 dev.deedles.Trayscale.metainfo.xml ${{targets.destdir}}/usr/share/metainfo/dev.deedles.Trayscale.metainfo.xml
+      install -Dm644 dev.deedles.Trayscale.gschema.xml ${{targets.destdir}}/usr/share/glib-2.0/schemas/dev.deedles.Trayscale.gschema.xml
