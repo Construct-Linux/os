@@ -1,7 +1,7 @@
 package:
   name: trayscale
   version: "0.21.0"
-  epoch: 0
+  epoch: 1
   description: GTK 4 and libadwaita client for the Tailscale daemon, with a tray icon
   copyright:
     - license: MIT
@@ -22,13 +22,14 @@ environment:
 
 pipeline:
   # v0.21.0 and upstream master to 67266aa (meta: update dependencies) plus, on the fork's
-  # gnome-51 branch: macOS install paths dropped and the README's note that the tray icon needs
-  # the AppIndicator extension.
+  # gnome-51 branch: macOS install paths dropped, the README's note that the tray icon needs the
+  # AppIndicator extension, and the pages' calls to tailscaled moved off the main thread with a
+  # timeout, so a slow or stuck daemon no longer freezes the window (upstream #262, #239).
   - uses: git-checkout
     with:
       repository: https://github.com/Construct-Linux/trayscale
       branch: gnome-51
-      expected-commit: 5c4c505c59f2e1d6e8d3bab300229df62644eb7e
+      expected-commit: 06e9e4ca7277257265428ca5f45f5edeaa68058c
 
   # What dist.sh build and install do, which needs bash. The fork carries no tags, so the version
   # is given; -buildvcs=false keeps the checkout's state out of the binary. The translations are
