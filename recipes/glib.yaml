@@ -5,10 +5,13 @@
 # put Firefox before or after Google Chrome by the session (patch upstream-ready, in glib/).
 # Its package tests are left out: they use Wolfi's own test pipelines, which melange build does
 # not run.
+# Wolfi's epochs 1 and 2 of the same 2.90.1 (LTO, a static build, and its own patch putting
+# GChecksum and GHmac on OpenSSL 4's libcrypto) are not taken: the desktop needs none of them,
+# and they would make glib, under every app, depend on libcrypto. The epoch stays above Wolfi's.
 package:
   name: glib
   version: "2.90.1"
-  epoch: 1
+  epoch: 3
   description: Common C routines used by Gtk+ and other libs
   copyright:
     - license: LGPL-2.1-or-later

@@ -5,9 +5,10 @@
 # Generated from https://git.alpinelinux.org/aports/plain/main/bluez/APKBUILD
 package:
   name: bluez
-  version: "5.87"
-  # Replaces Wolfi's bluez 5.87 (epoch 4): see the header.
-  epoch: 5
+  version: "5.88"
+  # Replaces Wolfi's bluez 5.88 (epoch 0), whose recipe Wolfi's index carries before GitHub does:
+  # see the header.
+  epoch: 1
   description: Tools for the Bluetooth protocol stack
   copyright:
     - license: GPL-2.0 AND LGPL-2.1 AND BSD-2-Clause AND MIT
@@ -54,7 +55,7 @@ pipeline:
     with:
       repository: https://github.com/bluez/bluez
       tag: ${{package.version}}
-      expected-commit: 65d11edee469c24dcc8d075b8be9c040cebaaf98
+      expected-commit: 34b6f8e0e998728ce9e8e64e280d9d390c511804
 
   - uses: autoconf/configure
     with:
@@ -76,7 +77,8 @@ pipeline:
       make DESTDIR="${{targets.destdir}}" install install-pluginLTLIBRARIES
       install -Dm755 test/simple-agent "${{targets.destdir}}"/usr/bin/bluez-simple-agent
       install -Dm755 tools/btmgmt -t "${{targets.destdir}}"/usr/bin/
-      install -Dm755 attrib/gatttool -t "${{targets.destdir}}"/usr/bin/
+      # gatttool, deprecated since 5.x, is gone in 5.88 (attrib/ removed): bluetoothctl's gatt
+      # menu does what it did.
 
       install -Dm644 obexd/src/org.bluez.obex.service \
         "${{targets.destdir}}"/usr/share/dbus-1/services/org.bluez.obex.service
