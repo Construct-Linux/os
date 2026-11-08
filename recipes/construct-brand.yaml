@@ -27,8 +27,8 @@ pipeline:
   - uses: git-checkout
     with:
       repository: https://github.com/Construct-Linux/brand
-      branch: ui-hill-climb
-      expected-commit: 0989b1f4ef2151355f613ea369caf96391a3a846
+      branch: main
+      expected-commit: 26f628b27cc988445638ac5d53672a0db064943b
 
   - runs: |
       d=${{targets.destdir}}/usr/share
