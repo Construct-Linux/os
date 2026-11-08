@@ -408,6 +408,10 @@ func (r *report) systemChecks(g *guest) {
 		`grep -l pam_fprintd /etc/pam.d/* | sort | tr '\n' ' '`, "")
 	r.add("fingerprint beside the password", err == nil &&
 		strings.Join(strings.Fields(finger), " ") == "net.reactivated.Fprint /etc/pam.d/gdm-fingerprint", oneLine(finger)+errText(err))
+	// The booted root's setuid and setgid programs are bake's (cmd/image/setuid.go), and polkit
+	// asks in the service its socket starts.
+	suid, err := g.run(`find / -xdev -type f -perm /6000 | sort | tr '\n' ' '; systemctl is-enabled polkit-agent-helper.socket`, "")
+	r.add("setuid programs", err == nil && strings.Join(strings.Fields(suid), " ") == setuidOnRoot()+" enabled", oneLine(suid)+errText(err))
 	// The Wolfi container Ptyxis's Wolfi profile enters: made on Docker, apk inside it, and the
 	// cloud CLIs distrobox.conf installs into it.
 	box, err := g.run(`cd /tmp && `+asLive+`timeout 900 distrobox create --yes >/dev/null 2>&1 && `+asLive+`timeout 600 distrobox enter wolfi -- sh -c 'apk --version; aws --version; gcloud --version | head -1; test -s /usr/share/terminfo/x/xterm-ghostty && echo ghostty-terminfo' 2>&1 | tail -4`, "")

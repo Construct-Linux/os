@@ -500,6 +500,9 @@ func bake(root, version string) error {
 	); err != nil {
 		return err
 	}
+	if err := limitPrivilege(root); err != nil {
+		return err
+	}
 	if err := rootLocked(root); err != nil {
 		return err
 	}

@@ -90,6 +90,11 @@ falling back from a release that does not come up.
   journal under `firewall-drop`, rate limited, but for broadcasts and multicast. Open a port with its
   reason, never by widening a rule; `task test` checks that a network cannot reach a server on every
   address, that sshd answers only once enabled and with its Ed25519 key alone, and the log.
+- **Nothing runs with more rights than its caller unless the image needs it to.** A setuid or
+  setgid program runs its caller's environment, arguments and descriptors as root; elevation is
+  asked over IPC instead (polkit, whose helper its socket starts). `cmd/image/setuid.go` lists the
+  few that stay, each with its reason, and what the image clears; bake refuses a root with any
+  other, and `task test` lists the booted root's.
 - **No person, password or private key in the image or the repository.** `construct install` adds
   the person to the installed `/etc` on `/var` (internal/account); a root with nobody installed
   boots the passwordless `live` user. root stays locked.

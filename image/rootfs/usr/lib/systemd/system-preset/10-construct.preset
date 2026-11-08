@@ -35,6 +35,9 @@ enable docker.socket
 enable pcscd.socket
 # 1Password, where it was installed (construct 1password), kept current.
 enable construct-1password-update.timer
+# polkit checks a password or the security key's touch in a service its socket starts, not in a
+# setuid helper (cmd/image/setuid.go): the agent library connects to the socket where it exists.
+enable polkit-agent-helper.socket
 # The firewall, before any network.
 enable nftables.service
 # Tailscale's agent: idle until someone logs in, then the machine is on their tailnet from boot.
