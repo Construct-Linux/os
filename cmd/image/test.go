@@ -669,7 +669,7 @@ var shellViews = []shellView{
 		"A folder of the app grid open: its dialog on g with the ring and its radius, its name at the top, the apps it holds in a grid under it",
 		[]string{"S3", "E3"}, nil},
 	{"quick-settings", `Main.panel.statusArea.quickSettings.menu.open()`, `Main.panel.statusArea.quickSettings.menu.close()`, nil, 0,
-		"Quick settings: the menu on h with its ring and concentric radius, toggles on as the rest tint with the accent's 24 px disc and accent_text, off in text",
+		"Quick settings: the menu on h with its ring and concentric radius, toggles on as the on tint with the accent's 24 px disc and text, off in text",
 		[]string{"S2", "C3", "C4", "R1"}, (*lf).viewQuickSettings},
 	// The first quick toggle on screen with the key focus, once the menu is open: its focus ring,
 	// against the view above. Hidden toggles (no Bluetooth, no Wi-Fi) come first in the tree.
@@ -690,10 +690,10 @@ var shellViews = []shellView{
 	{"states",
 		`const m = Main.panel.statusArea.quickSettings.menu; m.open(); GLib.timeout_add(GLib.PRIORITY_DEFAULT, 800, () => { lfAll(m.box, lfClass('quick-toggle')).filter(t => t.is_mapped() && t.reactive).slice(0, 3).forEach((t, i) => { t._lfAdded = [['checked'], ['checked', 'hover'], ['checked', 'active']][i].filter(c => !t.has_style_pseudo_class(c)); t._lfAdded.forEach(c => t.add_style_pseudo_class(c)); t._lfState = ['rest', 'hover', 'active'][i]; }); return GLib.SOURCE_REMOVE; })`,
 		`const m = Main.panel.statusArea.quickSettings.menu; lfAll(m.box, t => t._lfState !== undefined).forEach(t => { t._lfAdded.forEach(c => t.remove_style_pseudo_class(c)); delete t._lfAdded; delete t._lfState; }); m.close()`, nil, 0,
-		"Quick toggles on at rest, under the pointer and pressed: each the accent's tint at its own step, the label accent_text on all three",
+		"Quick toggles on at rest, under the pointer and pressed: the on tint at rest, its hover step under the pointer and pressed, the label text on all three",
 		[]string{"S2", "C3"}, (*lf).viewStates},
 	{"calendar", `Main.panel.statusArea.dateMenu.menu.open()`, `Main.panel.statusArea.dateMenu.menu.close()`, nil, 0,
-		"The date menu: the calendar on h at the quick settings' height, today accent_text at 700 with no ring, the month's days in text, the other months' muted",
+		"The date menu: the calendar on h at the quick settings' height, today on (the on tint, text at 700) with no ring, the month's days in text, the other months' muted",
 		[]string{"S2", "F1", "C2", "R1"}, (*lf).viewCalendar},
 	// A day that is not today with the key focus: the ring is focus's alone (F1).
 	{"calendar-focus",

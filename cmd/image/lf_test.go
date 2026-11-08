@@ -60,7 +60,7 @@ const tPalette = `{"brand-boot":"#000000","neutral-e":"#0B1116","neutral-f":"#11
 "dark-text":"#E6EDF2","dark-muted":"#9FB3C0","dark-on-accent":"#0B1116","light-accent":"#007A85","light-accent-text":"#00646D",
 "light-on-accent":"#FFFFFF","light-text":"#11181E","light-muted":"#536672","light-desk":"#DEE4E8","light-shelf":"#E9EDF0",
 "neutral-a":"#FFFFFF","line-light-ring":0.4,"line-light-border":0.3,"ansi-dark-blue":"#5DB2F7",
-"tint-dark-rest":0.16,"tint-dark-hover":0.23,"tint-dark-active":0.28,"shape-inset":6,"shape-radius-control":9,"shape-radius-surface":15,"shape-radius-sheet":24,
+"tint-dark-rest":0.16,"tint-dark-hover":0.23,"tint-dark-active":0.28,"tint-dark-on":0.36,"tint-dark-on-hover":0.4,"shape-inset":6,"shape-radius-control":9,"shape-radius-surface":15,"shape-radius-sheet":24,
 "shape-space":[3,6,12,18,24],"type-ui":"Adwaita Sans","type-mono":"Adwaita Mono"}`
 
 // palette.json is flat and mixed - colours, numbers, families, a list - and a token a check needs
@@ -657,12 +657,12 @@ func TestStatesView(t *testing.T) {
 	h, accent := l.c("neutral-h"), l.c("dark-accent")
 	img := solid(640, 400, h)
 	var s []stateSeen
-	for i, st := range []struct{ state, tok string }{{"rest", "tint-dark-rest"}, {"hover", "tint-dark-hover"}, {"active", "tint-dark-active"}} {
+	for i, st := range []struct{ state, tok string }{{"rest", "tint-dark-on"}, {"hover", "tint-dark-on-hover"}, {"active", "tint-dark-on-hover"}} {
 		want := pixels.Tint(accent, h, l.pal.nums[st.tok])
 		r := pixels.Rect{X: 20 + 120*i, Y: 20, W: 100, H: 40}
 		fill(img, r, want)
 		look := &lfLook{X: r.X, Y: r.Y, W: r.W, H: r.H, Chain: []string{pixels.Hexa(want)}}
-		title := &lfLook{FG: pixels.Hexa(l.c("dark-accent-text")), Opacity: 1, Chain: []string{pixels.Hexa(want)}}
+		title := &lfLook{FG: pixels.Hexa(l.c("dark-text")), Opacity: 1, Chain: []string{pixels.Hexa(want)}}
 		s = append(s, stateSeen{State: st.state, Look: look, Title: title})
 	}
 	l.states(img, s)
