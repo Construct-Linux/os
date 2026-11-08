@@ -111,11 +111,21 @@ class Installer(Adw.ApplicationWindow):
             description=_("Construct is running from this stick. Install it on this computer to keep it, "
                           "or close this window and keep trying it."),
         )
+        # No disk is a state with a way out, not a dead end (the design review's round 1): what is
+        # missing, what to do, and the one action that helps - looking again once a disk is in.
         if self.disk is None:
-            status.set_description(_("This computer has no disk Construct can be installed on."))
+            status.set_description(_("This computer has no disk to install Construct on, other than the "
+                                     "stick it is running from. Connect one and look again, or close this "
+                                     "window and keep trying Construct."))
+            status.set_child(self.button(_("Look Again"), "suggested-action", self.look_again))
         else:
             status.set_child(self.button(_("Install…"), "suggested-action", lambda *args: self.nav.push(self.disk_page())))
         return self.page(_("Welcome"), status, "welcome")
+
+    def look_again(self, *args):
+        self.disks = self.read_disks()
+        self.disk = next((d for d in self.disks if d["default"]), self.disks[0] if self.disks else None)
+        self.nav.replace([self.welcome_page()])
 
     def disk_page(self):
         group = Adw.PreferencesGroup(
