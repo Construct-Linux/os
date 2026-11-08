@@ -30,4 +30,8 @@ func TestParseOnly(t *testing.T) {
 	if want, unknown := parseOnly(""); len(want) != 0 || len(unknown) != 0 {
 		t.Errorf("all: %v %v", want, unknown)
 	}
+	// The scenarios a partial run leaves out unless it names them.
+	if _, unknown := parseOnly("installer,system,idle"); len(unknown) != 0 {
+		t.Errorf("installer, system and idle unknown: %v", unknown)
+	}
 }

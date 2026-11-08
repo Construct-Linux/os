@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -133,7 +134,12 @@ func themeDev(args []string) error {
 	orchis := fl.String("orchis", "", "the Orchis-theme checkout to build (ORCHIS)")
 	needles := fl.String("needles", "", "the needles checkout to compare with (NEEDLES)")
 	withType := fl.Bool("type", false, "take the type specimen and its rendering matrix too (_output/test/type.html)")
+	only := fl.String("only", "", "apps and Settings panels to take too, as test -only names them, and views for GTK's own; the shell's views are always taken")
 	_ = fl.Parse(args)
+	want, unknown := parseOnly(*only)
+	if len(unknown) > 0 {
+		return fmt.Errorf("theme-dev: -only names no app, panel:<name> or views: %s", strings.Join(unknown, ", "))
+	}
 	if *orchis == "" {
 		return errors.New("theme-dev: -orchis names an Orchis-theme checkout (ORCHIS)")
 	}
@@ -200,6 +206,18 @@ func themeDev(args []string) error {
 		r.add("views' clock", false, "at "+viewsTime+": "+err.Error())
 	}
 	r.shellViews(v, g, l)
+	// The apps take the theme as a person's do, from what construct theme copied: a design
+	// review's screens in a minute or two, where the image and the stick take half an hour.
+	if len(want) > 0 {
+		if err := g.holdReadings(); err != nil {
+			r.add("views' readings", false, err.Error())
+		}
+		if want["views"] {
+			r.gtkViews(v, g, l, false)
+			r.gtkViews(v, g, l, true)
+		}
+		r.appsAndPanels(g, l, want)
+	}
 	if *withType {
 		r.typeMatrix(v, g, l)
 	}

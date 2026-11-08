@@ -66,7 +66,7 @@ var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power
 
 func test(args []string) (err error) {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
-	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, type, bench, suspend); all by default")
+	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, installer, system, idle, type, input, bench, suspend); all by default")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	needles := fl.String("needles", "", "a checkout of github.com/Construct-Linux/needles: every screenshot is compared with its needle")
 	_ = fl.Parse(args)
@@ -138,33 +138,44 @@ func test(args []string) (err error) {
 	_, _ = g.run(asLive+`gsettings set org.gnome.desktop.privacy remember-app-usage false`, "")
 	_, _ = g.eval(`Main.overview.hide(); true`)
 	time.Sleep(time.Second)
-	r.installer(v, g, l, *stick)
-	// Before the desktop is shot: the stick's icon is gone again by then.
-	r.keyd(v, g)
-	r.usbStick(v, g)
-	r.appFolder(g)
-	r.screenReader(g)
-	// The live user's login keyring has no password (construct live): a secret is kept and read back
-	// with no prompt. A plaintext keyring reads as locked until something uses it, so the check
-	// does what an app does; a prompt would hang it until the timeout.
-	keyring, _ := g.run(keyringRoundTrip("live", 1000), "")
-	r.add("the login keyring is open", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
-	if *stick {
-		r.secureBoot(g)
-		r.dbxCurrent(g)
-		r.efiPrograms(g)
-		r.loaderCache(g)
+	// -only runs the scenarios it names and nothing else that can be left out: the session's own
+	// checks (system) and its measurement at rest (idle) took a third of a run that wanted a few
+	// views (a design review's capture). The desktop's view and the boot's are always taken.
+	want, unknown := parseOnly(*only)
+	for _, n := range unknown {
+		r.add("-only "+n, false, "no app, panel:<name>, views, installer, system, idle, type, input, bench or suspend is called that")
+	}
+	runs := func(name string) bool { return len(want) == 0 || want[name] }
+	if runs("installer") {
+		r.installer(v, g, l, *stick)
+	}
+	if runs("system") {
+		// Before the desktop is shot: the stick's icon is gone again by then.
+		r.keyd(v, g)
+		r.usbStick(v, g)
+		r.appFolder(g)
+		r.screenReader(g)
+		// The live user's login keyring has no password (construct live): a secret is kept and read
+		// back with no prompt. A plaintext keyring reads as locked until something uses it, so the
+		// check does what an app does; a prompt would hang it until the timeout.
+		keyring, _ := g.run(keyringRoundTrip("live", 1000), "")
+		r.add("the login keyring is open", strings.TrimSpace(keyring) == "kept", oneLine(keyring))
+		if *stick {
+			r.secureBoot(g)
+			r.dbxCurrent(g)
+			r.efiPrograms(g)
+			r.loaderCache(g)
+		}
 	}
 	l.shot(viewMeta{"desktop", needle.GroupDesktop,
 		"The desktop at login over the default dark wallpaper: both bars opaque g with their ring, the top bar a 36 px pill 6 px from the edge, its text Adwaita Sans 400, and no accent",
 		[]string{"S1", "SP2", "R1", "T2", "E2"}}, (*lf).viewDesktop)
-	r.systemChecks(g)
+	if runs("system") {
+		r.systemChecks(g)
+	}
 	// With the desktop up and nothing asked of it yet: what it does by itself.
-	r.idle(g)
-
-	want, unknown := parseOnly(*only)
-	for _, n := range unknown {
-		r.add("-only "+n, false, "no app, panel:<name>, views, type, input, bench or suspend is called that")
+	if runs("idle") {
+		r.idle(g)
 	}
 	// Every view from here is shot at viewsTime and with the bar's readings held: Calendar's
 	// month is the views' month, and the date menu hangs under a clock that stays where it was.
@@ -174,6 +185,48 @@ func test(args []string) (err error) {
 	if err := g.holdReadings(); err != nil {
 		r.add("views' readings", false, err.Error())
 	}
+	r.appsAndPanels(g, l, want)
+	if len(want) == 0 || want["views"] {
+		r.gtkViews(v, g, l, false)
+		r.gtkViews(v, g, l, true)
+		r.shellViews(v, g, l)
+		r.unlockLeaves(v, g)
+		r.desktopViews(v, g, l, sc)
+		l.guestLook()
+	}
+	l.finish()
+	if len(want) == 0 || want["type"] {
+		r.typeMatrix(v, g, l)
+	}
+	// After the views: the layout it switches to would be the views' too.
+	if len(want) == 0 || want["input"] {
+		r.deadKeys(v, g)
+	}
+	// After every view: the recording's errors - PipeWire refusing the DMA-BUF formats a VM
+	// without a GPU cannot give (withoutCastFormats) - are in the journal Logs shows.
+	if runs("system") {
+		r.screencast(g)
+		if *stick {
+			r.etcCopies(g)
+		}
+	}
+	// What the run needed, before the bench asks for more than there is.
+	r.memory(g)
+	r.console(g)
+	r.diagnose(g)
+	if len(want) == 0 || want["bench"] {
+		r.bench(g)
+	}
+	if len(want) == 0 || want["suspend"] {
+		r.suspend(v, g)
+	}
+	r.compareNeedles(*needles)
+	return r.write(g)
+}
+
+// appsAndPanels opens each app and Settings panel want names (every one when it names none), shoots
+// it and checks its surfaces: test's, and theme-dev's on a machine dev-up left running.
+func (r *report) appsAndPanels(g *guest, l *lf, want map[string]bool) {
 	for _, a := range apps {
 		if len(want) > 0 && !want[a.id] {
 			continue
@@ -207,40 +260,6 @@ func test(args []string) (err error) {
 			[]string{"S3", "TY4", "TY5"}}, nil)
 	}
 	g.quitApp(settingsApp)
-	if len(want) == 0 || want["views"] {
-		r.gtkViews(v, g, l, false)
-		r.gtkViews(v, g, l, true)
-		r.shellViews(v, g, l)
-		r.unlockLeaves(v, g)
-		r.desktopViews(v, g, l, sc)
-		l.guestLook()
-	}
-	l.finish()
-	if len(want) == 0 || want["type"] {
-		r.typeMatrix(v, g, l)
-	}
-	// After the views: the layout it switches to would be the views' too.
-	if len(want) == 0 || want["input"] {
-		r.deadKeys(v, g)
-	}
-	// After every view: the recording's errors - PipeWire refusing the DMA-BUF formats a VM
-	// without a GPU cannot give (withoutCastFormats) - are in the journal Logs shows.
-	r.screencast(g)
-	if *stick {
-		r.etcCopies(g)
-	}
-	// What the run needed, before the bench asks for more than there is.
-	r.memory(g)
-	r.console(g)
-	r.diagnose(g)
-	if len(want) == 0 || want["bench"] {
-		r.bench(g)
-	}
-	if len(want) == 0 || want["suspend"] {
-		r.suspend(v, g)
-	}
-	r.compareNeedles(*needles)
-	return r.write(g)
 }
 
 // parseOnly is the scenarios -only names, all when it names none, and those of its names nothing
@@ -252,7 +271,7 @@ func parseOnly(only string) (want map[string]bool, unknown []string) {
 			want[n] = true
 		}
 	}
-	known := map[string]bool{"views": true, "type": true, "input": true, "bench": true, "suspend": true}
+	known := map[string]bool{"views": true, "installer": true, "system": true, "idle": true, "type": true, "input": true, "bench": true, "suspend": true}
 	for _, a := range apps {
 		known[a.id] = true
 	}
