@@ -7,6 +7,8 @@
 //	                              XML parse, metadata declares GNOME Shell 51 alone, the recipe's patches apply (cmd/fork/check.go)
 //	fork pin   <recipe>           the recipe pins the fork's head, at upstream's version or a new epoch (cmd/fork/pin.go)
 //	fork list                     every fork the recipes build from: recipe, repository, branch, commit, a line each
+//	fork brand <recipe>           the fork's copies of brand's files (the palette), at the brand commit the image pins
+//	                              (cmd/fork/brand.go); check fails a copy or a brand.ref other than that commit's
 //
 // A fork is upstream plus the fixes triaged against this stack, one commit each, on the branch
 // the recipe names; the checkout is <-forks>/<repository>, beside this repository by default,
@@ -35,7 +37,8 @@ const usage = `usage:
   fork sync  <recipe> [-ours] [-recipes dir] [-forks dir] [-out dir]
   fork check <recipe> [-recipes dir] [-forks dir]
   fork pin   <recipe> [-recipes dir] [-forks dir] [-out dir]
-  fork list  [-recipes dir]`
+  fork list  [-recipes dir]
+  fork brand <recipe> [-recipes dir] [-forks dir]`
 
 // where is what every command is told: the recipes, the checkouts and the reports.
 type where struct {
@@ -65,6 +68,8 @@ func main() {
 		err = pinCmd(ctx, os.Args[2:], os.Stdout)
 	case "list":
 		err = listCmd(os.Args[2:], os.Stdout)
+	case "brand":
+		err = brandCmd(ctx, os.Args[2:], os.Stdout)
 	default:
 		err = fmt.Errorf("unknown command %q\n%s", os.Args[1], usage)
 	}
