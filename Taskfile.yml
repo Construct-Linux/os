@@ -349,7 +349,7 @@ tasks:
       - go run ./cmd/image dev-down
 
   theme:dev:
-    desc: "Build the local Orchis checkout (ORCHIS, in .env) into the machine task dev:up runs - GNOME Shell loads it, construct theme copies GTK's - and take the shell's views against the needles: _output/test/look.html (task theme:dev -- -type adds the type matrix). About a minute; the image is still the source of truth (pin, rootfs, stick)."
+    desc: "Build the local Orchis checkout (ORCHIS, in .env) into the machine task dev:up runs - GNOME Shell loads it, construct theme copies GTK's - and take the shell's views against the needles: _output/test/look.html (task theme:dev -- -type adds the type matrix; -only views,panel:network,org.gnome.Nautilus.desktop adds GTK's views and those apps and panels, as test -only names them). About a minute; the image is still the source of truth (pin, rootfs, stick)."
     cmds:
       - go run ./cmd/image theme-dev -orchis "{{.ORCHIS}}" -needles "{{.NEEDLES}}" {{.CLI_ARGS}}
 
