@@ -66,7 +66,7 @@ var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power
 
 func test(args []string) (err error) {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
-	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, installer, system, idle, type, input, bench, suspend); all by default")
+	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, installer, system, idle, type, input, bench, suspend, wifi); all by default")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
 	needles := fl.String("needles", "", "a checkout of github.com/Construct-Linux/needles: every screenshot is compared with its needle")
 	_ = fl.Parse(args)
@@ -143,7 +143,7 @@ func test(args []string) (err error) {
 	// views (a design review's capture). The desktop's view and the boot's are always taken.
 	want, unknown := parseOnly(*only)
 	for _, n := range unknown {
-		r.add("-only "+n, false, "no app, panel:<name>, views, installer, system, idle, type, input, bench or suspend is called that")
+		r.add("-only "+n, false, "no app, panel:<name>, views, installer, system, idle, type, input, bench, suspend or wifi is called that")
 	}
 	runs := func(name string) bool { return len(want) == 0 || want[name] }
 	if runs("installer") {
@@ -193,6 +193,11 @@ func test(args []string) (err error) {
 		r.unlockLeaves(v, g)
 		r.desktopViews(v, g, l, sc)
 		l.guestLook()
+	}
+	// After the views: the radios it adds put a Wi-Fi toggle in quick settings, which their
+	// needles do not have.
+	if len(want) == 0 || want["wifi"] {
+		r.wifi(g, l)
 	}
 	l.finish()
 	if len(want) == 0 || want["type"] {
@@ -271,7 +276,7 @@ func parseOnly(only string) (want map[string]bool, unknown []string) {
 			want[n] = true
 		}
 	}
-	known := map[string]bool{"views": true, "installer": true, "system": true, "idle": true, "type": true, "input": true, "bench": true, "suspend": true}
+	known := map[string]bool{"views": true, "wifi": true, "installer": true, "system": true, "idle": true, "type": true, "input": true, "bench": true, "suspend": true}
 	for _, a := range apps {
 		known[a.id] = true
 	}
@@ -620,6 +625,14 @@ func wakePointer(v *qemu.VM, _ *lf) {
 	time.Sleep(2 * time.Second)
 }
 
+// wakeLock wakes the display and stays still, as a person does who looks at the lock screen: the
+// shell shows its hint ("Click or press a key") after 4 s without input (unlockDialog.js'
+// HINT_TIMEOUT), and a view shot sooner had no word of how to unlock.
+func wakeLock(v *qemu.VM, l *lf) {
+	wakePointer(v, l)
+	time.Sleep(4 * time.Second)
+}
+
 // wakeKey wakes the display with a first key; the second lifts the curtain to the prompt, and a
 // modifier alone does not.
 func wakeKey(v *qemu.VM, _ *lf) {
@@ -715,8 +728,8 @@ var shellViews = []shellView{
 		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, nil, 0,
 		"Settings in the light scheme, the shell still dark: the window on the desk with its ring line, the sidebar the shelf, the selected row the sheet, one headerbar rule across both panes, no bright accent",
 		[]string{"S5", "S6", "C11", "E3", "C2"}, (*lf).viewSettingsLight},
-	{"lock-screen", `Main.screenShield.lock(false)`, ``, wakePointer, 0,
-		"The lock screen on the boot's black, its clock regular, nothing of an extension in the panel",
+	{"lock-screen", `Main.screenShield.lock(false)`, ``, wakeLock, 0,
+		"The lock screen on the boot's black, its clock regular, the hint of how to unlock under it, nothing of an extension in the panel",
 		[]string{"S4", "T2"}, (*lf).viewLock},
 	{"lock-prompt", `Main.screenShield.showDialog()`, ``, wakeKey, 0,
 		"The unlock prompt the shell's AuthPrompt draws: the entry, and the dialog's default its one primary action",
