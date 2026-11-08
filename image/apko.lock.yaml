@@ -245,8 +245,8 @@ contents:
     - openssh-sk-helper=10.6_p1-r1
     - orca=51.1-r0
     - orca-lang=51.1-r0
-    - orchis-theme=20260914-r21
-    - orchis-theme-shell=20260914-r21
+    - orchis-theme=20260914-r22
+    - orchis-theme-shell=20260914-r22
     - ostree=2026.6-r0
     - pam-u2f=1.4.0-r0
     - pangomm=2.58.0-r0
