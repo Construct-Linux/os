@@ -11,7 +11,7 @@
 package:
   name: construct-brand
   version: 0_git20261005
-  epoch: 3
+  epoch: 4
   description: CONSTRUCT's logo, boot animation, wallpaper and palette
   copyright:
     - license: CC-BY-SA-4.0
@@ -28,7 +28,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/brand
       branch: ui-hill-climb
-      expected-commit: 79344fe23efa8b4a35530532c65a482086679908
+      expected-commit: 0989b1f4ef2151355f613ea369caf96391a3a846
 
   - runs: |
       d=${{targets.destdir}}/usr/share
