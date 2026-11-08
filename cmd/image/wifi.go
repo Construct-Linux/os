@@ -14,16 +14,18 @@ import (
 const wifiAPs = 12
 
 // wifiSetup gives the machine Wi-Fi: mac80211_hwsim's radios, one the machine's own and the rest
-// access points. NetworkManager is told to leave the access points alone, so the shell and
+// access points. NetworkManager is told to leave the access points alone before they exist - its
+// supplicant set up all thirteen at once and timed out on the machine's own - so the shell and
 // Settings see one adapter and the networks it scans; wpa_supplicant's AP mode (CONFIG_AP, in its
 // recipe) runs each network, WPA2 with a throwaway passphrase, each a unit of its own: a daemon
 // the command started went with its SSH session, and the networks with it.
 const wifiSetup = `set -e
+mkdir -p /run/NetworkManager/conf.d /run/harness-wifi
+printf '[keyfile]\nunmanaged-devices=%%s\n' "$(seq -f 'interface-name:wlan%%g' -s ';' 1 %[2]d)" > /run/NetworkManager/conf.d/harness-wifi.conf
+nmcli general reload conf
 modprobe mac80211_hwsim radios=%[1]d
 for i in $(seq 1 50); do [ -e /sys/class/net/wlan%[2]d ] && break; sleep 0.2; done
-mkdir -p /run/harness-wifi
 for i in $(seq 1 %[2]d); do
-  until nmcli device set wlan$i managed no 2>/dev/null; do sleep 0.2; done
   cat > /run/harness-wifi/$i.conf <<EOF
 network={
   ssid="Harness network $i"
