@@ -625,14 +625,6 @@ func wakePointer(v *qemu.VM, _ *lf) {
 	time.Sleep(2 * time.Second)
 }
 
-// wakeLock wakes the display and stays still, as a person does who looks at the lock screen: the
-// shell shows its hint ("Click or press a key") after 4 s without input (unlockDialog.js'
-// HINT_TIMEOUT), and a view shot sooner had no word of how to unlock.
-func wakeLock(v *qemu.VM, l *lf) {
-	wakePointer(v, l)
-	time.Sleep(4 * time.Second)
-}
-
 // wakeKey wakes the display with a first key; the second lifts the curtain to the prompt, and a
 // modifier alone does not.
 func wakeKey(v *qemu.VM, _ *lf) {
@@ -728,8 +720,11 @@ var shellViews = []shellView{
 		`Shell.AppSystem.get_default().lookup_app("org.gnome.Settings.desktop").request_quit(); new imports.gi.Gio.Settings({schema_id: "org.gnome.desktop.interface"}).set_string("color-scheme", "prefer-dark")`, nil, 0,
 		"Settings in the light scheme, the shell still dark: the window on the desk with its ring line, the sidebar the shelf, the selected row the sheet, one headerbar rule across both panes, no bright accent",
 		[]string{"S5", "S6", "C11", "E3", "C2"}, (*lf).viewSettingsLight},
-	{"lock-screen", `Main.screenShield.lock(false)`, ``, wakeLock, 0,
-		"The lock screen on the boot's black, its clock regular, the hint of how to unlock under it, nothing of an extension in the panel",
+	// Shot 2 s after the pointer wakes it: the shell's hint ("Click or press a key") comes after 4 s
+	// without input, and a few seconds later the locked screen turns off - a view that waited for
+	// the hint was the display switched off.
+	{"lock-screen", `Main.screenShield.lock(false)`, ``, wakePointer, 0,
+		"The lock screen on the boot's black, its clock regular, nothing of an extension in the panel",
 		[]string{"S4", "T2"}, (*lf).viewLock},
 	{"lock-prompt", `Main.screenShield.showDialog()`, ``, wakeKey, 0,
 		"The unlock prompt the shell's AuthPrompt draws: the entry, and the dialog's default its one primary action",
