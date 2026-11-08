@@ -1,7 +1,7 @@
 package:
   name: gnome-shell-extension-clipboard-indicator
   version: "72"
-  epoch: 0
+  epoch: 1
   description: Clipboard history manager in the GNOME Shell top bar
   copyright:
     - license: MIT
@@ -31,7 +31,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/gnome-shell-extension-clipboard-indicator
       branch: gnome-51
-      expected-commit: 2eaeafc2771d78eb56392136f0b69ea6812cdc55
+      expected-commit: 0a286404eb6e1488feb7091edadde7b37e814e1b
 
   - runs: |
       glib-compile-schemas --strict --dry-run schemas
