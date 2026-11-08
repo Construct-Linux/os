@@ -51,9 +51,14 @@ func TestUpdateCDN(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.srv.Close()
+	// Its own transport, its connections closed before TestMain's goleak looks: the default one's
+	// keep-alive connections outlive the test, and their goroutines were found as leaks.
+	tr := &http.Transport{}
+	defer tr.CloseIdleConnections()
+	client := &http.Client{Transport: tr}
 	base := strings.Replace(c.url, "10.0.2.2", "127.0.0.1", 1)
 	get := func(path string) string {
-		resp, err := http.Get(base + path)
+		resp, err := client.Get(base + path)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +84,7 @@ func TestUpdateCDN(t *testing.T) {
 	// Only what an index lists is a file: a version no release has, a file in another release's
 	// slot, a release directory's other files, and a path out of it are all nothing.
 	for _, p := range []string{"/testing/construct_20261004.3.efi", "/assets/v1/construct_20261004.2.efi", "/assets/v2/SHA256SUMS", "/assets/v2/../release.pem"} {
-		resp, err := http.Get(base + p)
+		resp, err := client.Get(base + p)
 		if err != nil {
 			t.Fatal(err)
 		}
