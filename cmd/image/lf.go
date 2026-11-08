@@ -1850,10 +1850,10 @@ func (l *lf) guestFiles() {
 	want := fmt.Sprintf("'%s 11'\n'%s 11'\n%s\n%s\n%s\n", ui, mono, mono, ui, ui)
 	l.check("fonts", "G4", err == nil && fonts == want, fmt.Sprintf("font-name, monospace-font-name, fc-match monospace/sans-serif/system-ui: %s; want %s", oneLine(fonts), oneLine(want))+errText(err))
 
-	dconf, err := l.g.run(`for k in dash-to-panel/focus-highlight-color dash-to-panel/focus-highlight-opacity dash-to-panel/trans-use-border tilingshell/window-border-color; do `+asLive+`dconf read /org/gnome/shell/extensions/$k; done`, "")
+	dconf, err := l.g.run(`for k in dash-to-panel/focus-highlight-color dash-to-panel/focus-highlight-opacity dash-to-panel/trans-use-border tilingshell/window-border-color tilingshell/window-use-custom-border-color; do `+asLive+`dconf read /org/gnome/shell/extensions/$k; done`, "")
 	accent := pixels.Hex(l.c("dark-accent"))
 	// The dock's focus highlight is the rest tint, in dash-to-panel's percent.
-	wantDconf := fmt.Sprintf("'%s'\n%.0f\nfalse\n'%s'\n", accent, l.pal.nums["tint-dark-rest"]*100, accent)
+	wantDconf := fmt.Sprintf("'%s'\n%.0f\nfalse\n'%s'\ntrue\n", accent, l.pal.nums["tint-dark-rest"]*100, accent)
 	l.check("extensions", "G5 settings", err == nil && strings.EqualFold(dconf, wantDconf), fmt.Sprintf("%s; want %s", oneLine(dconf), oneLine(wantDconf))+errText(err))
 	for _, uuid := range []string{"dash-to-panel@jderose9.github.com", "tilingshell@ferrarodomenico.com", "Vitals@CoreCoding.com"} {
 		sheet, err := l.g.run("cat /usr/share/gnome-shell/extensions/"+uuid+"/stylesheet.css", "")
