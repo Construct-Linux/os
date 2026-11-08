@@ -398,6 +398,9 @@ func (r *report) securityKey(m, first qemu.Machine, dir string) bool {
 	// The key signs the person in where sudo asks: a wrong password, and the touch lets them in.
 	sudo, err := g.run(`runuser -u `+lifecycleUser+` -- sh -c 'echo wrong | sudo -S -k true' 2>&1; echo rc=$?`, "")
 	r.add("the key's touch is sudo's password", err == nil && strings.HasSuffix(strings.TrimSpace(sudo), "rc=0"), oneLine(sudo)+errText(err))
+	// And where polkit asks, in the service its socket starts, which reaches the key's hidraw.
+	pk := g.polkitAuth("wrong")
+	r.add("the key's touch is polkit's password", pk.ok, pk.detail)
 	// An SSH key that lives on the security key, made as the person makes one: OpenSSH's built-in
 	// FIDO (recipes/openssh), which Wolfi's build had not.
 	sk, err := g.run(`runuser -u `+lifecycleUser+` -- sh -c 'rm -f /tmp/id_sk*; timeout 60 ssh-keygen -q -t ed25519-sk -N "" -f /tmp/id_sk </dev/null 2>&1; echo rc=$?; head -c 40 /tmp/id_sk.pub'`, "")
@@ -446,8 +449,36 @@ func (r *report) securityKey(m, first qemu.Machine, dir string) bool {
 	// Without the key pam_u2f steps aside: sudo takes the password, and says nothing of the key.
 	sudo, _ = g.run(`runuser -u `+lifecycleUser+` -- sh -c "echo '`+lifecycleNewPassword+`' | sudo -S -k true" 2>&1; echo rc=$?; journalctl -b -q -o cat -p warning -t sudo; echo end`, "")
 	r.add("sudo takes the password without the key", strings.HasSuffix(strings.TrimSpace(sudo), "rc=0\nend") && !strings.Contains(sudo, "pam_u2f"), oneLine(sudo))
+	pk = g.polkitAuth(lifecycleNewPassword)
+	r.add("polkit takes the password without the key", pk.ok, pk.detail)
 	powerOff(v, g)
 	return true
+}
+
+// polkitResult is how polkitAuth's authentication ended.
+type polkitResult struct {
+	ok     bool
+	detail string
+}
+
+// polkitAuth has the person run pkexec as root, answering its password prompt with answer, and
+// reports whether polkit let it through by the helper its socket starts: the helper is no longer
+// setuid (cmd/image/setuid.go), so a pass through it is a pass through the socket, which counts
+// the connection. pkexec, with no agent in the person's session, asks on its terminal, which
+// script gives it; the answer comes once the prompt is up, since the prompt flushes what was typed
+// before it.
+func (g *guest) polkitAuth(answer string) polkitResult {
+	out, err := g.run(`before=$(systemctl show -P NAccepted polkit-agent-helper.socket); `+
+		`(sleep 10; printf '%s\n' '`+answer+`') | runuser -u `+lifecycleUser+` -- timeout 60 script -qec 'pkexec /usr/bin/id -u' /dev/null 2>&1; echo rc=$?; `+
+		`echo accepted=$(( $(systemctl show -P NAccepted polkit-agent-helper.socket) - before )); stat -c %A /usr/lib/polkit-1/polkit-agent-helper-1`, "")
+	// pkexec's id -u answers root's uid on the terminal, a line ending in a carriage return.
+	root := false
+	for _, line := range strings.Split(out, "\n") {
+		root = root || strings.TrimSpace(line) == "0"
+	}
+	ok := err == nil && root && strings.Contains(out, "rc=0") && strings.Contains(out, "accepted=1\n") &&
+		strings.Contains(out, "-rwxr-xr-x")
+	return polkitResult{ok: ok, detail: oneLine(out) + errText(err)}
 }
 
 // updateEnd is how the construct-update@ unit a plugged stick started ended: whether it did, and
