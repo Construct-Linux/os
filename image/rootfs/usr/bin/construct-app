@@ -80,7 +80,6 @@ class KeysPage(Adw.PreferencesPage):
         self.window = window
         self.encrypted = False
         self.group = Adw.PreferencesGroup(
-            title=_("Security keys"),
             description=_("A key you add opens this computer's disk with its PIN and a touch, and signs you in "
                           "where Construct asks for your password - sudo, the lock screen, a change to the "
                           "system - with a touch. Your password keeps working without it. Add a second key "
@@ -229,8 +228,7 @@ class UpdatesPage(Adw.PreferencesPage):
         super().__init__(title=_("Updates"), icon_name="software-update-available-symbolic")
         self.window = window
         rel = os_release()
-        group = Adw.PreferencesGroup(title=_("Updates"),
-                                     description=_("Construct updates itself once a day and starts the new release at "
+        group = Adw.PreferencesGroup(description=_("Construct updates itself once a day and starts the new release at "
                                                    "the next restart. If it does not come up, the one before starts again."))
         version = Adw.ActionRow(title=_("Running"), subtitle=rel.get("IMAGE_VERSION", _("a development build")))
         group.add(version)
@@ -368,8 +366,7 @@ class TailscalePage(Adw.PreferencesPage):
     def __init__(self, window):
         super().__init__(title=_("Tailscale"), icon_name="network-vpn-symbolic")
         self.window = window
-        group = Adw.PreferencesGroup(title=_("Tailscale"),
-                                     description=_("A private network between your own devices. Nothing reaches this "
+        group = Adw.PreferencesGroup(description=_("A private network between your own devices. Nothing reaches this "
                                                    "computer through it that you did not open."))
         self.state = Adw.ActionRow(title=_("State"))
         self.button = Gtk.Button(valign=Gtk.Align.CENTER)
