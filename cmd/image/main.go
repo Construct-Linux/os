@@ -22,6 +22,7 @@
 //	image release-notes -version v -packages f  a release's notes (cmd/image/notes.go)
 //	image channel-index -version v -add|-withdraw  a channel's index with a release added or withdrawn (cmd/image/channel.go)
 //	image packages missing|prune                the recipes packages/ lacks, a wave a line; builds no recipe makes out (cmd/image/packages.go)
+//	image packages sources                      every recipe's git-checkout branch and tag on its remote (cmd/image/sources.go)
 //	image lock write [-all] | index             the locks from apko's resolution, or Wolfi's lines bumped to its index (cmd/image/lock.go)
 //	image cache pull|push                       the release builder's packages/, kernel, firmware and QEMU in S3 (cmd/image/cache.go)
 //	image usb-disk                              the stick's disk from the signed release (cmd/image/usb.go)

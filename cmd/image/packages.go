@@ -219,8 +219,11 @@ func unmade(dir string, recipes []recipe) ([]string, error) {
 // a line per wave that builds side by side, or image packages prune, which removes every apk no
 // recipe makes now and prints the files it removed, for the index to be made again.
 func packagesCmd(args []string) error {
-	if len(args) != 1 || (args[0] != "missing" && args[0] != "prune") {
-		return errors.New("packages missing|prune")
+	if len(args) != 1 || (args[0] != "missing" && args[0] != "prune" && args[0] != "sources") {
+		return errors.New("packages missing|prune|sources")
+	}
+	if args[0] == "sources" {
+		return packagesSources("recipes")
 	}
 	recipes, err := readRecipes("recipes")
 	if err != nil {
