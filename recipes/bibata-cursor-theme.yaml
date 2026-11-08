@@ -1,7 +1,7 @@
 package:
   name: bibata-cursor-theme
   version: 2.0.7
-  epoch: 5
+  epoch: 6
   description: Bibata Modern cursors in Construct's colours (Bibata-Modern-Construct)
   copyright:
     - license: GPL-3.0-or-later
@@ -13,7 +13,8 @@ environment:
       - python-3.13
       - rsvg-convert
 
-# The fork's gnome-51 branch builds the theme from Bibata's SVGs with one Python program
+# The fork's gnome-51 branch (its colours from the pinned brand's palette.json, brand.ref) builds
+# the theme from Bibata's SVGs with one Python program
 # (build.py): the X cursors every client reads, and the cursors_scalable/ SVGs GNOME Shell 51
 # draws its own cursor from - without them the shell logs "Could not load cursor" and shows
 # Adwaita's.
@@ -22,7 +23,7 @@ pipeline:
     with:
       repository: https://github.com/Construct-Linux/Bibata_Cursor
       branch: gnome-51
-      expected-commit: e602d9a4e06d4745fc8eed315289ddf4708bdcbd
+      expected-commit: d05f5aa4cf74dd32fd45ba8d72d66d0aa80831b2
 
   - runs: |
       python3 build.py -o ${{targets.destdir}}/usr/share/icons

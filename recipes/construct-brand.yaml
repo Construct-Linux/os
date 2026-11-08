@@ -5,12 +5,13 @@
 # Background settings list it. The palette comes as data and as what apps outside GTK read:
 # palette.json, flat, for cmd/image (Plymouth's prompt, the harness's checks); Ghostty's Construct
 # Dark and Light themes, which `construct theme` seeds a config to; and VS Code's construct-theme,
-# a built-in extension, so it is there before any account opens the editor. The images and the
+# a built-in extension, so it is there before any account opens the editor; System Monitor's chart
+# colours as dconf defaults (the palette's series). The images and the
 # palette's outputs are the ones brand commits and holds to its sources (its task check).
 package:
   name: construct-brand
   version: 0_git20261005
-  epoch: 1
+  epoch: 2
   description: CONSTRUCT's logo, boot animation, wallpaper and palette
   copyright:
     - license: CC-BY-SA-4.0
@@ -26,8 +27,8 @@ pipeline:
   - uses: git-checkout
     with:
       repository: https://github.com/Construct-Linux/brand
-      branch: main
-      expected-commit: 32b719201ebc44bf6971c0b875d920cec041bd80
+      branch: ui-hill-climb
+      expected-commit: 36d006e3ceb9bc45432fd546175f36615e710803
 
   - runs: |
       d=${{targets.destdir}}/usr/share
@@ -39,6 +40,8 @@ pipeline:
       cp logos/construct-symbolic.svg $d/icons/hicolor/symbolic/apps/construct-logo-symbolic.svg
       cp logos/io.github.construct_linux.Installer.svg logos/io.github.construct_linux.Construct.svg $d/icons/hicolor/scalable/apps/
       cp palette/construct.json $d/construct/palette.json
+      # bake's dconf update compiles it into the local database with etc/dconf's own.
+      install -Dm644 palette/system-monitor.dconf ${{targets.destdir}}/etc/dconf/db/local.d/20-construct-system-monitor
       cp "palette/ghostty/Construct Dark" "palette/ghostty/Construct Light" $d/ghostty/themes/
       # Its themes include VS Code's own 2026 ones for syntax by a path relative to the extensions
       # directory (theme-defaults), so it works only from there.
