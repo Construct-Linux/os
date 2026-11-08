@@ -6,7 +6,6 @@
 //	image disk  [-test]                         the baked root as an ext4 test disk, booted with the kernel given directly
 //	image boot  [-shot path.ppm -after 90s]     boot it; with -shot, take a screenshot and stop
 //	image test  [-only a,b]                     boot the -test disk and drive the session (cmd/image/test.go)
-//	image tested [-usb]                         whether the harness's last run was of HEAD, whole, and passed (cmd/image/tested.go)
 //	image usb   [-test] [-append opt] [-version v]  the stick's baked root, in build/tools as root
 //	image sign-efi -key ref -cert db.crt        on the host: the root's EFI programs signed for Secure Boot (cmd/image/usb.go)
 //	image usb-seal -pcr-public pem -secureboot dir  the signed programs in the root, the root sealed and the kernel image, in build/tools
@@ -68,8 +67,6 @@ func main() {
 		err = boot(os.Args[2:])
 	case "test":
 		err = test(os.Args[2:])
-	case "tested":
-		err = testedCheck(os.Args[2:])
 	case "usb":
 		err = usb(os.Args[2:])
 	case "sign-efi":

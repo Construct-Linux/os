@@ -442,27 +442,27 @@ tasks:
       - go run ./cmd/watch run {{.CLI_ARGS}}
 
   # A release. It is built on an EC2 machine that exists for this one job (infra builder.tf): the
-  # keys are KMS's and never leave it, and nothing is left running after. task release launches
-  # it; the builder runs release:build; a person promotes what testing proved (release:promote).
+  # keys are KMS's and never leave it, and nothing is left running after. infra's release workflow
+  # (or task release) launches it; the builder runs release:check or release:build; a person
+  # promotes what testing proved (release:promote).
 
   release:
-    desc: "Build and publish a release of this commit on an EC2 builder (infra): it runs task release:build and terminates, at 2 hours at the latest. NEW=true for the first release, which starts dl's and testing's indexes. The commit must be pushed; needs AWS credentials. Follow it with task release:log."
+    desc: "Launch an EC2 builder (infra) for this commit, which runs JOB - release:build by default, release:check for the harness alone - and terminates, at 2 hours at the latest. NEW=true for the first release, which starts dl's and testing's indexes. The commit must be pushed; needs AWS credentials. infra's release workflow does the same from GitHub Actions. Follow it with task release:log."
     vars:
       COMMIT:
         sh: git rev-parse HEAD
+      JOB: '{{.JOB | default "release:build"}}'
     preconditions:
       - sh: git diff --quiet HEAD
         msg: commit first - the builder builds the commit, not this checkout
-      - sh: test -n "$(git branch -r --contains {{.COMMIT}})"
-        msg: push first - the builder clones the commit from GitHub
-      # The builder runs the same harness, two hours and a machine later: a commit it would fail
-      # on is found here first.
-      - sh: go run ./cmd/image tested -usb
-        msg: "task test:usb must have passed on this commit, on this machine (_output/test/tested.json)"
+      - sh: git fetch -q origin main && git merge-base --is-ancestor {{.COMMIT}} origin/main
+        msg: push to main first - the builder clones the commit from GitHub, and builds only main's
+      - sh: '[ "{{.JOB}}" = release:build ] || [ "{{.JOB}}" = release:check ]'
+        msg: JOB is release:build or release:check
     cmds:
       - >-
         aws ec2 run-instances --launch-template LaunchTemplateName=construct-builder
-        --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=construct-builder},{Key=construct:role,Value=builder},{Key=construct:commit,Value={{.COMMIT}}},{Key=construct:job,Value=release:build}{{if eq .NEW "true"}},{Key=construct:args,Value=NEW=true}{{end}}]'
+        --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=construct-builder},{Key=construct:role,Value=builder},{Key=construct:commit,Value={{.COMMIT}}},{Key=construct:job,Value={{.JOB}}}{{if eq .NEW "true"}},{Key=construct:args,Value=NEW=true}{{end}}]'
         --query 'Instances[0].InstanceId' --output text
 
   release:log:
@@ -470,30 +470,47 @@ tasks:
     cmds:
       - go run ./cmd/image release-log {{.CLI_ARGS}}
 
-  release:build:
-    desc: "On the builder (CONSTRUCT_BUILDER): the cache, the recipes it lacks, the kernel, firmware and QEMU it lacks, the harness on a test build, then the release - built with the next vYYYYMMDD.N, signed with KMS - scanned, published, offered to testing, and the cache back."
+  release:check:
+    desc: "On the builder (CONSTRUCT_BUILDER): the cache, the recipes it lacks, the kernel, firmware and QEMU it lacks, then the harness on a test build - task test:usb and task test:lifecycle - and the cache back. Nothing is signed with KMS or published; the reports are in the logs bucket. A release runs it first."
     preconditions:
       - sh: test -n "$CONSTRUCT_BUILDER"
-        msg: release:build runs on the builder (task release launches one)
-    vars:
-      VERSION:
-        sh: go run ./cmd/image release-version
+        msg: release:check runs on the builder (infra's release workflow, or task release JOB=release:check, launches one)
+      # Only main's commits are checked and released: what testing receives is what main holds.
+      - sh: git merge-base --is-ancestor HEAD origin/main
+        msg: "the builder builds main's commits only"
     cmds:
-      - echo "release {{.VERSION}} of $(git rev-parse --short HEAD)"
+      - echo "check of $(git rev-parse --short HEAD)"
       - aws secretsmanager get-secret-value --secret-id construct/melange-key --query SecretString --output text > melange.rsa
       - chmod 600 melange.rsa
       - go run ./cmd/image cache pull
-      # The cache goes back however the job ends: what a failed release built is not built again.
+      # The cache goes back however the job ends: what a failed check built is not built again.
       - defer: go run ./cmd/image cache push
       # Every build no recipe makes goes first, and the index with it: a recipe renamed since the
       # cache was stored leaves an older package of the name others ask for, or of a higher version,
       # and the build that resolves to it fails.
       - task: packages:prune
       - task: release:inputs
-      # The harness on a test build of the same commit, its roots built from the locks: a release
-      # whose checks fail is not built, and the release's stick is made from the same roots.
+      # The harness on a test build of the commit, its roots built from the locks, as a release's
+      # stick is: on the builder, not a person's machine, whose load and disk decide whether the
+      # harness's machines keep their timings.
       - task: test:usb
       - task: test:lifecycle
+
+  release:build:
+    desc: "On the builder (CONSTRUCT_BUILDER): release:check, then the release - built with the next vYYYYMMDD.N, signed with KMS - scanned, published and offered to testing."
+    preconditions:
+      - sh: test -n "$CONSTRUCT_BUILDER"
+        msg: release:build runs on the builder (infra's release workflow, or task release, launches one)
+      # Only main's commits are checked and released: what testing receives is what main holds.
+      - sh: git merge-base --is-ancestor HEAD origin/main
+        msg: "the builder builds main's commits only"
+    vars:
+      VERSION:
+        sh: go run ./cmd/image release-version
+    cmds:
+      - echo "release {{.VERSION}} of $(git rev-parse --short HEAD)"
+      # A release whose checks fail is not built, and its stick is made from the roots they tested.
+      - task: release:check
       - task: usb
         vars: {CLI_ARGS: '-version {{.VERSION}}', KMS: 'true'}
       - task: scan

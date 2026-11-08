@@ -64,7 +64,7 @@ var apps = []app{
 // panels are Settings' pages a person reaches first; each is opened by name and screenshotted.
 var panels = []string{"wifi", "network", "bluetooth", "display", "sound", "power", "keyboard", "users", "system"}
 
-func test(args []string) (err error) {
+func test(args []string) error {
 	fl := flag.NewFlagSet("test", flag.ExitOnError)
 	only := fl.String("only", "", "comma-separated scenario names (app ids, panel:<name>, views, installer, system, idle, type, input, bench, suspend, wifi); all by default")
 	stick := fl.Bool("usb", false, "boot the USB disk (task usb -- -test) as a machine does, instead of the ext4 test disk")
@@ -77,8 +77,6 @@ func test(args []string) (err error) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
-	// However the run ends, what it covered is on record for task release (image tested).
-	defer func() { recordTested(dir, *stick, *only == "", err) }()
 	_, pub, err := testKey()
 	if err != nil {
 		return err

@@ -199,11 +199,13 @@ initrd, whose units log to the journal.
 
 ## Releases
 
-- **A release is built on the release builder, never on a person's machine**: `task release`
-  launches an EC2 instance for the pushed commit (Construct-Linux/infra), which runs the harness
-  on a test build of the same commit, signs with KMS, scans, and terminates. A check that fails
-  stops the release. `task release` refuses a commit `task test:usb` has not passed on this
-  machine: the builder finds the same failure two hours and a machine later.
+- **A release is built on the release builder, never on a person's machine**: infra's `release`
+  workflow (or `task release`) launches an EC2 instance for a pushed commit of main
+  (Construct-Linux/infra), which runs the harness on a test build of the same commit, signs with
+  KMS, scans, and terminates. A check that fails stops the release before anything is signed.
+  `release:check` is the same builder's harness without the release, the way to know a commit is
+  releasable without needing a person's machine: a laptop's load and disk decide whether the
+  harness's machines keep their timings, and a full run can stall it.
 - **Versions are CalVer**, `vYYYYMMDD.N`; files carry them without the v.
 - **Machines follow channels**: a channel is a signed SHA256SUMS of its newest releases at the
   update CDN. A release goes to `testing`; promote it only after its stated soak criterion and
