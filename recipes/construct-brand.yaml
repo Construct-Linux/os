@@ -11,7 +11,7 @@
 package:
   name: construct-brand
   version: 0_git20261005
-  epoch: 4
+  epoch: 5
   description: CONSTRUCT's logo, boot animation, wallpaper and palette
   copyright:
     - license: CC-BY-SA-4.0
