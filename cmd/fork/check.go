@@ -46,6 +46,19 @@ func checkCmd(ctx context.Context, args []string, out io.Writer) error {
 	if marked, _ := r.lines(ctx, "grep", "-l", "-E", `^(<<<<<<< |>>>>>>> )`); len(marked) > 0 {
 		fail("conflict markers left in: %s", strings.Join(marked, ", "))
 	}
+	if len(brandCopies[pin.Name]) > 0 {
+		commit, err := brandPin(w.recipes)
+		if err != nil {
+			return err
+		}
+		problems, err := checkBrand(ctx, rawGitHub, r.dir, pin.Name, commit)
+		if err != nil {
+			return err
+		}
+		for _, p := range problems {
+			fail("%s", p)
+		}
+	}
 	files, err := r.lines(ctx, "ls-files")
 	if err != nil {
 		return err

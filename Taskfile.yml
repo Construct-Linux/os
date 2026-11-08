@@ -408,9 +408,14 @@ tasks:
       - go run ./cmd/fork sync {{.CLI_ARGS}}
 
   fork:check:
-    desc: "A fork's tree holds: no conflict left, every .js and .ts parses, the schemas compile, JSON and XML parse, metadata declares GNOME Shell 51 alone, the recipe's patches apply: task fork:check -- gnome-shell-extension-vitals"
+    desc: "A fork's tree holds: no conflict left, every .js and .ts parses, the schemas compile, JSON and XML parse, metadata declares GNOME Shell 51 alone, the recipe's patches apply, its copies of brand's files are the image's brand commit's: task fork:check -- gnome-shell-extension-vitals"
     cmds:
       - go run ./cmd/fork check {{.CLI_ARGS}}
+
+  fork:brand:
+    desc: "Write a fork's copies of brand's files - Orchis' palette SCSS, Bibata's palette JSON - from Construct-Linux/brand at the commit recipes/construct-brand.yaml pins, and its brand.ref: task fork:brand -- orchis-theme. fork:check fails a copy other than that commit's."
+    cmds:
+      - go run ./cmd/fork brand {{.CLI_ARGS}}
 
   fork:pin:
     desc: "Move a recipe to its fork's head, which must carry upstream's: upstream's version when newer, a new epoch otherwise: task fork:pin -- gnome-shell-extension-vitals. The comment above git-checkout is then a person's to update."
