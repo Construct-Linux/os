@@ -113,9 +113,11 @@ dot-style-unfocused='DOTS'
 trans-use-border=false
 dot-color-override=false
 
-# The focused window's border, when a person turns it on, is the accent.
+# The focused window's border, when a person turns it on, is the accent: without the custom colour
+# tilingshell draws St's accent, GNOME's teal, not the brand's cyan.
 [org/gnome/shell/extensions/tilingshell]
 window-border-color='#00E5FF'
+window-use-custom-border-color=true
 
 [org/gnome/shell/extensions/just-perfection]
 clock-menu-position=1
