@@ -41,10 +41,9 @@ const (
 	lfAccentTol = 14
 	// The calendar's today ring is 2 px on a curve: its pixels are half blends of the accent.
 	lfRingAccentTol = 40
-	// A quick toggle's title on its tint, and the focus ring's inset shadow over a toggle: thin
-	// accent strokes on a fill, so, like the today ring, most of their pixels are blends of it.
-	lfAccentTitleTol = 40
-	lfFocusRingTol   = 40
+	// The focus ring's inset shadow over a toggle: thin accent strokes on a fill, so, like the
+	// today ring, most of their pixels are blends of it.
+	lfFocusRingTol = 40
 	// The ring against what is 6 px outside it: the brand's minimum edge contrast.
 	lfEdgeContrast = 1.5
 	lfEdgeGap      = 6
@@ -133,7 +132,7 @@ var lfTokens = paletteTokens{
 	colors: []string{"brand-boot", "neutral-a", "neutral-e", "neutral-f", "neutral-g", "neutral-h", "dark-border",
 		"dark-accent", "dark-accent-text", "dark-text", "dark-muted", "dark-on-accent", "light-accent", "light-accent-text",
 		"light-on-accent", "light-text", "light-muted", "light-desk", "light-shelf"},
-	nums: []string{"tint-dark-rest", "tint-dark-hover", "tint-dark-active", "line-light-ring", "line-light-border", "shape-inset", "shape-radius-control",
+	nums: []string{"tint-dark-rest", "tint-dark-hover", "tint-dark-active", "tint-dark-on", "tint-dark-on-hover", "line-light-ring", "line-light-border", "shape-inset", "shape-radius-control",
 		"shape-radius-surface", "shape-radius-sheet"},
 	strs: []string{"type-ui", "type-mono"},
 }
@@ -849,7 +848,7 @@ func (l *lf) quickSettings(img image.Image, s quickSettingsSeen) {
 	n := pixels.CountNear(img, pixels.Rect{X: 0, Y: 0, W: img.Bounds().Dx(), H: img.Bounds().Dy()}, l.c("dark-accent"), lfAccentTol)
 	most := lfAccentQuickSettings * l.k * l.k
 	l.check("accent", "quick settings", n < most, fmt.Sprintf("%d px of the accent, want under %d", n, most))
-	fill := pixels.Tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
+	fill := pixels.Tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-on"])
 	ground := l.c("neutral-e")
 	var on, off int
 	var bad, discs []string
@@ -864,10 +863,10 @@ func (l *lf) quickSettings(img image.Image, s quickSettingsSeen) {
 			on++
 			mode, _ := pixels.ModeColor(img, l.px(t.Look.rect()).Inset(4*l.k, 4*l.k))
 			if !pixels.Near(mode, fill, lfTextTol) {
-				bad = append(bad, fmt.Sprintf("%q on is %s, not the tint %s", t.Title.Text, pixels.Hex(mode), pixels.Hex(fill)))
+				bad = append(bad, fmt.Sprintf("%q on is %s, not the on tint %s", t.Title.Text, pixels.Hex(mode), pixels.Hex(fill)))
 			}
-			if c := t.Title.ink(ground); !pixels.Near(c, l.c("dark-accent-text"), lfTextTol) || pixels.CountNear(img, l.px(t.Title.rect()), l.c("dark-accent-text"), lfAccentTitleTol) == 0 {
-				bad = append(bad, fmt.Sprintf("%q on titled %s, not the accent", t.Title.Text, pixels.Hex(c)))
+			if c := t.Title.ink(ground); !pixels.Near(c, l.c("dark-text"), lfTextTol) {
+				bad = append(bad, fmt.Sprintf("%q on titled %s, not text", t.Title.Text, pixels.Hex(c)))
 			}
 			if t.Subtitle != nil && !pixels.Near(t.Subtitle.ink(ground), l.c("dark-text"), lfTextTol) {
 				bad = append(bad, fmt.Sprintf("%q on subtitled %s, not text: muted never goes on a tint", t.Title.Text, pixels.Hex(t.Subtitle.ink(ground))))
@@ -1053,7 +1052,8 @@ func (l *lf) calendar(img image.Image, s calendarSeen) {
 }
 
 // today is F1's today: accent_text at 700 with no ring and no box-shadow, unless it has the key
-// focus; the menu opens on it, so it is the selected day too, the rest tint inside.
+// focus; the menu opens on it, so it is the selected day too, and selected today is on: the on
+// tint inside, text at 700.
 func (l *lf) today(img image.Image, days []calendarDay, selected, focus bool) {
 	var t *lfLook
 	for _, d := range days {
@@ -1066,22 +1066,21 @@ func (l *lf) today(img image.Image, days []calendarDay, selected, focus bool) {
 		return
 	}
 	h := l.c("neutral-h")
-	centre := h
+	centre, ink := h, l.c("dark-accent-text")
 	if selected {
-		centre = pixels.Tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-rest"])
+		centre, ink = pixels.Tint(l.c("dark-accent"), h, l.pal.nums["tint-dark-on"]), l.c("dark-text")
 	}
 	mode, _ := pixels.ModeColor(img, l.px(t.rect()).Inset(4*l.k, 4*l.k))
 	share := pixels.RingShare(img, l.px(t.rect()), float64(l.k), l.c("dark-accent"), lfRingAccentTol)
 	fg, _ := pixels.ParseHex(t.FG)
-	accent := l.c("dark-accent-text")
 	shadow := t.Shadow != nil && !strings.HasSuffix(t.Shadow.Color, "00")
-	ok := pixels.Near(mode, centre, lfTextTol) && t.Weight == 700 && fg == color.NRGBA{accent.R, accent.G, accent.B, 255}
+	ok := pixels.Near(mode, centre, lfTextTol) && t.Weight == 700 && fg == color.NRGBA{ink.R, ink.G, ink.B, 255}
 	if !focus {
 		ok = ok && !shadow && share < lfTodayNoRing
 	}
 	l.check("today", "calendar", ok,
 		fmt.Sprintf("centre %s, want %s (selected %v); %s %d, want %s 700; box-shadow %v, %.0f%% of its outline the accent, want none and under %.0f%% (focused %v)",
-			pixels.Hex(mode), pixels.Hex(centre), selected, t.FG, t.Weight, pixels.Hex(accent), shadow, share*100, lfTodayNoRing*100, focus))
+			pixels.Hex(mode), pixels.Hex(centre), selected, t.FG, t.Weight, pixels.Hex(ink), shadow, share*100, lfTodayNoRing*100, focus))
 }
 
 // focusRing is whether St's box-shadow is the key focus's ring - inset, 2 px or more, the accent
@@ -1361,10 +1360,10 @@ const lfStates = lfQuickSettings + `
 	return lfAll(m.box, t => t._lfState !== undefined).map(t => ({state: t._lfState, look: look(t), title: look(t._title ?? null)}));`
 
 // states is S2 on the quick toggles shell-states forced into each step - on at rest, under the
-// pointer, pressed: each fill is the accent at its step's tint over h, in St and on the screen,
-// and each label accent_text.
+// pointer, pressed: each fill is the accent at its step's tint over h, in St and on the screen -
+// the on tint at rest, on-hover under the pointer and pressed - and each label text.
 func (l *lf) states(img image.Image, s []stateSeen) {
-	steps := map[string]string{"rest": "tint-dark-rest", "hover": "tint-dark-hover", "active": "tint-dark-active"}
+	steps := map[string]string{"rest": "tint-dark-on", "hover": "tint-dark-on-hover", "active": "tint-dark-on-hover"}
 	h, ground, accent := l.c("neutral-h"), l.c("neutral-e"), l.c("dark-accent")
 	seen := map[string]bool{}
 	var bad []string
@@ -1380,8 +1379,8 @@ func (l *lf) states(img image.Image, s []stateSeen) {
 		if !pixels.Near(st, want, lfTextTol) || !pixels.Near(drawn, want, lfTextTol) {
 			bad = append(bad, fmt.Sprintf("%s: St %s, drawn %s, want %s (%s)", t.State, pixels.Hex(st), pixels.Hex(drawn), pixels.Hex(want), tok))
 		}
-		if t.Title != nil && !pixels.Near(t.Title.ink(ground), l.c("dark-accent-text"), lfTextTol) {
-			bad = append(bad, fmt.Sprintf("%s: %q titled %s, not accent_text", t.State, t.Title.Text, pixels.Hex(t.Title.ink(ground))))
+		if t.Title != nil && !pixels.Near(t.Title.ink(ground), l.c("dark-text"), lfTextTol) {
+			bad = append(bad, fmt.Sprintf("%s: %q titled %s, not text", t.State, t.Title.Text, pixels.Hex(t.Title.ink(ground))))
 		}
 	}
 	l.check("states", "quick toggles", len(seen) == len(steps) && len(bad) == 0,
