@@ -49,7 +49,7 @@ tasks:
         --signing-key melange.rsa {{.WOLFI}} {{.LOCAL}} --env-file build/x86-64-v3.env
         --out-dir .cache/out/{{.NAME}} --apk-cache-dir .cache/apk
         > .cache/logs/{{.NAME}}.log 2>&1
-        || { tail -40 .cache/logs/{{.NAME}}.log; exit 1; }
+        || { echo {{.NAME}} >> .cache/failed; tail -40 .cache/logs/{{.NAME}}.log; exit 1; }
       - >-
         flock .cache/packages.lock sh -c '
         cp .cache/out/{{.NAME}}/x86_64/*.apk packages/x86_64/
@@ -59,11 +59,13 @@ tasks:
         "mv packages/x86_64/APKINDEX.new.tar.gz packages/x86_64/APKINDEX.tar.gz && chown -R {{.UID}}:{{.UID}} packages .cache/out/{{.NAME}} .cache/logs"'
 
   check:
-    desc: "What a pull request must pass, with no Docker and no keys: gofmt, go vet and the Go tests, which compare the recipes with origin/main."
+    desc: "What a pull request must pass, with no Docker and no keys: gofmt, go vet, the Go tests, which compare the recipes with origin/main, and every recipe's git-checkout on its remote."
     cmds:
       - test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - go vet ./...
       - go test ./internal/... ./cmd/...
+      # A fork's branch merged and deleted fails a release minutes in; here it fails the next PR.
+      - go run ./cmd/image packages sources
 
   kernel:config:
     desc: Merge and assert the desktop kernel's configuration, without compiling it.
@@ -460,6 +462,8 @@ tasks:
       - sh: '[ "{{.JOB}}" = release:build ] || [ "{{.JOB}}" = release:check ]'
         msg: JOB is release:build or release:check
     cmds:
+      # What would fail melange's clone fails here, not on a builder 25 minutes in.
+      - go run ./cmd/image packages sources
       - >-
         aws ec2 run-instances --launch-template LaunchTemplateName=construct-builder
         --tag-specifications 'ResourceType=instance,Tags=[{Key=Name,Value=construct-builder},{Key=construct:role,Value=builder},{Key=construct:commit,Value={{.COMMIT}}},{Key=construct:job,Value={{.JOB}}}{{if eq .NEW "true"}},{Key=construct:args,Value=NEW=true}{{end}}]'
@@ -480,6 +484,14 @@ tasks:
         msg: "the builder builds main's commits only"
     cmds:
       - echo "check of $(git rev-parse --short HEAD)"
+      # Declared before cache push, so it runs after it: the failed recipes and the end of their
+      # logs are the last lines of the job's log, which infra's release workflow shows, instead of
+      # whatever the kernel, building beside them, printed for twenty minutes after.
+      - defer: >-
+          {{if .EXIT_CODE}}for r in $(sort -u .cache/failed 2>/dev/null); do
+          echo "FAILED: recipe $r (recipes/$r.log)"; tail -30 .cache/logs/$r.log | sed 's/^/  /';
+          done{{end}}
+      - go run ./cmd/image packages sources
       - aws secretsmanager get-secret-value --secret-id construct/melange-key --query SecretString --output text > melange.rsa
       - chmod 600 melange.rsa
       - go run ./cmd/image cache pull
@@ -541,6 +553,7 @@ tasks:
       JOBS: '{{.JOBS | default 4}}'
     cmds:
       - mkdir -p .cache
+      - rm -f .cache/failed
       - go run ./cmd/image packages missing > .cache/waves.txt
       - >-
         while read -r wave; do
