@@ -6,6 +6,9 @@ not come up.
 
 ![The desktop: a dark top bar with the clock and indicators, a centred dock, the brand's wireframe room as wallpaper](docs/desktop.png)
 
+The desktop's look, drawn with its palette in light and dark:
+<https://brand.constructlinux.org/preview.html>.
+
 Construct is days old. Its first release is from 5 October 2026, versions are dates
 (`20261014.2`), and every release goes to the `testing` channel first and to `stable` when it has
 proved itself there. It is built for one person's laptop at a time, not yet for a fleet; expect
