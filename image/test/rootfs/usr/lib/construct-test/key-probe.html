@@ -1,0 +1,31 @@
+<!doctype html>
+<!-- A text area for cmd/image test's shortcuts matrix, in a browser: the page's title reports the
+     keys that reached the page (key and modifiers), the edits the browser made (inputType), what
+     the area holds and how many times the page loaded, as JSON the harness reads through the
+     shell. F9 resets it: "abc" with the cursor at the end and an empty log. -->
+<meta charset="utf-8">
+<title>{}</title>
+<textarea id="t" rows="4" cols="60" autofocus></textarea>
+<script>
+const t = document.getElementById("t");
+const loads = Number(sessionStorage.getItem("loads") || 0) + 1;
+sessionStorage.setItem("loads", loads);
+const log = [];
+const show = () => { document.title = JSON.stringify({probe: "web", v: t.value, k: log, r: loads}); };
+const reset = () => {
+  log.length = 0;
+  t.value = "abc";
+  t.focus();
+  t.setSelectionRange(3, 3);
+  show();
+};
+const lone = new Set(["Control", "Shift", "Alt", "Meta", "OS", "Super"]);
+window.addEventListener("keydown", e => {
+  if (e.key === "F9") { e.preventDefault(); reset(); return; }
+  if (lone.has(e.key)) return;
+  log.push((e.ctrlKey ? "C-" : "") + (e.shiftKey ? "S-" : "") + (e.altKey ? "A-" : "") + (e.metaKey ? "M-" : "") + e.key);
+  show();
+}, true);
+t.addEventListener("input", e => { log.push("input:" + e.inputType); show(); });
+reset();
+</script>

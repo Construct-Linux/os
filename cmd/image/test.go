@@ -141,7 +141,7 @@ func test(args []string) error {
 	// views (a design review's capture). The desktop's view and the boot's are always taken.
 	want, unknown := parseOnly(*only)
 	for _, n := range unknown {
-		r.add("-only "+n, false, "no app, panel:<name>, views, installer, system, idle, type, input, bench, suspend or wifi is called that")
+		r.add("-only "+n, false, "no app, panel:<name>, views, installer, system, idle, type, input, shortcuts, bench, suspend or wifi is called that")
 	}
 	runs := func(name string) bool { return len(want) == 0 || want[name] }
 	if runs("installer") {
@@ -204,6 +204,11 @@ func test(args []string) error {
 	// After the views: the layout it switches to would be the views' too.
 	if len(want) == 0 || want["input"] {
 		r.deadKeys(v, g)
+	}
+	// Only when named: a measurement of what each chord does in each kind of application, the
+	// baseline the Super layer's design is checked against, not a check of its own yet.
+	if want["shortcuts"] {
+		r.shortcuts(v, g)
 	}
 	// After every view: the recording's errors - PipeWire refusing the DMA-BUF formats a VM
 	// without a GPU cannot give (withoutCastFormats) - are in the journal Logs shows.
@@ -274,7 +279,7 @@ func parseOnly(only string) (want map[string]bool, unknown []string) {
 			want[n] = true
 		}
 	}
-	known := map[string]bool{"views": true, "wifi": true, "installer": true, "system": true, "idle": true, "type": true, "input": true, "bench": true, "suspend": true}
+	known := map[string]bool{"views": true, "wifi": true, "installer": true, "system": true, "idle": true, "type": true, "input": true, "shortcuts": true, "bench": true, "suspend": true}
 	for _, a := range apps {
 		known[a.id] = true
 	}
