@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -122,6 +123,32 @@ func TestLocksCoverConfigs(t *testing.T) {
 		for _, n := range l.uncovered(names) {
 			if !provided[n] {
 				t.Errorf("%s names %s, which %s does not pin: task lock", root.Config, n, root.Lock)
+			}
+		}
+	}
+}
+
+// The locks pin each recipe's package at the recipe's version and epoch: a recipe bumped without
+// task lock builds a package the lock refuses, and apko on the release builder found out
+// (construct-brand at r5, the lock at r4). CI's check, which builds no root.
+func TestLocksPinRecipesAtTheirBuild(t *testing.T) {
+	t.Chdir("../..")
+	recipes, err := readRecipes("recipes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	built := map[string]string{}
+	for _, r := range recipes {
+		built[r.Name] = fmt.Sprintf("%s-r%d", r.Version, r.Epoch)
+	}
+	for _, root := range lockedRoots {
+		l, err := readLockFile(root.Lock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range l.Ours {
+			if want, ok := built[p.Name]; ok && p.Version != want {
+				t.Errorf("%s pins %s=%s, its recipe builds %s: task build -- <recipe>, then task lock", root.Lock, p.Name, p.Version, want)
 			}
 		}
 	}
