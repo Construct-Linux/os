@@ -1,11 +1,11 @@
-# Replaces Wolfi's openssh 10.6_p1 (r0), built without built-in FIDO: its ssh-sk-helper says
+# Replaces Wolfi's openssh 10.6_p2 (r0), built without built-in FIDO: its ssh-sk-helper says
 # "internal security key support not enabled", and ssh-keygen -t ed25519-sk failed with "No FIDO
 # SecurityKeyProvider specified" - an SSH key that lives on a YubiKey, which a person with one is
-# told to make, could not be made. Wolfi's recipe (its public tree is at 10.5_p1) at 10.6_p1, with
-# --with-security-key-builtin against this repository's libfido2, as Fedora and Arch build it.
+# told to make, could not be made. Wolfi's recipe with --with-security-key-builtin against this
+# repository's libfido2, as Fedora and Arch build it.
 package:
   name: openssh
-  version: "10.6_p1"
+  version: "10.6_p2"
   epoch: 1
   description: "the OpenBSD SSH implementation"
   copyright:
@@ -51,7 +51,7 @@ pipeline:
     with:
       repository: https://github.com/openssh/openssh-portable
       tag: ${{vars.tag-name}}
-      expected-commit: a8c72b842423f0774f542d3c2197247c3dd28d74
+      expected-commit: d449e662b6b8b8cb20e852d8084c269af1c5e8f1
 
   # Patch out checking for OpenSSL version compatibility. This is dangerous and unneeded.
   - uses: patch
