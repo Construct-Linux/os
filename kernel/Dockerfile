@@ -54,8 +54,8 @@ COPY kernel/platform.config kernel/desktop.config /usr/src/fragments/
 # newer than Arch's newest tag (7.3 on the day it came out) builds over the newest tag's: every
 # symbol the base does not know takes olddefconfig's default, a driver new in this kernel is not
 # built, and the log lists them (listnewconfig); Arch's tag for the kernel replaces it when it is.
-ADD --checksum=sha256:e8f340e4d83dd3cac6ac516a6d43919d325ec15895c8e63bb27e1db156eb0731 \
-    https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/raw/7.2.14.arch1-2/config.x86_64 \
+ADD --checksum=sha256:bb03d28b8af371cd47eebf18378197c57e26c951d33c872d52ae97a2690d1ec6 \
+    https://gitlab.archlinux.org/archlinux/packaging/packages/linux/-/raw/7.3.4.arch1-2/config.x86_64 \
     /usr/src/base.config
 
 # Which kernel this is: the fragments merged over the base, in order, a later one's line for a
