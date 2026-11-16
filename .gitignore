@@ -5,3 +5,5 @@
 /melange.rsa.pub
 /.env
 /.claude/worktrees/
+
+__pycache__
