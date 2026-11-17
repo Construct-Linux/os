@@ -405,9 +405,21 @@ func (r *report) systemChecks(g *guest) {
 	scan, _ := g.run(`for p in $(seq 9001 9015); do ip netns exec fwrule timeout 0.3 bash -c "echo > /dev/tcp/10.98.0.1/$p" 2>/dev/null; done; sleep 1; `+
 		`nft list set inet construct scanners | grep -c '10.98.0.2'; `+
 		`journalctl -k -b -q -o cat -g 'construct-fw scan: ' | grep -c 'SRC=10.98.0.2'; `+
-		`construct firewall log | grep -c 'scan from 10.98.0.2'; construct firewall status | grep -c 'holding 10.98.0.2'; `+
+		`construct firewall log | grep -c 'scan from 10.98.0.2'; construct firewall status | grep -c '^holding 10.98.0.2 as a scanner'; `+
 		`construct firewall unblock 10.98.0.2 >/dev/null; echo unblock=$?; nft list set inet construct scanners | grep -c '10.98.0.2'; ip netns del fwrule`, "")
 	r.add("firewall scan", strings.HasPrefix(scan, "1\n1\n1\n1\nunblock=0\n0"), oneLine(scan))
+	// The session was told (construct firewall watch), and the notice goes, or the views measured
+	// after this one would show it.
+	var told []string
+	for range 10 {
+		told = nil
+		if err := g.evalJSON(`return Main.messageTray.getSources().flatMap(s => s.notifications.map(n => n.title));`, &told); err == nil && slices.Contains(told, "Someone is scanning this computer") {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	_, _ = g.eval(`Main.messageTray.getSources().forEach(s => s.destroy())`)
+	r.add("firewall scan notice", slices.Contains(told, "Someone is scanning this computer"), strings.Join(told, "; "))
 	dock, err := g.run(asLive+`docker run --rm cgr.dev/chainguard/wolfi-base echo container-ran 2>&1`, "")
 	_ = os.WriteFile(filepath.Join(r.dir, "docker.txt"), []byte(dock), 0o644)
 	r.add("docker", err == nil && strings.Contains(dock, "container-ran"), lastLine(dock))
