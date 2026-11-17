@@ -1,0 +1,94 @@
+# Wolfi's polkit (wolfi-dev/os polkit.yaml, 128 epoch 1), with one fix: the socket-activated agent
+# helper, which the image runs in place of the setuid one (cmd/image/setuid.go), took its caller's
+# uid from SO_PEERCRED, the effective uid, while polkitd knows a process by its real uid. pkexec's
+# built-in text agent is setuid, so every pkexec from a terminal with no session agent - a TTY, SSH,
+# test:lifecycle - authenticated through PAM and was then refused: "No session for cookie"
+# (polkit-org/polkit#686). The patch is upstream's pull request #693, unmerged at 128.
+# Its package tests are left out: they use Wolfi's own test pipelines, which melange build does
+# not run. The epoch stays above Wolfi's.
+package:
+  name: polkit
+  version: "128"
+  epoch: 2
+  description: "A toolkit for defining and handling authorizations."
+  copyright:
+    - license: LGPL-2.0-or-later
+  checks:
+    disabled:
+      - setuidgid
+  dependencies:
+    runtime:
+      - dbus
+      - linux-pam
+      - systemd
+  resources:
+    cpu: "1"
+    memory: 2Gi
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - ca-certificates-bundle
+      - cmake
+      - dbus-dev
+      # recipes/duktape keeps its headers in -dev, where Wolfi's ships them in duktape itself.
+      - duktape-dev
+      - expat-dev
+      - gettext-dev
+      - glib-dev
+      - glib-gir
+      - glibc-2.44-dev
+      - gobject-introspection-dev
+      - linux-pam-dev
+      - meson
+      - perl
+      - systemd-dev
+
+pipeline:
+  - uses: git-checkout
+    with:
+      expected-commit: e6373dc19975d8583568c6cd7025d03e682ca956
+      repository: https://github.com/polkit-org/polkit.git
+      tag: ${{package.version}}
+
+  - uses: patch
+    with:
+      patches: polkit/helper-real-uid.patch
+
+  - uses: meson/configure
+    with:
+      opts: |
+        -Dman=true \
+        -Dpam_prefix=/etc/pam.d \
+        -Dpam_module_dir=/usr/lib/security
+
+  - uses: meson/compile
+
+  - uses: meson/install
+
+subpackages:
+  - name: polkit-doc
+    pipeline:
+      - uses: split/manpages
+    dependencies:
+      runtime:
+        - polkit
+    description: polkit manpages
+
+  - name: polkit-dev
+    pipeline:
+      - uses: split/dev
+    dependencies:
+      runtime:
+        - polkit
+    description: polkit dev
+
+  - name: polkit-lang
+    pipeline:
+      - uses: split/locales
+    dependencies:
+      runtime:
+        - polkit
+    description: polkit locales
