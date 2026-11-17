@@ -471,10 +471,11 @@ func (g *guest) polkitAuth(answer string) polkitResult {
 	out, err := g.run(`before=$(systemctl show -P NAccepted polkit-agent-helper.socket); `+
 		`(sleep 10; printf '%s\n' '`+answer+`') | runuser -u `+lifecycleUser+` -- timeout 60 script -qec 'pkexec /usr/bin/id -u' /dev/null 2>&1; echo rc=$?; `+
 		`echo accepted=$(( $(systemctl show -P NAccepted polkit-agent-helper.socket) - before )); stat -c %A /usr/lib/polkit-1/polkit-agent-helper-1`, "")
-	// pkexec's id -u answers root's uid on the terminal, a line ending in a carriage return.
+	// pkexec's id -u answers root's uid on the terminal, a line ending in a carriage return and
+	// starting with the colour reset the text agent writes after its banner's newline.
 	root := false
 	for _, line := range strings.Split(out, "\n") {
-		root = root || strings.TrimSpace(line) == "0"
+		root = root || strings.TrimPrefix(strings.TrimSpace(line), "\x1b[0m") == "0"
 	}
 	ok := err == nil && root && strings.Contains(out, "rc=0") && strings.Contains(out, "accepted=1\n") &&
 		strings.Contains(out, "-rwxr-xr-x")
