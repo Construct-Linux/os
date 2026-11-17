@@ -23,6 +23,7 @@ contents:
     - lvm2=2.03.44-r1
     - pcsc-lite=2.5.3-r3
     - plymouth=26.134.222_git20260929-r0
+    - polkit=128-r2
     - systemd=262.2-r2
     - systemd-boot=262.2-r2
     - systemd-systemctl=262.2-r2
@@ -121,7 +122,6 @@ contents:
     - openssl-provider-legacy-allowed=4.1.0-r0
     - pango=1.58.2-r2
     - pixman=0.46.4-r9
-    - polkit=128-r1
     - popt=1.19-r13
     - quota-tools=4.11-r4
     - readline=8.3-r4

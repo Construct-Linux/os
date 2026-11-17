@@ -261,6 +261,9 @@ contents:
     - pipewire-doc=1.6.11-r4
     - pipewire-pulse=1.6.11-r4
     - plymouth=26.134.222_git20260929-r0
+    - polkit=128-r2
+    - polkit-doc=128-r2
+    - polkit-lang=128-r2
     - power-profiles-daemon=0.30-r0
     - ptyxis=50.1-r1
     - ptyxis-lang=50.1-r1
@@ -997,9 +1000,6 @@ contents:
     - pixman-dev=0.46.4-r9
     - pkgconf=3.0.11-r1
     - pkgconf-doc=3.0.11-r1
-    - polkit=128-r1
-    - polkit-doc=128-r1
-    - polkit-lang=128-r1
     - poppler=26.11.0-r0
     - poppler-glib=26.11.0-r0
     - poppler-utils=26.11.0-r0
