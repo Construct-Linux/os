@@ -413,7 +413,9 @@ func bakedRoot(stage, root string, layers []layer, version, updates string) (str
 	if err := merge(layers, merged); err != nil {
 		return "", err
 	}
-	if err := run("tar", "--numeric-owner", "--xattrs", "-xpf", merged, "-C", root); err != nil {
+	// GNU tar extracts only user.* attributes unless told otherwise, which would drop
+	// security.capability from newuidmap and newgidmap (setuid.go's capable).
+	if err := run("tar", "--numeric-owner", "--xattrs", "--xattrs-include=*", "-xpf", merged, "-C", root); err != nil {
 		return "", err
 	}
 	// A release's version is the builder's (calver.go); any other build's is its time, which sorts
