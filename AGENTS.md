@@ -127,6 +127,14 @@ falling back from a release that does not come up.
   Wolfi's package where a recipe's should be: apko takes the newest version across repositories,
   so a Wolfi bump above an override silently replaces it and everything it carried. `task usb`
   refuses roots not built from the checkout's locks, and `test:usb` builds them as the release does.
+- **How a pin moves, by what changed.** A package added to or dropped from `image/apko.yaml` (or
+  `image/initrd/apko.yaml`): `task lock`, which pins a new name at Wolfi's newest and keeps every
+  other pin; when the roots it then builds cannot install that beside the kept pins, `-all`. A
+  Wolfi fix (the `watch` workflow's security issues, `lock:outdated`): `task lock -- -all`, which
+  moves every Wolfi pin together; there is no one-package move, for the reason above. A recipe:
+  `task build -- <name>`, then `task lock`. `task lock` resolves the recipes from `packages/`, so
+  every recipe must be built at its current version first; it says which is missing. Then the
+  "packages, their versions" row below, and the lock's diff in the commit body when it is long.
 - **A recipe whose produced package can change takes a new version or epoch**: the builder's cache
   knows a package by its apk's name. `go test ./cmd/image` fails a changed recipe that can make the
   same apk as origin/main; comments outside build blocks are not a change. An **override of a

@@ -168,6 +168,8 @@ contents:
     - intel-lpmd=0.1.0-r0
     - intel-media-driver=26.3.5-r0
     - ipp-usb=0.9.34-r2
+    - iw=6.17-r0
+    - iw-doc=6.17-r0
     - json-glib=1.10.8-r0
     - keyd=2.6.0-r0
     - libadwaita=1.10.0-r0
@@ -331,6 +333,9 @@ contents:
     - bash=5.3-r14
     - bash-binsh=5.3-r14
     - bash-doc=5.3-r14
+    - bind-doc=9.20.30-r2
+    - bind-libs=9.20.30-r2
+    - bind-tools=9.20.30-r2
     - binutils=2.47-r4
     - binutils-doc=2.47-r4
     - brotli=1.2.1-r3
@@ -343,6 +348,7 @@ contents:
     - bzip2=1.0.8-r31
     - bzip2-dev=1.0.8-r31
     - bzip2-doc=1.0.8-r31
+    - c-ares=1.34.9-r0
     - ca-certificates=20261020-r0
     - ca-certificates-bundle=20261020-r0
     - ca-certificates-doc=20261020-r0
@@ -392,6 +398,8 @@ contents:
     - ell=0.83-r4
     - enchant2=2.8.21-r2
     - enchant2-doc=2.8.21-r2
+    - ethtool=7.2-r3
+    - ethtool-doc=7.2-r3
     - expat-dev=2.10.0-r1
     - ffmpeg-9.0-libavcodec63=9.0.2-r10
     - ffmpeg-9.0-libavfilter12=9.0.2-r10
@@ -619,6 +627,7 @@ contents:
     - freetype-dev=2.15.0-r0
     - fribidi=1.0.18-r3
     - fstrim=2.42.4-r3
+    - fstrm=0.6.1-r9
     - fuse-overlayfs=1.18-r2
     - fuse-overlayfs-doc=1.18-r2
     - fuse3=3.18.3-r3
@@ -691,11 +700,14 @@ contents:
     - innoextract=1.9-r7
     - innoextract-doc=1.9-r7
     - ip6tables=1.8.13-r5
+    - iperf3=3.22-r4
+    - iperf3-doc=3.22-r4
     - iproute2=7.3.0-r1
     - iproute2-doc=7.3.0-r1
     - iptables=1.8.13-r5
     - iptables-doc=1.8.13-r5
     - iptables-nft=1.8.13-r5
+    - iputils=20250605-r10
     - isl=0.28-r6
     - iso-codes=4.20.1-r7
     - jansson=2.15.1-r4
@@ -749,6 +761,7 @@ contents:
     - libedit-dev=3.1-r20
     - libelf=0.197-r1
     - libepoxy=1.5.10-r12
+    - libev=4.33-r15
     - libevdev=1.14.0-r2
     - libevent=2.1.13-r3
     - libexif-libs=0.6.26-r6
@@ -783,6 +796,7 @@ contents:
     - libinput=1.32.0-r2
     - libinput-doc=1.32.0-r2
     - libinput-libs=1.32.0-r2
+    - libiperf0=3.22-r4
     - libjpeg-turbo=3.2.1-r0
     - libjxl=0.12.0-r3
     - libksba=1.8.1-r5
@@ -859,6 +873,7 @@ contents:
     - liburcu=0.15.7-r4
     - libusb=1.0.30-r4
     - libuuid=2.42.4-r3
+    - libuv=1.53.0-r0
     - libva=2.24.1-r3
     - libverto=0.3.2-r11
     - libvorbis=1.3.7-r14
@@ -931,6 +946,8 @@ contents:
     - mpdecimal=4.0.1-r6
     - mpfr=4.2.2-r6
     - mtdev=1.1.7-r7
+    - mtr=0.96-r8
+    - mtr-doc=0.96-r8
     - ncurses=6.6.20261114-r0
     - ncurses-dev=6.6.20261114-r0
     - ncurses-doc=6.6.20261114-r0
@@ -940,6 +957,9 @@ contents:
     - nettle=3.10.2-r2
     - nftables=1.1.7-r1
     - nftables-doc=1.1.7-r1
+    - nghttp2=1.71.0-r0
+    - nghttp2-dev=1.71.0-r0
+    - nghttp2-doc=1.71.0-r0
     - nghttp3=1.19.0-r0
     - ngtcp2=1.26.0-r0
     - npth-libs=1.8-r17

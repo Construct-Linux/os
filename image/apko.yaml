@@ -257,6 +257,20 @@ contents:
     # ifconfig, route, netstat and arp for scripts and habits that still call them (net-tools).
     - task
     - net-tools
+    # ping for a person, not only root: iputils' opens an ICMP datagram socket, which systemd's
+    # 50-default.conf opens to every group (net.ipv4.ping_group_range); busybox's asks for a raw
+    # socket, which only root has.
+    - iputils
+    # A network's diagnosis: a Wi-Fi link's bitrate, MCS, width and retries (iw, recipes/: Wolfi
+    # has none; NetworkManager shows only the rate), a wired link's speed and duplex (ethtool), the
+    # throughput a link actually carries (iperf3), the loss at each hop of a route (mtr: Wolfi has
+    # no traceroute), and DNS's answers (bind-tools: dig, nslookup, host). tcpdump, nmap and strace
+    # are a distrobox away.
+    - iw
+    - ethtool
+    - iperf3
+    - mtr
+    - bind-tools
     # powertop: what keeps a laptop from its low-power states, and its tunables (construct power).
     - powertop
     # Swap in compressed RAM (usr/lib/systemd/zram-generator.conf), and construct bench's
@@ -318,6 +332,7 @@ contents:
     - groff-doc
     - texinfo-doc
     - bash-doc
+    - bind-doc
     - binutils-doc
     - bluez-doc
     - brotli-doc
@@ -334,6 +349,7 @@ contents:
     - dosfstools-doc
     - e2fsprogs-doc
     - enchant2-doc
+    - ethtool-doc
     - fuse-overlayfs-doc
     - fuse3-doc
     - gcc-doc
@@ -351,6 +367,8 @@ contents:
     - i2c-tools-doc
     - iproute2-doc
     - iptables-doc
+    - iperf3-doc
+    - iw-doc
     - jbig2dec-doc
     - kbd-doc
     - kmod-doc
@@ -375,8 +393,10 @@ contents:
     - lvm2-doc
     - lz4-doc
     - make-doc
+    - mtr-doc
     - ncurses-doc
     - net-tools-doc
+    - nghttp2-doc
     - nftables-doc
     - openssl-4.0-doc
     - openvpn-doc

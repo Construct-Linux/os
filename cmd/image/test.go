@@ -349,6 +349,8 @@ func (r *report) systemChecks(g *guest) {
 		`cat /sys/kernel/mm/transparent_hugepage/defrag /sys/module/zswap/parameters/enabled | tr '\n' ' '`, "")
 	r.add("memory and network settings", strings.Contains(tune, "/dev/zram0 partition;") &&
 		strings.Contains(tune, "150 0 50 268435456 fq bbr 0") && strings.Contains(tune, "[defer+madvise]") && strings.HasSuffix(strings.TrimSpace(tune), "N"), oneLine(tune))
+	ping, err := g.run(`runuser -u nobody -- ping -c1 -W2 127.0.0.1`, "")
+	r.add("ping without root", err == nil && strings.Contains(ping, "1 received"), oneLine(ping)+errText(err))
 	qdisc, err := g.run(`tc qdisc show dev "$(ip route show default | awk '{print $5; exit}')"`, "")
 	r.add("the network's interface is queued by fq", err == nil && strings.Contains(qdisc, "qdisc fq ") && !strings.Contains(qdisc, "fq_codel"), oneLine(qdisc)+errText(err))
 	// The fonts' cache baked into /usr is the one fontconfig takes: a program with no cache of its

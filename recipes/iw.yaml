@@ -1,0 +1,42 @@
+# Wolfi has no nl80211 tool - neither iw nor wireless-tools - and NetworkManager shows only a
+# connection's rate and signal. iw shows what a Wi-Fi link is doing: the bitrate each way, its MCS,
+# channel width and standard (HE, EHT), the station's retries and failures, the regulatory domain.
+# wireless-tools' iwconfig is not packaged: it speaks the deprecated WEXT interface, which
+# wpa_supplicant is built without, and iw replaces it.
+package:
+  name: iw
+  version: "6.17"
+  epoch: 0
+  description: nl80211 based CLI configuration utility for wireless devices
+  copyright:
+    - license: ISC
+
+environment:
+  contents:
+    packages:
+      - build-base
+      - busybox
+      - libnl3-dev
+      - pkgconf
+
+pipeline:
+  - uses: fetch
+    with:
+      uri: https://mirrors.edge.kernel.org/pub/software/network/iw/iw-${{package.version}}.tar.xz
+      expected-sha256: 7d182e498289ab39b257da6780d562e415377107f50358ee5b55b8cfe40b1e33
+
+  # The Makefile takes $CFLAGS from the environment (CFLAGS ?=) and appends its warnings; its own
+  # -O2 is the default the environment's -march replaces, so it is added back.
+  - runs: |
+      export CFLAGS="$CFLAGS -O2"
+      make V=1
+      make install DESTDIR=${{targets.destdir}} PREFIX=/usr SBINDIR=/usr/bin
+      ${{targets.destdir}}/usr/bin/iw --version
+
+  - uses: strip
+
+subpackages:
+  - name: iw-doc
+    description: iw manpages
+    pipeline:
+      - uses: split/manpages
