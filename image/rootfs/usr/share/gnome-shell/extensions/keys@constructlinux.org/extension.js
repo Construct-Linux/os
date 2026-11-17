@@ -60,7 +60,7 @@ export default class KeysExtension extends Extension {
             this._actions.set(action, e.key);
         }
         this._activated = global.display.connect('accelerator-activated', (_display, action) => this._send(action));
-        this._keyboard = Clutter.get_default_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
+        this._keyboard = global.stage.context.get_backend().get_default_seat().create_virtual_device(Clutter.InputDeviceType.KEYBOARD_DEVICE);
     }
 
     disable() {
